@@ -1,22 +1,28 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Elham Multiplast CRM API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
-    description: Health operations
+  - name: auth
+  - name: users
+  - name: contacts
+  - name: products
+  - name: deals
+  - name: activities
+  - name: reports
+  - name: import
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +30,742 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login with username and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Unauthorized
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout
+      responses:
+        "200":
+          description: Logged out
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List all team members
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create a team member
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users/{id}:
+    get:
+      operationId: getUser
+      tags: [users]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    patch:
+      operationId: updateUser
+      tags: [users]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    delete:
+      operationId: deleteUser
+      tags: [users]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /contacts:
+    get:
+      operationId: listContacts
+      tags: [contacts]
+      summary: List all contacts/leads
+      parameters:
+        - name: salesOwnerId
+          in: query
+          schema:
+            type: integer
+        - name: city
+          in: query
+          schema:
+            type: string
+        - name: unit
+          in: query
+          schema:
+            type: string
+        - name: industry
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of contacts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Contact"
+    post:
+      operationId: createContact
+      tags: [contacts]
+      summary: Create a new contact/lead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+
+  /contacts/{id}:
+    get:
+      operationId: getContact
+      tags: [contacts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Contact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+    patch:
+      operationId: updateContact
+      tags: [contacts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+    delete:
+      operationId: deleteContact
+      tags: [contacts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /contacts/duplicates:
+    get:
+      operationId: listDuplicateContacts
+      tags: [contacts]
+      summary: Find contacts with same mobile or email assigned to different owners
+      responses:
+        "200":
+          description: Duplicate groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DuplicateGroup"
+
+  /products:
+    get:
+      operationId: listProducts
+      tags: [products]
+      summary: List all products
+      responses:
+        "200":
+          description: List of products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+    post:
+      operationId: createProduct
+      tags: [products]
+      summary: Create a product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+
+  /products/{id}:
+    get:
+      operationId: getProduct
+      tags: [products]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+    patch:
+      operationId: updateProduct
+      tags: [products]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+    delete:
+      operationId: deleteProduct
+      tags: [products]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /deals:
+    get:
+      operationId: listDeals
+      tags: [deals]
+      summary: List all deals
+      parameters:
+        - name: contactId
+          in: query
+          schema:
+            type: integer
+        - name: salesOwnerId
+          in: query
+          schema:
+            type: integer
+        - name: stage
+          in: query
+          schema:
+            type: string
+        - name: unit
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of deals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Deal"
+    post:
+      operationId: createDeal
+      tags: [deals]
+      summary: Create a deal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DealInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deal"
+
+  /deals/{id}:
+    get:
+      operationId: getDeal
+      tags: [deals]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deal"
+    patch:
+      operationId: updateDeal
+      tags: [deals]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DealUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deal"
+    delete:
+      operationId: deleteDeal
+      tags: [deals]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /deals/{id}/products:
+    get:
+      operationId: listDealProducts
+      tags: [deals]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deal products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DealProduct"
+    post:
+      operationId: addDealProduct
+      tags: [deals]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DealProductInput"
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DealProduct"
+
+  /deals/{id}/products/{productId}:
+    delete:
+      operationId: removeDealProduct
+      tags: [deals]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Removed
+
+  /activities:
+    get:
+      operationId: listActivities
+      tags: [activities]
+      summary: List activities (with optional filters)
+      parameters:
+        - name: dealId
+          in: query
+          schema:
+            type: integer
+        - name: contactId
+          in: query
+          schema:
+            type: integer
+        - name: userId
+          in: query
+          schema:
+            type: integer
+        - name: upcoming
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: List of activities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Activity"
+    post:
+      operationId: createActivity
+      tags: [activities]
+      summary: Log an activity or schedule a follow-up
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivityInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+
+  /activities/{id}:
+    patch:
+      operationId: updateActivity
+      tags: [activities]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivityUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+    delete:
+      operationId: deleteActivity
+      tags: [activities]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /reports/summary:
+    get:
+      operationId: getReportSummary
+      tags: [reports]
+      summary: Overall dashboard summary stats
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSummary"
+
+  /reports/pipeline:
+    get:
+      operationId: getPipelineReport
+      tags: [reports]
+      summary: Deal counts and values by stage
+      parameters:
+        - name: salesOwnerId
+          in: query
+          schema:
+            type: integer
+        - name: unit
+          in: query
+          schema:
+            type: string
+        - name: month
+          in: query
+          schema:
+            type: string
+        - name: city
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Pipeline breakdown
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PipelineStageCount"
+
+  /reports/by-owner:
+    get:
+      operationId: getReportByOwner
+      tags: [reports]
+      summary: Deal stats grouped by sales owner
+      parameters:
+        - name: month
+          in: query
+          schema:
+            type: string
+        - name: unit
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Owner stats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OwnerStat"
+
+  /reports/by-product:
+    get:
+      operationId: getReportByProduct
+      tags: [reports]
+      summary: Deal stats grouped by product
+      parameters:
+        - name: month
+          in: query
+          schema:
+            type: string
+        - name: salesOwnerId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Product stats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductStat"
+
+  /reports/by-city:
+    get:
+      operationId: getReportByCity
+      tags: [reports]
+      summary: Deal stats grouped by city
+      parameters:
+        - name: month
+          in: query
+          schema:
+            type: string
+        - name: salesOwnerId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: City stats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CityStat"
+
+  /import/excel:
+    post:
+      operationId: importExcel
+      tags: [import]
+      summary: Import contacts/leads from Excel file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExcelImportInput"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResult"
+
+  /import/indiamart:
+    post:
+      operationId: importIndiaMart
+      tags: [import]
+      summary: Import lead from IndiaMart format
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IndiaMartLeadInput"
+      responses:
+        "201":
+          description: Created contact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +773,591 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    LoginInput:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      required: [user, token]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        token:
+          type: string
+
+    User:
+      type: object
+      required: [id, name, username, role, colorCode, unit]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        username:
+          type: string
+        role:
+          type: string
+          enum: [admin, sales]
+        colorCode:
+          type: string
+        unit:
+          type: string
+          enum: [Himatnagar, Surat, Rajkot, All]
+        createdAt:
+          type: string
+
+    UserInput:
+      type: object
+      required: [name, username, password, role, colorCode, unit]
+      properties:
+        name:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+        role:
+          type: string
+          enum: [admin, sales]
+        colorCode:
+          type: string
+        unit:
+          type: string
+          enum: [Himatnagar, Surat, Rajkot, All]
+
+    UserUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        username:
+          type: string
+        password:
+          type: ["string", "null"]
+        role:
+          type: string
+          enum: [admin, sales]
+        colorCode:
+          type: string
+        unit:
+          type: string
+
+    Contact:
+      type: object
+      required: [id, name, mobile, salesOwnerId, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        mobile:
+          type: string
+        email:
+          type: ["string", "null"]
+        companyName:
+          type: ["string", "null"]
+        salesOwnerId:
+          type: integer
+        salesOwner:
+          $ref: "#/components/schemas/User"
+        otherPhone:
+          type: ["string", "null"]
+        otherEmail:
+          type: ["string", "null"]
+        leadSource:
+          type: ["string", "null"]
+          enum: [IndiaMart, TradeIndia, "Social Media", Organic, Email, Other, null]
+        city:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+        unit:
+          type: ["string", "null"]
+          enum: [Himatnagar, Surat, Rajkot, null]
+        industry:
+          type: ["string", "null"]
+          enum: ["Liquid Detergent", Lubricant, "Agro Chemical & Pesticide", "Edible Oil", Veterinary, Other, null]
+        tags:
+          type: ["string", "null"]
+          enum: [Interested, "Category B", "Category C", null]
+        inquiryDate:
+          type: ["string", "null"]
+        lastCallDate:
+          type: ["string", "null"]
+        nextCallDate:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    ContactInput:
+      type: object
+      required: [name, mobile, salesOwnerId]
+      properties:
+        name:
+          type: string
+        mobile:
+          type: string
+        email:
+          type: ["string", "null"]
+        companyName:
+          type: ["string", "null"]
+        salesOwnerId:
+          type: integer
+        otherPhone:
+          type: ["string", "null"]
+        otherEmail:
+          type: ["string", "null"]
+        leadSource:
+          type: ["string", "null"]
+        city:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+        unit:
+          type: ["string", "null"]
+        industry:
+          type: ["string", "null"]
+        tags:
+          type: ["string", "null"]
+        inquiryDate:
+          type: ["string", "null"]
+        lastCallDate:
+          type: ["string", "null"]
+        nextCallDate:
+          type: ["string", "null"]
+
+    ContactUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        mobile:
+          type: string
+        email:
+          type: ["string", "null"]
+        companyName:
+          type: ["string", "null"]
+        salesOwnerId:
+          type: integer
+        otherPhone:
+          type: ["string", "null"]
+        otherEmail:
+          type: ["string", "null"]
+        leadSource:
+          type: ["string", "null"]
+        city:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+        unit:
+          type: ["string", "null"]
+        industry:
+          type: ["string", "null"]
+        tags:
+          type: ["string", "null"]
+        inquiryDate:
+          type: ["string", "null"]
+        lastCallDate:
+          type: ["string", "null"]
+        nextCallDate:
+          type: ["string", "null"]
+
+    DuplicateGroup:
+      type: object
+      required: [field, value, contacts]
+      properties:
+        field:
+          type: string
+        value:
+          type: string
+        contacts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Contact"
+
+    Product:
+      type: object
+      required: [id, name, productCode]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        category:
+          type: ["string", "null"]
+        pricePerUnit:
+          type: ["number", "null"]
+        productCode:
+          type: string
+        bottleWeight:
+          type: ["string", "null"]
+        bottleColour:
+          type: ["string", "null"]
+        capColour:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    ProductInput:
+      type: object
+      required: [name, productCode]
+      properties:
+        name:
+          type: string
+        category:
+          type: ["string", "null"]
+        pricePerUnit:
+          type: ["number", "null"]
+        productCode:
+          type: string
+        bottleWeight:
+          type: ["string", "null"]
+        bottleColour:
+          type: ["string", "null"]
+        capColour:
+          type: ["string", "null"]
+
+    ProductUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        category:
+          type: ["string", "null"]
+        pricePerUnit:
+          type: ["number", "null"]
+        productCode:
+          type: string
+        bottleWeight:
+          type: ["string", "null"]
+        bottleColour:
+          type: ["string", "null"]
+        capColour:
+          type: ["string", "null"]
+
+    Deal:
+      type: object
+      required: [id, contactId, stage, probability, createdAt]
+      properties:
+        id:
+          type: integer
+        contactId:
+          type: integer
+        contact:
+          $ref: "#/components/schemas/Contact"
+        title:
+          type: ["string", "null"]
+        stage:
+          type: string
+          enum: [New, "CL Sent", "Price Given", "Samples Sent", "Samples Received", "PI Sent", Won, Lost]
+        probability:
+          type: integer
+        totalValue:
+          type: ["number", "null"]
+        lostReason:
+          type: ["string", "null"]
+          enum: ["Price High", "Need Different Shape", "No Requirement Now", "Quality Problem", "Transport Concern", "Need in Future", Other, null]
+        notes:
+          type: ["string", "null"]
+        salesOwnerId:
+          type: ["integer", "null"]
+        salesOwner:
+          $ref: "#/components/schemas/User"
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    DealInput:
+      type: object
+      required: [contactId, stage]
+      properties:
+        contactId:
+          type: integer
+        title:
+          type: ["string", "null"]
+        stage:
+          type: string
+          enum: [New, "CL Sent", "Price Given", "Samples Sent", "Samples Received", "PI Sent", Won, Lost]
+        probability:
+          type: integer
+        totalValue:
+          type: ["number", "null"]
+        lostReason:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        salesOwnerId:
+          type: ["integer", "null"]
+
+    DealUpdate:
+      type: object
+      properties:
+        title:
+          type: ["string", "null"]
+        stage:
+          type: string
+          enum: [New, "CL Sent", "Price Given", "Samples Sent", "Samples Received", "PI Sent", Won, Lost]
+        probability:
+          type: integer
+        totalValue:
+          type: ["number", "null"]
+        lostReason:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        salesOwnerId:
+          type: ["integer", "null"]
+
+    DealProduct:
+      type: object
+      required: [id, dealId, productId, quantity]
+      properties:
+        id:
+          type: integer
+        dealId:
+          type: integer
+        productId:
+          type: integer
+        product:
+          $ref: "#/components/schemas/Product"
+        quantity:
+          type: number
+        unitPrice:
+          type: ["number", "null"]
+
+    DealProductInput:
+      type: object
+      required: [productId, quantity]
+      properties:
+        productId:
+          type: integer
+        quantity:
+          type: number
+        unitPrice:
+          type: ["number", "null"]
+
+    Activity:
+      type: object
+      required: [id, dealId, type, createdAt]
+      properties:
+        id:
+          type: integer
+        dealId:
+          type: integer
+        contactId:
+          type: ["integer", "null"]
+        type:
+          type: string
+          enum: [Call, WhatsApp, Email, Note, FollowUp]
+        notes:
+          type: ["string", "null"]
+        followUpDate:
+          type: ["string", "null"]
+        followUpType:
+          type: ["string", "null"]
+          enum: [Call, WhatsApp, Email, null]
+        createdBy:
+          type: ["integer", "null"]
+        user:
+          $ref: "#/components/schemas/User"
+        createdAt:
+          type: string
+
+    ActivityInput:
+      type: object
+      required: [dealId, type]
+      properties:
+        dealId:
+          type: integer
+        contactId:
+          type: ["integer", "null"]
+        type:
+          type: string
+          enum: [Call, WhatsApp, Email, Note, FollowUp]
+        notes:
+          type: ["string", "null"]
+        followUpDate:
+          type: ["string", "null"]
+        followUpType:
+          type: ["string", "null"]
+
+    ActivityUpdate:
+      type: object
+      properties:
+        notes:
+          type: ["string", "null"]
+        followUpDate:
+          type: ["string", "null"]
+        followUpType:
+          type: ["string", "null"]
+
+    ReportSummary:
+      type: object
+      required: [totalContacts, totalDeals, wonDeals, lostDeals, activeDeals, totalWonValue, upcomingFollowUps]
+      properties:
+        totalContacts:
+          type: integer
+        totalDeals:
+          type: integer
+        wonDeals:
+          type: integer
+        lostDeals:
+          type: integer
+        activeDeals:
+          type: integer
+        totalWonValue:
+          type: number
+        upcomingFollowUps:
+          type: integer
+        newLeadsThisMonth:
+          type: integer
+
+    PipelineStageCount:
+      type: object
+      required: [stage, count, totalValue]
+      properties:
+        stage:
+          type: string
+        count:
+          type: integer
+        totalValue:
+          type: number
+        probability:
+          type: integer
+
+    OwnerStat:
+      type: object
+      required: [userId, userName, colorCode, totalDeals, wonDeals, lostDeals, totalWonValue]
+      properties:
+        userId:
+          type: integer
+        userName:
+          type: string
+        colorCode:
+          type: string
+        totalDeals:
+          type: integer
+        wonDeals:
+          type: integer
+        lostDeals:
+          type: integer
+        activeDeals:
+          type: integer
+        totalWonValue:
+          type: number
+
+    ProductStat:
+      type: object
+      required: [productId, productName, totalQuantity, totalValue, dealCount]
+      properties:
+        productId:
+          type: integer
+        productName:
+          type: string
+        productCode:
+          type: string
+        totalQuantity:
+          type: number
+        totalValue:
+          type: number
+        dealCount:
+          type: integer
+
+    CityStat:
+      type: object
+      required: [city, totalDeals, wonDeals, totalWonValue]
+      properties:
+        city:
+          type: string
+        totalDeals:
+          type: integer
+        wonDeals:
+          type: integer
+        totalWonValue:
+          type: number
+
+    ExcelImportInput:
+      type: object
+      required: [rows]
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExcelRow"
+        defaultSalesOwnerId:
+          type: ["integer", "null"]
+
+    ExcelRow:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        mobile:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        companyName:
+          type: ["string", "null"]
+        city:
+          type: ["string", "null"]
+        salesOwnerName:
+          type: ["string", "null"]
+        inquiryDate:
+          type: ["string", "null"]
+        lastCallDate:
+          type: ["string", "null"]
+        nextCallDate:
+          type: ["string", "null"]
+        industry:
+          type: ["string", "null"]
+        unit:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+
+    ImportResult:
+      type: object
+      required: [imported, skipped, duplicates]
+      properties:
+        imported:
+          type: integer
+        skipped:
+          type: integer
+        duplicates:
+          type: array
+          items:
+            type: string
+        errors:
+          type: array
+          items:
+            type: string
+
+    IndiaMartLeadInput:
+      type: object
+      required: [clientName, clientMobile]
+      properties:
+        companyName:
+          type: ["string", "null"]
+        clientName:
+          type: string
+        clientMobile:
+          type: string
+        email:
+          type: ["string", "null"]
+        city:
+          type: ["string", "null"]
+        requirement:
+          type: ["string", "null"]
+        quantity:
+          type: ["string", "null"]
+        salesOwnerId:
+          type: ["integer", "null"]
