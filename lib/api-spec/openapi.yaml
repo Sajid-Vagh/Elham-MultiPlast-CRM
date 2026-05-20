@@ -186,6 +186,11 @@ paths:
           in: query
           schema:
             type: string
+        - name: followUpDue
+          in: query
+          description: If true, return only contacts whose nextCallDate is today or earlier
+          schema:
+            type: boolean
       responses:
         "200":
           description: List of contacts

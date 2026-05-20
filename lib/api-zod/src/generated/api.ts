@@ -132,7 +132,8 @@ export const ListContactsQueryParams = zod.object({
   "city": zod.coerce.string().optional(),
   "unit": zod.coerce.string().optional(),
   "industry": zod.coerce.string().optional(),
-  "search": zod.coerce.string().optional()
+  "search": zod.coerce.string().optional(),
+  "followUpDue": zod.coerce.boolean().optional().describe('If true, return only contacts whose nextCallDate is today or earlier')
 })
 
 export const ListContactsResponseItem = zod.object({

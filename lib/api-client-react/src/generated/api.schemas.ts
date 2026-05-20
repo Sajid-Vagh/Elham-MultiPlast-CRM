@@ -607,6 +607,10 @@ city?: string;
 unit?: string;
 industry?: string;
 search?: string;
+/**
+ * If true, return only contacts whose nextCallDate is today or earlier
+ */
+followUpDue?: boolean;
 };
 
 export type ListDealsParams = {

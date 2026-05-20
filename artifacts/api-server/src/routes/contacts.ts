@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable, usersTable } from "@workspace/db";
-import { eq, or, and, ilike, SQL } from "drizzle-orm";
+import { eq, or, and, ilike, lte, isNotNull, SQL } from "drizzle-orm";
 import { CreateContactBody, UpdateContactBody, GetContactParams, UpdateContactParams, DeleteContactParams, ListContactsQueryParams } from "@workspace/api-zod";
 import { logger } from "../lib/logger";
 
@@ -31,6 +31,11 @@ router.get("/contacts", async (req, res) => {
             ilike(contactsTable.city, s)
           )!
         );
+      }
+      if (params.data.followUpDue) {
+        const today = new Date().toISOString().slice(0, 10);
+        conditions.push(isNotNull(contactsTable.nextCallDate));
+        conditions.push(lte(contactsTable.nextCallDate, today));
       }
     }
     const contacts = conditions.length

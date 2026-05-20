@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import {
   useGetContact, useListDeals, useListActivities, useCreateDeal, useCreateActivity,
-  useUpdateContact, useListUsers, getListDealsQueryKey, getListActivitiesQueryKey,
-  getGetContactQueryKey
+  useUpdateContact, useDeleteContact, useListUsers,
+  getListDealsQueryKey, getListActivitiesQueryKey, getGetContactQueryKey, getListContactsQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Phone, Mail, Building, MapPin, Tag, Plus, Calendar } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { ArrowLeft, Phone, Mail, Building, MapPin, Tag, Plus, Calendar, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -33,6 +34,7 @@ export default function LeadDetail() {
   const contactId = Number(id);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
 
   const { data: contact, isLoading } = useGetContact(contactId, { query: { enabled: !!contactId, queryKey: getGetContactQueryKey(contactId) } });
   const { data: deals } = useListDeals({ contactId: contactId });
@@ -41,6 +43,7 @@ export default function LeadDetail() {
 
   const createDeal = useCreateDeal();
   const createActivity = useCreateActivity();
+  const deleteContact = useDeleteContact();
 
   const [newDealStage, setNewDealStage] = useState("New");
   const [newDealTitle, setNewDealTitle] = useState("");
@@ -52,6 +55,8 @@ export default function LeadDetail() {
   const [actFollowType, setActFollowType] = useState("Call");
   const [actDealId, setActDealId] = useState("");
   const [actDialogOpen, setActDialogOpen] = useState(false);
+
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   if (isLoading) return <div className="p-8">Loading...</div>;
   if (!contact) return <div className="p-8">Contact not found.</div>;
@@ -84,6 +89,17 @@ export default function LeadDetail() {
     });
   };
 
+  const handleDelete = () => {
+    deleteContact.mutate({ id: contactId }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
+        toast({ title: `"${contact.name}" deleted` });
+        setLocation("/leads");
+      },
+      onError: () => toast({ title: "Failed to delete lead", variant: "destructive" }),
+    });
+  };
+
   return (
     <div className="p-8 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
@@ -97,6 +113,14 @@ export default function LeadDetail() {
           {contact.companyName && <p className="text-muted-foreground">{contact.companyName}</p>}
         </div>
         <Link href={`/leads/${contactId}/edit`}><Button variant="outline" size="sm">Edit</Button></Link>
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-destructive border-destructive/40 hover:bg-destructive/10"
+          onClick={() => setDeleteOpen(true)}
+        >
+          <Trash2 className="h-4 w-4 mr-1" /> Delete
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -224,6 +248,26 @@ export default function LeadDetail() {
           </div>
         </div>
       </div>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{contact.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this lead along with all their deals and activity history. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete Lead
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
