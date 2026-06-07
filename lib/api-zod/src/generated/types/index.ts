@@ -37,6 +37,8 @@ export * from './getPipelineReportParams';
 export * from './getReportByCityParams';
 export * from './getReportByOwnerParams';
 export * from './getReportByProductParams';
+export * from './getReportLostReasons200Item';
+export * from './getReportLostReasonsParams';
 export * from './healthStatus';
 export * from './importResult';
 export * from './indiaMartLeadInput';

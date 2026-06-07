@@ -1,12 +1,15 @@
 import { useState } from "react";
-import { useGetPipelineReport, useGetReportByOwner, useGetReportByCity, useGetReportByProduct, useGetReportSummary, useListUsers } from "@workspace/api-client-react";
+import {
+  useGetPipelineReport, useGetReportByOwner, useGetReportByCity,
+  useGetReportByProduct, useGetReportSummary, useListUsers, useGetReportLostReasons
+} from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { TrendingUp, Users, Briefcase, DollarSign } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from "recharts";
+import { TrendingUp, Users, Briefcase, DollarSign, XCircle } from "lucide-react";
 
 function MonthPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return <Input type="month" value={value} onChange={e => onChange(e.target.value)} className="w-40" />;
@@ -30,6 +33,8 @@ const STAGE_COLORS: Record<string, string> = {
   "Won": "#4ade80", "Lost": "#f87171",
 };
 
+const PIE_COLORS = ["#f87171","#fb923c","#fbbf24","#a3e635","#34d399","#60a5fa","#a78bfa","#f472b6","#94a3b8"];
+
 export default function Reports() {
   const [month, setMonth] = useState("");
   const [unit, setUnit] = useState("");
@@ -40,7 +45,10 @@ export default function Reports() {
   const { data: byOwner } = useGetReportByOwner({ month: month || undefined, unit: unit || undefined });
   const { data: byCity } = useGetReportByCity({ month: month || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
   const { data: byProduct } = useGetReportByProduct({ month: month || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
+  const { data: lostReasons } = useGetReportLostReasons({ month: month || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined, unit: unit || undefined });
   const { data: users } = useListUsers();
+
+  const totalLost = lostReasons?.reduce((s, r) => s + r.count, 0) ?? 0;
 
   return (
     <div className="p-8 space-y-6">
@@ -63,6 +71,10 @@ export default function Reports() {
             <TabsTrigger value="by-owner">By Owner</TabsTrigger>
             <TabsTrigger value="by-city">By City</TabsTrigger>
             <TabsTrigger value="by-product">By Product</TabsTrigger>
+            <TabsTrigger value="lost-reasons">
+              <XCircle className="h-3.5 w-3.5 mr-1 text-red-400" />
+              Lost Reasons
+            </TabsTrigger>
           </TabsList>
           <div className="flex gap-2 flex-wrap">
             <MonthPicker value={month} onChange={setMonth} />
@@ -178,6 +190,96 @@ export default function Reports() {
               </Table>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="lost-reasons">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Pie chart */}
+            <Card>
+              <CardHeader><CardTitle>Lost Deals by Reason</CardTitle></CardHeader>
+              <CardContent>
+                {!lostReasons?.length ? (
+                  <p className="text-sm text-muted-foreground text-center py-12">No lost deals found for the selected filters.</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <PieChart>
+                      <Pie
+                        data={lostReasons}
+                        dataKey="count"
+                        nameKey="reason"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={100}
+                        label={({ reason, percent }) => `${reason} (${(percent * 100).toFixed(0)}%)`}
+                        labelLine={true}
+                      >
+                        {lostReasons.map((_, i) => (
+                          <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(v) => [`${v} deals`, "Count"]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Reason Breakdown</span>
+                  {totalLost > 0 && <span className="text-sm font-normal text-muted-foreground">{totalLost} total lost</span>}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {!lostReasons?.length ? (
+                  <p className="text-sm text-muted-foreground text-center py-12">No data</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Reason</TableHead>
+                        <TableHead>Deals</TableHead>
+                        <TableHead>Share</TableHead>
+                        <TableHead>Lost Value</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {lostReasons.map((row, i) => (
+                        <TableRow key={row.reason}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                              <span className="font-medium">{row.reason}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>{row.count}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-2 bg-muted rounded-full w-16">
+                                <div
+                                  className="h-2 rounded-full"
+                                  style={{
+                                    width: `${totalLost > 0 ? (row.count / totalLost) * 100 : 0}%`,
+                                    backgroundColor: PIE_COLORS[i % PIE_COLORS.length]
+                                  }}
+                                />
+                              </div>
+                              <span className="text-xs text-muted-foreground">
+                                {totalLost > 0 ? Math.round((row.count / totalLost) * 100) : 0}%
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-red-500">₹{Number(row.totalValue).toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

@@ -644,6 +644,18 @@ month?: string;
 salesOwnerId?: number;
 };
 
+export type GetReportLostReasonsParams = {
+month?: string;
+salesOwnerId?: number;
+unit?: string;
+};
+
+export type GetReportLostReasons200Item = {
+  reason: string;
+  count: number;
+  totalValue: number;
+};
+
 export type GetReportByCityParams = {
 month?: string;
 salesOwnerId?: number;

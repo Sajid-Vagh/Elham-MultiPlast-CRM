@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useParams, Link } from "wouter";
 import {
   useGetDeal, useUpdateDeal, useListDealProducts, useAddDealProduct, useRemoveDealProduct,
@@ -12,10 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Plus, Trash2, Calendar } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { ArrowLeft, Plus, Trash2, Calendar, Filter } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 const STAGES = ["New", "CL Sent", "Price Given", "Samples Sent", "Samples Received", "PI Sent", "Won", "Lost"];
 const STAGE_PROBS: Record<string, number> = { "New": 10, "CL Sent": 40, "Price Given": 50, "Samples Sent": 60, "Samples Received": 60, "PI Sent": 90, "Won": 100, "Lost": 0 };
@@ -55,22 +56,55 @@ export default function DealDetail() {
   const [actFollowType, setActFollowType] = useState("Call");
   const [actDialogOpen, setActDialogOpen] = useState(false);
 
-  const [stageChanging, setStageChanging] = useState(false);
+  // Stage change
+  const [pendingStage, setPendingStage] = useState<string | null>(null);
   const [lostReason, setLostReason] = useState("");
+  const [wonConfirmOpen, setWonConfirmOpen] = useState(false);
+  const [lostReasonOpen, setLostReasonOpen] = useState(false);
+
+  // Activity date filter
+  const [actFromDate, setActFromDate] = useState("");
+  const [actToDate, setActToDate] = useState("");
+  const [showDateFilter, setShowDateFilter] = useState(false);
+
+  const filteredActivities = useMemo(() => {
+    if (!activities) return [];
+    let list = [...activities].reverse();
+    if (actFromDate) list = list.filter(a => a.createdAt >= actFromDate);
+    if (actToDate) {
+      const toEnd = actToDate + "T23:59:59";
+      list = list.filter(a => a.createdAt <= toEnd);
+    }
+    return list;
+  }, [activities, actFromDate, actToDate]);
 
   if (isLoading) return <div className="p-8">Loading...</div>;
   if (!deal) return <div className="p-8">Deal not found.</div>;
 
-  const handleStageChange = (newStage: string) => {
-    if (newStage === "Lost" && !lostReason) {
-      setStageChanging(true);
+  const handleStageSelect = (newStage: string) => {
+    if (newStage === deal.stage) return;
+    if (newStage === "Won") {
+      setPendingStage("Won");
+      setWonConfirmOpen(true);
       return;
     }
-    updateDeal.mutate({ id: dealId, data: { stage: newStage as any, lostReason: newStage === "Lost" ? (lostReason || null) : null } }, {
+    if (newStage === "Lost") {
+      setPendingStage("Lost");
+      setLostReason("");
+      setLostReasonOpen(true);
+      return;
+    }
+    doStageUpdate(newStage, null);
+  };
+
+  const doStageUpdate = (stage: string, reason: string | null) => {
+    updateDeal.mutate({ id: dealId, data: { stage: stage as any, lostReason: reason } }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) });
-        toast({ title: `Deal moved to ${newStage}` });
-        setStageChanging(false);
+        toast({ title: `Deal moved to ${stage}` });
+        setWonConfirmOpen(false);
+        setLostReasonOpen(false);
+        setPendingStage(null);
         setLostReason("");
       },
       onError: () => toast({ title: "Error updating stage", variant: "destructive" }),
@@ -141,23 +175,13 @@ export default function DealDetail() {
             <CardHeader><CardTitle className="text-sm">Stage & Value</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label className="text-xs text-muted-foreground mb-1 block">Current Stage</Label>
-                <Select value={deal.stage} onValueChange={handleStageChange}>
+                <Label className="text-xs text-muted-foreground mb-1 block">Change Stage</Label>
+                <Select value={deal.stage} onValueChange={handleStageSelect}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>{STAGES.map(s => <SelectItem key={s} value={s}>{s} ({STAGE_PROBS[s]}%)</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              {stageChanging && (
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Lost Reason</Label>
-                  <Select value={lostReason} onValueChange={setLostReason}>
-                    <SelectTrigger><SelectValue placeholder="Select reason" /></SelectTrigger>
-                    <SelectContent>{LOST_REASONS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <Button size="sm" className="w-full" onClick={() => handleStageChange("Lost")} disabled={!lostReason}>Confirm Lost</Button>
-                </div>
-              )}
-              {deal.lostReason && <div className="text-sm"><span className="text-muted-foreground">Reason: </span>{deal.lostReason}</div>}
+              {deal.lostReason && <div className="text-sm p-2 bg-red-50 border border-red-200 rounded"><span className="text-muted-foreground text-xs">Lost reason: </span><span className="font-medium text-red-700">{deal.lostReason}</span></div>}
               <div>
                 <Label className="text-xs text-muted-foreground mb-1 block">Total Value (₹)</Label>
                 <Input
@@ -185,6 +209,7 @@ export default function DealDetail() {
         </div>
 
         <div className="lg:col-span-2 space-y-6">
+          {/* Products */}
           <div>
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-semibold">Products</h2>
@@ -224,38 +249,72 @@ export default function DealDetail() {
             </div>
           </div>
 
+          {/* Activities */}
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold">Activities</h2>
-              <Dialog open={actDialogOpen} onOpenChange={setActDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" /> Log Activity</Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader><DialogTitle>Log Activity</DialogTitle></DialogHeader>
-                  <div className="space-y-4 pt-2">
-                    <div><Label>Type</Label>
-                      <Select value={actType} onValueChange={setActType}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>{["Call","WhatsApp","Email","Note","FollowUp"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                      </Select>
+              <div className="flex items-center gap-2">
+                <h2 className="font-semibold">Activities</h2>
+                {(actFromDate || actToDate) && (
+                  <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                    filtered · {filteredActivities.length} shown
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant={showDateFilter ? "secondary" : "ghost"}
+                  onClick={() => setShowDateFilter(v => !v)}
+                >
+                  <Filter className="h-3.5 w-3.5 mr-1" /> Filter by Date
+                </Button>
+                <Dialog open={actDialogOpen} onOpenChange={setActDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" /> Log Activity</Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader><DialogTitle>Log Activity</DialogTitle></DialogHeader>
+                    <div className="space-y-4 pt-2">
+                      <div><Label>Type</Label>
+                        <Select value={actType} onValueChange={setActType}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>{["Call","WhatsApp","Email","Note","FollowUp"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                      <div><Label>Notes</Label><Textarea value={actNotes} onChange={e => setActNotes(e.target.value)} placeholder="Notes from this interaction..." /></div>
+                      <div><Label>Next Follow-up Date</Label><Input type="date" value={actFollowUp} onChange={e => setActFollowUp(e.target.value)} /></div>
+                      <div><Label>Follow-up Type</Label>
+                        <Select value={actFollowType} onValueChange={setActFollowType}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>{["Call","WhatsApp","Email"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                      <Button onClick={handleLogActivity} disabled={createActivity.isPending} className="w-full">Log</Button>
                     </div>
-                    <div><Label>Notes</Label><Textarea value={actNotes} onChange={e => setActNotes(e.target.value)} placeholder="Notes from this interaction..." /></div>
-                    <div><Label>Next Follow-up Date</Label><Input type="date" value={actFollowUp} onChange={e => setActFollowUp(e.target.value)} /></div>
-                    <div><Label>Follow-up Type</Label>
-                      <Select value={actFollowType} onValueChange={setActFollowType}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>{["Call","WhatsApp","Email"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                    <Button onClick={handleLogActivity} disabled={createActivity.isPending} className="w-full">Log</Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
+                  </DialogContent>
+                </Dialog>
+              </div>
             </div>
+
+            {showDateFilter && (
+              <div className="flex gap-3 items-center p-3 bg-muted/40 border rounded-md mb-3 text-sm">
+                <span className="text-muted-foreground">From</span>
+                <Input type="date" value={actFromDate} onChange={e => setActFromDate(e.target.value)} className="w-40 h-8 text-sm" />
+                <span className="text-muted-foreground">To</span>
+                <Input type="date" value={actToDate} onChange={e => setActToDate(e.target.value)} className="w-40 h-8 text-sm" />
+                {(actFromDate || actToDate) && (
+                  <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => { setActFromDate(""); setActToDate(""); }}>Clear</Button>
+                )}
+              </div>
+            )}
+
             <div className="space-y-2">
-              {activities?.length === 0 && <p className="text-sm text-muted-foreground text-center py-4 border rounded-md bg-card">No activities yet.</p>}
-              {activities?.slice().reverse().map(act => (
+              {filteredActivities.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4 border rounded-md bg-card">
+                  {(actFromDate || actToDate) ? "No activities in this date range." : "No activities yet."}
+                </p>
+              )}
+              {filteredActivities.map(act => (
                 <div key={act.id} className="flex gap-3 p-3 border rounded-md bg-card text-sm">
                   <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
                     <Calendar className="h-3.5 w-3.5 text-primary" />
@@ -263,7 +322,7 @@ export default function DealDetail() {
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
                       <span className="font-medium">{act.type}</span>
-                      <span className="text-xs text-muted-foreground">{new Date(act.createdAt).toLocaleDateString()}</span>
+                      <span className="text-xs text-muted-foreground">{new Date(act.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
                     </div>
                     {act.notes && <p className="text-muted-foreground mt-1">{act.notes}</p>}
                     {act.followUpDate && <p className="text-xs text-primary mt-1">Follow-up: {act.followUpDate} via {act.followUpType}</p>}
@@ -274,6 +333,57 @@ export default function DealDetail() {
           </div>
         </div>
       </div>
+
+      {/* Won confirmation */}
+      <AlertDialog open={wonConfirmOpen} onOpenChange={setWonConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-green-700">
+              🎉 Mark as Won?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Confirm that <strong>{deal.title || `Deal #${deal.id}`}</strong>
+              {contact ? ` with ${contact.name}` : ""} has been <strong>won</strong>.
+              {deal.totalValue ? ` Deal value: ₹${Number(deal.totalValue).toLocaleString()}.` : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingStage(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-green-600 text-white hover:bg-green-700"
+              onClick={() => doStageUpdate("Won", null)}
+            >
+              Yes, Mark as Won
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Lost reason dialog */}
+      <AlertDialog open={lostReasonOpen} onOpenChange={setLostReasonOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-red-700">Mark as Lost</AlertDialogTitle>
+            <AlertDialogDescription>Select the reason this deal was lost.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="px-1 py-2">
+            <Select value={lostReason} onValueChange={setLostReason}>
+              <SelectTrigger><SelectValue placeholder="Select reason" /></SelectTrigger>
+              <SelectContent>{LOST_REASONS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingStage(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={!lostReason}
+              onClick={() => { if (lostReason) doStageUpdate("Lost", lostReason); }}
+            >
+              Confirm Lost
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

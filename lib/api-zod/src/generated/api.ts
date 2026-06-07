@@ -812,6 +812,23 @@ export const GetReportByProductResponse = zod.array(GetReportByProductResponseIt
 
 
 /**
+ * @summary Lost deals grouped by reason
+ */
+export const GetReportLostReasonsQueryParams = zod.object({
+  "month": zod.coerce.string().optional(),
+  "salesOwnerId": zod.coerce.number().optional(),
+  "unit": zod.coerce.string().optional()
+})
+
+export const GetReportLostReasonsResponseItem = zod.object({
+  "reason": zod.string(),
+  "count": zod.number(),
+  "totalValue": zod.number()
+})
+export const GetReportLostReasonsResponse = zod.array(GetReportLostReasonsResponseItem)
+
+
+/**
  * @summary Deal stats grouped by city
  */
 export const GetReportByCityQueryParams = zod.object({

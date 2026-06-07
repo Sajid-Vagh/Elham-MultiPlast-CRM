@@ -709,6 +709,42 @@ paths:
                 items:
                   $ref: "#/components/schemas/ProductStat"
 
+  /reports/lost-reasons:
+    get:
+      operationId: getReportLostReasons
+      tags: [reports]
+      summary: Lost deals grouped by reason
+      parameters:
+        - name: month
+          in: query
+          schema:
+            type: string
+        - name: salesOwnerId
+          in: query
+          schema:
+            type: integer
+        - name: unit
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lost reasons breakdown
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [reason, count, totalValue]
+                  properties:
+                    reason:
+                      type: string
+                    count:
+                      type: integer
+                    totalValue:
+                      type: number
+
   /reports/by-city:
     get:
       operationId: getReportByCity

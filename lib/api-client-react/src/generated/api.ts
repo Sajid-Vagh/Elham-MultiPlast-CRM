@@ -39,6 +39,8 @@ import type {
   GetReportByCityParams,
   GetReportByOwnerParams,
   GetReportByProductParams,
+  GetReportLostReasons200Item,
+  GetReportLostReasonsParams,
   HealthStatus,
   ImportResult,
   IndiaMartLeadInput,
@@ -2657,6 +2659,90 @@ export function useGetReportByProduct<TData = Awaited<ReturnType<typeof getRepor
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetReportByProductQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetReportLostReasonsUrl = (params?: GetReportLostReasonsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reports/lost-reasons?${stringifiedParams}` : `/api/reports/lost-reasons`
+}
+
+/**
+ * @summary Lost deals grouped by reason
+ */
+export const getReportLostReasons = async (params?: GetReportLostReasonsParams, options?: RequestInit): Promise<GetReportLostReasons200Item[]> => {
+
+  return customFetch<GetReportLostReasons200Item[]>(getGetReportLostReasonsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetReportLostReasonsQueryKey = (params?: GetReportLostReasonsParams,) => {
+    return [
+    `/api/reports/lost-reasons`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetReportLostReasonsQueryOptions = <TData = Awaited<ReturnType<typeof getReportLostReasons>>, TError = ErrorType<unknown>>(params?: GetReportLostReasonsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReportLostReasons>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReportLostReasonsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReportLostReasons>>> = ({ signal }) => getReportLostReasons(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReportLostReasons>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReportLostReasonsQueryResult = NonNullable<Awaited<ReturnType<typeof getReportLostReasons>>>
+export type GetReportLostReasonsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Lost deals grouped by reason
+ */
+
+export function useGetReportLostReasons<TData = Awaited<ReturnType<typeof getReportLostReasons>>, TError = ErrorType<unknown>>(
+ params?: GetReportLostReasonsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReportLostReasons>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReportLostReasonsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

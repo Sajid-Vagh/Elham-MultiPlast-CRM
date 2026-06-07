@@ -169,6 +169,47 @@ router.get("/reports/by-product", async (req, res) => {
   }
 });
 
+router.get("/reports/lost-reasons", async (req, res) => {
+  try {
+    const params = GetPipelineReportQueryParams.safeParse(req.query);
+    let deals = await db.select().from(dealsTable).where(eq(dealsTable.stage, "Lost"));
+
+    if (params.success) {
+      if (params.data.salesOwnerId) deals = deals.filter(d => d.salesOwnerId === params.data.salesOwnerId);
+      if (params.data.month) {
+        const [year, month] = params.data.month.split("-").map(Number);
+        if (year && month) {
+          const start = new Date(year, month - 1, 1);
+          const end = new Date(year, month, 1);
+          deals = deals.filter(d => d.createdAt >= start && d.createdAt < end);
+        }
+      }
+      if (params.data.unit) {
+        const contacts = await db.select().from(contactsTable).where(eq(contactsTable.unit, params.data.unit));
+        const contactIds = new Set(contacts.map(c => c.id));
+        deals = deals.filter(d => contactIds.has(d.contactId));
+      }
+    }
+
+    const reasonMap = new Map<string, { count: number; totalValue: number }>();
+    for (const deal of deals) {
+      const reason = deal.lostReason ?? "Not Specified";
+      if (!reasonMap.has(reason)) reasonMap.set(reason, { count: 0, totalValue: 0 });
+      const s = reasonMap.get(reason)!;
+      s.count++;
+      s.totalValue += Number(deal.totalValue ?? 0);
+    }
+
+    const result = Array.from(reasonMap.entries())
+      .map(([reason, s]) => ({ reason, ...s }))
+      .sort((a, b) => b.count - a.count);
+    res.json(result);
+  } catch (err) {
+    req.log.error({ err }, "Lost reasons report error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.get("/reports/by-city", async (req, res) => {
   try {
     const params = GetReportByCityQueryParams.safeParse(req.query);

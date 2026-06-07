@@ -1,15 +1,18 @@
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLocation } from "wouter";
-import { useCreateContact, useListUsers, getListContactsQueryKey } from "@workspace/api-client-react";
+import { useCreateContact, useListUsers, useListContacts, getListContactsQueryKey } from "@workspace/api-client-react";
+
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { ArrowLeft, AlertTriangle, ExternalLink } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 
@@ -40,6 +43,17 @@ export default function LeadsNew() {
   const { data: users } = useListUsers();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  // Re-enquiry state
+  const [reEnquiryOpen, setReEnquiryOpen] = useState(false);
+  const [mobileSearch, setMobileSearch] = useState("");
+  const { data: existingContacts } = useListContacts(
+    { search: mobileSearch },
+    { query: { enabled: !!mobileSearch && reEnquiryOpen, queryKey: getListContactsQueryKey({ search: mobileSearch }) } }
+  );
+  const existingContact = existingContacts?.find(
+    c => c.mobile === mobileSearch || c.email === mobileSearch
+  );
 
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -76,7 +90,14 @@ export default function LeadsNew() {
         setLocation(`/leads/${contact.id}`);
       },
       onError: (err: any) => {
-        toast({ title: "Error", description: err?.data?.error || "Failed to create lead", variant: "destructive" });
+        const isDuplicate = err?.status === 409 || err?.data?.error?.toLowerCase().includes("already exists");
+        if (isDuplicate) {
+          const mobile = form.getValues("mobile");
+          setMobileSearch(mobile);
+          setReEnquiryOpen(true);
+        } else {
+          toast({ title: "Error", description: err?.data?.error || "Failed to create lead", variant: "destructive" });
+        }
       },
     });
   };
@@ -275,6 +296,58 @@ export default function LeadsNew() {
           </div>
         </form>
       </Form>
+
+      {/* Re-enquiry popup */}
+      <Dialog open={reEnquiryOpen} onOpenChange={setReEnquiryOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-700">
+              <AlertTriangle className="h-5 w-5" />
+              Re-Enquiry Detected
+            </DialogTitle>
+            <DialogDescription>
+              This mobile number already exists in the CRM. This may be a re-enquiry from an existing lead.
+            </DialogDescription>
+          </DialogHeader>
+          {existingContact ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-md p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                {existingContact.salesOwner && (
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ backgroundColor: existingContact.salesOwner.colorCode }}>
+                    {existingContact.salesOwner.name.charAt(0)}
+                  </div>
+                )}
+                <div>
+                  <p className="font-semibold">{existingContact.name}</p>
+                  {existingContact.companyName && <p className="text-sm text-muted-foreground">{existingContact.companyName}</p>}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div><span className="text-muted-foreground">Mobile: </span>{existingContact.mobile}</div>
+                {existingContact.city && <div><span className="text-muted-foreground">City: </span>{existingContact.city}</div>}
+                {existingContact.salesOwner && <div><span className="text-muted-foreground">Owner: </span>{existingContact.salesOwner.name}</div>}
+                {existingContact.industry && <div><span className="text-muted-foreground">Industry: </span>{existingContact.industry}</div>}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-amber-50 border border-amber-200 rounded-md p-4 text-sm text-amber-700">
+              Mobile <strong>{mobileSearch}</strong> already exists in the CRM.
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setReEnquiryOpen(false)}>
+              Edit Mobile Number
+            </Button>
+            {existingContact && (
+              <Link href={`/leads/${existingContact.id}`}>
+                <Button className="gap-2" onClick={() => setReEnquiryOpen(false)}>
+                  <ExternalLink className="h-4 w-4" /> View Existing Lead
+                </Button>
+              </Link>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
