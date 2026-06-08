@@ -108,7 +108,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { icon: BarChart, label: "Reports", href: "/reports", color: "#f472b6" },
     { icon: Download, label: "Import", href: "/import", color: "#fbbf24" },
     { icon: Copy, label: "Duplicates", href: "/duplicates", color: "#f87171" },
-    ...(user.role === 'admin' ? [{ icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" }] : []),
+    { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
   ];
 
   return (
