@@ -49,78 +49,78 @@
 }
 
 :root {
-  --background: 210 40% 98%;
-  --foreground: 222 47% 11%;
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 221 83% 53%;
+  --background: 248 40% 98%;
+  --foreground: 245 30% 15%;
+  --border: 250 22% 88%;
+  --input: 250 22% 90%;
+  --ring: 258 78% 62%;
 
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --card-border: 214 32% 91%;
+  --card-foreground: 245 30% 15%;
+  --card-border: 250 22% 90%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --popover-border: 214 32% 91%;
+  --popover-foreground: 245 30% 15%;
+  --popover-border: 250 22% 88%;
 
-  --primary: 221 83% 53%;
-  --primary-foreground: 210 40% 98%;
-  --primary-border: 221 83% 53%;
+  --primary: 258 78% 62%;
+  --primary-foreground: 0 0% 100%;
+  --primary-border: 258 78% 62%;
 
-  --secondary: 210 40% 96%;
-  --secondary-foreground: 222 47% 11%;
-  --secondary-border: 214 32% 91%;
+  --secondary: 250 30% 95%;
+  --secondary-foreground: 245 30% 20%;
+  --secondary-border: 250 22% 88%;
 
-  --muted: 210 40% 96%;
-  --muted-foreground: 215 16% 47%;
-  --muted-border: 214 32% 91%;
+  --muted: 250 28% 95%;
+  --muted-foreground: 248 16% 50%;
+  --muted-border: 250 22% 88%;
 
-  --accent: 210 40% 96%;
-  --accent-foreground: 222 47% 11%;
-  --accent-border: 214 32% 91%;
+  --accent: 250 30% 94%;
+  --accent-foreground: 245 30% 20%;
+  --accent-border: 250 22% 88%;
 
   --destructive: 0 84% 60%;
-  --destructive-foreground: 210 40% 98%;
+  --destructive-foreground: 0 0% 100%;
   --destructive-border: 0 84% 60%;
 
   --app-font-sans: 'Inter', sans-serif;
   --app-font-mono: Menlo, monospace;
-  --radius: 0.3rem;
+  --radius: 0.5rem;
 }
 
 .dark {
-  --background: 222 47% 11%;
-  --foreground: 210 40% 98%;
-  --border: 217 32% 17%;
-  --input: 217 32% 17%;
-  --ring: 224 76% 48%;
+  --background: 245 28% 10%;
+  --foreground: 248 30% 95%;
+  --border: 248 22% 18%;
+  --input: 248 22% 18%;
+  --ring: 258 70% 65%;
 
-  --card: 222 47% 11%;
-  --card-foreground: 210 40% 98%;
-  --card-border: 217 32% 17%;
+  --card: 245 28% 12%;
+  --card-foreground: 248 30% 95%;
+  --card-border: 248 22% 18%;
 
-  --popover: 222 47% 11%;
-  --popover-foreground: 210 40% 98%;
-  --popover-border: 217 32% 17%;
+  --popover: 245 28% 12%;
+  --popover-foreground: 248 30% 95%;
+  --popover-border: 248 22% 18%;
 
-  --primary: 217 91% 60%;
-  --primary-foreground: 222 47% 11%;
-  --primary-border: 217 91% 60%;
+  --primary: 258 72% 65%;
+  --primary-foreground: 245 28% 10%;
+  --primary-border: 258 72% 65%;
 
-  --secondary: 217 32% 17%;
-  --secondary-foreground: 210 40% 98%;
-  --secondary-border: 217 32% 17%;
+  --secondary: 248 22% 18%;
+  --secondary-foreground: 248 30% 95%;
+  --secondary-border: 248 22% 18%;
 
-  --muted: 217 32% 17%;
-  --muted-foreground: 215 20% 65%;
-  --muted-border: 217 32% 17%;
+  --muted: 248 22% 18%;
+  --muted-foreground: 248 20% 60%;
+  --muted-border: 248 22% 18%;
 
-  --accent: 217 32% 17%;
-  --accent-foreground: 210 40% 98%;
-  --accent-border: 217 32% 17%;
+  --accent: 248 22% 18%;
+  --accent-foreground: 248 30% 95%;
+  --accent-border: 248 22% 18%;
 
   --destructive: 0 62% 30%;
-  --destructive-foreground: 210 40% 98%;
+  --destructive-foreground: 0 0% 100%;
   --destructive-border: 0 62% 30%;
 }
 
@@ -132,4 +132,41 @@
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }
+}
+
+/* Sidebar gradient */
+.crm-sidebar {
+  background: linear-gradient(165deg, #f3f0ff 0%, #ede8fd 40%, #e8f4fd 100%);
+  border-right: 1px solid hsl(250 22% 88%);
+}
+
+/* Activity type badge colors */
+.act-call    { background: #dcfce7; color: #15803d; }
+.act-whatsapp { background: #ccfbf1; color: #0f766e; }
+.act-email   { background: #dbeafe; color: #1d4ed8; }
+.act-note    { background: #fef9c3; color: #a16207; }
+.act-followup { background: #ffedd5; color: #c2410c; }
+
+/* Kanban card pastel accent line */
+.kanban-card {
+  border-left: 3px solid transparent;
+  border-radius: 0.5rem;
+}
+
+/* Quick date filter buttons */
+.date-quick-btn {
+  font-size: 0.75rem;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid hsl(250 22% 88%);
+  background: white;
+  color: hsl(248 16% 50%);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.date-quick-btn:hover,
+.date-quick-btn.active {
+  background: hsl(258 78% 62%);
+  color: white;
+  border-color: hsl(258 78% 62%);
 }

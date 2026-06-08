@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import {
   useGetContact, useListDeals, useListActivities, useCreateDeal, useCreateActivity,
@@ -13,21 +13,37 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Phone, Mail, Building, MapPin, Tag, Plus, Calendar, Trash2 } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, Tag, Plus, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 
 const STAGE_COLORS: Record<string, string> = {
-  "New": "bg-slate-100 text-slate-700",
-  "CL Sent": "bg-blue-100 text-blue-700",
-  "Price Given": "bg-yellow-100 text-yellow-700",
-  "Samples Sent": "bg-orange-100 text-orange-700",
-  "Samples Received": "bg-purple-100 text-purple-700",
-  "PI Sent": "bg-indigo-100 text-indigo-700",
-  "Won": "bg-green-100 text-green-700",
-  "Lost": "bg-red-100 text-red-700",
+  "New": "bg-slate-100 text-slate-700", "CL Sent": "bg-blue-100 text-blue-700",
+  "Price Given": "bg-yellow-100 text-yellow-700", "Samples Sent": "bg-orange-100 text-orange-700",
+  "Samples Received": "bg-purple-100 text-purple-700", "PI Sent": "bg-indigo-100 text-indigo-700",
+  "Won": "bg-green-100 text-green-700", "Lost": "bg-red-100 text-red-700",
 };
+
+const ACT_STYLE: Record<string, { bg: string; fg: string; icon: string }> = {
+  "Call":     { bg: "#dcfce7", fg: "#15803d", icon: "📞" },
+  "WhatsApp": { bg: "#ccfbf1", fg: "#0f766e", icon: "💬" },
+  "Email":    { bg: "#dbeafe", fg: "#1d4ed8", icon: "✉️" },
+  "Note":     { bg: "#fef9c3", fg: "#a16207", icon: "📝" },
+  "FollowUp": { bg: "#ffedd5", fg: "#c2410c", icon: "🔔" },
+};
+
+function todayStr() { return new Date().toISOString().split("T")[0]!; }
+function daysAgoStr(n: number) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split("T")[0]!; }
+function monthStartStr() { const d = new Date(); d.setDate(1); return d.toISOString().split("T")[0]!; }
+
+const QUICK_BTNS = [
+  { key: "today", label: "Today" },
+  { key: "yesterday", label: "Yesterday" },
+  { key: "week", label: "Last 7 Days" },
+  { key: "month", label: "This Month" },
+  { key: "all", label: "All" },
+];
 
 export default function LeadDetail() {
   const { id } = useParams<{ id: string }>();
@@ -58,6 +74,28 @@ export default function LeadDetail() {
 
   const [deleteOpen, setDeleteOpen] = useState(false);
 
+  // Activity date filter
+  const [actQuick, setActQuick] = useState("all");
+  const [actFromDate, setActFromDate] = useState("");
+  const [actToDate, setActToDate] = useState("");
+
+  const applyQuick = (key: string) => {
+    setActQuick(key);
+    if (key === "today")     { setActFromDate(todayStr()); setActToDate(todayStr()); }
+    else if (key === "yesterday") { setActFromDate(daysAgoStr(1)); setActToDate(daysAgoStr(1)); }
+    else if (key === "week") { setActFromDate(daysAgoStr(6)); setActToDate(todayStr()); }
+    else if (key === "month"){ setActFromDate(monthStartStr()); setActToDate(todayStr()); }
+    else { setActFromDate(""); setActToDate(""); }
+  };
+
+  const filteredActivities = useMemo(() => {
+    if (!activities) return [];
+    let list = [...activities].reverse();
+    if (actFromDate) list = list.filter(a => a.createdAt.slice(0, 10) >= actFromDate);
+    if (actToDate)   list = list.filter(a => a.createdAt.slice(0, 10) <= actToDate);
+    return list;
+  }, [activities, actFromDate, actToDate]);
+
   if (isLoading) return <div className="p-8">Loading...</div>;
   if (!contact) return <div className="p-8">Contact not found.</div>;
 
@@ -69,8 +107,7 @@ export default function LeadDetail() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListDealsQueryKey({ contactId }) });
         toast({ title: "Deal created" });
-        setDealDialogOpen(false);
-        setNewDealTitle("");
+        setDealDialogOpen(false); setNewDealTitle("");
       },
       onError: () => toast({ title: "Error creating deal", variant: "destructive" }),
     });
@@ -82,8 +119,7 @@ export default function LeadDetail() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ contactId }) });
         toast({ title: "Activity logged" });
-        setActDialogOpen(false);
-        setActNotes(""); setActFollowUp("");
+        setActDialogOpen(false); setActNotes(""); setActFollowUp("");
       },
       onError: () => toast({ title: "Error logging activity", variant: "destructive" }),
     });
@@ -106,7 +142,7 @@ export default function LeadDetail() {
         <Link href="/leads"><Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-1" /> Back</Button></Link>
         <div className="flex-1">
           <div className="flex items-center gap-3">
-            {owner && <div className="w-4 h-4 rounded-full" style={{ backgroundColor: owner.colorCode }} />}
+            {owner && <div className="w-4 h-4 rounded-full shadow-sm" style={{ backgroundColor: owner.colorCode }} />}
             <h1 className="text-2xl font-bold">{contact.name}</h1>
             {contact.tags && <Badge variant="outline">{contact.tags}</Badge>}
           </div>
@@ -114,8 +150,7 @@ export default function LeadDetail() {
         </div>
         <Link href={`/leads/${contactId}/edit`}><Button variant="outline" size="sm">Edit</Button></Link>
         <Button
-          variant="outline"
-          size="sm"
+          variant="outline" size="sm"
           className="text-destructive border-destructive/40 hover:bg-destructive/10"
           onClick={() => setDeleteOpen(true)}
         >
@@ -151,6 +186,7 @@ export default function LeadDetail() {
         </div>
 
         <div className="lg:col-span-2 space-y-6">
+          {/* Deals */}
           <div>
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-semibold">Deals</h2>
@@ -174,13 +210,13 @@ export default function LeadDetail() {
               </Dialog>
             </div>
             <div className="space-y-2">
-              {deals?.length === 0 && <p className="text-sm text-muted-foreground text-center py-4 border rounded-md bg-card">No deals yet.</p>}
+              {deals?.length === 0 && <p className="text-sm text-muted-foreground text-center py-4 border rounded-lg bg-card">No deals yet.</p>}
               {deals?.map(deal => (
                 <Link key={deal.id} href={`/deals/${deal.id}`}>
-                  <div className="flex items-center justify-between p-3 border rounded-md bg-card hover:bg-accent transition-colors cursor-pointer">
+                  <div className="flex items-center justify-between p-3 border rounded-lg bg-card hover:bg-accent transition-colors cursor-pointer">
                     <div>
                       <p className="font-medium text-sm">{deal.title || `Deal #${deal.id}`}</p>
-                      <p className="text-xs text-muted-foreground">{new Date(deal.createdAt).toLocaleDateString()}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(deal.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
                     </div>
                     <div className="flex items-center gap-3">
                       {deal.totalValue && <span className="text-sm font-medium">₹{Number(deal.totalValue).toLocaleString()}</span>}
@@ -192,9 +228,17 @@ export default function LeadDetail() {
             </div>
           </div>
 
+          {/* Activity Log */}
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold">Activity Log</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="font-semibold">Activity Log</h2>
+                {actQuick !== "all" && (
+                  <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                    {filteredActivities.length} shown
+                  </span>
+                )}
+              </div>
               <Dialog open={actDialogOpen} onOpenChange={setActDialogOpen}>
                 <DialogTrigger asChild>
                   <Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" /> Log Activity</Button>
@@ -227,23 +271,44 @@ export default function LeadDetail() {
                 </DialogContent>
               </Dialog>
             </div>
-            <div className="space-y-2">
-              {activities?.length === 0 && <p className="text-sm text-muted-foreground text-center py-4 border rounded-md bg-card">No activities yet.</p>}
-              {activities?.slice().reverse().map(act => (
-                <div key={act.id} className="flex gap-3 p-3 border rounded-md bg-card text-sm">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Calendar className="h-3.5 w-3.5 text-primary" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">{act.type}</span>
-                      <span className="text-xs text-muted-foreground">{new Date(act.createdAt).toLocaleDateString()}</span>
-                    </div>
-                    {act.notes && <p className="text-muted-foreground mt-1">{act.notes}</p>}
-                    {act.followUpDate && <p className="text-xs text-primary mt-1">Follow-up: {act.followUpDate} via {act.followUpType}</p>}
-                  </div>
-                </div>
+
+            {/* Quick date filter */}
+            <div className="flex flex-wrap items-center gap-1.5 mb-3">
+              {QUICK_BTNS.map(b => (
+                <button key={b.key} className={`date-quick-btn ${actQuick === b.key ? "active" : ""}`} onClick={() => applyQuick(b.key)}>
+                  {b.label}
+                </button>
               ))}
+              <span className="text-muted-foreground text-xs ml-1">|</span>
+              <Input type="date" value={actFromDate} onChange={e => { setActFromDate(e.target.value); setActQuick("custom"); }} className="h-7 w-36 text-xs" />
+              <span className="text-xs text-muted-foreground">–</span>
+              <Input type="date" value={actToDate} onChange={e => { setActToDate(e.target.value); setActQuick("custom"); }} className="h-7 w-36 text-xs" />
+            </div>
+
+            <div className="space-y-2">
+              {filteredActivities.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-6 border rounded-lg bg-card">
+                  {actQuick !== "all" ? "No activities in this period." : "No activities yet."}
+                </p>
+              )}
+              {filteredActivities.map(act => {
+                const style = ACT_STYLE[act.type] || { bg: "#f3f4f6", fg: "#374151", icon: "•" };
+                return (
+                  <div key={act.id} className="flex gap-3 p-3 border rounded-lg bg-card text-sm">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-base" style={{ backgroundColor: style.bg }}>
+                      {style.icon}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: style.bg, color: style.fg }}>{act.type}</span>
+                        <span className="text-xs text-muted-foreground">{new Date(act.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
+                      </div>
+                      {act.notes && <p className="text-muted-foreground mt-1.5">{act.notes}</p>}
+                      {act.followUpDate && <p className="text-xs text-primary mt-1">Follow-up: {act.followUpDate} via {act.followUpType}</p>}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -253,18 +318,11 @@ export default function LeadDetail() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete "{contact.name}"?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete this lead along with all their deals and activity history. This action cannot be undone.
-            </AlertDialogDescription>
+            <AlertDialogDescription>This will permanently delete this lead along with all their deals and activity history. This action cannot be undone.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete Lead
-            </AlertDialogAction>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete Lead</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
