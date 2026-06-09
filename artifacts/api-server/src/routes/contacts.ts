@@ -157,6 +157,25 @@ router.patch("/contacts/:id", async (req, res) => {
   }
 });
 
+router.post("/contacts/bulk-delete", async (req, res) => {
+  const { ids } = req.body as { ids: number[] };
+  if (!Array.isArray(ids) || ids.length === 0) {
+    res.status(400).json({ error: "ids must be a non-empty array" });
+    return;
+  }
+  try {
+    let deleted = 0;
+    for (const id of ids) {
+      await db.delete(contactsTable).where(eq(contactsTable.id, id));
+      deleted++;
+    }
+    res.json({ deleted });
+  } catch (err) {
+    req.log.error({ err }, "Bulk delete contacts error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.delete("/contacts/:id", async (req, res) => {
   const params = DeleteContactParams.safeParse({ id: Number(req.params.id) });
   if (!params.success) { res.status(400).json({ error: "Invalid id" }); return; }

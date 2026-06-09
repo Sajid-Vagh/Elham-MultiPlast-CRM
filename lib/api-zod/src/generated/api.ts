@@ -286,6 +286,18 @@ export const DeleteContactParams = zod.object({
 
 
 /**
+ * @summary Delete multiple contacts by ID
+ */
+export const BulkDeleteContactsBody = zod.object({
+  "ids": zod.array(zod.number())
+})
+
+export const BulkDeleteContactsResponse = zod.object({
+  "deleted": zod.number()
+})
+
+
+/**
  * @summary Find contacts with same mobile or email assigned to different owners
  */
 export const ListDuplicateContactsResponseItem = zod.object({

@@ -601,6 +601,14 @@ export interface IndiaMartLeadInput {
   salesOwnerId?: number | null;
 }
 
+export interface BulkDeleteInput {
+  ids: number[];
+}
+
+export interface BulkDeleteResult {
+  deleted: number;
+}
+
 export type ListContactsParams = {
 salesOwnerId?: number;
 city?: string;

@@ -270,6 +270,25 @@ paths:
         "204":
           description: Deleted
 
+  /contacts/bulk-delete:
+    post:
+      operationId: bulkDeleteContacts
+      tags: [contacts]
+      summary: Delete multiple contacts by ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkDeleteInput"
+      responses:
+        "200":
+          description: Bulk delete result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkDeleteResult"
+
   /contacts/duplicates:
     get:
       operationId: listDuplicateContacts
@@ -1402,3 +1421,19 @@ components:
           type: ["string", "null"]
         salesOwnerId:
           type: ["integer", "null"]
+
+    BulkDeleteInput:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          items:
+            type: integer
+
+    BulkDeleteResult:
+      type: object
+      required: [deleted]
+      properties:
+        deleted:
+          type: integer

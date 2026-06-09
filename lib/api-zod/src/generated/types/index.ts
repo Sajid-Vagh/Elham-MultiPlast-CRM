@@ -13,6 +13,8 @@ export * from './activityInputType';
 export * from './activityType';
 export * from './activityUpdate';
 export * from './authResponse';
+export * from './bulkDeleteInput';
+export * from './bulkDeleteResult';
 export * from './cityStat';
 export * from './contact';
 export * from './contactIndustry';
