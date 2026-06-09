@@ -10,10 +10,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle, AlertCircle, Upload, FileSpreadsheet, X, Info, Sparkles, ClipboardPaste } from "lucide-react";
+import { CheckCircle, AlertCircle, Upload, FileSpreadsheet, X, Info, Sparkles } from "lucide-react";
 import { Link } from "wouter";
 
-// ── Improved IndiaMart message parser ───────────────────────────────────────
+// ── IndiaMart multi-format parser ────────────────────────────────────────────
 interface ParsedLead {
   clientName: string;
   clientMobile: string;
@@ -30,31 +30,26 @@ function parseIndiaMartMessage(raw: string): Partial<ParsedLead> {
   const fullText = lines.join("\n");
   const result: Partial<ParsedLead> = {};
 
-  // ── Mobile: try multiple patterns, most specific first ──
+  // ── Mobile: try patterns, most specific first ─────────────────────────────
   const mobilePatterns = [
-    // "Click to call: +91-XXXXX-XXXXX"
     /click\s*to\s*call[:\s]*\+?91[-\s]?(\d{5})[-\s]?(\d{5})/i,
-    // "+91-XXXXX-XXXXX" or "+91 XXXXX XXXXX"
     /\+91[-\s]?(\d{5})[-\s]?(\d{5})/,
-    // "+91XXXXXXXXXX" (10 digits after +91)
     /\+91(\d{10})/,
-    // "91XXXXXXXXXX" at start
     /\b91([6-9]\d{9})\b/,
-    // standalone 10-digit mobile (starts 6-9)
     /\b([6-9]\d{9})\b/,
   ];
 
-  for (const line of lines) {
+  let mobileLineIdx = -1;
+  for (let li = 0; li < lines.length; li++) {
     let found = false;
     for (const pat of mobilePatterns) {
-      const m = line.match(pat);
+      const m = lines[li]!.match(pat);
       if (m) {
-        // Extract just the digits
         let digits = m[0].replace(/[^\d]/g, "");
-        // Strip leading 91 if 12 digits total
         if (digits.length === 12 && digits.startsWith("91")) digits = digits.slice(2);
         if (digits.length === 10) {
           result.clientMobile = digits;
+          mobileLineIdx = li;
           found = true;
           break;
         }
@@ -63,7 +58,12 @@ function parseIndiaMartMessage(raw: string): Partial<ParsedLead> {
     if (found) break;
   }
 
-  // ── Name: after "Regards" line (same line or next line) ──
+  // ── Email ─────────────────────────────────────────────────────────────────
+  const emailMatch = fullText.match(/([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/);
+  if (emailMatch) result.email = emailMatch[1]!.toLowerCase();
+
+  // ── Name: try strategies in order ─────────────────────────────────────────
+  // Strategy 1: After "Regards," line
   let regardsIdx = -1;
   for (let i = 0; i < lines.length; i++) {
     if (/^regards[,.]?\s*$/i.test(lines[i]!) || /^regards[,.:]\s+\S/i.test(lines[i]!)) {
@@ -71,23 +71,15 @@ function parseIndiaMartMessage(raw: string): Partial<ParsedLead> {
       break;
     }
   }
-
   if (regardsIdx >= 0) {
-    const regardsLine = lines[regardsIdx]!;
-    // Name on same line: "Regards, John Smith"
-    const sameLineMatch = regardsLine.match(/^regards[,.:]\s+(.+)$/i);
+    const sameLineMatch = lines[regardsIdx]!.match(/^regards[,.:]\s+(.+)$/i);
     if (sameLineMatch) {
       const candidate = sameLineMatch[1]!.trim();
-      if (!/click|call|email|@|\d{7,}/i.test(candidate)) {
-        result.clientName = candidate;
-      }
+      if (!/click|call|email|@|\d{7,}/i.test(candidate)) result.clientName = candidate;
     } else {
-      // Name on next line, possibly with "tickicon" prefix
       for (let i = regardsIdx + 1; i < Math.min(regardsIdx + 4, lines.length); i++) {
         let nameLine = lines[i]!.replace(/^tickicon\s*/i, "").trim();
-        // Skip lines that look like contact info
         if (!nameLine || /click\s*to\s*call|email[:\s]|@|\+?91|\d{8,}|http/i.test(nameLine)) continue;
-        // Must look like a name (letters and spaces)
         if (/^[A-Za-z][A-Za-z\s.']{2,60}$/.test(nameLine)) {
           result.clientName = nameLine;
           break;
@@ -96,7 +88,7 @@ function parseIndiaMartMessage(raw: string): Partial<ParsedLead> {
     }
   }
 
-  // Fallback: look for "Name :" or "Contact Person :" in table rows
+  // Strategy 2: "Name :" / "Contact Person :" label in table
   if (!result.clientName) {
     for (const line of lines) {
       const m = line.match(/^(?:name|contact\s*person|buyer\s*name)[:\s]+(.+)$/i);
@@ -110,23 +102,51 @@ function parseIndiaMartMessage(raw: string): Partial<ParsedLead> {
     }
   }
 
-  // ── Email ──
-  const emailMatch = fullText.match(/([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/);
-  if (emailMatch) result.email = emailMatch[1]!.toLowerCase();
+  // Strategy 3: Line immediately AFTER the mobile number line (Format 3 style)
+  // e.g.: "9610118214 \n Arvind"
+  if (!result.clientName && mobileLineIdx >= 0) {
+    for (let i = mobileLineIdx + 1; i < Math.min(mobileLineIdx + 3, lines.length); i++) {
+      const candidate = lines[i]!.trim();
+      if (candidate && /^[A-Za-z][A-Za-z\s.']{1,50}$/.test(candidate) &&
+          !/click|call|email|@|http|india|gujarat|rajasthan|maharashtra|member|enquiry|buylead|details/i.test(candidate)) {
+        result.clientName = candidate;
+        break;
+      }
+    }
+  }
 
-  // ── City: various "City, State" or "City - pincode" patterns ──
-  const citySkip = /^(?:regards|email|mobile|phone|call|click|http|name|company|contact|please|dear|hi\b|i am|i'm|looking|kindly|india|gujarat|rajasthan|maharashtra)/i;
+  // Strategy 4: First short ALL-CAPS or Title-case line (Format 2 "RABARI" style)
+  // Only runs if no name found yet — look at first 4 lines
+  if (!result.clientName) {
+    const nameSkipKw = /^(?:hi|dear|hello|regards|chat|enquiry|buylead|details|member|buyer|requirement|material|design|capacity|quantity|probable|click|email|mobile|phone|hdpe|pp|pet|ldpe|bottle|can|jar|drum|ltr|litr|piece|pcs)/i;
+    for (let i = 0; i < Math.min(4, lines.length); i++) {
+      const line = lines[i]!;
+      // Skip lines with digits (could be mobile) or email chars
+      if (/\d/.test(line) || /@/.test(line)) continue;
+      // Must be purely letters/spaces/dots, 2–5 words max
+      if (/^[A-Za-z][A-Za-z\s.']{1,50}$/.test(line) &&
+          !nameSkipKw.test(line) &&
+          line.split(/\s+/).length <= 5) {
+        result.clientName = line;
+        break;
+      }
+    }
+  }
+
+  // ── City ──────────────────────────────────────────────────────────────────
+  const citySkip = /^(?:regards|email|mobile|phone|call|click|http|name|company|contact|please|dear|hi\b|i am|i'm|looking|kindly|india|gujarat|rajasthan|maharashtra|member)/i;
+
   for (const line of lines) {
     let m: RegExpMatchArray | null;
 
-    // "Surat - 395006, Gujarat, India" or "Surat-395006"
+    // "Surat - 395006, Gujarat, India"  OR  "Mundra - 370435, GJ"
     m = line.match(/^([A-Za-z][A-Za-z\s]{1,25}?)\s*[-–]\s*\d{6}/);
     if (m && !citySkip.test(m[1]!.trim()) && m[1]!.trim().split(" ").length <= 4) {
       result.city = m[1]!.trim();
       break;
     }
 
-    // "City, State, India" pattern
+    // "Sadri, Rajasthan, India"
     m = line.match(/^([A-Za-z][A-Za-z\s]{1,25}?),\s*[A-Za-z\s]{3,20},\s*India$/i);
     if (m && !citySkip.test(m[1]!.trim()) && m[1]!.trim().split(" ").length <= 3) {
       result.city = m[1]!.trim();
@@ -140,15 +160,13 @@ function parseIndiaMartMessage(raw: string): Partial<ParsedLead> {
       break;
     }
 
-    // Look for City in "Location : Surat" style table row
+    // "Location : Surat" or "City : Surat"
     m = line.match(/^(?:location|city|place)[:\s]+([A-Za-z][A-Za-z\s]{1,25}?)$/i);
-    if (m) {
-      result.city = m[1]!.trim();
-      break;
-    }
+    if (m) { result.city = m[1]!.trim(); break; }
   }
 
-  // ── Requirement: "I am looking for..." / "I'm looking for..." / "I want..." ──
+  // ── Requirement ───────────────────────────────────────────────────────────
+  // Strategy 1: "I am looking for..." / "I want..."
   for (const line of lines) {
     let m = line.match(/i(?:'m|\s+am)\s+looking\s+for\s+(.+?)\.?\s*$/i);
     if (m) { result.requirement = m[1]!.trim(); break; }
@@ -158,17 +176,56 @@ function parseIndiaMartMessage(raw: string): Partial<ParsedLead> {
     if (m) { result.requirement = m[1]!.trim(); break; }
   }
 
-  // ── Table rows: "Key : Value" pairs (product specs, details) ──
-  const skipTableKeys = /^(?:email|mobile|phone|call|regards|india|pincode|country|state|website|location|city|place|name|contact|buyer|address|verified)/i;
+  // Strategy 2: Line(s) after "Buylead Details:" header
+  if (!result.requirement) {
+    let buyLeadIdx = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (/^buylead\s+details\s*[:\-]?\s*$/i.test(lines[i]!)) { buyLeadIdx = i; break; }
+    }
+    if (buyLeadIdx >= 0) {
+      // Collect the next non-empty lines until we hit a key:value pattern
+      const parts: string[] = [];
+      for (let i = buyLeadIdx + 1; i < Math.min(buyLeadIdx + 5, lines.length); i++) {
+        const l = lines[i]!;
+        if (/^[A-Za-z][A-Za-z\s\/\(\)\-]{1,40}?[\s\t]*[:\t]/.test(l)) break; // reached table rows
+        if (l && !/^buyer\s+searched/i.test(l)) parts.push(l);
+      }
+      if (parts.length > 0) result.requirement = parts.join(", ");
+    }
+  }
+
+  // Strategy 3: "Buyer Searched for..." line
+  if (!result.requirement) {
+    for (const line of lines) {
+      const m = line.match(/buyer\s+searched\s+for\s+(.+?)\.?\s*$/i);
+      if (m) { result.requirement = m[1]!.trim(); break; }
+    }
+  }
+
+  // Strategy 4: Last meaningful line that looks like a product description
+  if (!result.requirement) {
+    const contactSkip = /click|call|email|@|\+?91|\d{7,}|regards|member|since|buylead|details|india|http|pincode|probable|quantity|material|design/i;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const l = lines[i]!;
+      if (l.length > 3 && l.length < 120 && !contactSkip.test(l) && !/^\d/.test(l)) {
+        // Make sure it's not city/name we already extracted
+        if (l !== result.city && l !== result.clientName) {
+          result.requirement = l;
+          break;
+        }
+      }
+    }
+  }
+
+  // ── Table rows: "Key : Value" pairs (specs) ───────────────────────────────
+  const skipTableKeys = /^(?:email|mobile|phone|call|regards|india|pincode|country|state|website|location|city|place|name|contact|buyer|address|verified|member|since)/i;
   const tableRows: string[] = [];
   for (const line of lines) {
-    // Match "Key : Value" or "Key\t:\tValue" or "Key\tValue"
     const m = line.match(/^([A-Za-z][A-Za-z\s\/\(\)\-]{1,40}?)\s*[:\t]+\s*(.{1,200})$/);
     if (m) {
       const key = m[1]!.trim();
       const val = m[2]!.trim();
       if (!skipTableKeys.test(key) && val.length > 0 && val.length < 200) {
-        // Try to extract company name
         if (/^(?:company|firm|organisation|organization)\s*(?:name)?$/i.test(key)) {
           result.companyName = val;
         } else {
@@ -182,11 +239,10 @@ function parseIndiaMartMessage(raw: string): Partial<ParsedLead> {
     result.requirement = base + tableRows.join("\n");
   }
 
-  // ── Quantity: "Quantity : 500 Pcs" or "Buyer Filled Details: 3 liter" ──
+  // ── Quantity ──────────────────────────────────────────────────────────────
   for (const line of lines) {
     let m = line.match(/(?:buyer\s+filled\s+details|quantity\s+required|quantity|qty|qnty)[:\s]+(.+)/i);
     if (m) { result.quantity = m[1]!.trim(); break; }
-    // standalone "500 pcs", "3 liter" on its own line
     m = line.match(/^(\d[\d,.]*\s*(?:liter|litre|l|kg|kgs|pcs|unit|units?|nos?|pieces?|ml|dozen|ton|mt|bags?|boxes?|carton|bottle)s?)\s*$/i);
     if (m && !result.quantity) { result.quantity = m[1]!.trim(); }
   }
@@ -194,7 +250,7 @@ function parseIndiaMartMessage(raw: string): Partial<ParsedLead> {
   return result;
 }
 
-// ── Excel column mapping ─────────────────────────────────────────────────────
+// ── Excel helpers ─────────────────────────────────────────────────────────────
 const COLUMN_MAP: Record<string, string> = {
   "name": "name", "client name": "name", "clientname": "name", "contact name": "name",
   "mobile": "mobile", "mobile number": "mobile", "phone": "mobile", "contact number": "mobile", "mobilenumber": "mobile",
@@ -236,6 +292,19 @@ function excelDateToString(val: any): string | null {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+function FieldChip({ label, value, ok }: { label: string; value?: string; ok: boolean }) {
+  if (!value && ok) return null;
+  return (
+    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${ok ? "bg-green-50 border-green-200 text-green-800" : "bg-amber-50 border-amber-200 text-amber-700"}`}>
+      <span className={ok ? "text-green-500" : "text-amber-400"}>
+        {ok ? "✓" : "⚠"}
+      </span>
+      <span className="text-muted-foreground">{label}:</span>
+      <span className="truncate max-w-[140px]">{value || "not detected"}</span>
+    </div>
+  );
+}
+
 export default function ImportPage() {
   const { data: users } = useListUsers();
   const queryClient = useQueryClient();
@@ -243,35 +312,68 @@ export default function ImportPage() {
   const importIndiaMart = useImportIndiaMart();
   const importExcel = useImportExcel();
 
-  const [im, setIm] = useState({ companyName: "", clientName: "", clientMobile: "", email: "", city: "", requirement: "", quantity: "", salesOwnerId: "" });
-  const [smartPasteText, setSmartPasteText] = useState("");
-  const [smartPasteOpen, setSmartPasteOpen] = useState(false);
+  // ── IndiaMart state ──
+  const [pasteRaw, setPasteRaw] = useState("");
+  const [parsed, setParsed] = useState<Partial<ParsedLead> | null>(null);
+  // Overrides for required fields if auto-parse missed them
+  const [overrideName, setOverrideName] = useState("");
+  const [overrideMobile, setOverrideMobile] = useState("");
+  const [imOwner, setImOwner] = useState("");
   const [imResult, setImResult] = useState<any>(null);
-  const [parsePreview, setParsePreview] = useState<Partial<ParsedLead> | null>(null);
 
-  const imF = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-    setIm(p => ({ ...p, [k]: e.target.value }));
-
-  const handleSmartParse = () => {
-    if (!smartPasteText.trim()) return;
-    const parsed = parseIndiaMartMessage(smartPasteText);
-    setParsePreview(parsed);
-    setIm(prev => ({
-      ...prev,
-      clientName: parsed.clientName || prev.clientName,
-      clientMobile: parsed.clientMobile || prev.clientMobile,
-      email: parsed.email || prev.email,
-      city: parsed.city || prev.city,
-      requirement: parsed.requirement || prev.requirement,
-      quantity: parsed.quantity || prev.quantity,
-      companyName: parsed.companyName || prev.companyName,
-    }));
-    setSmartPasteOpen(false);
-    setSmartPasteText("");
-    const found = Object.values(parsed).filter(Boolean).length;
-    toast({ title: `Extracted ${found} field${found !== 1 ? "s" : ""} from IndiaMart message` });
+  const handlePasteChange = (text: string) => {
+    setPasteRaw(text);
+    setImResult(null);
+    if (text.trim().length > 10) {
+      const p = parseIndiaMartMessage(text);
+      setParsed(p);
+      // Reset overrides when text changes
+      setOverrideName("");
+      setOverrideMobile("");
+    } else {
+      setParsed(null);
+    }
   };
 
+  const effectiveName = overrideName || parsed?.clientName || "";
+  const effectiveMobile = overrideMobile || parsed?.clientMobile || "";
+  const canImport = effectiveName.trim().length > 0 && effectiveMobile.trim().length >= 10;
+
+  const handleIndiaMartImport = () => {
+    if (!canImport) {
+      toast({ title: "Name and mobile are required", variant: "destructive" });
+      return;
+    }
+    importIndiaMart.mutate({
+      data: {
+        clientName: effectiveName,
+        clientMobile: effectiveMobile,
+        email: parsed?.email || null,
+        companyName: parsed?.companyName || null,
+        city: parsed?.city || null,
+        requirement: parsed?.requirement || null,
+        quantity: parsed?.quantity || null,
+        salesOwnerId: imOwner ? Number(imOwner) : null,
+      }
+    }, {
+      onSuccess: (contact) => {
+        setImResult({ success: true, contact });
+        queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
+        // Reset form
+        setPasteRaw("");
+        setParsed(null);
+        setOverrideName("");
+        setOverrideMobile("");
+        toast({ title: `Lead "${effectiveName}" imported from IndiaMart` });
+      },
+      onError: (e: any) => {
+        const isDup = e?.status === 409;
+        setImResult({ success: false, error: e?.data?.error || "Failed", isDup });
+      },
+    });
+  };
+
+  // ── Excel state ──
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [parsedRows, setParsedRows] = useState<any[] | null>(null);
@@ -288,7 +390,6 @@ export default function ImportPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadedFile(file); setParsedRows(null); setParseError(null); setExcelResult(null);
-
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
@@ -296,12 +397,9 @@ export default function ImportPage() {
         const wb = XLSX.read(data, { type: "array", cellDates: false });
         const ws = wb.Sheets[wb.SheetNames[0]!]!;
         const raw: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-
         if (!raw || raw.length < 2) { setParseError("The sheet is empty or has no data rows."); return; }
-
         const headers: string[] = (raw[0] as any[]).map(h => String(h ?? ""));
         const rows = raw.slice(1).filter(r => r.some((c: any) => c !== "" && c !== null && c !== undefined));
-
         const mapped = rows.map(r => {
           const obj = mapRow(headers, r.map(String));
           const dateFields = ["inquiryDate", "lastCallDate", "nextCallDate"];
@@ -313,7 +411,6 @@ export default function ImportPage() {
           }
           return obj;
         });
-
         setPreviewHeaders(headers);
         setParsedRows(mapped);
         toast({ title: `Parsed ${mapped.length} rows from "${file.name}"` });
@@ -360,31 +457,11 @@ export default function ImportPage() {
     });
   };
 
-  const handleIndiaMart = () => {
-    if (!im.clientName || !im.clientMobile) { toast({ title: "Name and mobile required", variant: "destructive" }); return; }
-    importIndiaMart.mutate({
-      data: {
-        companyName: im.companyName || null, clientName: im.clientName, clientMobile: im.clientMobile,
-        email: im.email || null, city: im.city || null, requirement: im.requirement || null,
-        quantity: im.quantity || null, salesOwnerId: im.salesOwnerId ? Number(im.salesOwnerId) : null,
-      }
-    }, {
-      onSuccess: (contact) => {
-        setImResult({ success: true, contact });
-        queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
-        setIm({ companyName: "", clientName: "", clientMobile: "", email: "", city: "", requirement: "", quantity: "", salesOwnerId: "" });
-        setParsePreview(null);
-        toast({ title: "Lead imported from IndiaMart" });
-      },
-      onError: (e: any) => setImResult({ success: false, error: e?.data?.error || "Failed" }),
-    });
-  };
-
   return (
     <div className="p-8 max-w-3xl mx-auto space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Import Data</h1>
-        <p className="text-muted-foreground mt-1">Upload an Excel file, paste data, or add IndiaMart leads</p>
+        <p className="text-muted-foreground mt-1">Add IndiaMart leads or upload Excel data</p>
       </div>
 
       <Tabs defaultValue="indiamart">
@@ -398,232 +475,261 @@ export default function ImportPage() {
         <TabsContent value="indiamart">
           <Card>
             <CardHeader>
-              <CardTitle>IndiaMart Lead</CardTitle>
-              <CardDescription>Paste the full IndiaMart message to auto-fill, or enter details manually</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-amber-500" />
+                IndiaMart Lead
+              </CardTitle>
+              <CardDescription>
+                Paste any IndiaMart enquiry message — name, mobile, city and details are extracted automatically
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-5">
-              {smartPasteOpen ? (
+            <CardContent className="space-y-4">
+
+              {/* Paste area */}
+              <Textarea
+                value={pasteRaw}
+                onChange={e => handlePasteChange(e.target.value)}
+                data-no-cap="1"
+                placeholder={`Paste IndiaMart message here — works with all formats:\n\n• Standard enquiry (with Regards / Click to call)\n• BuyLead format (RABARI / Mundra - 370435, GJ)\n• Minimal format (mobile on first line)\n\nNo form filling needed — just paste and click Import.`}
+                rows={9}
+                className="font-mono text-sm resize-y"
+                autoFocus
+              />
+
+              {/* Extracted fields preview */}
+              {parsed && (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label className="flex items-center gap-2 text-base">
-                      <Sparkles className="h-4 w-4 text-amber-500" />
-                      Paste IndiaMart Message
-                    </Label>
-                    <Button variant="ghost" size="sm" onClick={() => { setSmartPasteOpen(false); setSmartPasteText(""); }}>
-                      <X className="h-4 w-4 mr-1" /> Cancel
-                    </Button>
-                  </div>
-                  <Textarea
-                    value={smartPasteText}
-                    onChange={e => setSmartPasteText(e.target.value)}
-                    data-no-cap="1"
-                    placeholder={"Paste the full IndiaMart enquiry message here...\n\nExample:\nHi Manjur Bhatt,\nI am looking for HDPE Liquid Detergent Bottles.\n...\nRegards,\nVaghasiya Rajendrakumar\nClick to call: +91-9723355971\nEmail: example@gmail.com\nSurat - 395006, Gujarat, India"}
-                    rows={10}
-                    className="font-mono text-sm"
-                    autoFocus
-                  />
-                  <Button onClick={handleSmartParse} disabled={!smartPasteText.trim()} className="w-full">
-                    <Sparkles className="h-4 w-4 mr-2" /> Extract & Fill Fields
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  variant="outline"
-                  className="w-full border-dashed border-amber-400 text-amber-700 bg-amber-50 hover:bg-amber-100 hover:border-amber-500 h-12"
-                  onClick={() => setSmartPasteOpen(true)}
-                >
-                  <ClipboardPaste className="h-4 w-4 mr-2" />
-                  Paste IndiaMart Message — auto-fill all fields
-                </Button>
-              )}
-
-              {parsePreview && !smartPasteOpen && (
-                <div className="text-xs bg-green-50 border border-green-200 rounded-lg p-3 space-y-1">
-                  <p className="font-medium text-green-700 mb-1">✓ Extracted successfully</p>
-                  {parsePreview.clientName && <p><span className="text-green-600">Name: </span>{parsePreview.clientName}</p>}
-                  {parsePreview.clientMobile && <p><span className="text-green-600">Mobile: </span>{parsePreview.clientMobile}</p>}
-                  {parsePreview.city && <p><span className="text-green-600">City: </span>{parsePreview.city}</p>}
-                  {!parsePreview.clientName && <p className="text-amber-600">⚠ Name not detected — please fill manually</p>}
-                  {!parsePreview.clientMobile && <p className="text-amber-600">⚠ Mobile not detected — please fill manually</p>}
-                  {!parsePreview.city && <p className="text-amber-600">⚠ City not detected — please fill manually</p>}
-                </div>
-              )}
-
-              {!smartPasteOpen && (
-                <>
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-card px-2 text-muted-foreground">or fill manually</span>
-                    </div>
+                  <div className="flex flex-wrap gap-2">
+                    <FieldChip label="Name" value={parsed.clientName} ok={!!parsed.clientName} />
+                    <FieldChip label="Mobile" value={parsed.clientMobile} ok={!!parsed.clientMobile} />
+                    {parsed.email && <FieldChip label="Email" value={parsed.email} ok={true} />}
+                    {parsed.city && <FieldChip label="City" value={parsed.city} ok={true} />}
+                    {parsed.quantity && <FieldChip label="Qty" value={parsed.quantity} ok={true} />}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Client Name <span className="text-destructive">*</span></Label>
-                      <Input value={im.clientName} onChange={imF("clientName")} placeholder="Full name" />
+                  {/* Requirement preview */}
+                  {parsed.requirement && (
+                    <div className="bg-muted/50 rounded-md px-3 py-2 text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">Requirement: </span>
+                      <span className="whitespace-pre-line">{parsed.requirement.slice(0, 300)}{parsed.requirement.length > 300 ? "…" : ""}</span>
                     </div>
-                    <div>
-                      <Label>Mobile <span className="text-destructive">*</span></Label>
-                      <Input value={im.clientMobile} onChange={imF("clientMobile")} placeholder="Mobile number" />
-                    </div>
-                    <div>
-                      <Label>Company Name</Label>
-                      <Input value={im.companyName} onChange={imF("companyName")} placeholder="Optional" />
-                    </div>
-                    <div>
-                      <Label>Email</Label>
-                      <Input value={im.email} onChange={imF("email")} placeholder="Optional" data-no-cap="1" />
-                    </div>
-                    <div>
-                      <Label>City</Label>
-                      <Input value={im.city} onChange={imF("city")} placeholder="City" />
-                    </div>
-                    <div>
-                      <Label>Sales Owner</Label>
-                      <Select value={im.salesOwnerId || "none"} onValueChange={v => setIm(p => ({ ...p, salesOwnerId: v === "none" ? "" : v }))}>
-                        <SelectTrigger><SelectValue placeholder="Select owner" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Auto-assign</SelectItem>
-                          {users?.map(u => (
-                            <SelectItem key={u.id} value={u.id.toString()}>
-                              <span className="flex items-center gap-2">
-                                <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: u.colorCode }} />
-                                {u.name}
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="col-span-2">
-                      <Label>Requirement</Label>
-                      <Textarea value={im.requirement} onChange={imF("requirement")} placeholder="Product requirement..." rows={3} />
-                    </div>
-                    <div>
-                      <Label>Quantity</Label>
-                      <Input value={im.quantity} onChange={imF("quantity")} placeholder="e.g. 3 liter, 500 pcs" />
-                    </div>
-                  </div>
+                  )}
 
-                  <Button onClick={handleIndiaMart} disabled={importIndiaMart.isPending} className="w-full">
-                    <Upload className="h-4 w-4 mr-2" /> {importIndiaMart.isPending ? "Importing..." : "Save Lead"}
-                  </Button>
-
-                  {imResult && (
-                    <div className={`flex items-start gap-3 p-3 rounded-lg ${imResult.success ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"}`}>
-                      {imResult.success ? <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" /> : <AlertCircle className="h-5 w-5 text-red-500 mt-0.5" />}
-                      <div>
-                        {imResult.success ? (
-                          <><p className="text-sm font-medium text-green-700">Lead imported successfully</p><Link href={`/leads/${imResult.contact.id}`} className="text-xs text-green-600 underline">View {imResult.contact.name} →</Link></>
-                        ) : (
-                          <p className="text-sm text-red-600">{imResult.error}</p>
+                  {/* Override inputs if required fields not detected */}
+                  {(!parsed.clientName || !parsed.clientMobile) && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+                      <p className="text-xs font-medium text-amber-700">
+                        ⚠ Fill in the missing required fields:
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {!parsed.clientName && (
+                          <div>
+                            <Label className="text-xs">Name *</Label>
+                            <Input
+                              value={overrideName}
+                              onChange={e => setOverrideName(e.target.value)}
+                              placeholder="Client name"
+                              className="h-8 text-sm mt-0.5"
+                            />
+                          </div>
+                        )}
+                        {!parsed.clientMobile && (
+                          <div>
+                            <Label className="text-xs">Mobile *</Label>
+                            <Input
+                              value={overrideMobile}
+                              onChange={e => setOverrideMobile(e.target.value)}
+                              placeholder="10-digit mobile"
+                              className="h-8 text-sm mt-0.5"
+                              data-no-cap="1"
+                            />
+                          </div>
                         )}
                       </div>
                     </div>
                   )}
-                </>
+                </div>
               )}
+
+              {/* Owner + Import button */}
+              {parsed && (
+                <div className="flex items-center gap-3 pt-1">
+                  <div className="flex-1">
+                    <Select value={imOwner || "none"} onValueChange={v => setImOwner(v === "none" ? "" : v)}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Select sales owner" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Auto-assign (first user)</SelectItem>
+                        {users?.map(u => (
+                          <SelectItem key={u.id} value={u.id.toString()}>
+                            <span className="flex items-center gap-2">
+                              <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: u.colorCode }} />
+                              {u.name}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    onClick={handleIndiaMartImport}
+                    disabled={importIndiaMart.isPending || !canImport}
+                    className="gap-2 h-9"
+                  >
+                    <Upload className="h-4 w-4" />
+                    {importIndiaMart.isPending ? "Saving…" : "Import Lead"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 text-muted-foreground"
+                    onClick={() => { setPasteRaw(""); setParsed(null); setImResult(null); setOverrideName(""); setOverrideMobile(""); }}
+                    title="Clear"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+
+              {/* Result feedback */}
+              {imResult && (
+                <div className={`flex items-start gap-3 p-3 rounded-lg ${imResult.success ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"}`}>
+                  {imResult.success
+                    ? <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
+                    : <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />}
+                  <div className="flex-1">
+                    {imResult.success ? (
+                      <>
+                        <p className="font-medium text-green-800">Lead imported successfully!</p>
+                        <p className="text-sm text-green-700 mt-0.5">{imResult.contact?.name} — {imResult.contact?.mobile}</p>
+                        <Link href={`/leads/${imResult.contact?.id}`} className="text-xs text-green-700 underline mt-1 inline-block">
+                          View lead →
+                        </Link>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-medium text-red-800">{imResult.isDup ? "Already in CRM" : "Import failed"}</p>
+                        <p className="text-sm text-red-700 mt-0.5">{imResult.error}</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Format hint */}
+              {!parsed && (
+                <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2.5">
+                  <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <span>Handles all IndiaMart formats: standard enquiry, BuyLead notifications, and minimal contact cards. Just paste the full message as-is.</span>
+                </div>
+              )}
+
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* ── EXCEL FILE UPLOAD ── */}
+        {/* ── EXCEL UPLOAD ── */}
         <TabsContent value="excel-upload">
           <Card>
             <CardHeader>
-              <CardTitle>Upload Excel File</CardTitle>
-              <CardDescription>Upload a <code>.xlsx</code> or <code>.xls</code> file. The first row must be column headers.</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <FileSpreadsheet className="h-4 w-4 text-green-600" />
+                Excel / CSV Upload
+              </CardTitle>
+              <CardDescription>
+                Upload an .xlsx or .xls file. First row must be column headers.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="flex gap-2 p-3 bg-muted/60 rounded-lg text-xs text-muted-foreground">
-                <Info className="h-4 w-4 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-medium text-foreground">Recognised columns: </span>
-                  Name, Mobile, Email, Company, City, Owner, Industry, Unit, Inquiry Date, Last Call Date, Next Call Date, Source, Address, Tags, Notes
-                </div>
-              </div>
-
+            <CardContent className="space-y-4">
               <div
-                className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${uploadedFile ? "border-primary/40 bg-primary/5" : "border-border hover:border-primary/40 hover:bg-muted/30"}`}
+                className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center cursor-pointer hover:border-primary/40 hover:bg-muted/20 transition-colors"
                 onClick={() => fileInputRef.current?.click()}
-                onDragOver={e => e.preventDefault()}
-                onDrop={e => { e.preventDefault(); handleFileChange({ target: { files: e.dataTransfer.files } } as any); }}
               >
-                <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileChange} />
-                {uploadedFile ? (
-                  <div className="flex items-center justify-center gap-3">
-                    <FileSpreadsheet className="h-8 w-8 text-primary" />
-                    <div className="text-left">
-                      <p className="font-medium text-sm">{uploadedFile.name}</p>
-                      <p className="text-xs text-muted-foreground">{parsedRows ? `${parsedRows.length} rows parsed` : "Parsing..."}</p>
-                    </div>
-                    <Button variant="ghost" size="icon" className="ml-2" onClick={e => { e.stopPropagation(); setUploadedFile(null); setParsedRows(null); setExcelResult(null); setParseError(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}>
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <div>
-                    <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-                    <p className="font-medium text-sm">Click to upload or drag & drop</p>
-                    <p className="text-xs text-muted-foreground mt-1">.xlsx, .xls files supported</p>
-                  </div>
-                )}
+                <FileSpreadsheet className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                <p className="font-medium">{uploadedFile ? uploadedFile.name : "Click to upload"}</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {uploadedFile ? `${parsedRows?.length ?? 0} rows ready to import` : ".xlsx or .xls files supported"}
+                </p>
               </div>
+              <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileChange} />
 
               {parseError && (
-                <div className="flex gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
-                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />{parseError}
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {parseError}
                 </div>
               )}
 
-              {parsedRows && parsedRows.length > 0 && !excelResult && (
+              {parsedRows && parsedRows.length > 0 && (
                 <>
-                  <div className="border rounded-lg overflow-hidden text-xs">
-                    <div className="bg-muted px-3 py-2 font-medium text-muted-foreground border-b">
-                      Preview — first 3 rows of {parsedRows.length}
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead><tr>{previewHeaders.map(h => <th key={h} className="px-3 py-2 text-left text-muted-foreground border-r last:border-0">{h}</th>)}</tr></thead>
-                        <tbody>{parsedRows.slice(0, 3).map((row, i) => (
-                          <tr key={i} className="border-t">
-                            {previewHeaders.map(h => <td key={h} className="px-3 py-2 border-r last:border-0 truncate max-w-[120px]">{row[COLUMN_MAP[normalizeHeader(h)] || normalizeHeader(h).replace(/\s+/g,"")] ?? ""}</td>)}
+                  <div className="bg-muted/50 rounded-lg overflow-x-auto">
+                    <table className="text-xs w-full">
+                      <thead>
+                        <tr className="border-b">
+                          {previewHeaders.slice(0, 6).map((h, i) => (
+                            <th key={i} className="p-2 text-left font-medium text-muted-foreground">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {parsedRows.slice(0, 3).map((row, i) => (
+                          <tr key={i} className="border-b last:border-0">
+                            {previewHeaders.slice(0, 6).map((h, j) => {
+                              const key = COLUMN_MAP[normalizeHeader(h)] || normalizeHeader(h).replace(/\s+/g, "");
+                              return <td key={j} className="p-2 truncate max-w-[120px]">{row[key] ?? ""}</td>;
+                            })}
                           </tr>
-                        ))}</tbody>
-                      </table>
+                        ))}
+                      </tbody>
+                    </table>
+                    {parsedRows.length > 3 && (
+                      <p className="text-xs text-muted-foreground text-center py-1.5">… and {parsedRows.length - 3} more rows</p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground mb-1 block">Default Sales Owner (if not in sheet)</Label>
+                      <Select value={excelOwner || "none"} onValueChange={v => setExcelOwner(v === "none" ? "" : v)}>
+                        <SelectTrigger><SelectValue placeholder="Select owner" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Required (skip rows without owner)</SelectItem>
+                          {users?.map(u => <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
                     </div>
+                    <Button
+                      onClick={handleExcelUploadImport}
+                      disabled={importExcel.isPending || !parsedRows.length}
+                      className="mt-5"
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      {importExcel.isPending ? "Importing…" : `Import ${parsedRows.length} Rows`}
+                    </Button>
                   </div>
-
-                  <div>
-                    <Label>Default Sales Owner (if not in file)</Label>
-                    <Select value={excelOwner || "none"} onValueChange={v => setExcelOwner(v === "none" ? "" : v)}>
-                      <SelectTrigger><SelectValue placeholder="Auto-assign" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Auto-assign</SelectItem>
-                        {users?.map(u => <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <Button onClick={handleExcelUploadImport} disabled={importExcel.isPending} className="w-full">
-                    <Upload className="h-4 w-4 mr-2" /> {importExcel.isPending ? "Importing..." : `Import ${parsedRows.length} Leads`}
-                  </Button>
                 </>
               )}
 
               {excelResult && (
-                <div className="flex items-start gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
-                  <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-green-700">Import complete</p>
-                    <p className="text-xs text-green-600">
-                      {excelResult.imported} imported · {excelResult.skipped ?? 0} skipped · {excelResult.errors ?? 0} errors
-                    </p>
-                    <Link href="/leads" className="text-xs text-green-600 underline">View all leads →</Link>
-                  </div>
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg space-y-1 text-sm">
+                  <p className="font-medium text-green-800 flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4" /> Import complete
+                  </p>
+                  <p className="text-green-700">✓ {excelResult.imported} imported &nbsp;·&nbsp; {excelResult.skipped} skipped</p>
+                  {excelResult.duplicates?.length > 0 && (
+                    <p className="text-amber-700 text-xs">Duplicates skipped: {excelResult.duplicates.join(", ")}</p>
+                  )}
+                  {excelResult.errors?.length > 0 && (
+                    <p className="text-red-600 text-xs">{excelResult.errors.slice(0, 3).join(" · ")}</p>
+                  )}
                 </div>
               )}
+
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p className="font-medium">Recognised column names:</p>
+                <p>Name, Mobile, Email, Company, City, Owner, Inquiry Date, Industry, Unit, Lead Source, Tags, Address</p>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -632,38 +738,37 @@ export default function ImportPage() {
         <TabsContent value="paste">
           <Card>
             <CardHeader>
-              <CardTitle>Paste Tab-Separated or JSON</CardTitle>
-              <CardDescription>Paste tab-separated rows (Excel copy-paste) or a JSON array.</CardDescription>
+              <CardTitle>Paste Tab-separated or JSON</CardTitle>
+              <CardDescription>Paste rows copied from Excel (tab-separated), or a JSON array of objects.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <Textarea
                 value={pasteText}
                 onChange={e => setPasteText(e.target.value)}
                 data-no-cap="1"
-                placeholder={"Tab-separated (first row = headers):\nName\tMobile\tCity\nJohn Doe\t9876543210\tSurat\n\nOr JSON array:\n[{\"name\":\"John\",\"mobile\":\"9876543210\"}]"}
+                placeholder={"Tab-separated (header row first):\nName\tMobile\tEmail\tCity\nRavi Shah\t9876543210\travi@ex.com\tSurat\n\nOr JSON array:\n[{\"name\":\"Ravi\",\"mobile\":\"9876543210\"}]"}
                 rows={8}
                 className="font-mono text-sm"
               />
-              <div>
-                <Label>Default Sales Owner</Label>
+              <div className="flex items-center gap-3">
                 <Select value={pasteOwner || "none"} onValueChange={v => setPasteOwner(v === "none" ? "" : v)}>
-                  <SelectTrigger><SelectValue placeholder="Auto-assign" /></SelectTrigger>
+                  <SelectTrigger className="flex-1"><SelectValue placeholder="Default Sales Owner" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Auto-assign</SelectItem>
+                    <SelectItem value="none">Required (skip without owner)</SelectItem>
                     {users?.map(u => <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                <Button onClick={handlePasteImport} disabled={importExcel.isPending || !pasteText.trim()}>
+                  <Upload className="h-4 w-4 mr-2" /> Import
+                </Button>
               </div>
-              <Button onClick={handlePasteImport} disabled={!pasteText.trim() || importExcel.isPending} className="w-full">
-                <Upload className="h-4 w-4 mr-2" /> {importExcel.isPending ? "Importing..." : "Import"}
-              </Button>
+
               {pasteResult && (
-                <div className="flex items-start gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
-                  <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-green-700">Import complete: {pasteResult.imported} leads imported</p>
-                    <Link href="/leads" className="text-xs text-green-600 underline">View all leads →</Link>
-                  </div>
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
+                  <p className="font-medium text-green-800 flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4" /> Import complete
+                  </p>
+                  <p className="text-green-700 mt-1">✓ {pasteResult.imported} imported · {pasteResult.skipped} skipped</p>
                 </div>
               )}
             </CardContent>
