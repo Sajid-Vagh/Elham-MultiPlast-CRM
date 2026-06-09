@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle, AlertCircle, Upload, FileSpreadsheet, X, Info, Sparkles } from "lucide-react";
+import { CheckCircle, AlertCircle, Upload, FileSpreadsheet, X, Info, Sparkles, ClipboardPaste } from "lucide-react";
 import { Link } from "wouter";
 
 // ── IndiaMart multi-format parser ────────────────────────────────────────────
@@ -313,58 +313,57 @@ export default function ImportPage() {
   const importExcel = useImportExcel();
 
   // ── IndiaMart state ──
-  const [pasteRaw, setPasteRaw] = useState("");
-  const [parsed, setParsed] = useState<Partial<ParsedLead> | null>(null);
-  // Overrides for required fields if auto-parse missed them
-  const [overrideName, setOverrideName] = useState("");
-  const [overrideMobile, setOverrideMobile] = useState("");
-  const [imOwner, setImOwner] = useState("");
+  const emptyIm = { companyName: "", clientName: "", clientMobile: "", email: "", city: "", requirement: "", quantity: "", salesOwnerId: "" };
+  const [im, setIm] = useState(emptyIm);
+  const [smartPasteText, setSmartPasteText] = useState("");
+  const [parsePreview, setParsePreview] = useState<Partial<ParsedLead> | null>(null);
   const [imResult, setImResult] = useState<any>(null);
 
-  const handlePasteChange = (text: string) => {
-    setPasteRaw(text);
-    setImResult(null);
-    if (text.trim().length > 10) {
-      const p = parseIndiaMartMessage(text);
-      setParsed(p);
-      // Reset overrides when text changes
-      setOverrideName("");
-      setOverrideMobile("");
-    } else {
-      setParsed(null);
-    }
+  const imF = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setIm(p => ({ ...p, [k]: e.target.value }));
+
+  const handleSmartParse = () => {
+    if (!smartPasteText.trim()) return;
+    const parsed = parseIndiaMartMessage(smartPasteText);
+    setParsePreview(parsed);
+    setIm(prev => ({
+      ...prev,
+      clientName:   parsed.clientName   || prev.clientName,
+      clientMobile: parsed.clientMobile || prev.clientMobile,
+      email:        parsed.email        || prev.email,
+      city:         parsed.city         || prev.city,
+      requirement:  parsed.requirement  || prev.requirement,
+      quantity:     parsed.quantity     || prev.quantity,
+      companyName:  parsed.companyName  || prev.companyName,
+    }));
+    setSmartPasteText("");
+    const found = Object.values(parsed).filter(Boolean).length;
+    toast({ title: `Extracted ${found} field${found !== 1 ? "s" : ""} — review and save` });
   };
 
-  const effectiveName = overrideName || parsed?.clientName || "";
-  const effectiveMobile = overrideMobile || parsed?.clientMobile || "";
-  const canImport = effectiveName.trim().length > 0 && effectiveMobile.trim().length >= 10;
-
-  const handleIndiaMartImport = () => {
-    if (!canImport) {
+  const handleIndiaMart = () => {
+    if (!im.clientName || !im.clientMobile) {
       toast({ title: "Name and mobile are required", variant: "destructive" });
       return;
     }
     importIndiaMart.mutate({
       data: {
-        clientName: effectiveName,
-        clientMobile: effectiveMobile,
-        email: parsed?.email || null,
-        companyName: parsed?.companyName || null,
-        city: parsed?.city || null,
-        requirement: parsed?.requirement || null,
-        quantity: parsed?.quantity || null,
-        salesOwnerId: imOwner ? Number(imOwner) : null,
+        companyName:  im.companyName  || null,
+        clientName:   im.clientName,
+        clientMobile: im.clientMobile,
+        email:        im.email        || null,
+        city:         im.city         || null,
+        requirement:  im.requirement  || null,
+        quantity:     im.quantity     || null,
+        salesOwnerId: im.salesOwnerId ? Number(im.salesOwnerId) : null,
       }
     }, {
       onSuccess: (contact) => {
         setImResult({ success: true, contact });
         queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
-        // Reset form
-        setPasteRaw("");
-        setParsed(null);
-        setOverrideName("");
-        setOverrideMobile("");
-        toast({ title: `Lead "${effectiveName}" imported from IndiaMart` });
+        setIm(emptyIm);
+        setParsePreview(null);
+        toast({ title: `Lead "${im.clientName}" imported from IndiaMart` });
       },
       onError: (e: any) => {
         const isDup = e?.status === 409;
@@ -475,122 +474,116 @@ export default function ImportPage() {
         <TabsContent value="indiamart">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-amber-500" />
-                IndiaMart Lead
-              </CardTitle>
-              <CardDescription>
-                Paste any IndiaMart enquiry message — name, mobile, city and details are extracted automatically
-              </CardDescription>
+              <CardTitle>IndiaMart Lead</CardTitle>
+              <CardDescription>Paste the IndiaMart message to auto-fill all fields, or enter details manually</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-5">
 
-              {/* Paste area */}
-              <Textarea
-                value={pasteRaw}
-                onChange={e => handlePasteChange(e.target.value)}
-                data-no-cap="1"
-                placeholder={`Paste IndiaMart message here — works with all formats:\n\n• Standard enquiry (with Regards / Click to call)\n• BuyLead format (RABARI / Mundra - 370435, GJ)\n• Minimal format (mobile on first line)\n\nNo form filling needed — just paste and click Import.`}
-                rows={9}
-                className="font-mono text-sm resize-y"
-                autoFocus
-              />
-
-              {/* Extracted fields preview */}
-              {parsed && (
-                <div className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    <FieldChip label="Name" value={parsed.clientName} ok={!!parsed.clientName} />
-                    <FieldChip label="Mobile" value={parsed.clientMobile} ok={!!parsed.clientMobile} />
-                    {parsed.email && <FieldChip label="Email" value={parsed.email} ok={true} />}
-                    {parsed.city && <FieldChip label="City" value={parsed.city} ok={true} />}
-                    {parsed.quantity && <FieldChip label="Qty" value={parsed.quantity} ok={true} />}
-                  </div>
-
-                  {/* Requirement preview */}
-                  {parsed.requirement && (
-                    <div className="bg-muted/50 rounded-md px-3 py-2 text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground">Requirement: </span>
-                      <span className="whitespace-pre-line">{parsed.requirement.slice(0, 300)}{parsed.requirement.length > 300 ? "…" : ""}</span>
-                    </div>
+              {/* Smart paste area */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-amber-500" />
+                  Paste IndiaMart Message — auto-fills form
+                </Label>
+                <Textarea
+                  value={smartPasteText}
+                  onChange={e => setSmartPasteText(e.target.value)}
+                  data-no-cap="1"
+                  placeholder={"Paste any IndiaMart enquiry or BuyLead message here…\n\nWorks with all formats:\n• Standard (Regards / Click to call)\n• BuyLead (RABARI / Mundra - 370435, GJ)\n• Minimal (mobile number on first line)"}
+                  rows={7}
+                  className="font-mono text-sm resize-y"
+                />
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleSmartParse}
+                    disabled={!smartPasteText.trim()}
+                    variant="outline"
+                    className="border-amber-400 text-amber-700 bg-amber-50 hover:bg-amber-100 hover:border-amber-500"
+                  >
+                    <ClipboardPaste className="h-4 w-4 mr-2" />
+                    Extract &amp; Fill Fields
+                  </Button>
+                  {smartPasteText && (
+                    <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setSmartPasteText("")}>
+                      <X className="h-3.5 w-3.5 mr-1" /> Clear
+                    </Button>
                   )}
+                </div>
+              </div>
 
-                  {/* Override inputs if required fields not detected */}
-                  {(!parsed.clientName || !parsed.clientMobile) && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
-                      <p className="text-xs font-medium text-amber-700">
-                        ⚠ Fill in the missing required fields:
-                      </p>
-                      <div className="grid grid-cols-2 gap-2">
-                        {!parsed.clientName && (
-                          <div>
-                            <Label className="text-xs">Name *</Label>
-                            <Input
-                              value={overrideName}
-                              onChange={e => setOverrideName(e.target.value)}
-                              placeholder="Client name"
-                              className="h-8 text-sm mt-0.5"
-                            />
-                          </div>
-                        )}
-                        {!parsed.clientMobile && (
-                          <div>
-                            <Label className="text-xs">Mobile *</Label>
-                            <Input
-                              value={overrideMobile}
-                              onChange={e => setOverrideMobile(e.target.value)}
-                              placeholder="10-digit mobile"
-                              className="h-8 text-sm mt-0.5"
-                              data-no-cap="1"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
+              {/* Extraction result chips */}
+              {parsePreview && (
+                <div className="flex flex-wrap gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <p className="w-full text-xs font-medium text-green-700 mb-1">✓ Extracted — edit any field below before saving</p>
+                  <FieldChip label="Name"   value={parsePreview.clientName}   ok={!!parsePreview.clientName} />
+                  <FieldChip label="Mobile" value={parsePreview.clientMobile} ok={!!parsePreview.clientMobile} />
+                  {parsePreview.email    && <FieldChip label="Email" value={parsePreview.email}    ok={true} />}
+                  {parsePreview.city     && <FieldChip label="City"  value={parsePreview.city}     ok={true} />}
+                  {parsePreview.quantity && <FieldChip label="Qty"   value={parsePreview.quantity} ok={true} />}
                 </div>
               )}
 
-              {/* Owner + Import button */}
-              {parsed && (
-                <div className="flex items-center gap-3 pt-1">
-                  <div className="flex-1">
-                    <Select value={imOwner || "none"} onValueChange={v => setImOwner(v === "none" ? "" : v)}>
-                      <SelectTrigger className="h-9">
-                        <SelectValue placeholder="Select sales owner" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Auto-assign (first user)</SelectItem>
-                        {users?.map(u => (
-                          <SelectItem key={u.id} value={u.id.toString()}>
-                            <span className="flex items-center gap-2">
-                              <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: u.colorCode }} />
-                              {u.name}
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button
-                    onClick={handleIndiaMartImport}
-                    disabled={importIndiaMart.isPending || !canImport}
-                    className="gap-2 h-9"
-                  >
-                    <Upload className="h-4 w-4" />
-                    {importIndiaMart.isPending ? "Saving…" : "Import Lead"}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 text-muted-foreground"
-                    onClick={() => { setPasteRaw(""); setParsed(null); setImResult(null); setOverrideName(""); setOverrideMobile(""); }}
-                    title="Clear"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+              {/* Divider */}
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground">Lead details</span>
                 </div>
-              )}
+              </div>
+
+              {/* Full editable form */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Client Name <span className="text-destructive">*</span></Label>
+                  <Input value={im.clientName} onChange={imF("clientName")} placeholder="Full name" />
+                </div>
+                <div>
+                  <Label>Mobile <span className="text-destructive">*</span></Label>
+                  <Input value={im.clientMobile} onChange={imF("clientMobile")} placeholder="10-digit mobile" data-no-cap="1" />
+                </div>
+                <div>
+                  <Label>Company Name</Label>
+                  <Input value={im.companyName} onChange={imF("companyName")} placeholder="Optional" />
+                </div>
+                <div>
+                  <Label>Email</Label>
+                  <Input value={im.email} onChange={imF("email")} placeholder="Optional" data-no-cap="1" />
+                </div>
+                <div>
+                  <Label>City</Label>
+                  <Input value={im.city} onChange={imF("city")} placeholder="City" />
+                </div>
+                <div>
+                  <Label>Sales Owner</Label>
+                  <Select value={im.salesOwnerId || "none"} onValueChange={v => setIm(p => ({ ...p, salesOwnerId: v === "none" ? "" : v }))}>
+                    <SelectTrigger><SelectValue placeholder="Select owner" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Auto-assign</SelectItem>
+                      {users?.map(u => (
+                        <SelectItem key={u.id} value={u.id.toString()}>
+                          <span className="flex items-center gap-2">
+                            <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: u.colorCode }} />
+                            {u.name}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="col-span-2">
+                  <Label>Requirement</Label>
+                  <Textarea value={im.requirement} onChange={imF("requirement")} placeholder="Product requirement, specs…" rows={3} />
+                </div>
+                <div>
+                  <Label>Quantity</Label>
+                  <Input value={im.quantity} onChange={imF("quantity")} placeholder="e.g. 3 liter, 500 pcs" />
+                </div>
+              </div>
+
+              <Button onClick={handleIndiaMart} disabled={importIndiaMart.isPending} className="w-full">
+                <Upload className="h-4 w-4 mr-2" />
+                {importIndiaMart.isPending ? "Importing…" : "Save Lead"}
+              </Button>
 
               {/* Result feedback */}
               {imResult && (
@@ -614,14 +607,6 @@ export default function ImportPage() {
                       </>
                     )}
                   </div>
-                </div>
-              )}
-
-              {/* Format hint */}
-              {!parsed && (
-                <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2.5">
-                  <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                  <span>Handles all IndiaMart formats: standard enquiry, BuyLead notifications, and minimal contact cards. Just paste the full message as-is.</span>
                 </div>
               )}
 
