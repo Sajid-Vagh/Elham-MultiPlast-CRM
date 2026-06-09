@@ -10,5 +10,7 @@ export interface CityStat {
   city: string;
   totalDeals: number;
   wonDeals: number;
+  lostDeals: number;
   totalWonValue: number;
+  totalLostValue: number;
 }

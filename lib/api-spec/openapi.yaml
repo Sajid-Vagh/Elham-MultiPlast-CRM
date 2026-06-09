@@ -1334,7 +1334,7 @@ components:
 
     CityStat:
       type: object
-      required: [city, totalDeals, wonDeals, totalWonValue]
+      required: [city, totalDeals, wonDeals, lostDeals, totalWonValue, totalLostValue]
       properties:
         city:
           type: string
@@ -1342,7 +1342,11 @@ components:
           type: integer
         wonDeals:
           type: integer
+        lostDeals:
+          type: integer
         totalWonValue:
+          type: number
+        totalLostValue:
           type: number
 
     ExcelImportInput:

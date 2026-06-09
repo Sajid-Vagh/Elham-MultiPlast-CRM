@@ -1,10 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLocation } from "wouter";
 import { useCreateContact, useListUsers, useListContacts, getListContactsQueryKey } from "@workspace/api-client-react";
-
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,16 +43,29 @@ export default function LeadsNew() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  // Re-enquiry state
   const [reEnquiryOpen, setReEnquiryOpen] = useState(false);
-  const [mobileSearch, setMobileSearch] = useState("");
-  const { data: existingContacts } = useListContacts(
-    { search: mobileSearch },
-    { query: { enabled: !!mobileSearch && reEnquiryOpen, queryKey: getListContactsQueryKey({ search: mobileSearch }) } }
+  // blurCheck: the value typed in mobile/email field on blur
+  const [blurCheck, setBlurCheck] = useState("");
+  // popupContact: the matched existing contact to show in the popup
+  const [popupContact, setPopupContact] = useState<any>(null);
+
+  // Query fires whenever blurCheck has a value
+  const { data: blurContacts } = useListContacts(
+    { search: blurCheck },
+    { query: { enabled: !!blurCheck, queryKey: getListContactsQueryKey({ search: blurCheck }) } }
   );
-  const existingContact = existingContacts?.find(
-    c => c.mobile === mobileSearch || c.email === mobileSearch
-  );
+
+  // When blurContacts resolves, look for exact match and open popup
+  const prevBlurCheck = useRef("");
+  useEffect(() => {
+    if (!blurCheck || !blurContacts || blurCheck === prevBlurCheck.current) return;
+    const exact = blurContacts.find(c => c.mobile === blurCheck || c.email === blurCheck);
+    if (exact) {
+      prevBlurCheck.current = blurCheck;
+      setPopupContact(exact);
+      setReEnquiryOpen(true);
+    }
+  }, [blurContacts, blurCheck]);
 
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -92,14 +104,22 @@ export default function LeadsNew() {
       onError: (err: any) => {
         const isDuplicate = err?.status === 409 || err?.data?.error?.toLowerCase().includes("already exists");
         if (isDuplicate) {
+          // Fallback: open popup after submit if blur-check didn't catch it
           const mobile = form.getValues("mobile");
-          setMobileSearch(mobile);
+          setBlurCheck(mobile);
           setReEnquiryOpen(true);
         } else {
           toast({ title: "Error", description: err?.data?.error || "Failed to create lead", variant: "destructive" });
         }
       },
     });
+  };
+
+  const handleClosePopup = () => {
+    setReEnquiryOpen(false);
+    setBlurCheck("");
+    prevBlurCheck.current = "";
+    setPopupContact(null);
   };
 
   return (
@@ -129,14 +149,36 @@ export default function LeadsNew() {
               <FormField control={form.control} name="mobile" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Mobile <span className="text-destructive">*</span></FormLabel>
-                  <FormControl><Input placeholder="Mobile number" {...field} /></FormControl>
+                  <FormControl>
+                    <Input
+                      placeholder="Mobile number"
+                      {...field}
+                      data-no-cap="1"
+                      onBlur={(e) => {
+                        field.onBlur();
+                        const val = e.target.value.trim();
+                        if (val.length >= 6) setBlurCheck(val);
+                      }}
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <FormField control={form.control} name="email" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Email</FormLabel>
-                  <FormControl><Input placeholder="Email address" {...field} /></FormControl>
+                  <FormControl>
+                    <Input
+                      placeholder="Email address"
+                      {...field}
+                      data-no-cap="1"
+                      onBlur={(e) => {
+                        field.onBlur();
+                        const val = e.target.value.trim();
+                        if (val.includes("@") && val.includes(".")) setBlurCheck(val);
+                      }}
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -281,7 +323,7 @@ export default function LeadsNew() {
               <FormField control={form.control} name="otherEmail" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Other Email</FormLabel>
-                  <FormControl><Input placeholder="Other email" {...field} /></FormControl>
+                  <FormControl><Input placeholder="Other email" {...field} data-no-cap="1" /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -297,51 +339,58 @@ export default function LeadsNew() {
         </form>
       </Form>
 
-      {/* Re-enquiry popup */}
-      <Dialog open={reEnquiryOpen} onOpenChange={setReEnquiryOpen}>
+      {/* Existing lead popup — shows on mobile/email blur match OR 409 submit error */}
+      <Dialog open={reEnquiryOpen} onOpenChange={(open) => { if (!open) handleClosePopup(); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-amber-700">
               <AlertTriangle className="h-5 w-5" />
-              Re-Enquiry Detected
+              Already in CRM
             </DialogTitle>
             <DialogDescription>
-              This mobile number already exists in the CRM. This may be a re-enquiry from an existing lead.
+              This {popupContact?.email === blurCheck ? "email" : "mobile number"} is already assigned to an existing lead in the CRM.
             </DialogDescription>
           </DialogHeader>
-          {existingContact ? (
+          {popupContact ? (
             <div className="bg-amber-50 border border-amber-200 rounded-md p-4 space-y-3">
               <div className="flex items-center gap-3">
-                {existingContact.salesOwner && (
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ backgroundColor: existingContact.salesOwner.colorCode }}>
-                    {existingContact.salesOwner.name.charAt(0)}
+                {popupContact.salesOwner && (
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0" style={{ backgroundColor: popupContact.salesOwner.colorCode }}>
+                    {popupContact.salesOwner.name.charAt(0)}
                   </div>
                 )}
                 <div>
-                  <p className="font-semibold">{existingContact.name}</p>
-                  {existingContact.companyName && <p className="text-sm text-muted-foreground">{existingContact.companyName}</p>}
+                  <p className="font-semibold text-base">{popupContact.name}</p>
+                  {popupContact.companyName && <p className="text-sm text-muted-foreground">{popupContact.companyName}</p>}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div><span className="text-muted-foreground">Mobile: </span>{existingContact.mobile}</div>
-                {existingContact.city && <div><span className="text-muted-foreground">City: </span>{existingContact.city}</div>}
-                {existingContact.salesOwner && <div><span className="text-muted-foreground">Owner: </span>{existingContact.salesOwner.name}</div>}
-                {existingContact.industry && <div><span className="text-muted-foreground">Industry: </span>{existingContact.industry}</div>}
+              <div className="grid grid-cols-2 gap-2 text-sm pt-1">
+                <div><span className="text-muted-foreground">Mobile: </span><span className="font-medium">{popupContact.mobile}</span></div>
+                {popupContact.email && <div><span className="text-muted-foreground">Email: </span><span className="font-medium">{popupContact.email}</span></div>}
+                {popupContact.city && <div><span className="text-muted-foreground">City: </span>{popupContact.city}</div>}
+                {popupContact.salesOwner && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground">Assigned to: </span>
+                    <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: popupContact.salesOwner.colorCode }} />
+                    <span className="font-medium text-primary">{popupContact.salesOwner.name}</span>
+                  </div>
+                )}
+                {popupContact.industry && <div><span className="text-muted-foreground">Industry: </span>{popupContact.industry}</div>}
               </div>
             </div>
           ) : (
             <div className="bg-amber-50 border border-amber-200 rounded-md p-4 text-sm text-amber-700">
-              Mobile <strong>{mobileSearch}</strong> already exists in the CRM.
+              <strong>{blurCheck}</strong> already exists in the CRM.
             </div>
           )}
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setReEnquiryOpen(false)}>
-              Edit Mobile Number
+            <Button variant="outline" onClick={handleClosePopup}>
+              Use Different Number
             </Button>
-            {existingContact && (
-              <Link href={`/leads/${existingContact.id}`}>
-                <Button className="gap-2" onClick={() => setReEnquiryOpen(false)}>
-                  <ExternalLink className="h-4 w-4" /> View Existing Lead
+            {popupContact && (
+              <Link href={`/leads/${popupContact.id}`}>
+                <Button className="gap-2" onClick={handleClosePopup}>
+                  <ExternalLink className="h-4 w-4" /> Open Existing Lead
                 </Button>
               </Link>
             )}

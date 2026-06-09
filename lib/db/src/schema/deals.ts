@@ -6,7 +6,7 @@ import { usersTable } from "./users";
 
 export const dealsTable = pgTable("deals", {
   id: serial("id").primaryKey(),
-  contactId: integer("contact_id").notNull().references(() => contactsTable.id),
+  contactId: integer("contact_id").notNull().references(() => contactsTable.id, { onDelete: "cascade" }),
   title: text("title"),
   stage: text("stage").notNull().default("New"),
   probability: integer("probability").notNull().default(10),

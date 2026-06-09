@@ -1,18 +1,34 @@
 import { useListDeals, useListUsers } from "@workspace/api-client-react";
-import { Link } from "wouter";
-import { Plus } from "lucide-react";
+import { Link, useSearch, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { X } from "lucide-react";
 
 const STAGES = ['New', 'CL Sent', 'Price Given', 'Samples Sent', 'Samples Received', 'PI Sent', 'Won', 'Lost'];
 
 export default function Deals() {
+  const searchStr = useSearch();
+  const [, navigate] = useLocation();
+  const params = new URLSearchParams(searchStr);
+  const stageFilter = params.get("stage") || "";
+  const ownerFilter = params.get("owner") || "";
+
   const { data: deals, isLoading } = useListDeals();
   const { data: users } = useListUsers();
 
   if (isLoading) return <div className="p-8">Loading...</div>;
 
+  const ownerName = ownerFilter ? users?.find(u => u.id === Number(ownerFilter))?.name : null;
+  const visibleStages = stageFilter ? STAGES.filter(s => s === stageFilter) : STAGES;
+
+  const filteredDeals = ownerFilter
+    ? deals?.filter(d => d.salesOwnerId === Number(ownerFilter))
+    : deals;
+
+  const clearFilters = () => navigate("/deals");
+
   return (
-    <div className="p-8 h-full flex flex-col space-y-6">
+    <div className="p-8 h-full flex flex-col space-y-4">
       <div className="flex justify-between items-center shrink-0">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Pipeline</h1>
@@ -20,10 +36,21 @@ export default function Deals() {
         </div>
       </div>
 
+      {(stageFilter || ownerFilter) && (
+        <div className="flex items-center gap-2 bg-primary/5 border border-primary/20 px-4 py-2 rounded-lg shrink-0">
+          <span className="text-sm font-medium text-muted-foreground">Showing:</span>
+          {stageFilter && <Badge variant="secondary" className="text-xs">Stage: {stageFilter}</Badge>}
+          {ownerFilter && ownerName && <Badge variant="secondary" className="text-xs">Owner: {ownerName}</Badge>}
+          <Button variant="ghost" size="sm" onClick={clearFilters} className="ml-auto h-7 gap-1 text-muted-foreground">
+            <X className="h-3.5 w-3.5" /> Clear filters
+          </Button>
+        </div>
+      )}
+
       <div className="flex-1 overflow-x-auto">
         <div className="flex gap-4 h-full min-w-max pb-4">
-          {STAGES.map(stage => {
-            const stageDeals = deals?.filter(d => d.stage === stage) || [];
+          {visibleStages.map(stage => {
+            const stageDeals = filteredDeals?.filter(d => d.stage === stage) || [];
             return (
               <div key={stage} className="w-80 flex flex-col bg-muted/50 rounded-lg p-3">
                 <div className="flex justify-between items-center mb-3 px-1">
@@ -37,9 +64,9 @@ export default function Deals() {
                         <div className="flex justify-between items-start mb-2">
                           <span className="font-medium text-sm line-clamp-1">{deal.title || deal.contact?.name || 'Unnamed Deal'}</span>
                           {deal.salesOwner && (
-                            <div 
-                              className="w-2.5 h-2.5 rounded-full shrink-0" 
-                              style={{ backgroundColor: deal.salesOwner.colorCode || '#ccc' }} 
+                            <div
+                              className="w-2.5 h-2.5 rounded-full shrink-0"
+                              style={{ backgroundColor: deal.salesOwner.colorCode || '#ccc' }}
                               title={deal.salesOwner.name}
                             />
                           )}
@@ -49,12 +76,15 @@ export default function Deals() {
                         </div>
                         {deal.totalValue != null && (
                           <div className="mt-2 text-xs font-semibold text-primary">
-                            ₹{deal.totalValue.toLocaleString()}
+                            ₹{Number(deal.totalValue).toLocaleString()}
                           </div>
                         )}
                       </div>
                     </Link>
                   ))}
+                  {stageDeals.length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center py-4">No deals</p>
+                  )}
                 </div>
               </div>
             );
@@ -63,9 +93,4 @@ export default function Deals() {
       </div>
     </div>
   );
-}
-
-// Temporary Badge mockup for this file scope
-function Badge({ children, className, variant }: any) {
-  return <span className={`px-2 py-0.5 rounded-full bg-gray-200 text-gray-800 ${className}`}>{children}</span>;
 }

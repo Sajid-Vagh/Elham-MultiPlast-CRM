@@ -852,7 +852,9 @@ export const GetReportByCityResponseItem = zod.object({
   "city": zod.string(),
   "totalDeals": zod.number(),
   "wonDeals": zod.number(),
-  "totalWonValue": zod.number()
+  "lostDeals": zod.number(),
+  "totalWonValue": zod.number(),
+  "totalLostValue": zod.number()
 })
 export const GetReportByCityResponse = zod.array(GetReportByCityResponseItem)
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import {
   useGetPipelineReport, useGetReportByOwner, useGetReportByCity,
   useGetReportByProduct, useGetReportSummary, useListUsers, useGetReportLostReasons
@@ -8,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, PieChart, Pie, Legend } from "recharts";
 import { TrendingUp, Users, Briefcase, DollarSign, XCircle } from "lucide-react";
 
 function MonthPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -39,6 +40,7 @@ export default function Reports() {
   const [month, setMonth] = useState("");
   const [unit, setUnit] = useState("");
   const [ownerId, setOwnerId] = useState("");
+  const [, navigate] = useLocation();
 
   const { data: summary } = useGetReportSummary();
   const { data: pipeline } = useGetPipelineReport({ month: month || undefined, unit: unit || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
@@ -49,6 +51,13 @@ export default function Reports() {
   const { data: users } = useListUsers();
 
   const totalLost = lostReasons?.reduce((s, r) => s + r.count, 0) ?? 0;
+
+  const goDeals = (stage?: string, owner?: number) => {
+    const p = new URLSearchParams();
+    if (stage) p.set("stage", stage);
+    if (owner) p.set("owner", String(owner));
+    navigate(`/deals?${p.toString()}`);
+  };
 
   return (
     <div className="p-8 space-y-6">
@@ -89,6 +98,7 @@ export default function Reports() {
           </div>
         </div>
 
+        {/* ── PIPELINE TAB ── */}
         <TabsContent value="pipeline">
           <Card>
             <CardHeader><CardTitle>Pipeline by Stage</CardTitle></CardHeader>
@@ -98,19 +108,35 @@ export default function Reports() {
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis dataKey="stage" tick={{ fontSize: 12 }} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-                  <Tooltip formatter={(v, n) => [v, n === "count" ? "Deals" : "Value"]} />
                   <Bar dataKey="count" name="count" radius={[4,4,0,0]}>
                     {pipeline?.map((entry, i) => <Cell key={i} fill={STAGE_COLORS[entry.stage] || "#94a3b8"} />)}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-              <Table className="mt-4">
-                <TableHeader><TableRow><TableHead>Stage</TableHead><TableHead>Deals</TableHead><TableHead>Total Value</TableHead><TableHead>Probability</TableHead></TableRow></TableHeader>
+              <p className="text-xs text-muted-foreground text-center mb-2 mt-1">Click any row to view those deals →</p>
+              <Table className="mt-2">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Stage</TableHead>
+                    <TableHead>Deals</TableHead>
+                    <TableHead>Total Value</TableHead>
+                    <TableHead>Probability</TableHead>
+                  </TableRow>
+                </TableHeader>
                 <TableBody>
                   {pipeline?.map(row => (
-                    <TableRow key={row.stage}>
-                      <TableCell><span className="font-medium">{row.stage}</span></TableCell>
-                      <TableCell>{row.count}</TableCell>
+                    <TableRow
+                      key={row.stage}
+                      className="cursor-pointer hover:bg-primary/5 transition-colors"
+                      onClick={() => goDeals(row.stage)}
+                    >
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: STAGE_COLORS[row.stage] || "#94a3b8" }} />
+                          <span className="font-medium">{row.stage}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-semibold text-primary">{row.count}</TableCell>
                       <TableCell>₹{Number(row.totalValue).toLocaleString()}</TableCell>
                       <TableCell>{row.probability}%</TableCell>
                     </TableRow>
@@ -121,12 +147,25 @@ export default function Reports() {
           </Card>
         </TabsContent>
 
+        {/* ── BY OWNER TAB ── */}
         <TabsContent value="by-owner">
           <Card>
-            <CardHeader><CardTitle>Performance by Sales Owner</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>Performance by Sales Owner</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">Click a number to view those deals in the pipeline →</p>
+            </CardHeader>
             <CardContent>
               <Table>
-                <TableHeader><TableRow><TableHead>Owner</TableHead><TableHead>Total</TableHead><TableHead>Active</TableHead><TableHead>Won</TableHead><TableHead>Lost</TableHead><TableHead>Won Value</TableHead></TableRow></TableHeader>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Owner</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead>Active</TableHead>
+                    <TableHead>Won</TableHead>
+                    <TableHead>Lost</TableHead>
+                    <TableHead>Won Value</TableHead>
+                  </TableRow>
+                </TableHeader>
                 <TableBody>
                   {byOwner?.map(row => (
                     <TableRow key={row.userId}>
@@ -136,10 +175,34 @@ export default function Reports() {
                           <span className="font-medium">{row.userName}</span>
                         </div>
                       </TableCell>
-                      <TableCell>{row.totalDeals}</TableCell>
-                      <TableCell>{row.activeDeals}</TableCell>
-                      <TableCell className="text-green-600 font-medium">{row.wonDeals}</TableCell>
-                      <TableCell className="text-red-500">{row.lostDeals}</TableCell>
+                      <TableCell
+                        className="cursor-pointer hover:underline hover:text-primary font-medium"
+                        onClick={() => goDeals(undefined, row.userId)}
+                        title="View all deals for this owner"
+                      >
+                        {row.totalDeals}
+                      </TableCell>
+                      <TableCell
+                        className="cursor-pointer hover:underline hover:text-blue-600"
+                        onClick={() => navigate(`/deals?owner=${row.userId}`)}
+                        title="View active deals"
+                      >
+                        {row.activeDeals}
+                      </TableCell>
+                      <TableCell
+                        className="text-green-600 font-medium cursor-pointer hover:underline"
+                        onClick={() => goDeals("Won", row.userId)}
+                        title="View won deals"
+                      >
+                        {row.wonDeals}
+                      </TableCell>
+                      <TableCell
+                        className="text-red-500 cursor-pointer hover:underline"
+                        onClick={() => goDeals("Lost", row.userId)}
+                        title="View lost deals"
+                      >
+                        {row.lostDeals}
+                      </TableCell>
                       <TableCell>₹{Number(row.totalWonValue).toLocaleString()}</TableCell>
                     </TableRow>
                   ))}
@@ -149,19 +212,31 @@ export default function Reports() {
           </Card>
         </TabsContent>
 
+        {/* ── BY CITY TAB ── */}
         <TabsContent value="by-city">
           <Card>
             <CardHeader><CardTitle>Performance by City</CardTitle></CardHeader>
             <CardContent>
               <Table>
-                <TableHeader><TableRow><TableHead>City</TableHead><TableHead>Total Deals</TableHead><TableHead>Won</TableHead><TableHead>Won Value</TableHead></TableRow></TableHeader>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>City</TableHead>
+                    <TableHead>Total Deals</TableHead>
+                    <TableHead className="text-green-600">Won</TableHead>
+                    <TableHead>Won Value</TableHead>
+                    <TableHead className="text-red-500">Lost</TableHead>
+                    <TableHead>Lost Value</TableHead>
+                  </TableRow>
+                </TableHeader>
                 <TableBody>
                   {byCity?.sort((a, b) => b.totalWonValue - a.totalWonValue).map(row => (
                     <TableRow key={row.city}>
                       <TableCell className="font-medium">{row.city}</TableCell>
                       <TableCell>{row.totalDeals}</TableCell>
-                      <TableCell className="text-green-600">{row.wonDeals}</TableCell>
+                      <TableCell className="text-green-600 font-medium">{row.wonDeals}</TableCell>
                       <TableCell>₹{Number(row.totalWonValue).toLocaleString()}</TableCell>
+                      <TableCell className="text-red-500 font-medium">{row.lostDeals}</TableCell>
+                      <TableCell className="text-red-400">₹{Number(row.totalLostValue).toLocaleString()}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -170,12 +245,21 @@ export default function Reports() {
           </Card>
         </TabsContent>
 
+        {/* ── BY PRODUCT TAB ── */}
         <TabsContent value="by-product">
           <Card>
             <CardHeader><CardTitle>Performance by Product</CardTitle></CardHeader>
             <CardContent>
               <Table>
-                <TableHeader><TableRow><TableHead>Product</TableHead><TableHead>Code</TableHead><TableHead>Deals</TableHead><TableHead>Total Qty</TableHead><TableHead>Total Value</TableHead></TableRow></TableHeader>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Product</TableHead>
+                    <TableHead>Code</TableHead>
+                    <TableHead>Deals</TableHead>
+                    <TableHead>Total Qty</TableHead>
+                    <TableHead>Total Value</TableHead>
+                  </TableRow>
+                </TableHeader>
                 <TableBody>
                   {byProduct?.sort((a, b) => b.totalValue - a.totalValue).map(row => (
                     <TableRow key={row.productId}>
@@ -192,9 +276,9 @@ export default function Reports() {
           </Card>
         </TabsContent>
 
+        {/* ── LOST REASONS TAB ── */}
         <TabsContent value="lost-reasons">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Pie chart */}
             <Card>
               <CardHeader><CardTitle>Lost Deals by Reason</CardTitle></CardHeader>
               <CardContent>
@@ -217,14 +301,12 @@ export default function Reports() {
                           <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(v) => [`${v} deals`, "Count"]} />
                     </PieChart>
                   </ResponsiveContainer>
                 )}
               </CardContent>
             </Card>
 
-            {/* Table */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">

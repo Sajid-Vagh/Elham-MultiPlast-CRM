@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { useGetReportSummary, useListActivities, useGetPipelineReport, useListContacts } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Activity, Briefcase, Users, DollarSign, TrendingUp, Calendar, AlertCircle, PhoneCall } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Activity, Briefcase, Users, DollarSign, TrendingUp, Calendar, AlertCircle, PhoneCall, X } from "lucide-react";
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 function daysDiff(dateStr: string): number {
   const today = new Date();
@@ -13,6 +16,8 @@ function daysDiff(dateStr: string): number {
 }
 
 export default function Dashboard() {
+  const [followUpDateFilter, setFollowUpDateFilter] = useState("");
+
   const { data: summary, isLoading: isLoadingSummary } = useGetReportSummary();
   const { data: activities, isLoading: isLoadingActivities } = useListActivities({ upcoming: true });
   const { data: pipeline, isLoading: isLoadingPipeline } = useGetPipelineReport();
@@ -21,6 +26,11 @@ export default function Dashboard() {
   if (isLoadingSummary || isLoadingActivities || isLoadingPipeline) {
     return <div className="p-8 flex items-center justify-center h-full">Loading dashboard...</div>;
   }
+
+  // Filter follow-ups by selected date
+  const filteredDueContacts = followUpDateFilter
+    ? dueContacts?.filter(c => c.nextCallDate === followUpDateFilter)
+    : dueContacts;
 
   return (
     <div className="p-8 space-y-8">
@@ -80,46 +90,76 @@ export default function Dashboard() {
       {!isLoadingDue && dueContacts && dueContacts.length > 0 && (
         <Card className="border-orange-200 bg-orange-50/50">
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-orange-700">
-              <AlertCircle className="h-5 w-5" />
-              Follow-up Reminders
-              <Badge className="ml-1 bg-orange-500 text-white">{dueContacts.length}</Badge>
-            </CardTitle>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <CardTitle className="flex items-center gap-2 text-orange-700">
+                <AlertCircle className="h-5 w-5" />
+                Follow-up Reminders
+                <Badge className="ml-1 bg-orange-500 text-white">
+                  {filteredDueContacts?.length ?? 0}
+                </Badge>
+              </CardTitle>
+              {/* Date filter */}
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-muted-foreground whitespace-nowrap">Filter by date:</label>
+                <Input
+                  type="date"
+                  value={followUpDateFilter}
+                  onChange={e => setFollowUpDateFilter(e.target.value)}
+                  className="w-38 h-8 text-sm"
+                />
+                {followUpDateFilter && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground"
+                    onClick={() => setFollowUpDateFilter("")}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {dueContacts.map((contact) => {
-                const diff = contact.nextCallDate ? daysDiff(contact.nextCallDate) : 0;
-                const isOverdue = diff < 0;
-                const isToday = diff === 0;
-                return (
-                  <Link key={contact.id} href={`/leads/${contact.id}`}>
-                    <div className="flex items-center gap-3 p-3 bg-white border border-orange-200 rounded-md hover:bg-orange-50 transition-colors cursor-pointer">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isOverdue ? "bg-red-100" : "bg-orange-100"}`}>
-                        <PhoneCall className={`h-4 w-4 ${isOverdue ? "text-red-600" : "text-orange-600"}`} />
+            {filteredDueContacts?.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No follow-ups on {new Date(followUpDateFilter + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}.
+              </p>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {filteredDueContacts?.map((contact) => {
+                  const diff = contact.nextCallDate ? daysDiff(contact.nextCallDate) : 0;
+                  const isOverdue = diff < 0;
+                  const isToday = diff === 0;
+                  return (
+                    <Link key={contact.id} href={`/leads/${contact.id}`}>
+                      <div className="flex items-center gap-3 p-3 bg-white border border-orange-200 rounded-md hover:bg-orange-50 transition-colors cursor-pointer">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isOverdue ? "bg-red-100" : "bg-orange-100"}`}>
+                          <PhoneCall className={`h-4 w-4 ${isOverdue ? "text-red-600" : "text-orange-600"}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{contact.name}</p>
+                          {contact.salesOwner && (
+                            <div className="flex items-center gap-1">
+                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: contact.salesOwner.colorCode }} />
+                              <span className="text-xs text-muted-foreground">{contact.salesOwner.name}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${isOverdue ? "bg-red-100 text-red-700" : isToday ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"}`}>
+                            {isToday ? "Today" : isOverdue ? `${Math.abs(diff)}d overdue` : `In ${diff}d`}
+                          </span>
+                          {contact.mobile && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{contact.mobile}</p>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{contact.name}</p>
-                        {contact.salesOwner && (
-                          <div className="flex items-center gap-1">
-                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: contact.salesOwner.colorCode }} />
-                            <span className="text-xs text-muted-foreground">{contact.salesOwner.name}</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${isOverdue ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700"}`}>
-                          {isToday ? "Today" : isOverdue ? `${Math.abs(diff)}d overdue` : `In ${diff}d`}
-                        </span>
-                        {contact.mobile && (
-                          <p className="text-xs text-muted-foreground mt-0.5">{contact.mobile}</p>
-                        )}
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

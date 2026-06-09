@@ -229,16 +229,20 @@ router.get("/reports/by-city", async (req, res) => {
       }
     }
 
-    const cityMap = new Map<string, { totalDeals: number; wonDeals: number; totalWonValue: number }>();
+    const cityMap = new Map<string, { totalDeals: number; wonDeals: number; lostDeals: number; totalWonValue: number; totalLostValue: number }>();
     for (const deal of deals) {
       const contact = contactMap.get(deal.contactId);
       const city = contact?.city ?? "Unknown";
-      if (!cityMap.has(city)) cityMap.set(city, { totalDeals: 0, wonDeals: 0, totalWonValue: 0 });
+      if (!cityMap.has(city)) cityMap.set(city, { totalDeals: 0, wonDeals: 0, lostDeals: 0, totalWonValue: 0, totalLostValue: 0 });
       const s = cityMap.get(city)!;
       s.totalDeals++;
       if (deal.stage === "Won") {
         s.wonDeals++;
         s.totalWonValue += Number(deal.totalValue ?? 0);
+      }
+      if (deal.stage === "Lost") {
+        s.lostDeals++;
+        s.totalLostValue += Number(deal.totalValue ?? 0);
       }
     }
 
