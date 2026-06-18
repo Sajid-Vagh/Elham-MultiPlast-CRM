@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useGetMe, useListUsers, useCreateUser, useUpdateUser, useDeleteUser, getListUsersQueryKey } from "@workspace/api-client-react";
+import { useGetMe, useListUsers, useCreateUser, useUpdateUser, useDeleteUser, getListUsersQueryKey, getGetMeQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,13 +15,23 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 
 const COLOR_PALETTE = ["#6366f1","#ec4899","#f59e0b","#10b981","#3b82f6","#ef4444","#8b5cf6","#14b8a6","#f97316","#84cc16"];
 
-type User = { id: number; name: string; username: string; role: string; colorCode: string; unit: string };
+type User = { id: number; name: string; username: string; role: string; colorCode: string; unit: string; canViewAllReports?: boolean; canAssignLeads?: boolean };
 
 function UserForm({ initial, onSave, onCancel, loading, isEdit }: { initial?: Partial<User>; onSave: (d: any) => void; onCancel: () => void; loading: boolean; isEdit?: boolean }) {
   const [form, setForm] = useState({
     name: initial?.name || "", username: initial?.username || "", password: "",
-    role: initial?.role || "sales", colorCode: initial?.colorCode || COLOR_PALETTE[0], unit: initial?.unit || "All"
+    role: initial?.role || "sales", colorCode: initial?.colorCode || COLOR_PALETTE[0], unit: initial?.unit || "All",
+    canViewAllReports: initial?.canViewAllReports ?? false, canAssignLeads: initial?.canAssignLeads ?? false,
   });
+
+  useEffect(() => {
+    setForm({
+      name: initial?.name || "", username: initial?.username || "", password: "",
+      role: initial?.role || "sales", colorCode: initial?.colorCode || COLOR_PALETTE[0], unit: initial?.unit || "All",
+      canViewAllReports: initial?.canViewAllReports ?? false, canAssignLeads: initial?.canAssignLeads ?? false,
+    });
+  }, [initial]);
+
   const f = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, [k]: e.target.value }));
 
   return (
@@ -59,6 +69,25 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit }: { initial?: Pa
           </div>
         </div>
       </div>
+      {form.role === "sales" && (
+        <div className="border-t pt-4 space-y-3">
+          <p className="text-sm font-medium text-muted-foreground">Sales Permissions</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-sm">View all reports</p>
+              <p className="text-xs text-muted-foreground">Allow this user to view reports for all sales owners</p>
+            </div>
+            <Switch checked={form.canViewAllReports} onCheckedChange={v => setForm(p => ({ ...p, canViewAllReports: v }))} />
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-sm">Assign leads to others</p>
+              <p className="text-xs text-muted-foreground">Allow this user to assign leads to other sales owners</p>
+            </div>
+            <Switch checked={form.canAssignLeads} onCheckedChange={v => setForm(p => ({ ...p, canAssignLeads: v }))} />
+          </div>
+        </div>
+      )}
       <div className="flex gap-2">
         <Button disabled={loading || !form.name || !form.username || (!isEdit && !form.password)}
           onClick={() => onSave({ ...form, password: form.password || undefined })}>
@@ -103,7 +132,12 @@ export default function Settings() {
     const payload = { ...data };
     if (!payload.password) delete payload.password;
     updateUser.mutate({ id: editUser.id, data: payload }, {
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() }); toast({ title: "Updated" }); setEditUser(null); },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+        toast({ title: "Updated" });
+        setEditUser(null);
+      },
       onError: () => toast({ title: "Error", variant: "destructive" }),
     });
   };
@@ -176,12 +210,14 @@ export default function Settings() {
                   <TableHead>Role</TableHead>
                   <TableHead>Unit</TableHead>
                   <TableHead>Colour</TableHead>
+                  <TableHead>Reports</TableHead>
+                  <TableHead>Assign</TableHead>
                   <TableHead className="w-20" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {isLoading ? (
-                  <TableRow><TableCell colSpan={6} className="text-center py-8">Loading...</TableCell></TableRow>
+                  {isLoading ? (
+                  <TableRow><TableCell colSpan={8} className="text-center py-8">Loading...</TableCell></TableRow>
                 ) : users?.map(u => (
                   <TableRow key={u.id}>
                     <TableCell className="font-medium">{u.name}</TableCell>
@@ -193,6 +229,12 @@ export default function Settings() {
                         <div className="w-5 h-5 rounded-full border shadow-sm" style={{ backgroundColor: u.colorCode }} />
                         <span className="text-xs text-muted-foreground font-mono">{u.colorCode}</span>
                       </div>
+                    </TableCell>
+                    <TableCell className="text-center text-sm">
+                      {u.role === "admin" ? <span className="text-muted-foreground">—</span> : (u.canViewAllReports ? <span className="text-green-600 font-medium">Yes</span> : <span className="text-red-500">No</span>)}
+                    </TableCell>
+                    <TableCell className="text-center text-sm">
+                      {u.role === "admin" ? <span className="text-muted-foreground">—</span> : (u.canAssignLeads ? <span className="text-green-600 font-medium">Yes</span> : <span className="text-red-500">No</span>)}
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">

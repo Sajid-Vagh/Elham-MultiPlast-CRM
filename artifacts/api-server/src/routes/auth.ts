@@ -3,7 +3,6 @@ import bcrypt from "bcryptjs";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { LoginBody } from "@workspace/api-zod";
-import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -34,18 +33,22 @@ router.post("/auth/login", async (req, res) => {
     return;
   }
   const { username, password } = parsed.data;
+  req.log.info({ username, body: req.body }, "Incoming email");
   try {
     const [user] = await db.select().from(usersTable).where(eq(usersTable.username, username));
+    req.log.info({ userFound: !!user, userId: user?.id, username: user?.username }, "User lookup result");
     if (!user) {
-      res.status(401).json({ error: "Invalid credentials" });
+      res.status(404).json({ error: "User not found" });
       return;
     }
     const valid = await bcrypt.compare(password, user.passwordHash);
+    req.log.info({ passwordValid: valid }, "Password comparison result");
     if (!valid) {
       res.status(401).json({ error: "Invalid credentials" });
       return;
     }
     const token = generateToken();
+    req.log.info({ tokenGenerated: !!token }, "JWT generation result");
     sessions.set(token, user.id);
     const { passwordHash: _, ...safeUser } = user;
     res.json({ user: safeUser, token });

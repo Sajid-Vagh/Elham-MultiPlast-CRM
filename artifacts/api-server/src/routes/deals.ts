@@ -1,10 +1,12 @@
 import { Router, type IRouter } from "express";
-import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable } from "@workspace/db";
+import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable } from "@workspace/db";
 import { eq, and, SQL } from "drizzle-orm";
 import {
   CreateDealBody, UpdateDealBody, GetDealParams, UpdateDealParams, DeleteDealParams,
   ListDealsQueryParams, AddDealProductBody, AddDealProductParams, RemoveDealProductParams
 } from "@workspace/api-zod";
+import { getUserFromRequest } from "./auth";
+import { createNotification } from "./notifications";
 
 const router: IRouter = Router();
 
@@ -20,11 +22,19 @@ async function enrichDeal(deal: typeof dealsTable.$inferSelect) {
 
 router.get("/deals", async (req, res) => {
   try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
     const params = ListDealsQueryParams.safeParse(req.query);
     const conditions: SQL[] = [];
+
+    if (user.role === "sales") {
+      conditions.push(eq(dealsTable.salesOwnerId, user.id));
+    }
+
     if (params.success) {
       if (params.data.contactId) conditions.push(eq(dealsTable.contactId, params.data.contactId));
-      if (params.data.salesOwnerId) conditions.push(eq(dealsTable.salesOwnerId, params.data.salesOwnerId));
+      if (params.data.salesOwnerId && user.role === "admin") conditions.push(eq(dealsTable.salesOwnerId, params.data.salesOwnerId));
       if (params.data.stage) conditions.push(eq(dealsTable.stage, params.data.stage));
     }
     const deals = conditions.length
@@ -74,8 +84,14 @@ router.get("/deals/:id", async (req, res) => {
   const parsed = GetDealParams.safeParse({ id: Number(req.params.id) });
   if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
     const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, parsed.data.id));
     if (!deal) { res.status(404).json({ error: "Not found" }); return; }
+    if (user.role === "sales" && deal.salesOwnerId !== user.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
     res.json(await enrichDeal(deal));
   } catch (err) {
     req.log.error({ err }, "Get deal error");
@@ -97,8 +113,117 @@ router.patch("/deals/:id", async (req, res) => {
     updateData.probability = stageProbabilities[parsed.data.stage] ?? 10;
   }
   try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const [oldDeal] = await db.select().from(dealsTable).where(eq(dealsTable.id, params.data.id));
+    if (!oldDeal) { res.status(404).json({ error: "Not found" }); return; }
+    if (user.role === "sales" && oldDeal.salesOwnerId !== user.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    if (user.role === "sales" && parsed.data.salesOwnerId !== undefined) {
+      delete updateData.salesOwnerId;
+    }
+
     const [deal] = await db.update(dealsTable).set(updateData).where(eq(dealsTable.id, params.data.id)).returning();
     if (!deal) { res.status(404).json({ error: "Not found" }); return; }
+
+    // Auto-set contact category when deal is Won
+    if (deal.stage === "Won" && !deal.convertedToClient) {
+      const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+      if (contact) {
+        const now = new Date().toISOString();
+        const prevCategory = contact.category;
+
+        await db.update(contactsTable).set({
+          category: "My Client",
+          customerSince: now,
+          customerStatus: "Active",
+          lastPurchaseDate: now.split("T")[0],
+        }).where(eq(contactsTable.id, contact.id));
+
+        await db.update(dealsTable).set({
+          convertedToClient: true,
+          convertedAt: new Date(),
+        }).where(eq(dealsTable.id, deal.id));
+
+        await db.insert(categoryHistoryTable).values({
+          contactId: contact.id,
+          previousCategory: prevCategory,
+          newCategory: "My Client",
+          changedBy: user.id,
+          reason: "Deal Won - Auto converted to My Client",
+        });
+      }
+    }
+
+    // Auto-set contact category when deal is Lost (with lostCategory)
+    if (deal.stage === "Lost" && parsed.data.lostCategory) {
+      const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+      if (contact) {
+        const prevCategory = contact.category;
+        const categoryMap: Record<string, string> = {
+          A: "Category A",
+          B: "Category B",
+          C: "Category C",
+        };
+        const newCategory = categoryMap[parsed.data.lostCategory] || "Category C";
+
+        await db.update(contactsTable).set({ category: newCategory }).where(eq(contactsTable.id, contact.id));
+
+        await db.insert(categoryHistoryTable).values({
+          contactId: contact.id,
+          previousCategory: prevCategory,
+          newCategory,
+          changedBy: user.id,
+          reason: `Deal Lost - Categorized as ${newCategory}`,
+        });
+      }
+    }
+
+    const assignedByName = user?.name || "Admin";
+
+    const newOwnerId = parsed.data.salesOwnerId;
+    if (newOwnerId !== undefined && newOwnerId !== oldDeal.salesOwnerId) {
+      const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, newOwnerId));
+      if (owner) {
+        await createNotification({
+          userId: newOwnerId,
+          type: "assignment",
+          title: "Deal Assigned",
+          message: `Deal for ${deal.title || `Deal #${deal.id}`}\nAssigned By: ${assignedByName}`,
+          link: `/deals/${deal.id}`,
+          relatedId: deal.id,
+          relatedType: "deal",
+        });
+      }
+    }
+
+    if (parsed.data.stage && parsed.data.stage !== oldDeal.stage) {
+      const stage = parsed.data.stage;
+      if (stage === "Won" && deal.salesOwnerId) {
+        await createNotification({
+          userId: deal.salesOwnerId,
+          type: "deal_won",
+          title: "Deal Won! 🎉",
+          message: `Deal "${deal.title || `#${deal.id}`}" has been marked as Won.\nBy: ${assignedByName}`,
+          link: `/deals/${deal.id}`,
+          relatedId: deal.id,
+          relatedType: "deal",
+        });
+      } else if (stage === "Lost" && deal.salesOwnerId) {
+        await createNotification({
+          userId: deal.salesOwnerId,
+          type: "deal_lost",
+          title: "Deal Lost",
+          message: `Deal "${deal.title || `#${deal.id}`}" has been marked as Lost.\nBy: ${assignedByName}`,
+          link: `/deals/${deal.id}`,
+          relatedId: deal.id,
+          relatedType: "deal",
+        });
+      }
+    }
+
     res.json(await enrichDeal(deal));
   } catch (err) {
     req.log.error({ err }, "Update deal error");
@@ -110,6 +235,15 @@ router.delete("/deals/:id", async (req, res) => {
   const params = DeleteDealParams.safeParse({ id: Number(req.params.id) });
   if (!params.success) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (user.role === "sales") {
+      const [deal] = await db.select({ salesOwnerId: dealsTable.salesOwnerId }).from(dealsTable).where(eq(dealsTable.id, params.data.id));
+      if (!deal || deal.salesOwnerId !== user.id) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+    }
     await db.delete(dealsTable).where(eq(dealsTable.id, params.data.id));
     res.status(204).send();
   } catch (err) {

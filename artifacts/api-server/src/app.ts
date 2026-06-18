@@ -31,4 +31,8 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 app.use("/api", router);
 
+app.use((err: any, _req: any, res: any, _next: any) => {
+  res.status(err?.status ?? 500).json({ error: "Internal server error" });
+});
+
 export default app;

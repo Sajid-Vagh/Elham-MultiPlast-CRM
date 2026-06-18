@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, numeric, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { contactsTable } from "./contacts";
@@ -14,6 +14,9 @@ export const dealsTable = pgTable("deals", {
   lostReason: text("lost_reason"),
   notes: text("notes"),
   salesOwnerId: integer("sales_owner_id").references(() => usersTable.id),
+  category: text("category").notNull().default("Category A"),
+  convertedToClient: boolean("converted_to_client").default(false),
+  convertedAt: timestamp("converted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

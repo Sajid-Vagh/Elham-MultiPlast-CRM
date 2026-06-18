@@ -12,11 +12,14 @@ import LeadsNew from "@/pages/leads-new";
 import LeadDetail from "@/pages/lead-detail";
 import Deals from "@/pages/deals";
 import DealDetail from "@/pages/deal-detail";
+import FollowUps from "@/pages/follow-ups";
 import Products from "@/pages/products";
 import Reports from "@/pages/reports";
 import ImportPage from "@/pages/import";
 import Duplicates from "@/pages/duplicates";
 import Settings from "@/pages/settings";
+import CategoriesPage from "@/pages/categories";
+import ProformaInvoices from "@/pages/proforma-invoices";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -58,8 +61,17 @@ function Router() {
       <Route path="/deals">
         <ProtectedLayout><Deals /></ProtectedLayout>
       </Route>
+      <Route path="/follow-ups">
+        <ProtectedLayout><FollowUps /></ProtectedLayout>
+      </Route>
       <Route path="/products">
         <ProtectedLayout><Products /></ProtectedLayout>
+      </Route>
+      <Route path="/categories">
+        <ProtectedLayout><CategoriesPage /></ProtectedLayout>
+      </Route>
+      <Route path="/proforma-invoices">
+        <ProtectedLayout><ProformaInvoices /></ProtectedLayout>
       </Route>
       <Route path="/reports">
         <ProtectedLayout><Reports /></ProtectedLayout>

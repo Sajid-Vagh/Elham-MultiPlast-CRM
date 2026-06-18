@@ -2,13 +2,29 @@ import { Router, type IRouter } from "express";
 import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, activitiesTable } from "@workspace/db";
 import { eq, and, gte, lte, SQL, count, sum } from "drizzle-orm";
 import { GetPipelineReportQueryParams, GetReportByOwnerQueryParams, GetReportByProductQueryParams, GetReportByCityQueryParams } from "@workspace/api-zod";
+import { getUserFromRequest } from "./auth";
 
 const router: IRouter = Router();
 
+async function restrictToOwnDeals(req: any, params: any) {
+  const user = await getUserFromRequest(req);
+  if (!user) { return null; }
+  if (user.role === "sales" && !user.canViewAllReports) {
+    params.salesOwnerId = user.id;
+  }
+  return user;
+}
+
 router.get("/reports/summary", async (req, res) => {
   try {
-    const contacts = await db.select().from(contactsTable);
-    const deals = await db.select().from(dealsTable);
+    const user = await getUserFromRequest(req);
+    let contacts = await db.select().from(contactsTable);
+    let deals = await db.select().from(dealsTable);
+
+    if (user && user.role === "sales" && !user.canViewAllReports) {
+      contacts = contacts.filter(c => c.salesOwnerId === user.id);
+      deals = deals.filter(d => d.salesOwnerId === user.id);
+    }
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const today = now.toISOString().split("T")[0]!;
@@ -34,6 +50,8 @@ router.get("/reports/summary", async (req, res) => {
 router.get("/reports/pipeline", async (req, res) => {
   try {
     const params = GetPipelineReportQueryParams.safeParse(req.query);
+    const user = await restrictToOwnDeals(req, params.data ?? {});
+    if (!user) { res.status(403).json({ error: "Unauthorized" }); return; }
     let deals = await db.select().from(dealsTable);
 
     if (params.success) {
@@ -79,7 +97,12 @@ router.get("/reports/pipeline", async (req, res) => {
 router.get("/reports/by-owner", async (req, res) => {
   try {
     const params = GetReportByOwnerQueryParams.safeParse(req.query);
+    const authUser = await getUserFromRequest(req);
+    if (!authUser) { res.status(403).json({ error: "Unauthorized" }); return; }
     let deals = await db.select().from(dealsTable);
+    if (authUser.role === "sales" && !authUser.canViewAllReports) {
+      deals = deals.filter(d => d.salesOwnerId === authUser.id);
+    }
     const users = await db.select().from(usersTable);
 
     if (params.success) {
@@ -121,6 +144,8 @@ router.get("/reports/by-owner", async (req, res) => {
 router.get("/reports/by-product", async (req, res) => {
   try {
     const params = GetReportByProductQueryParams.safeParse(req.query);
+    const user = await restrictToOwnDeals(req, params.data ?? {});
+    if (!user) { res.status(403).json({ error: "Unauthorized" }); return; }
     let dealProducts = await db.select().from(dealProductsTable);
     let deals = await db.select().from(dealsTable);
 
@@ -172,6 +197,8 @@ router.get("/reports/by-product", async (req, res) => {
 router.get("/reports/lost-reasons", async (req, res) => {
   try {
     const params = GetPipelineReportQueryParams.safeParse(req.query);
+    const user = await restrictToOwnDeals(req, params.data ?? {});
+    if (!user) { res.status(403).json({ error: "Unauthorized" }); return; }
     let deals = await db.select().from(dealsTable).where(eq(dealsTable.stage, "Lost"));
 
     if (params.success) {
@@ -213,6 +240,8 @@ router.get("/reports/lost-reasons", async (req, res) => {
 router.get("/reports/by-city", async (req, res) => {
   try {
     const params = GetReportByCityQueryParams.safeParse(req.query);
+    const user = await restrictToOwnDeals(req, params.data ?? {});
+    if (!user) { res.status(403).json({ error: "Unauthorized" }); return; }
     let deals = await db.select().from(dealsTable);
     const contacts = await db.select().from(contactsTable);
     const contactMap = new Map(contacts.map(c => [c.id, c]));

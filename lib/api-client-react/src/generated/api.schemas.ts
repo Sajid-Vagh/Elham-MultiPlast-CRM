@@ -39,6 +39,8 @@ export interface User {
   role: UserRole;
   colorCode: string;
   unit: UserUnit;
+  canViewAllReports?: boolean;
+  canAssignLeads?: boolean;
   createdAt?: string;
 }
 
@@ -72,6 +74,8 @@ export interface UserInput {
   role: UserInputRole;
   colorCode: string;
   unit: UserInputUnit;
+  canViewAllReports?: boolean;
+  canAssignLeads?: boolean;
 }
 
 export type UserUpdateRole = typeof UserUpdateRole[keyof typeof UserUpdateRole];
@@ -90,6 +94,8 @@ export interface UserUpdate {
   role?: UserUpdateRole;
   colorCode?: string;
   unit?: string;
+  canViewAllReports?: boolean;
+  canAssignLeads?: boolean;
 }
 
 /**
@@ -165,11 +171,15 @@ export interface Contact {
   /** @nullable */
   city?: string | null;
   /** @nullable */
+  state?: string | null;
+  /** @nullable */
   address?: string | null;
   /** @nullable */
   unit?: ContactUnit;
   /** @nullable */
   industry?: ContactIndustry;
+  /** @nullable */
+  category?: string | null;
   /** @nullable */
   tags?: ContactTags;
   /** @nullable */
@@ -197,6 +207,8 @@ export interface ContactInput {
   leadSource?: string | null;
   /** @nullable */
   city?: string | null;
+  /** @nullable */
+  state?: string | null;
   /** @nullable */
   address?: string | null;
   /** @nullable */
@@ -229,6 +241,8 @@ export interface ContactUpdate {
   leadSource?: string | null;
   /** @nullable */
   city?: string | null;
+  /** @nullable */
+  state?: string | null;
   /** @nullable */
   address?: string | null;
   /** @nullable */
@@ -403,6 +417,8 @@ export interface DealUpdate {
   /** @nullable */
   lostReason?: string | null;
   /** @nullable */
+  lostCategory?: 'A' | 'B' | 'C' | null;
+  /** @nullable */
   notes?: string | null;
   /** @nullable */
   salesOwnerId?: number | null;
@@ -459,10 +475,18 @@ export interface Activity {
   /** @nullable */
   followUpDate?: string | null;
   /** @nullable */
+  followUpTime?: string | null;
+  /** @nullable */
   followUpType?: ActivityFollowUpType;
+  /** @nullable */
+  callStatus?: string | null;
+  /** @nullable */
+  notificationStatus?: string | null;
   /** @nullable */
   createdBy?: number | null;
   user?: User;
+  deal?: Deal;
+  contact?: Contact;
   createdAt: string;
 }
 
@@ -487,6 +511,8 @@ export interface ActivityInput {
   /** @nullable */
   followUpDate?: string | null;
   /** @nullable */
+  followUpTime?: string | null;
+  /** @nullable */
   followUpType?: string | null;
 }
 
@@ -496,7 +522,13 @@ export interface ActivityUpdate {
   /** @nullable */
   followUpDate?: string | null;
   /** @nullable */
+  followUpTime?: string | null;
+  /** @nullable */
   followUpType?: string | null;
+  /** @nullable */
+  callStatus?: string | null;
+  /** @nullable */
+  notificationStatus?: string | null;
 }
 
 export interface ReportSummary {
@@ -558,6 +590,8 @@ export interface ExcelRow {
   /** @nullable */
   city?: string | null;
   /** @nullable */
+  state?: string | null;
+  /** @nullable */
   salesOwnerName?: string | null;
   /** @nullable */
   inquiryDate?: string | null;
@@ -596,6 +630,8 @@ export interface IndiaMartLeadInput {
   /** @nullable */
   city?: string | null;
   /** @nullable */
+  state?: string | null;
+  /** @nullable */
   requirement?: string | null;
   /** @nullable */
   quantity?: string | null;
@@ -617,6 +653,7 @@ city?: string;
 unit?: string;
 industry?: string;
 search?: string;
+category?: string;
 /**
  * If true, return only contacts whose nextCallDate is today or earlier
  */
@@ -635,6 +672,7 @@ dealId?: number;
 contactId?: number;
 userId?: number;
 upcoming?: boolean;
+date?: string;
 };
 
 export type GetPipelineReportParams = {

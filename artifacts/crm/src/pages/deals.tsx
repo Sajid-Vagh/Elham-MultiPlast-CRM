@@ -1,8 +1,10 @@
-import { useListDeals, useListUsers } from "@workspace/api-client-react";
+import { useListDeals, useListUsers, useGetMe } from "@workspace/api-client-react";
 import { Link, useSearch, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { X } from "lucide-react";
+import { CategoryBadge } from "@/components/category-badge";
 
 const STAGES = ['New', 'CL Sent', 'Price Given', 'Samples Sent', 'Samples Received', 'PI Sent', 'Won', 'Lost'];
 
@@ -12,8 +14,15 @@ export default function Deals() {
   const params = new URLSearchParams(searchStr);
   const stageFilter = params.get("stage") || "";
   const ownerFilter = params.get("owner") || "";
+  const unitFilter = params.get("unit") || "";
 
-  const { data: deals, isLoading } = useListDeals();
+  const { data: me } = useGetMe();
+  const isAdmin = me?.role === "admin";
+  const userUnit = me?.unit && me.unit !== "All" ? me.unit : undefined;
+
+  const { data: deals, isLoading } = useListDeals({
+    unit: isAdmin ? (unitFilter || undefined) : userUnit,
+  });
   const { data: users } = useListUsers();
 
   if (isLoading) return <div className="p-8">Loading...</div>;
@@ -21,9 +30,11 @@ export default function Deals() {
   const ownerName = ownerFilter ? users?.find(u => u.id === Number(ownerFilter))?.name : null;
   const visibleStages = stageFilter ? STAGES.filter(s => s === stageFilter) : STAGES;
 
-  const filteredDeals = ownerFilter
-    ? deals?.filter(d => d.salesOwnerId === Number(ownerFilter))
-    : deals;
+  const filteredDeals = (() => {
+    let d = deals || [];
+    if (ownerFilter) d = d.filter(d => d.salesOwnerId === Number(ownerFilter));
+    return d;
+  })();
 
   const clearFilters = () => navigate("/deals");
 
@@ -36,11 +47,51 @@ export default function Deals() {
         </div>
       </div>
 
-      {(stageFilter || ownerFilter) && (
+      <div className="flex items-center gap-3 shrink-0">
+        {isAdmin && (
+          <>
+            <Select value={ownerFilter || "all"} onValueChange={(v) => {
+              const sp = new URLSearchParams(searchStr);
+              if (v === "all") sp.delete("owner");
+              else sp.set("owner", v);
+              navigate(`/deals?${sp.toString()}`);
+            }}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="All Owners" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Owners</SelectItem>
+                {users?.map(u => (
+                  <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={unitFilter || "all"} onValueChange={(v) => {
+              const sp = new URLSearchParams(searchStr);
+              if (v === "all") sp.delete("unit");
+              else sp.set("unit", v);
+              navigate(`/deals?${sp.toString()}`);
+            }}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="All Units" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Units</SelectItem>
+                <SelectItem value="Himatnagar">Himatnagar</SelectItem>
+                <SelectItem value="Rajkot">Rajkot</SelectItem>
+                <SelectItem value="Surat">Surat</SelectItem>
+              </SelectContent>
+            </Select>
+          </>
+        )}
+      </div>
+
+      {(stageFilter || (isAdmin && ownerFilter) || (isAdmin && unitFilter)) && (
         <div className="flex items-center gap-2 bg-primary/5 border border-primary/20 px-4 py-2 rounded-lg shrink-0">
           <span className="text-sm font-medium text-muted-foreground">Showing:</span>
           {stageFilter && <Badge variant="secondary" className="text-xs">Stage: {stageFilter}</Badge>}
-          {ownerFilter && ownerName && <Badge variant="secondary" className="text-xs">Owner: {ownerName}</Badge>}
+          {isAdmin && ownerFilter && ownerName && <Badge variant="secondary" className="text-xs">Owner: {ownerName}</Badge>}
+          {isAdmin && unitFilter && <Badge variant="secondary" className="text-xs">Unit: {unitFilter}</Badge>}
           <Button variant="ghost" size="sm" onClick={clearFilters} className="ml-auto h-7 gap-1 text-muted-foreground">
             <X className="h-3.5 w-3.5" /> Clear filters
           </Button>
@@ -73,6 +124,12 @@ export default function Deals() {
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {deal.contact?.companyName || deal.contact?.name}
+                        </div>
+                        <div className="mt-1 flex items-center gap-2">
+                          <CategoryBadge category={deal.contact?.category} />
+                          {deal.contact?.unit && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{deal.contact.unit}</Badge>
+                          )}
                         </div>
                         {deal.totalValue != null && (
                           <div className="mt-2 text-xs font-semibold text-primary">

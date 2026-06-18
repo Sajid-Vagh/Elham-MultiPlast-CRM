@@ -13,10 +13,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Phone, Mail, MapPin, Tag, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, Tag, Plus, Trash2, FolderTree, RefreshCw, Star } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { CategoryBadge } from "@/components/category-badge";
+import { MoveCategoryDialog } from "@/components/move-category-dialog";
+import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
 
 const STAGE_COLORS: Record<string, string> = {
   "New": "bg-slate-100 text-slate-700", "CL Sent": "bg-blue-100 text-blue-700",
@@ -60,6 +63,7 @@ export default function LeadDetail() {
   const createDeal = useCreateDeal();
   const createActivity = useCreateActivity();
   const deleteContact = useDeleteContact();
+  const updateContact = useUpdateContact();
 
   const [newDealStage, setNewDealStage] = useState("New");
   const [newDealTitle, setNewDealTitle] = useState("");
@@ -68,11 +72,13 @@ export default function LeadDetail() {
   const [actType, setActType] = useState("Call");
   const [actNotes, setActNotes] = useState("");
   const [actFollowUp, setActFollowUp] = useState("");
+  const [actFollowUpTime, setActFollowUpTime] = useState("");
   const [actFollowType, setActFollowType] = useState("Call");
   const [actDealId, setActDealId] = useState("");
   const [actDialogOpen, setActDialogOpen] = useState(false);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [showMoveCategory, setShowMoveCategory] = useState(false);
 
   // Activity date filter
   const [actQuick, setActQuick] = useState("all");
@@ -115,11 +121,11 @@ export default function LeadDetail() {
 
   const handleCreateActivity = () => {
     if (!actDealId) { toast({ title: "Select a deal", variant: "destructive" }); return; }
-    createActivity.mutate({ data: { dealId: Number(actDealId), contactId, type: actType as any, notes: actNotes || null, followUpDate: actFollowUp || null, followUpType: actFollowType || null } }, {
+    createActivity.mutate({ data: { dealId: Number(actDealId), contactId, type: actType as any, notes: actNotes || null, followUpDate: actFollowUp || null, followUpTime: actFollowUpTime || null, followUpType: actFollowType || null } }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ contactId }) });
         toast({ title: "Activity logged" });
-        setActDialogOpen(false); setActNotes(""); setActFollowUp("");
+        setActDialogOpen(false); setActNotes(""); setActFollowUp(""); setActFollowUpTime("");
       },
       onError: () => toast({ title: "Error logging activity", variant: "destructive" }),
     });
@@ -145,9 +151,13 @@ export default function LeadDetail() {
             {owner && <div className="w-4 h-4 rounded-full shadow-sm" style={{ backgroundColor: owner.colorCode }} />}
             <h1 className="text-2xl font-bold">{contact.name}</h1>
             {contact.tags && <Badge variant="outline">{contact.tags}</Badge>}
+            <CategoryBadge category={contact.category} />
           </div>
           {contact.companyName && <p className="text-muted-foreground">{contact.companyName}</p>}
         </div>
+        <Button variant="outline" size="sm" onClick={() => setShowMoveCategory(true)}>
+          <FolderTree className="h-4 w-4 mr-1" /> Move
+        </Button>
         <Link href={`/leads/${contactId}/edit`}><Button variant="outline" size="sm">Edit</Button></Link>
         <Button
           variant="outline" size="sm"
@@ -167,7 +177,7 @@ export default function LeadDetail() {
               {contact.otherPhone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" /><span>{contact.otherPhone}</span></div>}
               {contact.email && <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" /><span>{contact.email}</span></div>}
               {contact.otherEmail && <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" /><span>{contact.otherEmail}</span></div>}
-              {contact.city && <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" /><span>{contact.city}</span></div>}
+              {contact.city && <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" /><span>{contact.city}{contact.state ? `, ${contact.state}` : ""}</span></div>}
               {contact.address && <div className="flex items-start gap-2"><MapPin className="h-4 w-4 text-muted-foreground mt-0.5" /><span className="text-xs text-muted-foreground">{contact.address}</span></div>}
             </CardContent>
           </Card>
@@ -181,6 +191,47 @@ export default function LeadDetail() {
               {contact.inquiryDate && <div><span className="text-muted-foreground">Inquiry: </span>{contact.inquiryDate}</div>}
               {contact.lastCallDate && <div><span className="text-muted-foreground">Last Call: </span>{contact.lastCallDate}</div>}
               {contact.nextCallDate && <div className="font-medium text-primary"><span>Next Call: </span>{contact.nextCallDate}</div>}
+              {contact.category && contact.category !== "Regular Follow up" && contact.category !== "My Client" && (
+                <div className="border-t pt-3 mt-3 space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Re-activation</p>
+                  <div className="flex flex-col gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="justify-start h-8 text-xs"
+                      onClick={() => {
+                        updateContact.mutate({ id: contactId, data: { category: "Regular Follow up" as any } }, {
+                          onSuccess: () => {
+                            queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
+                            toast({ title: "Moved to Regular Follow up" });
+                          },
+                          onError: () => toast({ title: "Error updating category", variant: "destructive" }),
+                        });
+                      }}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                      Move to Regular Follow up
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="justify-start h-8 text-xs"
+                      onClick={() => {
+                        updateContact.mutate({ id: contactId, data: { category: "My Client" as any } }, {
+                          onSuccess: () => {
+                            queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
+                            toast({ title: "Moved to My Client" });
+                          },
+                          onError: () => toast({ title: "Error updating category", variant: "destructive" }),
+                        });
+                      }}
+                    >
+                      <Star className="h-3.5 w-3.5 mr-1.5" />
+                      Mark as My Client
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -260,6 +311,7 @@ export default function LeadDetail() {
                     </div>
                     <div><Label>Notes</Label><Textarea value={actNotes} onChange={e => setActNotes(e.target.value)} placeholder="Discussion notes..." /></div>
                     <div><Label>Follow-up Date</Label><Input type="date" value={actFollowUp} onChange={e => setActFollowUp(e.target.value)} /></div>
+                    {actFollowUp && <div><Label>Follow-up Time</Label><Input type="time" value={actFollowUpTime} onChange={e => setActFollowUpTime(e.target.value)} /></div>}
                     <div><Label>Follow-up Type</Label>
                       <Select value={actFollowType} onValueChange={setActFollowType}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
@@ -326,6 +378,13 @@ export default function LeadDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <MoveCategoryDialog
+        open={showMoveCategory}
+        onOpenChange={setShowMoveCategory}
+        contactIds={[contactId]}
+        currentCategory={contact.category}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) })}
+      />
     </div>
   );
 }

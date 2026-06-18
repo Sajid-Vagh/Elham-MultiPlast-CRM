@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLocation } from "wouter";
-import { useCreateContact, useListUsers, useListContacts, getListContactsQueryKey } from "@workspace/api-client-react";
+import { useCreateContact, useListUsers, useListContacts, getListContactsQueryKey, useGetMe } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,11 +39,13 @@ type FormData = z.infer<typeof schema>;
 export default function LeadsNew() {
   const [, setLocation] = useLocation();
   const createContact = useCreateContact();
+  const { data: me } = useGetMe();
   const { data: users } = useListUsers();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const [reEnquiryOpen, setReEnquiryOpen] = useState(false);
+  const canAssign = me?.role === "admin" || me?.canAssignLeads;
   // blurCheck: the value typed in mobile/email field on blur
   const [blurCheck, setBlurCheck] = useState("");
   // popupContact: the matched existing contact to show in the popup
@@ -75,6 +77,12 @@ export default function LeadsNew() {
       unit: "", industry: "", tags: "", inquiryDate: "", lastCallDate: "", nextCallDate: "",
     },
   });
+
+  useEffect(() => {
+    if (!canAssign && me?.id) {
+      form.setValue("salesOwnerId", String(me.id));
+    }
+  }, [me, canAssign, form]);
 
   const onSubmit = (data: FormData) => {
     createContact.mutate({
@@ -189,25 +197,35 @@ export default function LeadsNew() {
                   <FormMessage />
                 </FormItem>
               )} />
-              <FormField control={form.control} name="salesOwnerId" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Sales Owner <span className="text-destructive">*</span></FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select owner" /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      {users?.map(u => (
-                        <SelectItem key={u.id} value={u.id.toString()}>
-                          <span className="flex items-center gap-2">
-                            <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: u.colorCode }} />
-                            {u.name}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
+              {canAssign ? (
+                <FormField control={form.control} name="salesOwnerId" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Sales Owner <span className="text-destructive">*</span></FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Select owner" /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        {users?.map(u => (
+                          <SelectItem key={u.id} value={u.id.toString()}>
+                            <span className="flex items-center gap-2">
+                              <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: u.colorCode }} />
+                              {u.name}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              ) : me ? (
+                <div>
+                  <p className="text-sm font-medium mb-1">Sales Owner</p>
+                  <p className="text-sm text-muted-foreground">
+                    <span className="inline-block w-3 h-3 rounded-full mr-1.5 align-middle" style={{ backgroundColor: me.colorCode }} />
+                    {me.name} (you)
+                  </p>
+                </div>
+              ) : null}
               <FormField control={form.control} name="leadSource" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Lead Source</FormLabel>

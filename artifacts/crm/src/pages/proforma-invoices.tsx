@@ -1,0 +1,959 @@
+import { useState, useEffect, useMemo } from "react";
+import { useLocation } from "wouter";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Card, CardContent, CardHeader, CardTitle,
+} from "@/components/ui/card";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Plus, Download, Printer, Share2, Mail, Eye, FileText, Save, ArrowLeft, Trash2, Search,
+  ChevronLeft, ChevronRight, Send,
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+
+const STATUS_COLORS: Record<string, string> = {
+  "Draft": "bg-gray-100 text-gray-700",
+  "Sent": "bg-blue-100 text-blue-700",
+  "Approved": "bg-green-100 text-green-700",
+  "Rejected": "bg-red-100 text-red-700",
+  "Converted to Order": "bg-purple-100 text-purple-700",
+};
+
+const INVOICE_STATUSES = ["Draft", "Sent", "Approved", "Rejected", "Converted to Order"];
+
+function numberToWords(num: number): string {
+  if (num === 0) return "Zero Rupees Only";
+  const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
+    "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+  const conv = (n: number): string => {
+    if (n === 0) return "";
+    if (n < 20) return ones[n] + " ";
+    if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? " " + ones[n % 10] : "") + " ";
+    return ones[Math.floor(n / 100)] + " Hundred " + conv(n % 100);
+  };
+  const lakhs = (n: number): string => {
+    const crore = Math.floor(n / 10000000);
+    const lakh = Math.floor((n % 10000000) / 100000);
+    const thousand = Math.floor((n % 100000) / 1000);
+    const hundred = Math.floor(n % 1000);
+    let r = "";
+    if (crore) r += conv(crore) + "Crore ";
+    if (lakh) r += conv(lakh) + "Lakh ";
+    if (thousand) r += conv(thousand) + "Thousand ";
+    if (hundred) r += conv(hundred);
+    return r.trim();
+  };
+  const rupees = Math.floor(num);
+  return "Rupees " + (rupees ? lakhs(rupees) : "Zero") + " Only";
+}
+
+interface InvoiceItem {
+  productName: string;
+  hsnCode: string;
+  quantity: number;
+  unit: string;
+  rate: number;
+  amount: number;
+}
+
+export default function ProformaInvoicesPage() {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const token = localStorage.getItem("crm_token");
+
+  const [tab, setTab] = useState("all");
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const perPage = 15;
+
+  const [mode, setMode] = useState<"list" | "create" | "detail">("list");
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+
+  const [customerName, setCustomerName] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [addressLine1, setAddressLine1] = useState("");
+  const [addressLine2, setAddressLine2] = useState("");
+  const [addressLine3, setAddressLine3] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [pincode, setPincode] = useState("");
+  const [address, setAddress] = useState("");
+  const [gstNumber, setGstNumber] = useState("");
+  const [mobile, setMobile] = useState("");
+  const [freight, setFreight] = useState(0);
+  const [cgstPct, setCgstPct] = useState(0);
+  const [sgstPct, setSgstPct] = useState(0);
+  const [igstPct, setIgstPct] = useState(0);
+  const [notes, setNotes] = useState("");
+  const [items, setItems] = useState<InvoiceItem[]>([
+    { productName: "", hsnCode: "", quantity: 1, unit: "Pcs", rate: 0, amount: 0 },
+  ]);
+  const [saving, setSaving] = useState(false);
+  const [showPdfPreview, setShowPdfPreview] = useState(false);
+  const [pdfHtml, setPdfHtml] = useState("");
+
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusDialog, setStatusDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
+  const [newStatus, setNewStatus] = useState("");
+  const [statusNotes, setStatusNotes] = useState("");
+
+  const fetchInvoices = async () => {
+    try {
+      const url = statusFilter !== "all" ? `/api/proforma-invoices?status=${statusFilter}` : "/api/proforma-invoices";
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setInvoices(data);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (mode === "list") fetchInvoices();
+  }, [mode, statusFilter]);
+
+  const filteredInvoices = useMemo(() => {
+    if (!search) return invoices;
+    const s = search.toLowerCase();
+    return invoices.filter(
+      (inv) =>
+        inv.customerName?.toLowerCase().includes(s) ||
+        inv.invoiceNumber?.toLowerCase().includes(s) ||
+        inv.companyName?.toLowerCase().includes(s) ||
+        inv.mobile?.includes(s)
+    );
+  }, [invoices, search]);
+
+  const totalPages = Math.ceil(filteredInvoices.length / perPage);
+  const paginatedInvoices = filteredInvoices.slice((page - 1) * perPage, page * perPage);
+
+  const calcAmount = (item: InvoiceItem) => item.quantity * item.rate;
+  const taxableAmount = items.reduce((sum, item) => sum + item.quantity * item.rate, 0);
+  const baseAmount = taxableAmount + freight;
+  const cgstAmount = baseAmount * cgstPct / 100;
+  const sgstAmount = baseAmount * sgstPct / 100;
+  const igstAmount = baseAmount * igstPct / 100;
+  const grandTotal = baseAmount + cgstAmount + sgstAmount + igstAmount;
+  const amountInWords = numberToWords(grandTotal);
+
+  const updateItem = (idx: number, field: keyof InvoiceItem, value: any) => {
+    const updated = items.map((item, i) => {
+      if (i !== idx) return item;
+      const newItem = { ...item, [field]: value };
+      if (field === "quantity" || field === "rate") {
+        newItem.amount = newItem.quantity * newItem.rate;
+      }
+      return newItem;
+    });
+    setItems(updated);
+  };
+
+  const addItem = () => {
+    setItems([...items, { productName: "", hsnCode: "", quantity: 1, unit: "Pcs", rate: 0, amount: 0 }]);
+  };
+
+  const removeItem = (idx: number) => {
+    if (items.length <= 1) return;
+    setItems(items.filter((_, i) => i !== idx));
+  };
+
+  const resetForm = () => {
+    setCustomerName("");
+    setCompanyName("");
+    setAddressLine1("");
+    setAddressLine2("");
+    setAddressLine3("");
+    setCity("");
+    setState("");
+    setPincode("");
+    setAddress("");
+    setGstNumber("");
+    setMobile("");
+    setFreight(0);
+    setCgstPct(0);
+    setSgstPct(0);
+    setIgstPct(0);
+    setNotes("");
+    setItems([{ productName: "", hsnCode: "", quantity: 1, unit: "Pcs", rate: 0, amount: 0 }]);
+  };
+
+  const handleSave = async (status: string) => {
+    if (!customerName) {
+      toast({ title: "Error", description: "Customer name is required", variant: "destructive" });
+      return;
+    }
+    if (items.some((i) => !i.productName)) {
+      toast({ title: "Error", description: "All items must have a product name", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const body = {
+        customerName,
+        companyName: companyName || null,
+        addressLine1: addressLine1 || null,
+        addressLine2: addressLine2 || null,
+        addressLine3: addressLine3 || null,
+        city: city || null,
+        state: state || null,
+        pincode: pincode || null,
+        address: address || null,
+        gstNumber: gstNumber || null,
+        mobile: mobile || null,
+        taxableAmount,
+        freight,
+        cgst: cgstAmount,
+        sgst: sgstAmount,
+        igst: igstAmount,
+        cgstPercent: cgstPct,
+        sgstPercent: sgstPct,
+        igstPercent: igstPct,
+        grandTotal,
+        amountInWords,
+        status,
+        notes: notes || null,
+        items: items.map((i) => ({
+          productName: i.productName,
+          hsnCode: i.hsnCode || null,
+          quantity: i.quantity,
+          unit: i.unit,
+          rate: i.rate,
+          amount: i.quantity * i.rate,
+        })),
+      };
+
+      const res = await fetch("/api/proforma-invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) throw new Error("Failed to create invoice");
+
+      const invoice = await res.json();
+      toast({ title: "Invoice Created", description: `${invoice.invoiceNumber} saved as ${status}` });
+      resetForm();
+      setSelectedInvoice(invoice);
+      setMode("detail");
+      fetchInvoices();
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to create invoice", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleViewInvoice = async (invoice: any) => {
+    setSelectedInvoice(invoice);
+    setMode("detail");
+  };
+
+  const handlePreviewPdf = async (invoice: any) => {
+    try {
+      const res = await fetch(`/api/proforma-invoices/${invoice.id}/html`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const html = await res.text();
+        setPdfHtml(html);
+        setShowPdfPreview(true);
+      }
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to load preview", variant: "destructive" });
+    }
+  };
+
+  const handleDownloadPdf = async (invoice: any) => {
+    try {
+      const res = await fetch(`/api/proforma-invoices/${invoice.id}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const ct = res.headers.get("content-type") || "";
+        if (ct.includes("text/html")) {
+          const html = await res.text();
+          await generateClientPdf(invoice, html);
+          return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `Proforma_${invoice.invoiceNumber}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        toast({ title: "Error", description: "PDF generation failed", variant: "destructive" });
+      }
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to download PDF", variant: "destructive" });
+    }
+  };
+
+  const generateClientPdf = async (invoice: any, htmlContent?: string) => {
+    try {
+      const html = htmlContent || pdfHtml;
+      if (!html) {
+        toast({ title: "Error", description: "No content to generate PDF", variant: "destructive" });
+        return;
+      }
+      const { default: jsPDF } = await import("jspdf");
+      const { default: html2canvas } = await import("html2canvas");
+      const container = document.createElement("div");
+      container.innerHTML = html;
+      container.style.width = "210mm";
+      container.style.position = "absolute";
+      container.style.left = "-9999px";
+      container.style.top = "0";
+      container.style.background = "#fff";
+      document.body.appendChild(container);
+      try {
+        const canvas = await html2canvas(container, {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          width: container.scrollWidth,
+          height: container.scrollHeight,
+        });
+        const imgData = canvas.toDataURL("image/jpeg", 0.95);
+        const pdf = new jsPDF("p", "mm", "a4");
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
+        const imgWidth = pdfWidth;
+        const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+        let heightLeft = imgHeight;
+        let position = 0;
+        pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+        heightLeft -= pdfHeight;
+        while (heightLeft > 0) {
+          position -= pdfHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+          heightLeft -= pdfHeight;
+        }
+        pdf.save(`Proforma_${invoice.invoiceNumber}.pdf`);
+        toast({ title: "PDF Downloaded", description: "Generated successfully" });
+      } finally {
+        document.body.removeChild(container);
+      }
+    } catch (err) {
+      toast({ title: "PDF Generation Failed", description: "Opening in browser print instead", variant: "default" });
+      const w = window.open("", "_blank");
+      if (w) { w.document.write(htmlContent || pdfHtml); w.document.title = `Proforma_${invoice.invoiceNumber}`; w.print(); }
+    }
+  };
+
+  const handlePrint = (invoice: any) => {
+    handlePreviewPdf(invoice);
+  };
+
+  const handleShareWhatsApp = (invoice: any) => {
+    const phone = invoice.mobile || "";
+    const msg = encodeURIComponent(`Dear ${invoice.customerName},\n\nPlease find attached Proforma Invoice ${invoice.invoiceNumber} dated ${new Date(invoice.createdAt).toLocaleDateString("en-IN")}.\n\nTotal Amount: ₹${Number(invoice.grandTotal).toFixed(2)}\n\nRegards,\nElham Multiplast LLP`);
+    window.open(`https://wa.me/${phone}?text=${msg}`, "_blank");
+  };
+
+  const handleSendEmail = (invoice: any) => {
+    const subject = encodeURIComponent(`Proforma Invoice ${invoice.invoiceNumber}`);
+    const body = encodeURIComponent(`Dear ${invoice.customerName},\n\nPlease find attached Proforma Invoice ${invoice.invoiceNumber}.\n\nTotal Amount: ₹${Number(invoice.grandTotal).toFixed(2)}\n\nRegards,\nElham Multiplast LLP`);
+    window.open(`mailto:?subject=${subject}&body=${body}`, "_blank");
+  };
+
+  const handleStatusUpdate = async () => {
+    if (!newStatus || !statusDialog.invoice) return;
+    try {
+      const res = await fetch(`/api/proforma-invoices/${statusDialog.invoice.id}/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: newStatus, notes: statusNotes || null }),
+      });
+      if (res.ok) {
+        toast({ title: "Status Updated", description: `Invoice moved to ${newStatus}` });
+        setStatusDialog({ open: false, invoice: null });
+        setNewStatus("");
+        setStatusNotes("");
+        fetchInvoices();
+        if (mode === "detail") {
+          const updated = await res.json();
+          setSelectedInvoice(updated);
+        }
+      }
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to update status", variant: "destructive" });
+    }
+  };
+
+  const renderInvoicePreviewHtml = (inv: any) => {
+    const cgstPct = Number(inv.cgstPercent || 0);
+    const sgstPct = Number(inv.sgstPercent || 0);
+    const igstPct = Number(inv.igstPercent || 0);
+    const cgstAmt = Number(inv.cgst || 0);
+    const sgstAmt = Number(inv.sgst || 0);
+    const igstAmt = Number(inv.igst || 0);
+    const taxable = Number(inv.taxableAmount || 0);
+    const freight = Number(inv.freight || 0);
+    const baseAmt = taxable + freight;
+    const grandTotal = Number(inv.grandTotal || 0);
+    const totalTax = cgstAmt + sgstAmt + igstAmt;
+    const isInterstate = igstPct > 0;
+
+    const partyAddr: string[] = [];
+    if (inv.addressLine1) partyAddr.push(inv.addressLine1);
+    if (inv.addressLine2) partyAddr.push(inv.addressLine2);
+    if (inv.addressLine3) partyAddr.push(inv.addressLine3);
+    const cityStatePin = [inv.city, inv.state, inv.pincode].filter(Boolean).join(" ");
+
+    const dateStr = new Date(inv.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" });
+
+    return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Proforma Invoice</title>
+<style>
+@page{size:A4;margin:0;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.3;}
+.invoice{width:190mm;min-height:267mm;margin:8mm auto;border:1.5px solid #000;position:relative;}
+.header{text-align:center;padding:8pt 10pt 4pt;border-bottom:1.5px solid #000;}
+.gstin-top{text-align:left;font-size:8pt;margin-bottom:2pt;}
+.company-name{font-size:18pt;font-weight:bold;letter-spacing:0.5pt;margin:2pt 0;}
+.company-address{font-size:8pt;line-height:1.5;color:#222;}
+.company-email{font-size:8pt;margin-top:2pt;}
+.invoice-title{font-size:14pt;font-weight:bold;margin:4pt 0;text-decoration:underline;}
+.party-section{display:flex;border-bottom:1px solid #000;}
+.party-left{width:58%;padding:6pt 8pt;border-right:1px solid #000;}
+.party-right{width:42%;padding:6pt 8pt;text-align:right;}
+.party-label{font-weight:bold;font-size:9pt;margin-bottom:4pt;}
+.party-name{font-weight:bold;font-size:10pt;}
+.party-address{font-size:8.5pt;line-height:1.5;margin-top:2pt;}
+.order-text{font-size:8.5pt;font-style:italic;margin:4pt 0;padding:3pt 0;border-bottom:1px solid #000;text-align:center;}
+table.items{width:100%;border-collapse:collapse;font-size:8.5pt;}
+table.items th{border:1px solid #000;padding:4pt 5pt;text-align:center;font-weight:bold;font-size:8pt;background:#f0f0f0;}
+table.items td{border:1px solid #000;padding:3pt 5pt;}
+.summary-table{width:100%;border-collapse:collapse;border-top:1px solid #000;}
+.summary-table td{border:0;padding:2pt 6pt;}
+.summary-table .total-row{border-top:1.5px solid #000;font-weight:bold;font-size:10pt;}
+.tax-summary{margin-top:6pt;width:100%;border-collapse:collapse;font-size:8pt;}
+.tax-summary th{border:1px solid #000;padding:3pt 4pt;text-align:center;font-weight:bold;font-size:7.5pt;background:#f0f0f0;}
+.tax-summary td{border:1px solid #000;padding:2pt 4pt;text-align:center;}
+.amount-words{margin:6pt 8pt;font-size:8.5pt;}
+.amount-words strong{font-size:9pt;}
+.footer-section{width:100%;margin:4pt 0;padding:0 8pt;}
+.footer-section table{width:100%;border-collapse:collapse;}
+.footer-section td{vertical-align:top;padding:3pt 6pt;width:50%;border:0;}
+.disclaimer{border-top:1px solid #000;padding:4pt 8pt;font-size:7.5pt;text-align:justify;line-height:1.4;}
+.disclaimer strong{font-size:8pt;}
+.bank-details{font-size:8pt;line-height:1.6;}
+.bank-details strong{font-size:8.5pt;}
+.terms{font-size:8pt;line-height:1.5;}
+.terms strong{font-size:8.5pt;}
+.terms ul{margin:2pt 0 0 14pt;padding:0;}
+.terms li{margin-bottom:1pt;}
+.signature-section{display:flex;margin:8pt 8pt 4pt;font-size:8.5pt;}
+.sign-left{width:50%;}
+.sign-right{width:50%;text-align:right;font-weight:bold;}
+hr{border:none;border-top:1px solid #000;margin:2pt 0;}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+</style></head><body>
+<div class="invoice">
+<div class="header">
+<div class="gstin-top">GSTIN : 24AAJFE2064P1Z6</div>
+<div class="company-name">ELHAM MULTIPLAST LLP</div>
+<div class="company-address">PLOT NO. 1429-1430, NR. FORTUNE PETROL PUMP,<br>OPP. KHIJADIYA TALAV, ILOL, HIMATNAGAR,<br>SABARKANTHA, GUJARAT - 383220</div>
+<div class="company-email">elhammultiplast@gmail.com</div>
+<div class="invoice-title">PROFORMA INVOICE</div>
+</div>
+<div class="party-section">
+<div class="party-left">
+<div class="party-label">Party Details :</div>
+<div class="party-name">${inv.customerName}</div>
+<div class="party-address">${partyAddr.length > 0 ? partyAddr.join("<br>") + "<br>" : ""}${cityStatePin ? cityStatePin + "<br>" : ""}${inv.address ? inv.address + "<br>" : ""}</div>
+<div style="font-size:8.5pt;margin-top:2pt;">GSTIN / UIN : ${inv.gstNumber || ""}</div>
+</div>
+<div class="party-right">
+<div style="font-weight:bold;font-size:9pt;">Order No : ${inv.invoiceNumber}</div>
+<div style="margin-top:4pt;font-size:8.5pt;">Date : ${dateStr}</div>
+</div>
+</div>
+<div class="order-text">We are pleased to receive the order for the following items</div>
+<table class="items">
+<thead><tr><th style="width:5%">S.N.</th><th style="width:32%">Description of Goods</th><th style="width:11%">HSN Code</th><th style="width:8%">Qty</th><th style="width:8%">Unit</th><th style="width:10%">Price</th><th style="width:12%">Amount</th></tr></thead>
+<tbody>${(inv.items || []).map((item: any, i: number) => `<tr><td style="text-align:center">${i+1}</td><td>${item.productName}</td><td style="text-align:center">${item.hsnCode || "-"}</td><td style="text-align:center">${item.quantity}</td><td style="text-align:center">${item.unit}</td><td style="text-align:right">${Number(item.rate).toFixed(2)}</td><td style="text-align:right">${Number(item.amount).toFixed(2)}</td></tr>`).join("\n")}</tbody>
+</table>
+<table class="summary-table">
+${freight > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">Freight Charges</td><td style="text-align:right;padding:3pt 6pt">${freight.toFixed(2)}</td></tr>` : ""}
+${cgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">CGST @ ${cgstPct}%</td><td style="text-align:right;padding:3pt 6pt">${cgstAmt.toFixed(2)}</td></tr>` : ""}
+${sgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">SGST @ ${sgstPct}%</td><td style="text-align:right;padding:3pt 6pt">${sgstAmt.toFixed(2)}</td></tr>` : ""}
+${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IGST @ ${igstPct}%</td><td style="text-align:right;padding:3pt 6pt">${igstAmt.toFixed(2)}</td></tr>` : ""}
+<tr class="total-row"><td colspan="5" style="text-align:right;padding:3pt 6pt">Grand Total</td><td style="text-align:right;padding:3pt 6pt">${grandTotal.toFixed(2)}</td></tr>
+</table>
+<table class="tax-summary">
+<thead><tr><th>Tax Rate</th><th>Taxable Amount</th><th>CGST Amount</th><th>SGST Amount</th><th>Total Tax</th></tr></thead>
+<tbody>${isInterstate ? `<tr><td>IGST @ ${igstPct}%</td><td>${baseAmt.toFixed(2)}</td><td>0.00</td><td>0.00</td><td>${igstAmt.toFixed(2)}</td></tr>` : `<tr><td>CGST @ ${cgstPct}% + SGST @ ${sgstPct}%</td><td>${baseAmt.toFixed(2)}</td><td>${cgstAmt.toFixed(2)}</td><td>${sgstAmt.toFixed(2)}</td><td>${totalTax.toFixed(2)}</td></tr>`}</tbody>
+</table>
+<div class="amount-words"><strong>Amount in Words :</strong> ${inv.amountInWords || ""}</div>
+<div class="footer-section"><table><tr>
+<td style="width:50%;border:0;padding:3pt 6pt;"><div class="bank-details"><strong>Bank Details</strong><br>ICICI BANK, HIMATNAGAR<br>A/C NO: 045205014806<br>IFSC: ICIC0000452</div></td>
+<td style="width:50%;border:0;padding:3pt 6pt;"><div class="terms"><strong>Terms &amp; Conditions</strong><ul><li>Freight Charges Additional</li><li>100% Advance Payment</li></ul></div></td>
+</tr></table></div>
+<div class="disclaimer"><strong>DISCLAIMER : </strong>Products supplied are generic industrial packaging developed independently by Elham Multiplast LLP for functional applications. Any branding, labeling, or market usage by the buyer shall be at the buyer's sole responsibility.</div>
+<div class="signature-section"><div class="sign-left"><div style="font-size:8pt;">Receiver's Signature</div><br><br><div style="border-top:1px solid #000;width:120px;font-size:7pt;text-align:center;padding-top:1pt;">Receiver Signature</div></div><div class="sign-right"><div style="margin-bottom:40pt;">For ELHAM MULTIPLAST LLP</div><br><div>Authorised Signatory</div></div></div>
+</div></body></html>`;
+  };
+
+  if (loading && mode === "list") return <div className="p-6">Loading...</div>;
+
+  if (mode === "create") {
+    return (
+      <div className="p-6 max-w-5xl mx-auto space-y-6">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="sm" onClick={() => { setMode("list"); resetForm(); }}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> Back
+          </Button>
+          <h1 className="text-2xl font-bold">New Proforma Invoice</h1>
+        </div>
+
+        <Card>
+          <CardHeader><CardTitle>Party Details</CardTitle></CardHeader>
+          <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <Label>Party Name *</Label>
+              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Enter party name" />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Address Line 1</Label>
+              <Input value={addressLine1} onChange={(e) => setAddressLine1(e.target.value)} placeholder="House / Building / Street" />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Address Line 2</Label>
+              <Input value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)} placeholder="Area / Locality" />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Address Line 3</Label>
+              <Input value={addressLine3} onChange={(e) => setAddressLine3(e.target.value)} placeholder="Landmark / Additional info" />
+            </div>
+            <div>
+              <Label>City</Label>
+              <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" />
+            </div>
+            <div>
+              <Label>State</Label>
+              <Input value={state} onChange={(e) => setState(e.target.value)} placeholder="State" />
+            </div>
+            <div>
+              <Label>Pincode</Label>
+              <Input value={pincode} onChange={(e) => setPincode(e.target.value)} placeholder="Pincode" />
+            </div>
+            <div>
+              <Label>GSTIN / UIN</Label>
+              <Input value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} placeholder="GSTIN / UIN" />
+            </div>
+            <div>
+              <Label>Mobile Number</Label>
+              <Input value={mobile} onChange={(e) => setMobile(e.target.value)} placeholder="Mobile number" />
+            </div>
+            <div>
+              <Label>Notes</Label>
+              <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Internal notes" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Products / Items</CardTitle>
+            <Button size="sm" variant="outline" onClick={addItem}>
+              <Plus className="h-4 w-4 mr-1" /> Add Item
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-8">#</TableHead>
+                    <TableHead>Product Name</TableHead>
+                    <TableHead>HSN Code</TableHead>
+                    <TableHead className="w-20">Qty</TableHead>
+                    <TableHead className="w-20">Unit</TableHead>
+                    <TableHead className="w-24">Rate (₹)</TableHead>
+                    <TableHead className="w-24">Amount (₹)</TableHead>
+                    <TableHead className="w-8"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map((item, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
+                      <TableCell>
+                        <Input
+                          value={item.productName}
+                          onChange={(e) => updateItem(idx, "productName", e.target.value)}
+                          placeholder="Product name"
+                          className="h-8"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          value={item.hsnCode}
+                          onChange={(e) => updateItem(idx, "hsnCode", e.target.value)}
+                          placeholder="HSN"
+                          className="h-8"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))}
+                          min={0}
+                          className="h-8 text-center"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Select value={item.unit} onValueChange={(v) => updateItem(idx, "unit", v)}>
+                          <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {["Pcs", "Kg", "Gms", "Ltr", "Mtr", "Box", "Pack", "Nos"].map((u) => (
+                              <SelectItem key={u} value={u}>{u}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          value={item.rate}
+                          onChange={(e) => updateItem(idx, "rate", Number(e.target.value))}
+                          min={0}
+                          className="h-8 text-right"
+                        />
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {calcAmount(item).toFixed(2)}
+                      </TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => removeItem(idx)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle>Tax & Summary</CardTitle></CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <Label>Freight Charges (₹)</Label>
+                <Input type="number" value={freight} onChange={(e) => setFreight(Number(e.target.value))} min={0} />
+              </div>
+              <div>
+                <Label>CGST (%)</Label>
+                <Input type="number" value={cgstPct} onChange={(e) => setCgstPct(Number(e.target.value))} min={0} max={100} step={0.01} />
+              </div>
+              <div>
+                <Label>SGST (%)</Label>
+                <Input type="number" value={sgstPct} onChange={(e) => setSgstPct(Number(e.target.value))} min={0} max={100} step={0.01} />
+              </div>
+              <div>
+                <Label>IGST (%)</Label>
+                <Input type="number" value={igstPct} onChange={(e) => setIgstPct(Number(e.target.value))} min={0} max={100} step={0.01} />
+              </div>
+            </div>
+            <div className="mt-4 p-4 bg-muted/30 rounded-lg space-y-1 text-sm">
+              <div className="flex justify-between"><span>Taxable Amount:</span><span className="font-medium">₹{taxableAmount.toFixed(2)}</span></div>
+              <div className="flex justify-between"><span>Freight:</span><span>₹{freight.toFixed(2)}</span></div>
+              <div className="flex justify-between"><span>Base Amount:</span><span className="font-medium">₹{baseAmount.toFixed(2)}</span></div>
+              {cgstPct > 0 && <div className="flex justify-between"><span>CGST ({cgstPct}%):</span><span>₹{cgstAmount.toFixed(2)}</span></div>}
+              {sgstPct > 0 && <div className="flex justify-between"><span>SGST ({sgstPct}%):</span><span>₹{sgstAmount.toFixed(2)}</span></div>}
+              {igstPct > 0 && <div className="flex justify-between"><span>IGST ({igstPct}%):</span><span>₹{igstAmount.toFixed(2)}</span></div>}
+              <div className="flex justify-between text-lg font-bold border-t pt-2"><span>Grand Total:</span><span>₹{grandTotal.toFixed(2)}</span></div>
+              <div className="text-xs text-muted-foreground italic mt-1">{amountInWords}</div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="flex gap-3 justify-end">
+          <Button variant="outline" onClick={() => handleSave("Draft")} disabled={saving}>
+            <Save className="h-4 w-4 mr-1" /> Save Draft
+          </Button>
+          <Button onClick={() => handleSave("Sent")} disabled={saving}>
+            <Send className="h-4 w-4 mr-1" /> {saving ? "Saving..." : "Generate & Send"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === "detail" && selectedInvoice) {
+    const inv = selectedInvoice;
+    return (
+      <div className="p-6 max-w-5xl mx-auto space-y-6">
+        <div className="flex items-center gap-4 flex-wrap">
+          <Button variant="ghost" size="sm" onClick={() => setMode("list")}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> Back
+          </Button>
+          <div className="flex-1">
+            <h1 className="text-xl font-bold">{inv.invoiceNumber}</h1>
+            <p className="text-sm text-muted-foreground">{inv.customerName}</p>
+          </div>
+          <Badge className={`text-xs px-3 py-1 ${STATUS_COLORS[inv.status] || ""}`}>{inv.status}</Badge>
+          <Button variant="outline" size="sm" onClick={() => setStatusDialog({ open: true, invoice: inv })}>
+            Update Status
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card>
+            <CardHeader><CardTitle className="text-sm">Party Details</CardTitle></CardHeader>
+            <CardContent className="text-sm space-y-1">
+              <p><span className="text-muted-foreground">Name:</span> {inv.customerName}</p>
+              {inv.addressLine1 && <p><span className="text-muted-foreground">Addr 1:</span> {inv.addressLine1}</p>}
+              {inv.addressLine2 && <p><span className="text-muted-foreground">Addr 2:</span> {inv.addressLine2}</p>}
+              {inv.addressLine3 && <p><span className="text-muted-foreground">Addr 3:</span> {inv.addressLine3}</p>}
+              {inv.city && <p><span className="text-muted-foreground">City:</span> {inv.city}</p>}
+              {inv.state && <p><span className="text-muted-foreground">State:</span> {inv.state}</p>}
+              {inv.pincode && <p><span className="text-muted-foreground">Pincode:</span> {inv.pincode}</p>}
+              {inv.gstNumber && <p><span className="text-muted-foreground">GSTIN/UIN:</span> {inv.gstNumber}</p>}
+              {inv.mobile && <p><span className="text-muted-foreground">Mobile:</span> {inv.mobile}</p>}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle className="text-sm">Invoice Summary</CardTitle></CardHeader>
+            <CardContent className="text-sm space-y-1">
+              <p><span className="text-muted-foreground">Date:</span> {new Date(inv.createdAt).toLocaleDateString("en-IN")}</p>
+              <p><span className="text-muted-foreground">Taxable:</span> ₹{Number(inv.taxableAmount).toFixed(2)}</p>
+              <p><span className="text-muted-foreground">Freight:</span> ₹{Number(inv.freight).toFixed(2)}</p>
+              <p><span className="text-muted-foreground">CGST ({Number(inv.cgstPercent || 0)}%):</span> ₹{Number(inv.cgst).toFixed(2)}</p>
+              <p><span className="text-muted-foreground">SGST ({Number(inv.sgstPercent || 0)}%):</span> ₹{Number(inv.sgst).toFixed(2)}</p>
+              <p><span className="text-muted-foreground">IGST ({Number(inv.igstPercent || 0)}%):</span> ₹{Number(inv.igst).toFixed(2)}</p>
+              <p className="text-lg font-bold">Grand Total: ₹{Number(inv.grandTotal).toFixed(2)}</p>
+              <p className="text-xs text-muted-foreground italic">{inv.amountInWords}</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card>
+          <CardHeader><CardTitle className="text-sm">Items</CardTitle></CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>#</TableHead>
+                  <TableHead>Product</TableHead>
+                  <TableHead>HSN</TableHead>
+                  <TableHead>Qty</TableHead>
+                  <TableHead>Unit</TableHead>
+                  <TableHead>Rate</TableHead>
+                  <TableHead>Amount</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {inv.items?.map((item: any, idx: number) => (
+                  <TableRow key={item.id || idx}>
+                    <TableCell>{idx + 1}</TableCell>
+                    <TableCell>{item.productName}</TableCell>
+                    <TableCell>{item.hsnCode || "-"}</TableCell>
+                    <TableCell>{item.quantity}</TableCell>
+                    <TableCell>{item.unit}</TableCell>
+                    <TableCell>₹{Number(item.rate).toFixed(2)}</TableCell>
+                    <TableCell className="font-medium">₹{Number(item.amount).toFixed(2)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <div className="flex gap-3 flex-wrap">
+          <Button onClick={() => handlePreviewPdf(inv)} variant="outline">
+            <Eye className="h-4 w-4 mr-1" /> Preview
+          </Button>
+          <Button onClick={() => handleDownloadPdf(inv)} variant="outline">
+            <Download className="h-4 w-4 mr-1" /> Download PDF
+          </Button>
+          <Button onClick={() => handlePrint(inv)} variant="outline">
+            <Printer className="h-4 w-4 mr-1" /> Print
+          </Button>
+          <Button onClick={() => handleShareWhatsApp(inv)} variant="outline" className="text-green-600 border-green-200">
+            <Share2 className="h-4 w-4 mr-1" /> WhatsApp
+          </Button>
+          <Button onClick={() => handleSendEmail(inv)} variant="outline">
+            <Mail className="h-4 w-4 mr-1" /> Email
+          </Button>
+        </div>
+
+        <Dialog open={showPdfPreview} onOpenChange={setShowPdfPreview}>
+          <DialogContent className="max-w-4xl max-h-[90vh]">
+            <DialogHeader>
+              <DialogTitle>Invoice Preview - {inv.invoiceNumber}</DialogTitle>
+            </DialogHeader>
+            <div className="overflow-auto max-h-[70vh] border rounded-lg p-2 bg-white">
+              <iframe srcDoc={pdfHtml} className="w-full" style={{ height: "70vh" }} title="Invoice Preview" />
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => {
+                const w = window.open("", "_blank");
+                if (w) { w.document.write(pdfHtml); w.print(); }
+              }}>
+                <Printer className="h-4 w-4 mr-1" /> Print
+              </Button>
+              <Button onClick={() => handleDownloadPdf(inv)}>
+                <Download className="h-4 w-4 mr-1" /> Download PDF
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={statusDialog.open} onOpenChange={(o) => setStatusDialog({ ...statusDialog, open: o })}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader><DialogTitle>Update Status</DialogTitle></DialogHeader>
+            <div className="space-y-3">
+              <div>
+                <Label>New Status</Label>
+                <Select value={newStatus} onValueChange={setNewStatus}>
+                  <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
+                  <SelectContent>
+                    {INVOICE_STATUSES.filter((s) => s !== statusDialog.invoice?.status).map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Notes (optional)</Label>
+                <Textarea value={statusNotes} onChange={(e) => setStatusNotes(e.target.value)} placeholder="Reason for status change" rows={2} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setStatusDialog({ open: false, invoice: null })}>Cancel</Button>
+              <Button onClick={handleStatusUpdate} disabled={!newStatus}>Update</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Proforma Invoices</h1>
+          <p className="text-sm text-muted-foreground">Create and manage proforma invoices</p>
+        </div>
+        <Button onClick={() => { resetForm(); setMode("create"); }}>
+          <Plus className="h-4 w-4 mr-1" /> New Invoice
+        </Button>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search invoices..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            className="pl-9"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+          <SelectTrigger className="w-40"><SelectValue placeholder="All Status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            {INVOICE_STATUSES.map((s) => (
+              <SelectItem key={s} value={s}>{s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Invoice #</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Company</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead className="w-32">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {paginatedInvoices.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    No invoices found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                paginatedInvoices.map((inv: any) => (
+                  <TableRow key={inv.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleViewInvoice(inv)}>
+                    <TableCell className="font-medium">{inv.invoiceNumber}</TableCell>
+                    <TableCell>{inv.customerName}</TableCell>
+                    <TableCell>{inv.companyName || "-"}</TableCell>
+                    <TableCell className="font-medium">₹{Number(inv.grandTotal).toLocaleString()}</TableCell>
+                    <TableCell>
+                      <Badge className={`text-xs ${STATUS_COLORS[inv.status] || ""}`}>{inv.status}</Badge>
+                    </TableCell>
+                    <TableCell>{new Date(inv.createdAt).toLocaleDateString("en-IN")}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDownloadPdf(inv)} title="Download PDF">
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleShareWhatsApp(inv)} title="Share WhatsApp">
+                          <Share2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-muted-foreground">Page {page} of {totalPages}</span>
+          <div className="flex gap-1">
+            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

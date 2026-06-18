@@ -32,6 +32,8 @@ export const LoginResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }),
   "token": zod.string()
@@ -48,6 +50,8 @@ export const GetMeResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 })
 
@@ -62,6 +66,8 @@ export const ListUsersResponseItem = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 })
 export const ListUsersResponse = zod.array(ListUsersResponseItem)
@@ -76,7 +82,9 @@ export const CreateUserBody = zod.object({
   "password": zod.string(),
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
-  "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All'])
+  "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional()
 })
 
 
@@ -91,6 +99,8 @@ export const GetUserResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 })
 
@@ -105,7 +115,9 @@ export const UpdateUserBody = zod.object({
   "password": zod.string().nullish(),
   "role": zod.enum(['admin', 'sales']).optional(),
   "colorCode": zod.string().optional(),
-  "unit": zod.string().optional()
+  "unit": zod.string().optional(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional()
 })
 
 export const UpdateUserResponse = zod.object({
@@ -115,6 +127,8 @@ export const UpdateUserResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 })
 
@@ -133,7 +147,8 @@ export const ListContactsQueryParams = zod.object({
   "unit": zod.coerce.string().optional(),
   "industry": zod.coerce.string().optional(),
   "search": zod.coerce.string().optional(),
-  "followUpDue": zod.coerce.boolean().optional().describe('If true, return only contacts whose nextCallDate is today or earlier')
+  "followUpDue": zod.coerce.boolean().optional().describe('If true, return only contacts whose nextCallDate is today or earlier'),
+  "category": zod.coerce.string().optional()
 })
 
 export const ListContactsResponseItem = zod.object({
@@ -156,6 +171,7 @@ export const ListContactsResponseItem = zod.object({
   "otherEmail": zod.string().nullish(),
   "leadSource": zod.union([zod.literal('IndiaMart'),zod.literal('TradeIndia'),zod.literal('Social Media'),zod.literal('Organic'),zod.literal('Email'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
   "address": zod.string().nullish(),
   "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal(null)]).nullish(),
   "industry": zod.union([zod.literal('Liquid Detergent'),zod.literal('Lubricant'),zod.literal('Agro Chemical & Pesticide'),zod.literal('Edible Oil'),zod.literal('Veterinary'),zod.literal('Other'),zod.literal(null)]).nullish(),
@@ -163,9 +179,15 @@ export const ListContactsResponseItem = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
+  "category": zod.string().nullish(),
+  "customerSince": zod.string().nullish(),
+  "totalOrders": zod.number().nullish(),
+  "totalRevenue": zod.number().nullish(),
+  "lastPurchaseDate": zod.string().nullish(),
+  "customerStatus": zod.string().nullish(),
   "createdAt": zod.string()
 })
-export const ListContactsResponse = zod.array(ListContactsResponseItem)
+
 
 
 /**
@@ -181,13 +203,15 @@ export const CreateContactBody = zod.object({
   "otherEmail": zod.string().nullish(),
   "leadSource": zod.string().nullish(),
   "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
   "address": zod.string().nullish(),
   "unit": zod.string().nullish(),
   "industry": zod.string().nullish(),
   "tags": zod.string().nullish(),
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
-  "nextCallDate": zod.string().nullish()
+  "nextCallDate": zod.string().nullish(),
+  "category": zod.string().nullish()
 })
 
 
@@ -215,6 +239,7 @@ export const GetContactResponse = zod.object({
   "otherEmail": zod.string().nullish(),
   "leadSource": zod.union([zod.literal('IndiaMart'),zod.literal('TradeIndia'),zod.literal('Social Media'),zod.literal('Organic'),zod.literal('Email'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
   "address": zod.string().nullish(),
   "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal(null)]).nullish(),
   "industry": zod.union([zod.literal('Liquid Detergent'),zod.literal('Lubricant'),zod.literal('Agro Chemical & Pesticide'),zod.literal('Edible Oil'),zod.literal('Veterinary'),zod.literal('Other'),zod.literal(null)]).nullish(),
@@ -222,6 +247,12 @@ export const GetContactResponse = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
+  "category": zod.string().nullish(),
+  "customerSince": zod.string().nullish(),
+  "totalOrders": zod.number().nullish(),
+  "totalRevenue": zod.number().nullish(),
+  "lastPurchaseDate": zod.string().nullish(),
+  "customerStatus": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -240,13 +271,20 @@ export const UpdateContactBody = zod.object({
   "otherEmail": zod.string().nullish(),
   "leadSource": zod.string().nullish(),
   "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
   "address": zod.string().nullish(),
   "unit": zod.string().nullish(),
   "industry": zod.string().nullish(),
   "tags": zod.string().nullish(),
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
-  "nextCallDate": zod.string().nullish()
+  "nextCallDate": zod.string().nullish(),
+  "category": zod.string().nullish(),
+  "customerSince": zod.string().nullish(),
+  "totalOrders": zod.number().nullish(),
+  "totalRevenue": zod.number().nullish(),
+  "lastPurchaseDate": zod.string().nullish(),
+  "customerStatus": zod.string().nullish()
 })
 
 export const UpdateContactResponse = zod.object({
@@ -269,6 +307,7 @@ export const UpdateContactResponse = zod.object({
   "otherEmail": zod.string().nullish(),
   "leadSource": zod.union([zod.literal('IndiaMart'),zod.literal('TradeIndia'),zod.literal('Social Media'),zod.literal('Organic'),zod.literal('Email'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
   "address": zod.string().nullish(),
   "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal(null)]).nullish(),
   "industry": zod.union([zod.literal('Liquid Detergent'),zod.literal('Lubricant'),zod.literal('Agro Chemical & Pesticide'),zod.literal('Edible Oil'),zod.literal('Veterinary'),zod.literal('Other'),zod.literal(null)]).nullish(),
@@ -276,6 +315,12 @@ export const UpdateContactResponse = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
+  "category": zod.string().nullish(),
+  "customerSince": zod.string().nullish(),
+  "totalOrders": zod.number().nullish(),
+  "totalRevenue": zod.number().nullish(),
+  "lastPurchaseDate": zod.string().nullish(),
+  "customerStatus": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -323,6 +368,7 @@ export const ListDuplicateContactsResponseItem = zod.object({
   "otherEmail": zod.string().nullish(),
   "leadSource": zod.union([zod.literal('IndiaMart'),zod.literal('TradeIndia'),zod.literal('Social Media'),zod.literal('Organic'),zod.literal('Email'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
   "address": zod.string().nullish(),
   "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal(null)]).nullish(),
   "industry": zod.union([zod.literal('Liquid Detergent'),zod.literal('Lubricant'),zod.literal('Agro Chemical & Pesticide'),zod.literal('Edible Oil'),zod.literal('Veterinary'),zod.literal('Other'),zod.literal(null)]).nullish(),
@@ -330,6 +376,7 @@ export const ListDuplicateContactsResponseItem = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
+  "category": zod.string().nullish(),
   "createdAt": zod.string()
 }))
 })
@@ -449,6 +496,7 @@ export const ListDealsResponseItem = zod.object({
   "otherEmail": zod.string().nullish(),
   "leadSource": zod.union([zod.literal('IndiaMart'),zod.literal('TradeIndia'),zod.literal('Social Media'),zod.literal('Organic'),zod.literal('Email'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
   "address": zod.string().nullish(),
   "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal(null)]).nullish(),
   "industry": zod.union([zod.literal('Liquid Detergent'),zod.literal('Lubricant'),zod.literal('Agro Chemical & Pesticide'),zod.literal('Edible Oil'),zod.literal('Veterinary'),zod.literal('Other'),zod.literal(null)]).nullish(),
@@ -456,6 +504,7 @@ export const ListDealsResponseItem = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
+  "category": zod.string().nullish(),
   "createdAt": zod.string()
 }).optional(),
   "title": zod.string().nullish(),
@@ -474,6 +523,9 @@ export const ListDealsResponseItem = zod.object({
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
 }).optional(),
+  "category": zod.string().nullish(),
+  "convertedToClient": zod.boolean().nullish(),
+  "convertedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional()
 })
@@ -491,7 +543,8 @@ export const CreateDealBody = zod.object({
   "totalValue": zod.number().nullish(),
   "lostReason": zod.string().nullish(),
   "notes": zod.string().nullish(),
-  "salesOwnerId": zod.number().nullish()
+  "salesOwnerId": zod.number().nullish(),
+  "category": zod.string().nullish()
 })
 
 
@@ -522,6 +575,7 @@ export const GetDealResponse = zod.object({
   "otherEmail": zod.string().nullish(),
   "leadSource": zod.union([zod.literal('IndiaMart'),zod.literal('TradeIndia'),zod.literal('Social Media'),zod.literal('Organic'),zod.literal('Email'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
   "address": zod.string().nullish(),
   "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal(null)]).nullish(),
   "industry": zod.union([zod.literal('Liquid Detergent'),zod.literal('Lubricant'),zod.literal('Agro Chemical & Pesticide'),zod.literal('Edible Oil'),zod.literal('Veterinary'),zod.literal('Other'),zod.literal(null)]).nullish(),
@@ -529,6 +583,7 @@ export const GetDealResponse = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
+  "category": zod.string().nullish(),
   "createdAt": zod.string()
 }).optional(),
   "title": zod.string().nullish(),
@@ -547,6 +602,9 @@ export const GetDealResponse = zod.object({
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
 }).optional(),
+  "category": zod.string().nullish(),
+  "convertedToClient": zod.boolean().nullish(),
+  "convertedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional()
 })
@@ -562,8 +620,10 @@ export const UpdateDealBody = zod.object({
   "probability": zod.number().optional(),
   "totalValue": zod.number().nullish(),
   "lostReason": zod.string().nullish(),
+  "lostCategory": zod.enum(['A', 'B', 'C']).nullish(),
   "notes": zod.string().nullish(),
-  "salesOwnerId": zod.number().nullish()
+  "salesOwnerId": zod.number().nullish(),
+  "category": zod.string().nullish()
 })
 
 export const UpdateDealResponse = zod.object({
@@ -589,6 +649,7 @@ export const UpdateDealResponse = zod.object({
   "otherEmail": zod.string().nullish(),
   "leadSource": zod.union([zod.literal('IndiaMart'),zod.literal('TradeIndia'),zod.literal('Social Media'),zod.literal('Organic'),zod.literal('Email'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
   "address": zod.string().nullish(),
   "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal(null)]).nullish(),
   "industry": zod.union([zod.literal('Liquid Detergent'),zod.literal('Lubricant'),zod.literal('Agro Chemical & Pesticide'),zod.literal('Edible Oil'),zod.literal('Veterinary'),zod.literal('Other'),zod.literal(null)]).nullish(),
@@ -596,6 +657,7 @@ export const UpdateDealResponse = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
+  "category": zod.string().nullish(),
   "createdAt": zod.string()
 }).optional(),
   "title": zod.string().nullish(),
@@ -614,6 +676,9 @@ export const UpdateDealResponse = zod.object({
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
 }).optional(),
+  "category": zod.string().nullish(),
+  "convertedToClient": zod.boolean().nullish(),
+  "convertedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional()
 })
@@ -673,7 +738,8 @@ export const ListActivitiesQueryParams = zod.object({
   "dealId": zod.coerce.number().optional(),
   "contactId": zod.coerce.number().optional(),
   "userId": zod.coerce.number().optional(),
-  "upcoming": zod.coerce.boolean().optional()
+  "upcoming": zod.coerce.boolean().optional(),
+  "date": zod.coerce.string().optional()
 })
 
 export const ListActivitiesResponseItem = zod.object({
@@ -683,7 +749,10 @@ export const ListActivitiesResponseItem = zod.object({
   "type": zod.enum(['Call', 'WhatsApp', 'Email', 'Note', 'FollowUp']),
   "notes": zod.string().nullish(),
   "followUpDate": zod.string().nullish(),
+  "followUpTime": zod.string().nullish(),
   "followUpType": zod.union([zod.literal('Call'),zod.literal('WhatsApp'),zod.literal('Email'),zod.literal(null)]).nullish(),
+  "callStatus": zod.string().nullish(),
+  "notificationStatus": zod.string().nullish(),
   "createdBy": zod.number().nullish(),
   "user": zod.object({
   "id": zod.number(),
@@ -708,6 +777,7 @@ export const CreateActivityBody = zod.object({
   "type": zod.enum(['Call', 'WhatsApp', 'Email', 'Note', 'FollowUp']),
   "notes": zod.string().nullish(),
   "followUpDate": zod.string().nullish(),
+  "followUpTime": zod.string().nullish(),
   "followUpType": zod.string().nullish()
 })
 
@@ -719,7 +789,10 @@ export const UpdateActivityParams = zod.object({
 export const UpdateActivityBody = zod.object({
   "notes": zod.string().nullish(),
   "followUpDate": zod.string().nullish(),
-  "followUpType": zod.string().nullish()
+  "followUpTime": zod.string().nullish(),
+  "followUpType": zod.string().nullish(),
+  "callStatus": zod.string().nullish(),
+  "notificationStatus": zod.string().nullish()
 })
 
 export const UpdateActivityResponse = zod.object({
@@ -729,7 +802,10 @@ export const UpdateActivityResponse = zod.object({
   "type": zod.enum(['Call', 'WhatsApp', 'Email', 'Note', 'FollowUp']),
   "notes": zod.string().nullish(),
   "followUpDate": zod.string().nullish(),
+  "followUpTime": zod.string().nullish(),
   "followUpType": zod.union([zod.literal('Call'),zod.literal('WhatsApp'),zod.literal('Email'),zod.literal(null)]).nullish(),
+  "callStatus": zod.string().nullish(),
+  "notificationStatus": zod.string().nullish(),
   "createdBy": zod.number().nullish(),
   "user": zod.object({
   "id": zod.number(),
@@ -897,9 +973,204 @@ export const ImportIndiaMartBody = zod.object({
   "clientMobile": zod.string(),
   "email": zod.string().nullish(),
   "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
   "requirement": zod.string().nullish(),
   "quantity": zod.string().nullish(),
   "salesOwnerId": zod.number().nullish()
 })
 
 
+/**
+ * @summary Get category counts
+ */
+export const GetCategoryCountsResponseItem = zod.object({
+  "category": zod.string(),
+  "count": zod.number()
+})
+export const GetCategoryCountsResponse = zod.array(GetCategoryCountsResponseItem)
+
+
+/**
+ * @summary Move contacts between categories
+ */
+export const MoveCategoryBody = zod.object({
+  "contactIds": zod.array(zod.number()),
+  "newCategory": zod.string(),
+  "reason": zod.string().nullish()
+})
+
+export const MoveCategoryResponse = zod.object({
+  "success": zod.boolean(),
+  "moved": zod.number(),
+  "history": zod.array(zod.object({
+    "id": zod.number(),
+    "contactId": zod.number(),
+    "previousCategory": zod.string().nullish(),
+    "newCategory": zod.string(),
+    "changedBy": zod.number(),
+    "reason": zod.string().nullish(),
+    "createdAt": zod.string()
+  }))
+})
+
+
+/**
+ * @summary Get category history for a contact
+ */
+export const GetCategoryHistoryParams = zod.object({
+  "contactId": zod.coerce.number()
+})
+
+export const GetCategoryHistoryResponseItem = zod.object({
+  "id": zod.number(),
+  "contactId": zod.number(),
+  "previousCategory": zod.string().nullish(),
+  "newCategory": zod.string(),
+  "changedBy": zod.number(),
+  "changedByUser": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "username": zod.string(),
+  "role": zod.enum(['admin', 'sales']),
+  "colorCode": zod.string(),
+  "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "createdAt": zod.string().optional()
+}).optional(),
+  "reason": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const GetCategoryHistoryResponse = zod.array(GetCategoryHistoryResponseItem)
+
+
+/**
+ * @summary Category reports
+ */
+export const GetCategoryReportResponse = zod.object({
+  "totalRecords": zod.number(),
+  "categoryCounts": zod.array(zod.object({
+    "category": zod.string(),
+    "count": zod.number(),
+    "percentage": zod.number().optional()
+  })),
+  "movementHistory": zod.array(zod.object({
+    "fromCategory": zod.string().nullish(),
+    "toCategory": zod.string(),
+    "count": zod.number()
+  })),
+  "conversionRate": zod.number().optional(),
+  "topPerformers": zod.array(zod.object({
+    "userId": zod.number(),
+    "userName": zod.string(),
+    "colorCode": zod.string(),
+    "conversions": zod.number()
+  })).optional(),
+  "lostOpportunities": zod.array(zod.object({
+    "category": zod.string(),
+    "count": zod.number()
+  })).optional()
+})
+
+
+/**
+ * @summary Import contacts with category
+ */
+export const ImportExcelBodyWithCategory = zod.object({
+  "rows": zod.array(zod.object({
+    "name": zod.string().nullish(),
+    "mobile": zod.string().nullish(),
+    "email": zod.string().nullish(),
+    "companyName": zod.string().nullish(),
+    "city": zod.string().nullish(),
+    "salesOwnerName": zod.string().nullish(),
+    "inquiryDate": zod.string().nullish(),
+    "lastCallDate": zod.string().nullish(),
+    "nextCallDate": zod.string().nullish(),
+    "industry": zod.string().nullish(),
+    "unit": zod.string().nullish(),
+    "notes": zod.string().nullish(),
+    "category": zod.string().nullish()
+  })),
+  "defaultSalesOwnerId": zod.number().nullish()
+})
+
+
+/**
+ * @summary Proforma Invoice item
+ */
+export const ProformaInvoiceItemSchema = zod.object({
+  "productName": zod.string(),
+  "hsnCode": zod.string().nullish(),
+  "quantity": zod.number(),
+  "unit": zod.string(),
+  "rate": zod.number(),
+  "amount": zod.number()
+})
+
+
+/**
+ * @summary Create a proforma invoice
+ */
+export const CreateProformaInvoiceBody = zod.object({
+  "customerName": zod.string(),
+  "companyName": zod.string().nullish(),
+  "address": zod.string().nullish(),
+  "gstNumber": zod.string().nullish(),
+  "mobile": zod.string().nullish(),
+  "taxableAmount": zod.number(),
+  "freight": zod.number().nullish(),
+  "cgst": zod.number().nullish(),
+  "sgst": zod.number().nullish(),
+  "igst": zod.number().nullish(),
+  "grandTotal": zod.number(),
+  "amountInWords": zod.string().nullish(),
+  "status": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "items": zod.array(ProformaInvoiceItemSchema)
+})
+
+
+/**
+ * @summary Proforma Invoice response
+ */
+export const ProformaInvoiceResponse = zod.object({
+  "id": zod.number(),
+  "invoiceNumber": zod.string(),
+  "customerName": zod.string(),
+  "companyName": zod.string().nullish(),
+  "address": zod.string().nullish(),
+  "gstNumber": zod.string().nullish(),
+  "mobile": zod.string().nullish(),
+  "taxableAmount": zod.number(),
+  "freight": zod.number(),
+  "cgst": zod.number(),
+  "sgst": zod.number(),
+  "igst": zod.number(),
+  "grandTotal": zod.number(),
+  "amountInWords": zod.string().nullish(),
+  "status": zod.string(),
+  "notes": zod.string().nullish(),
+  "createdBy": zod.number(),
+  "createdByUser": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "username": zod.string(),
+  "role": zod.enum(['admin', 'sales']),
+  "colorCode": zod.string(),
+  "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "createdAt": zod.string().optional()
+}).optional(),
+  "items": zod.array(ProformaInvoiceItemSchema.extend({ "id": zod.number() })),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+
+export const ListProformaInvoicesResponse = zod.array(ProformaInvoiceResponse)
+
+
+/**
+ * @summary Update proforma invoice status
+ */
+export const UpdateProformaInvoiceStatusBody = zod.object({
+  "status": zod.enum(['Draft', 'Sent', 'Approved', 'Rejected', 'Converted to Order']),
+  "notes": zod.string().nullish()
+})

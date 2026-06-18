@@ -8,6 +8,9 @@ import dealsRouter from "./deals";
 import activitiesRouter from "./activities";
 import reportsRouter from "./reports";
 import importRouter from "./import";
+import categoriesRouter from "./categories";
+import proformaInvoicesRouter from "./proforma-invoices";
+import notificationsRouter from "./notifications";
 
 const router: IRouter = Router();
 
@@ -20,5 +23,8 @@ router.use(dealsRouter);
 router.use(activitiesRouter);
 router.use(reportsRouter);
 router.use(importRouter);
+router.use(categoriesRouter);
+router.use(proformaInvoicesRouter);
+router.use(notificationsRouter);
 
 export default router;

@@ -72,7 +72,14 @@ router.patch("/users/:id", async (req, res) => {
   const parsed = UpdateUserBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Invalid input" }); return; }
   const { password, ...fields } = parsed.data;
-  const updateData: any = { ...fields };
+  const updateData: Record<string, unknown> = {};
+  if (fields.name !== undefined) updateData.name = fields.name;
+  if (fields.username !== undefined) updateData.username = fields.username;
+  if (fields.role !== undefined) updateData.role = fields.role;
+  if (fields.colorCode !== undefined) updateData.colorCode = fields.colorCode;
+  if (fields.unit !== undefined) updateData.unit = fields.unit;
+  if (fields.canViewAllReports !== undefined) updateData.canViewAllReports = fields.canViewAllReports;
+  if (fields.canAssignLeads !== undefined) updateData.canAssignLeads = fields.canAssignLeads;
   if (password) {
     updateData.passwordHash = await bcrypt.hash(password, 10);
   }

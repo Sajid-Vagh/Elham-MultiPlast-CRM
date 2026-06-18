@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { useListContacts, useListUsers, useDeleteContact, useBulkDeleteContacts, getListContactsQueryKey } from "@workspace/api-client-react";
+import { useListContacts, useListUsers, useDeleteContact, useBulkDeleteContacts, getListContactsQueryKey, useGetMe } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -11,11 +11,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Search, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
 
 export default function Leads() {
   const [search, setSearch] = useState("");
   const [salesOwnerId, setSalesOwnerId] = useState<number | undefined>();
   const [city, setCity] = useState<string | undefined>();
+  const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
+  const [unitFilter, setUnitFilter] = useState<string | undefined>();
 
   // Single delete
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -30,10 +33,16 @@ export default function Leads() {
   const deleteContact = useDeleteContact();
   const bulkDelete = useBulkDeleteContacts();
 
+  const { data: me } = useGetMe();
+  const isAdmin = me?.role === "admin";
+  const userUnit = me?.unit && me.unit !== "All" ? me.unit : undefined;
+
   const { data: contacts, isLoading } = useListContacts({
     search: search || undefined,
-    salesOwnerId,
+    salesOwnerId: isAdmin ? salesOwnerId : undefined,
     city: city || undefined,
+    category: categoryFilter,
+    unit: isAdmin ? (unitFilter || undefined) : userUnit,
   });
   const { data: users } = useListUsers();
 
@@ -114,17 +123,60 @@ export default function Leads() {
             data-no-cap="1"
           />
         </div>
-        <Select value={salesOwnerId?.toString() || "all"} onValueChange={(v) => setSalesOwnerId(v === "all" ? undefined : Number(v))}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="All Owners" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Owners</SelectItem>
-            {users?.map(u => (
-              <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {isAdmin && (
+          <>
+            <Select value={salesOwnerId?.toString() || "all"} onValueChange={(v) => setSalesOwnerId(v === "all" ? undefined : Number(v))}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="All Owners" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Owners</SelectItem>
+                {users?.map(u => (
+                  <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={unitFilter || "all"} onValueChange={(v) => setUnitFilter(v === "all" ? undefined : v)}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="All Units" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Units</SelectItem>
+                <SelectItem value="Himatnagar">Himatnagar</SelectItem>
+                <SelectItem value="Rajkot">Rajkot</SelectItem>
+                <SelectItem value="Surat">Surat</SelectItem>
+              </SelectContent>
+            </Select>
+          </>
+        )}
+      </div>
+
+      {/* Category filter tabs */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button
+          className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+            !categoryFilter
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted text-muted-foreground hover:bg-muted/80"
+          }`}
+          onClick={() => setCategoryFilter(undefined)}
+        >
+          All
+        </button>
+        {CATEGORIES.map(cat => (
+          <button
+            key={cat}
+            className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+              categoryFilter === cat
+                ? "text-white"
+                : "bg-muted text-muted-foreground hover:bg-muted/80"
+            }`}
+            style={categoryFilter === cat ? { backgroundColor: CATEGORY_COLORS[cat] } : {}}
+            onClick={() => setCategoryFilter(categoryFilter === cat ? undefined : cat)}
+          >
+            {cat}
+          </button>
+        ))}
       </div>
 
       {/* Bulk action bar — shown when items are selected */}
@@ -169,16 +221,19 @@ export default function Leads() {
               <TableHead>Company</TableHead>
               <TableHead>Mobile</TableHead>
               <TableHead>City</TableHead>
+              <TableHead>State</TableHead>
               <TableHead>Owner</TableHead>
               <TableHead>Industry</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead>Unit</TableHead>
               <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-8">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : contacts?.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No leads found.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No leads found.</TableCell></TableRow>
             ) : (
               contacts?.map((contact) => {
                 const isSelected = selectedIds.has(contact.id);
@@ -202,6 +257,7 @@ export default function Leads() {
                     <TableCell>{contact.companyName || "-"}</TableCell>
                     <TableCell>{contact.mobile}</TableCell>
                     <TableCell>{contact.city || "-"}</TableCell>
+                    <TableCell>{contact.state || "-"}</TableCell>
                     <TableCell>
                       {contact.salesOwner && (
                         <div className="flex items-center gap-2">
@@ -218,6 +274,20 @@ export default function Leads() {
                         <Badge variant="outline">{contact.industry}</Badge>
                       ) : "-"}
                     </TableCell>
+                    <TableCell>
+                      {contact.category && (
+                        <span
+                          className="text-xs font-medium px-2 py-0.5 rounded"
+                          style={{
+                            backgroundColor: `${CATEGORY_COLORS[contact.category] || "#6b7280"}20`,
+                            color: CATEGORY_COLORS[contact.category] || "#6b7280",
+                          }}
+                        >
+                          {contact.category}
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell>{contact.unit || "-"}</TableCell>
                     <TableCell>
                       <Button
                         variant="ghost"

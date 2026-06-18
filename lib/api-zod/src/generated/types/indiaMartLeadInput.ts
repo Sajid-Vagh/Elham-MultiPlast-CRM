@@ -16,6 +16,8 @@ export interface IndiaMartLeadInput {
   /** @nullable */
   city?: string | null;
   /** @nullable */
+  state?: string | null;
+  /** @nullable */
   requirement?: string | null;
   /** @nullable */
   quantity?: string | null;

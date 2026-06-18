@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { useLogin } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useLogin, getGetMeQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 
 export default function Login() {
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const login = useLogin();
   const { toast } = useToast();
 
@@ -21,6 +23,7 @@ export default function Login() {
     login.mutate({ data: { username, password } }, {
       onSuccess: (data) => {
         localStorage.setItem("crm_token", data.token);
+        queryClient.setQueryData(getGetMeQueryKey(), data.user);
         setLocation("/dashboard");
       },
       onError: (err) => {

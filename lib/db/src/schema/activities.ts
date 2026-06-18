@@ -12,7 +12,10 @@ export const activitiesTable = pgTable("activities", {
   type: text("type").notNull(),
   notes: text("notes"),
   followUpDate: text("follow_up_date"),
+  followUpTime: text("follow_up_time"),
   followUpType: text("follow_up_type"),
+  callStatus: text("call_status").default("Pending"),
+  notificationStatus: text("notification_status").default("none"),
   createdBy: integer("created_by").references(() => usersTable.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

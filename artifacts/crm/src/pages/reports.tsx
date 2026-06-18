@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import {
   useGetPipelineReport, useGetReportByOwner, useGetReportByCity,
-  useGetReportByProduct, useGetReportSummary, useListUsers, useGetReportLostReasons
+  useGetReportByProduct, useGetReportSummary, useListUsers, useGetReportLostReasons, useGetMe
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -48,7 +48,9 @@ export default function Reports() {
   const { data: byCity } = useGetReportByCity({ month: month || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
   const { data: byProduct } = useGetReportByProduct({ month: month || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
   const { data: lostReasons } = useGetReportLostReasons({ month: month || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined, unit: unit || undefined });
+  const { data: me } = useGetMe();
   const { data: users } = useListUsers();
+  const canViewAllReports = me?.role === "admin" || me?.canViewAllReports;
 
   const totalLost = lostReasons?.reduce((s, r) => s + r.count, 0) ?? 0;
 
@@ -88,13 +90,15 @@ export default function Reports() {
           <div className="flex gap-2 flex-wrap">
             <MonthPicker value={month} onChange={setMonth} />
             <UnitPicker value={unit} onChange={setUnit} />
-            <Select value={ownerId || "all"} onValueChange={v => setOwnerId(v === "all" ? "" : v)}>
-              <SelectTrigger className="w-36"><SelectValue placeholder="All Owners" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Owners</SelectItem>
-                {users?.map(u => <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            {canViewAllReports && (
+              <Select value={ownerId || "all"} onValueChange={v => setOwnerId(v === "all" ? "" : v)}>
+                <SelectTrigger className="w-36"><SelectValue placeholder="All Owners" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Owners</SelectItem>
+                  {users?.map(u => <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </div>
 

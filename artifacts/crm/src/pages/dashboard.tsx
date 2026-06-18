@@ -1,11 +1,12 @@
-import { useState } from "react";
-import { useGetReportSummary, useListActivities, useGetPipelineReport, useListContacts } from "@workspace/api-client-react";
+import { useState, useMemo, useEffect } from "react";
+import { useGetReportSummary, useGetPipelineReport, useListContacts, useListActivities, useGetMe } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Activity, Briefcase, Users, DollarSign, TrendingUp, Calendar, AlertCircle, PhoneCall, X } from "lucide-react";
+import { Briefcase, Users, DollarSign, TrendingUp, AlertCircle, PhoneCall, X, Clock, Phone, CheckCircle2, FolderTree } from "lucide-react";
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
 
 function daysDiff(dateStr: string): number {
   const today = new Date();
@@ -15,15 +16,61 @@ function daysDiff(dateStr: string): number {
   return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
 
+function todayStr(): string {
+  return new Date().toISOString().split("T")[0]!;
+}
+
 export default function Dashboard() {
   const [followUpDateFilter, setFollowUpDateFilter] = useState("");
+  const [categoryCounts, setCategoryCounts] = useState<{ category: string; count: number }[]>([]);
+  const { data: me } = useGetMe();
+  const isAdmin = me?.role === "admin";
+
+  useEffect(() => {
+    fetch("/api/categories/counts", {
+      headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
+    })
+      .then(r => r.json())
+      .then(data => setCategoryCounts(data))
+      .catch(() => {});
+  }, []);
 
   const { data: summary, isLoading: isLoadingSummary } = useGetReportSummary();
-  const { data: activities, isLoading: isLoadingActivities } = useListActivities({ upcoming: true });
   const { data: pipeline, isLoading: isLoadingPipeline } = useGetPipelineReport();
   const { data: dueContacts, isLoading: isLoadingDue } = useListContacts({ followUpDue: true });
+  const { data: todayActivities } = useListActivities({ date: todayStr() });
+  const { data: allContacts } = useListContacts();
 
-  if (isLoadingSummary || isLoadingActivities || isLoadingPipeline) {
+  const unitStats = useMemo(() => {
+    if (!allContacts) return { Himatnagar: 0, Rajkot: 0, Surat: 0 };
+    const stats: Record<string, number> = {};
+    for (const c of allContacts) {
+      const u = c.unit || "Unassigned";
+      stats[u] = (stats[u] || 0) + 1;
+    }
+    return { Himatnagar: stats.Himatnagar || 0, Rajkot: stats.Rajkot || 0, Surat: stats.Surat || 0 };
+  }, [allContacts]);
+
+  const todayStats = useMemo(() => {
+    if (!todayActivities) return { today: 0, completed: 0, pending: 0 };
+    const total = todayActivities.length;
+    const completed = todayActivities.filter(a => a.callStatus === "Completed").length;
+    return { today: total, completed, pending: total - completed };
+  }, [todayActivities]);
+
+  const overdueCount = useMemo(() => {
+    if (!dueContacts) return 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return dueContacts.filter(c => {
+      if (!c.nextCallDate) return false;
+      const d = new Date(c.nextCallDate);
+      d.setHours(0, 0, 0, 0);
+      return d < today;
+    }).length;
+  }, [dueContacts]);
+
+  if (isLoadingSummary || isLoadingPipeline) {
     return <div className="p-8 flex items-center justify-center h-full">Loading dashboard...</div>;
   }
 
@@ -42,7 +89,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
+            <CardTitle className="text-sm font-medium">{isAdmin ? "Total Leads" : "My Leads"}</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -54,7 +101,7 @@ export default function Dashboard() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Deals</CardTitle>
+            <CardTitle className="text-sm font-medium">{isAdmin ? "Active Deals" : "My Deals"}</CardTitle>
             <Briefcase className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -85,6 +132,56 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Today's Calls Widget */}
+      {!isLoadingDue && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Link href="/follow-ups" className="block">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer border-blue-200">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Today's Calls</CardTitle>
+                <Phone className="h-4 w-4 text-blue-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-blue-600">{todayStats.today}</div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/follow-ups" className="block">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer border-green-200">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Completed</CardTitle>
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">{todayStats.completed}</div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/follow-ups" className="block">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer border-orange-200">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Pending</CardTitle>
+                <Clock className="h-4 w-4 text-orange-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-orange-600">{todayStats.pending}</div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/follow-ups" className="block">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer border-red-200">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Overdue</CardTitle>
+                <AlertCircle className="h-4 w-4 text-red-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-red-600">{overdueCount}</div>
+              </CardContent>
+            </Card>
+          </Link>
+        </div>
+      )}
 
       {/* Follow-up reminders — overdue/due-today contacts */}
       {!isLoadingDue && dueContacts && dueContacts.length > 0 && (
@@ -164,55 +261,58 @@ export default function Dashboard() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <Card className="col-span-1">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              Upcoming Activity Follow-ups
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {activities?.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">No upcoming follow-ups.</p>
-              ) : (
-                activities?.slice(0, 6).map((activity) => {
-                  const diff = activity.followUpDate ? daysDiff(activity.followUpDate) : 0;
-                  const isToday = diff === 0;
-                  return (
-                    <div key={activity.id} className="flex items-start gap-4 pb-4 border-b last:border-0 last:pb-0">
-                      <div className={`p-2 rounded-full ${isToday ? "bg-orange-100" : "bg-primary/10"}`}>
-                        <Calendar className={`h-4 w-4 ${isToday ? "text-orange-600" : "text-primary"}`} />
-                      </div>
-                      <div className="flex-1 space-y-1">
-                        <p className="text-sm font-medium leading-none">
-                          {activity.type}
-                          {activity.followUpType && activity.followUpType !== activity.type && (
-                            <span className="text-muted-foreground font-normal"> → {activity.followUpType}</span>
-                          )}
-                        </p>
-                        {activity.notes && (
-                          <p className="text-sm text-muted-foreground line-clamp-1">{activity.notes}</p>
-                        )}
-                        <p className={`text-xs font-medium ${isToday ? "text-orange-600" : "text-muted-foreground"}`}>
-                          {isToday ? "Today" : `Due: ${new Date(activity.followUpDate || '').toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`}
-                        </p>
-                      </div>
-                      {activity.dealId && (
-                        <Link href={`/deals/${activity.dealId}`} className="text-xs text-primary hover:underline flex-shrink-0">
-                          View Deal
-                        </Link>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        {/* Unit-wise Stats */}
+        {isAdmin && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {["Himatnagar", "Rajkot", "Surat"].map(u => (
+              <Card key={u}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">{u}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{unitStats[u as keyof typeof unitStats]}</div>
+                  <p className="text-xs text-muted-foreground">Leads</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
 
-        <Card className="col-span-1">
+        {/* Category Summary Widget */}
+        {categoryCounts.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <FolderTree className="h-5 w-5 text-orange-500" />
+                  Category Summary
+                </CardTitle>
+                <Link href="/categories">
+                  <Badge className="cursor-pointer bg-orange-100 text-orange-700 hover:bg-orange-200 border-0">
+                    View All
+                  </Badge>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {categoryCounts.map(({ category, count }) => (
+                  <Link key={category} href={`/categories`} className="block">
+                    <div className="text-center p-3 rounded-lg border hover:shadow-sm transition-shadow cursor-pointer">
+                      <span className="text-2xl">{category === "My Client" ? "⭐" : category === "Regular Follow up" ? "📋" : "📁"}</span>
+                      <p className="text-lg font-bold mt-1" style={{ color: CATEGORY_COLORS[category] }}>
+                        {count}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">{category}</p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card>
           <CardHeader>
             <CardTitle>Pipeline Overview</CardTitle>
           </CardHeader>
@@ -242,7 +342,6 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-      </div>
     </div>
   );
 }

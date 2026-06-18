@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import {
-  useGetDeal, useUpdateDeal, useListDealProducts, useAddDealProduct, useRemoveDealProduct,
+  useGetDeal, useUpdateDeal, useDeleteDeal, useListDealProducts, useAddDealProduct, useRemoveDealProduct,
   useListActivities, useCreateActivity, useListProducts, useListUsers,
   getGetDealQueryKey, getListDealProductsQueryKey, getListActivitiesQueryKey
 } from "@workspace/api-client-react";
@@ -12,10 +12,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FolderTree } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { CategoryBadge } from "@/components/category-badge";
+import { MoveCategoryDialog } from "@/components/move-category-dialog";
 
 const STAGES = ["New", "CL Sent", "Price Given", "Samples Sent", "Samples Received", "PI Sent", "Won", "Lost"];
 const STAGE_PROBS: Record<string, number> = { "New": 10, "CL Sent": 40, "Price Given": 50, "Samples Sent": 60, "Samples Received": 60, "PI Sent": 90, "Won": 100, "Lost": 0 };
@@ -60,6 +62,7 @@ export default function DealDetail() {
   const dealId = Number(id);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
 
   const { data: deal, isLoading } = useGetDeal(dealId, { query: { enabled: !!dealId, queryKey: getGetDealQueryKey(dealId) } });
   const { data: dealProducts } = useListDealProducts(dealId, { query: { enabled: !!dealId, queryKey: getListDealProductsQueryKey(dealId) } });
@@ -79,13 +82,19 @@ export default function DealDetail() {
   const [actType, setActType] = useState("Call");
   const [actNotes, setActNotes] = useState("");
   const [actFollowUp, setActFollowUp] = useState("");
+  const [actFollowUpTime, setActFollowUpTime] = useState("");
   const [actFollowType, setActFollowType] = useState("Call");
   const [actDialogOpen, setActDialogOpen] = useState(false);
 
   const [pendingStage, setPendingStage] = useState<string | null>(null);
   const [lostReason, setLostReason] = useState("");
+  const [lostCategory, setLostCategory] = useState<string>("");
   const [wonConfirmOpen, setWonConfirmOpen] = useState(false);
   const [lostReasonOpen, setLostReasonOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [showMoveCategory, setShowMoveCategory] = useState(false);
+
+  const deleteDeal = useDeleteDeal();
 
   // Activity date filter
   const [actQuick, setActQuick] = useState<string>("all");
@@ -115,16 +124,18 @@ export default function DealDetail() {
   const handleStageSelect = (newStage: string) => {
     if (newStage === deal.stage) return;
     if (newStage === "Won") { setPendingStage("Won"); setWonConfirmOpen(true); return; }
-    if (newStage === "Lost") { setPendingStage("Lost"); setLostReason(""); setLostReasonOpen(true); return; }
-    doStageUpdate(newStage, null);
+    if (newStage === "Lost") { setPendingStage("Lost"); setLostReason(""); setLostCategory(""); setLostReasonOpen(true); return; }
+    doStageUpdate(newStage, null, null);
   };
 
-  const doStageUpdate = (stage: string, reason: string | null) => {
-    updateDeal.mutate({ id: dealId, data: { stage: stage as any, lostReason: reason } }, {
+  const doStageUpdate = (stage: string, reason: string | null, category: string | null) => {
+    const data: any = { stage: stage as any, lostReason: reason };
+    if (category) data.lostCategory = category;
+    updateDeal.mutate({ id: dealId, data }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) });
         toast({ title: `Deal moved to ${stage}` });
-        setWonConfirmOpen(false); setLostReasonOpen(false); setPendingStage(null); setLostReason("");
+        setWonConfirmOpen(false); setLostReasonOpen(false); setPendingStage(null); setLostReason(""); setLostCategory("");
       },
       onError: () => toast({ title: "Error updating stage", variant: "destructive" }),
     });
@@ -155,12 +166,12 @@ export default function DealDetail() {
   };
 
   const handleLogActivity = () => {
-    createActivity.mutate({ data: { dealId, type: actType as any, notes: actNotes || null, followUpDate: actFollowUp || null, followUpType: actFollowType || null } }, {
+    createActivity.mutate({ data: { dealId, type: actType as any, notes: actNotes || null, followUpDate: actFollowUp || null, followUpTime: actFollowUpTime || null, followUpType: actFollowType || null } }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ dealId }) });
         queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) });
         toast({ title: "Activity logged" });
-        setActDialogOpen(false); setActNotes(""); setActFollowUp("");
+        setActDialogOpen(false); setActNotes(""); setActFollowUp(""); setActFollowUpTime("");
       },
       onError: () => toast({ title: "Error", variant: "destructive" }),
     });
@@ -181,10 +192,21 @@ export default function DealDetail() {
     <div className="p-8 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
         <Link href="/deals"><Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-1" /> Back</Button></Link>
+        <Button variant="outline" size="sm" onClick={() => setShowMoveCategory(true)}>
+          <FolderTree className="h-4 w-4 mr-1" /> Move
+        </Button>
+        <Button
+          variant="outline" size="sm"
+          className="text-destructive border-destructive/40 hover:bg-destructive/10"
+          onClick={() => setDeleteOpen(true)}
+        >
+          <Trash2 className="h-4 w-4 mr-1" /> Delete
+        </Button>
         <div className="flex-1">
           <div className="flex items-center gap-3">
             {owner && <div className="w-4 h-4 rounded-full shadow-sm" style={{ backgroundColor: owner.colorCode }} />}
             <h1 className="text-2xl font-bold">{deal.title || `Deal #${deal.id}`}</h1>
+            <CategoryBadge category={contact?.category} />
             <span className={`text-sm px-2.5 py-1 rounded-full font-medium ${STAGE_COLORS[deal.stage] || "bg-gray-100"}`}>{deal.stage}</span>
           </div>
           {contact && <p className="text-muted-foreground text-sm">{contact.name}{contact.companyName ? ` — ${contact.companyName}` : ""}</p>}
@@ -295,6 +317,7 @@ export default function DealDetail() {
                     </div>
                     <div><Label>Notes</Label><Textarea value={actNotes} onChange={e => setActNotes(e.target.value)} placeholder="Notes from this interaction..." /></div>
                     <div><Label>Next Follow-up Date</Label><Input type="date" value={actFollowUp} onChange={e => setActFollowUp(e.target.value)} /></div>
+                    {actFollowUp && <div><Label>Follow-up Time</Label><Input type="time" value={actFollowUpTime} onChange={e => setActFollowUpTime(e.target.value)} /></div>}
                     <div><Label>Follow-up Type</Label>
                       <Select value={actFollowType} onValueChange={setActFollowType}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
@@ -349,6 +372,37 @@ export default function DealDetail() {
         </div>
       </div>
 
+      {/* Delete confirmation */}
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{deal.title || `Deal #${deal.id}`}"?</AlertDialogTitle>
+            <AlertDialogDescription>This will permanently delete this deal and all its products and activity history. This action cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              deleteDeal.mutate({ id: dealId }, {
+                onSuccess: () => {
+                  queryClient.invalidateQueries();
+                  toast({ title: "Deal deleted" });
+                  setLocation("/deals");
+                },
+                onError: () => toast({ title: "Failed to delete deal", variant: "destructive" }),
+              });
+            }} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete Deal</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <MoveCategoryDialog
+        open={showMoveCategory}
+        onOpenChange={setShowMoveCategory}
+        contactIds={contact ? [contact.id] : []}
+        currentCategory={contact?.category}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) })}
+      />
+
       {/* Won confirmation */}
       <AlertDialog open={wonConfirmOpen} onOpenChange={setWonConfirmOpen}>
         <AlertDialogContent>
@@ -362,32 +416,59 @@ export default function DealDetail() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setPendingStage(null)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction className="bg-green-600 text-white hover:bg-green-700" onClick={() => doStageUpdate("Won", null)}>
+            <AlertDialogAction className="bg-green-600 text-white hover:bg-green-700" onClick={() => doStageUpdate("Won", null, null)}>
               Yes, Mark as Won
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Lost reason */}
+      {/* Lost reason + category */}
       <AlertDialog open={lostReasonOpen} onOpenChange={setLostReasonOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-red-700">Mark as Lost — Select Reason</AlertDialogTitle>
-            <AlertDialogDescription>Please select why this deal was lost. This helps improve the reports.</AlertDialogDescription>
+            <AlertDialogTitle className="text-red-700">Mark as Lost</AlertDialogTitle>
+            <AlertDialogDescription>Select the reason and categorize the lost enquiry for future follow-up.</AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="px-1 py-2">
-            <Select value={lostReason} onValueChange={setLostReason}>
-              <SelectTrigger><SelectValue placeholder="Select reason" /></SelectTrigger>
-              <SelectContent>{LOST_REASONS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
-            </Select>
+          <div className="space-y-4 px-1 py-2">
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Lost Reason</label>
+              <Select value={lostReason} onValueChange={setLostReason}>
+                <SelectTrigger><SelectValue placeholder="Select reason" /></SelectTrigger>
+                <SelectContent>{LOST_REASONS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Lead Potential (Category)</label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: "A", label: "High Potential", sub: "Category A", color: "#60a5fa" },
+                  { value: "B", label: "Medium Potential", sub: "Category B", color: "#f59e0b" },
+                  { value: "C", label: "No/Low Potential", sub: "Category C", color: "#a78bfa" },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={`p-3 rounded-lg border-2 text-left transition-all ${
+                      lostCategory === opt.value
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                    onClick={() => setLostCategory(opt.value)}
+                  >
+                    <div className="text-xs font-semibold">{opt.label}</div>
+                    <div className="text-xs mt-0.5" style={{ color: opt.color }}>{opt.sub}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setPendingStage(null)}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={!lostReason}
-              onClick={() => { if (lostReason) doStageUpdate("Lost", lostReason); }}
+              disabled={!lostReason || !lostCategory}
+              onClick={() => { if (lostReason && lostCategory) doStageUpdate("Lost", lostReason, lostCategory); }}
             >
               Confirm Lost
             </AlertDialogAction>

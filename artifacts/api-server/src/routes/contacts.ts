@@ -2,7 +2,8 @@ import { Router, type IRouter } from "express";
 import { db, contactsTable, usersTable } from "@workspace/db";
 import { eq, or, and, ilike, lte, isNotNull, SQL } from "drizzle-orm";
 import { CreateContactBody, UpdateContactBody, GetContactParams, UpdateContactParams, DeleteContactParams, ListContactsQueryParams } from "@workspace/api-zod";
-import { logger } from "../lib/logger";
+import { getUserFromRequest } from "./auth";
+import { createNotification } from "./notifications";
 
 const router: IRouter = Router();
 
@@ -14,13 +15,22 @@ async function withOwner(contact: typeof contactsTable.$inferSelect) {
 
 router.get("/contacts", async (req, res) => {
   try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
     const params = ListContactsQueryParams.safeParse(req.query);
     const conditions: SQL[] = [];
+
+    if (user.role === "sales") {
+      conditions.push(eq(contactsTable.salesOwnerId, user.id));
+    }
+
     if (params.success) {
-      if (params.data.salesOwnerId) conditions.push(eq(contactsTable.salesOwnerId, params.data.salesOwnerId));
+      if (params.data.salesOwnerId && user.role === "admin") conditions.push(eq(contactsTable.salesOwnerId, params.data.salesOwnerId));
       if (params.data.city) conditions.push(ilike(contactsTable.city, `%${params.data.city}%`));
       if (params.data.unit) conditions.push(eq(contactsTable.unit, params.data.unit));
       if (params.data.industry) conditions.push(eq(contactsTable.industry, params.data.industry));
+      if (params.data.category) conditions.push(eq(contactsTable.category, params.data.category));
       if (params.data.search) {
         const s = `%${params.data.search}%`;
         conditions.push(
@@ -56,13 +66,36 @@ router.get("/contacts", async (req, res) => {
 });
 
 router.post("/contacts", async (req, res) => {
+  const user = await getUserFromRequest(req);
+  if (!user) {
+    res.status(403).json({ error: "Unauthorized" });
+    return;
+  }
   const parsed = CreateContactBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid input", details: parsed.error });
     return;
   }
+  const values = parsed.data;
+  if (user.role === "sales" && !user.canAssignLeads) {
+    values.salesOwnerId = user.id;
+  }
   try {
-    const [contact] = await db.insert(contactsTable).values(parsed.data).returning();
+    const [contact] = await db.insert(contactsTable).values(values).returning();
+    if (contact && values.salesOwnerId && values.salesOwnerId !== user.id) {
+      const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, values.salesOwnerId));
+      if (owner) {
+        await createNotification({
+          userId: values.salesOwnerId,
+          type: "assignment",
+          title: "New Lead Assigned",
+          message: `Customer: ${contact.name}\nAssigned By: ${user.name}`,
+          link: `/leads/${contact.id}`,
+          relatedId: contact.id,
+          relatedType: "contact",
+        });
+      }
+    }
     res.status(201).json(await withOwner(contact!));
   } catch (err: any) {
     if (err?.code === "23505") {
@@ -129,8 +162,14 @@ router.get("/contacts/:id", async (req, res) => {
   const parsed = GetContactParams.safeParse({ id: Number(req.params.id) });
   if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
     const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, parsed.data.id));
     if (!contact) { res.status(404).json({ error: "Not found" }); return; }
+    if (user.role === "sales" && contact.salesOwnerId !== user.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
     res.json(await withOwner(contact));
   } catch (err) {
     req.log.error({ err }, "Get contact error");
@@ -144,8 +183,38 @@ router.patch("/contacts/:id", async (req, res) => {
   const parsed = UpdateContactBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Invalid input" }); return; }
   try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const [oldContact] = await db.select().from(contactsTable).where(eq(contactsTable.id, params.data.id));
+    if (!oldContact) { res.status(404).json({ error: "Not found" }); return; }
+    if (user.role === "sales" && oldContact.salesOwnerId !== user.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    if (user.role === "sales" && !user.canAssignLeads && parsed.data.salesOwnerId !== undefined) {
+      parsed.data.salesOwnerId = user.id;
+    }
+
     const [contact] = await db.update(contactsTable).set(parsed.data).where(eq(contactsTable.id, params.data.id)).returning();
     if (!contact) { res.status(404).json({ error: "Not found" }); return; }
+
+    const newOwnerId = parsed.data.salesOwnerId;
+    if (newOwnerId !== undefined && newOwnerId !== oldContact.salesOwnerId) {
+      const assignedByName = user?.name || "Admin";
+      const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, newOwnerId));
+      if (owner) {
+        await createNotification({
+          userId: newOwnerId,
+          type: "assignment",
+          title: "New Lead Assigned",
+          message: `Customer: ${contact.name}\nAssigned By: ${assignedByName}`,
+          link: `/leads/${contact.id}`,
+          relatedId: contact.id,
+          relatedType: "contact",
+        });
+      }
+    }
+
     res.json(await withOwner(contact));
   } catch (err: any) {
     if (err?.code === "23505") {
@@ -158,6 +227,8 @@ router.patch("/contacts/:id", async (req, res) => {
 });
 
 router.post("/contacts/bulk-delete", async (req, res) => {
+  const user = await getUserFromRequest(req);
+  if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
   const { ids } = req.body as { ids: number[] };
   if (!Array.isArray(ids) || ids.length === 0) {
     res.status(400).json({ error: "ids must be a non-empty array" });
@@ -166,6 +237,10 @@ router.post("/contacts/bulk-delete", async (req, res) => {
   try {
     let deleted = 0;
     for (const id of ids) {
+      if (user.role === "sales") {
+        const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId }).from(contactsTable).where(eq(contactsTable.id, id));
+        if (!contact || contact.salesOwnerId !== user.id) continue;
+      }
       await db.delete(contactsTable).where(eq(contactsTable.id, id));
       deleted++;
     }
@@ -180,6 +255,15 @@ router.delete("/contacts/:id", async (req, res) => {
   const params = DeleteContactParams.safeParse({ id: Number(req.params.id) });
   if (!params.success) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (user.role === "sales") {
+      const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId }).from(contactsTable).where(eq(contactsTable.id, params.data.id));
+      if (!contact || contact.salesOwnerId !== user.id) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+    }
     await db.delete(contactsTable).where(eq(contactsTable.id, params.data.id));
     res.status(204).send();
   } catch (err) {

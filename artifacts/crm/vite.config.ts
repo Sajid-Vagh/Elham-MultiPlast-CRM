@@ -1,8 +1,15 @@
-import { defineConfig } from "vite";
+import { defineConfig, createLogger } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+
+const logger = createLogger();
+const { error: originalError } = logger;
+logger.error = (msg, options) => {
+  if (typeof msg === "string" && msg.includes("http proxy error")) return;
+  originalError(msg, options);
+};
 
 const rawPort = process.env.PORT;
 
@@ -26,7 +33,10 @@ if (!basePath) {
   );
 }
 
+const apiPort = process.env.API_PORT ?? "8080";
+
 export default defineConfig({
+  customLogger: logger,
   base: basePath,
   plugins: [
     react(),
@@ -63,6 +73,12 @@ export default defineConfig({
     strictPort: true,
     host: "0.0.0.0",
     allowedHosts: true,
+    proxy: {
+      "/api": {
+        target: `http://localhost:${apiPort}`,
+        changeOrigin: true,
+      },
+    },
     fs: {
       strict: true,
     },
