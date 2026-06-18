@@ -13,7 +13,8 @@ import { CategoryBadge } from "@/components/category-badge";
 import { MoveCategoryDialog } from "@/components/move-category-dialog";
 
 function todayStr(): string {
-  return new Date().toISOString().split("T")[0]!;
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function formatTime(time: string | null | undefined): string {
@@ -36,7 +37,6 @@ export default function FollowUps() {
   const { toast } = useToast();
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
-  const userUnit = me?.unit && me.unit !== "All" ? me.unit : undefined;
 
   const activeDate = useMemo(() => {
     if (showToday) return todayStr();
@@ -48,7 +48,7 @@ export default function FollowUps() {
     { query: { staleTime: 30_000 } }
   );
 
-  const activeUnit = isAdmin ? unitFilter : userUnit;
+  const activeUnit = unitFilter;
   const filteredActivities = useMemo(() => {
     if (!activities) return [];
     if (!activeUnit) return activities;
@@ -112,19 +112,17 @@ export default function FollowUps() {
               )}
             </CardTitle>
             <div className="flex items-center gap-2">
-              {isAdmin && (
-                <Select value={unitFilter || "all"} onValueChange={(v) => setUnitFilter(v === "all" ? undefined : v)}>
-                  <SelectTrigger className="w-[140px] h-8">
-                    <SelectValue placeholder="All Units" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Units</SelectItem>
-                    <SelectItem value="Himatnagar">Himatnagar</SelectItem>
-                    <SelectItem value="Rajkot">Rajkot</SelectItem>
-                    <SelectItem value="Surat">Surat</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
+              <Select value={unitFilter || "all"} onValueChange={(v) => setUnitFilter(v === "all" ? undefined : v)}>
+                <SelectTrigger className="w-[140px] h-8">
+                  <SelectValue placeholder="All Units" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Units</SelectItem>
+                  <SelectItem value="Himatnagar">Himatnagar</SelectItem>
+                  <SelectItem value="Rajkot">Rajkot</SelectItem>
+                  <SelectItem value="Surat">Surat</SelectItem>
+                </SelectContent>
+              </Select>
               <Button
                 variant={showToday ? "default" : "outline"}
                 size="sm"

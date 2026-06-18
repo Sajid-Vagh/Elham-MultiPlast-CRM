@@ -47,14 +47,17 @@ const ACT_STYLE: Record<string, { bg: string; fg: string; icon: string }> = {
   "FollowUp": { bg: "#ffedd5", fg: "#c2410c", icon: "🔔" },
 };
 
-function todayStr() { return new Date().toISOString().split("T")[0]!; }
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function todayStr() { return localDateStr(new Date()); }
 function daysAgoStr(n: number) {
   const d = new Date(); d.setDate(d.getDate() - n);
-  return d.toISOString().split("T")[0]!;
+  return localDateStr(d);
 }
 function monthStartStr() {
   const d = new Date(); d.setDate(1);
-  return d.toISOString().split("T")[0]!;
+  return localDateStr(d);
 }
 
 export default function DealDetail() {
@@ -166,14 +169,22 @@ export default function DealDetail() {
   };
 
   const handleLogActivity = () => {
-    createActivity.mutate({ data: { dealId, type: actType as any, notes: actNotes || null, followUpDate: actFollowUp || null, followUpTime: actFollowUpTime || null, followUpType: actFollowType || null } }, {
-      onSuccess: () => {
+    const payload = { dealId, type: actType as any, notes: actNotes || null, followUpDate: actFollowUp || null, followUpTime: actFollowUpTime || null, followUpType: actFollowType || null };
+    console.log("[DEBUG] handleLogActivity payload:", JSON.stringify(payload));
+    createActivity.mutate({ data: payload }, {
+      onSuccess: (result) => {
+        console.log("[DEBUG] handleLogActivity success:", JSON.stringify({ id: result?.id, type: result?.type, followUpDate: result?.followUpDate, createdBy: result?.createdBy }));
+        console.log("[DEBUG] Invalidating queryKey:", JSON.stringify(getListActivitiesQueryKey({ dealId })));
         queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ dealId }) });
         queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) });
+        queryClient.invalidateQueries({ queryKey: ["/api/activities"] });
         toast({ title: "Activity logged" });
         setActDialogOpen(false); setActNotes(""); setActFollowUp(""); setActFollowUpTime("");
       },
-      onError: () => toast({ title: "Error", variant: "destructive" }),
+      onError: (e) => {
+        console.log("[DEBUG] handleLogActivity error:", e);
+        toast({ title: "Error", variant: "destructive" });
+      },
     });
   };
 

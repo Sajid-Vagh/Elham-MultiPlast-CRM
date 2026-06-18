@@ -5,6 +5,8 @@ import { CreateProductBody, UpdateProductBody, GetProductParams, UpdateProductPa
 
 const router: IRouter = Router();
 
+const DUPLICATE_MSG = "Product Code already exists. Please use a different Product Code.";
+
 router.get("/products", async (req, res) => {
   try {
     const products = await db.select().from(productsTable).orderBy(productsTable.name);
@@ -22,11 +24,17 @@ router.post("/products", async (req, res) => {
     return;
   }
   try {
-    const [product] = await db.insert(productsTable).values(parsed.data).returning();
+    const [existing] = await db.select({ id: productsTable.id }).from(productsTable).where(eq(productsTable.productCode, parsed.data.productCode)).limit(1);
+    if (existing) {
+      res.status(409).json({ error: DUPLICATE_MSG });
+      return;
+    }
+    const insertData = { ...parsed.data, pricePerUnit: parsed.data.pricePerUnit?.toString() ?? null } as any;
+    const [product] = await db.insert(productsTable).values(insertData).returning();
     res.status(201).json(product);
   } catch (err: any) {
     if (err?.code === "23505") {
-      res.status(409).json({ error: "Product code already exists" });
+      res.status(409).json({ error: DUPLICATE_MSG });
       return;
     }
     req.log.error({ err }, "Create product error");
@@ -53,7 +61,20 @@ router.patch("/products/:id", async (req, res) => {
   const parsed = UpdateProductBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Invalid input" }); return; }
   try {
-    const [product] = await db.update(productsTable).set(parsed.data).where(eq(productsTable.id, params.data.id)).returning();
+    if (parsed.data.productCode) {
+      const [existing] = await db.select({ id: productsTable.id }).from(productsTable)
+        .where(eq(productsTable.productCode, parsed.data.productCode))
+        .limit(1);
+      if (existing && existing.id !== params.data.id) {
+        res.status(409).json({ error: DUPLICATE_MSG });
+        return;
+      }
+    }
+    const updateData = { ...parsed.data } as any;
+    if ("pricePerUnit" in parsed.data) {
+      updateData.pricePerUnit = parsed.data.pricePerUnit?.toString() ?? null;
+    }
+    const [product] = await db.update(productsTable).set(updateData).where(eq(productsTable.id, params.data.id)).returning();
     if (!product) { res.status(404).json({ error: "Not found" }); return; }
     res.json(product);
   } catch (err) {

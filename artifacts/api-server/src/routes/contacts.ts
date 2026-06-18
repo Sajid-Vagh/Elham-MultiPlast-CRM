@@ -77,7 +77,7 @@ router.post("/contacts", async (req, res) => {
     return;
   }
   const values = parsed.data;
-  if (user.role === "sales" && !user.canAssignLeads) {
+  if (user.role === "sales" && !user.canAssignLeads && !values.salesOwnerId) {
     values.salesOwnerId = user.id;
   }
   try {
@@ -192,7 +192,9 @@ router.patch("/contacts/:id", async (req, res) => {
       return;
     }
     if (user.role === "sales" && !user.canAssignLeads && parsed.data.salesOwnerId !== undefined) {
-      parsed.data.salesOwnerId = user.id;
+      if (parsed.data.salesOwnerId !== user.id) {
+        delete parsed.data.salesOwnerId;
+      }
     }
 
     const [contact] = await db.update(contactsTable).set(parsed.data).where(eq(contactsTable.id, params.data.id)).returning();

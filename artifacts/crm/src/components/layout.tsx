@@ -55,7 +55,7 @@ function useTimeBasedReminders(activities: { id: number; followUpDate?: string |
       const currentHours = now.getHours();
       const currentMinutes = now.getMinutes();
       const currentTotal = currentHours * 60 + currentMinutes;
-      const today = now.toISOString().split("T")[0]!;
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
       for (const a of activities) {
         if (a.followUpDate !== today || !a.followUpTime) continue;
@@ -206,7 +206,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
   const followUpCount = upcomingActivities?.length ?? 0;
 
-  const today = new Date().toISOString().split("T")[0]!;
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const todayActivities = useMemo(() => {
     if (!upcomingActivities) return [];
     return upcomingActivities.filter(a => a.followUpDate === today && !dismissedToday.has(a.id));

@@ -121,7 +121,7 @@ router.patch("/deals/:id", async (req, res) => {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
-    if (user.role === "sales" && parsed.data.salesOwnerId !== undefined) {
+    if (user.role === "sales" && parsed.data.salesOwnerId !== undefined && parsed.data.salesOwnerId !== oldDeal.salesOwnerId) {
       delete updateData.salesOwnerId;
     }
 

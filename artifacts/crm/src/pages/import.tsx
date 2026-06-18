@@ -819,7 +819,7 @@ export default function ImportPage() {
                     <SelectTrigger><SelectValue placeholder="Select owner" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Auto-assign</SelectItem>
-                      {users?.filter(u => !unit || u.unit === "All" || u.unit === unit).map(u => (
+                      {users?.map(u => (
                         <SelectItem key={u.id} value={u.id.toString()}>
                           <span className="flex items-center gap-2">
                             <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: u.colorCode }} />
@@ -998,7 +998,7 @@ export default function ImportPage() {
                         <SelectTrigger><SelectValue placeholder="Select owner" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">Required (skip rows without owner)</SelectItem>
-                          {users?.filter(u => !unit || u.unit === "All" || u.unit === unit).map(u => <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>)}
+                          {users?.map(u => <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1124,7 +1124,7 @@ export default function ImportPage() {
                   <SelectTrigger><SelectValue placeholder="Sales Owner" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Required (skip without owner)</SelectItem>
-                    {users?.filter(u => !unit || u.unit === "All" || u.unit === unit).map(u => <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>)}
+                    {users?.map(u => <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
                 <Select value={unit} onValueChange={setUnit}>

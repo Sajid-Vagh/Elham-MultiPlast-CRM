@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useListProducts, useCreateProduct, useUpdateProduct, useDeleteProduct, getListProductsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -11,13 +11,14 @@ import { useToast } from "@/hooks/use-toast";
 
 type Product = { id: number; name: string; category?: string | null; pricePerUnit?: number | null; productCode: string; bottleWeight?: string | null; bottleColour?: string | null; capColour?: string | null };
 
-function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial<Product>; onSave: (d: any) => void; onCancel: () => void; loading: boolean }) {
+function ProductForm({ initial, onSave, onCancel, loading, codeError }: { initial?: Partial<Product>; onSave: (d: any) => void; onCancel: () => void; loading: boolean; codeError?: string | null }) {
   const [form, setForm] = useState({ name: initial?.name || "", category: initial?.category || "", pricePerUnit: initial?.pricePerUnit?.toString() || "", productCode: initial?.productCode || "", bottleWeight: initial?.bottleWeight || "", bottleColour: initial?.bottleColour || "", capColour: initial?.capColour || "" });
   const f = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, [k]: e.target.value }));
   return (
     <div className="grid grid-cols-2 gap-3 pt-2">
       <div><Label>Name *</Label><Input value={form.name} onChange={f("name")} /></div>
       <div><Label>Product Code *</Label><Input value={form.productCode} onChange={f("productCode")} /></div>
+      {codeError && <div className="col-span-2 text-sm text-destructive">{codeError}</div>}
       <div><Label>Category</Label><Input value={form.category} onChange={f("category")} /></div>
       <div><Label>Price/Unit (₹)</Label><Input type="number" value={form.pricePerUnit} onChange={f("pricePerUnit")} /></div>
       <div><Label>Bottle Weight</Label><Input value={form.bottleWeight} onChange={f("bottleWeight")} /></div>
@@ -43,21 +44,35 @@ export default function Products() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
+  const [createCodeError, setCreateCodeError] = useState<string | null>(null);
+  const [editCodeError, setEditCodeError] = useState<string | null>(null);
 
-  const handleCreate = (data: any) => {
+  const DUPLICATE_MSG = "Product Code already exists. Please use a different Product Code.";
+
+  const handleCreate = useCallback((data: any) => {
+    if (products?.some(p => p.productCode === data.productCode)) {
+      setCreateCodeError(DUPLICATE_MSG);
+      return;
+    }
+    setCreateCodeError(null);
     createProduct.mutate({ data }, {
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() }); toast({ title: "Product created" }); setCreateOpen(false); },
+      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() }); toast({ title: "Product created" }); setCreateOpen(false); setCreateCodeError(null); },
       onError: (e: any) => toast({ title: e?.data?.error || "Error", variant: "destructive" }),
     });
-  };
+  }, [products, createProduct, queryClient, toast]);
 
-  const handleUpdate = (data: any) => {
+  const handleUpdate = useCallback((data: any) => {
     if (!editProduct) return;
+    if (data.productCode && products?.some(p => p.productCode === data.productCode && p.id !== editProduct.id)) {
+      setEditCodeError(DUPLICATE_MSG);
+      return;
+    }
+    setEditCodeError(null);
     updateProduct.mutate({ id: editProduct.id, data }, {
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() }); toast({ title: "Updated" }); setEditProduct(null); },
-      onError: () => toast({ title: "Error", variant: "destructive" }),
+      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() }); toast({ title: "Updated" }); setEditProduct(null); setEditCodeError(null); },
+      onError: (e: any) => toast({ title: e?.data?.error || "Error", variant: "destructive" }),
     });
-  };
+  }, [editProduct, products, updateProduct, queryClient, toast]);
 
   const handleDelete = (id: number) => {
     if (!confirm("Delete this product?")) return;
@@ -77,7 +92,7 @@ export default function Products() {
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-1" /> Add Product</Button></DialogTrigger>
           <DialogContent><DialogHeader><DialogTitle>New Product</DialogTitle></DialogHeader>
-            <ProductForm onSave={handleCreate} onCancel={() => setCreateOpen(false)} loading={createProduct.isPending} />
+            <ProductForm onSave={handleCreate} onCancel={() => { setCreateOpen(false); setCreateCodeError(null); }} loading={createProduct.isPending} codeError={createCodeError} />
           </DialogContent>
         </Dialog>
       </div>
@@ -128,7 +143,7 @@ export default function Products() {
 
       <Dialog open={!!editProduct} onOpenChange={(o) => !o && setEditProduct(null)}>
         <DialogContent><DialogHeader><DialogTitle>Edit Product</DialogTitle></DialogHeader>
-          {editProduct && <ProductForm initial={editProduct} onSave={handleUpdate} onCancel={() => setEditProduct(null)} loading={updateProduct.isPending} />}
+          {editProduct && <ProductForm initial={editProduct} onSave={handleUpdate} onCancel={() => { setEditProduct(null); setEditCodeError(null); }} loading={updateProduct.isPending} codeError={editCodeError} />}
         </DialogContent>
       </Dialog>
     </div>

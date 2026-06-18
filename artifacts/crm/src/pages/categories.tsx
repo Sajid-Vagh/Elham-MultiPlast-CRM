@@ -57,8 +57,7 @@ export default function CategoriesPage() {
   const { toast } = useToast();
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
-  const userUnit = me?.unit && me.unit !== "All" ? me.unit : undefined;
-  const activeUnit = isAdmin ? unitFilter : userUnit;
+  const activeUnit = unitFilter;
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -182,21 +181,19 @@ export default function CategoriesPage() {
         </div>
       </div>
 
-      {!userUnit && (
-        <div className="flex items-center gap-3">
-          <Select value={unitFilter || "all"} onValueChange={(v) => setUnitFilter(v === "all" ? undefined : v)}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="All Units" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Units</SelectItem>
-              <SelectItem value="Himatnagar">Himatnagar</SelectItem>
-              <SelectItem value="Rajkot">Rajkot</SelectItem>
-              <SelectItem value="Surat">Surat</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      )}
+      <div className="flex items-center gap-3">
+        <Select value={unitFilter || "all"} onValueChange={(v) => setUnitFilter(v === "all" ? undefined : v)}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="All Units" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Units</SelectItem>
+            <SelectItem value="Himatnagar">Himatnagar</SelectItem>
+            <SelectItem value="Rajkot">Rajkot</SelectItem>
+            <SelectItem value="Surat">Surat</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {CATEGORIES.map((cat) => (

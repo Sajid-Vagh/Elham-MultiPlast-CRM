@@ -35,14 +35,13 @@ export default function Leads() {
 
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
-  const userUnit = me?.unit && me.unit !== "All" ? me.unit : undefined;
 
   const { data: contacts, isLoading } = useListContacts({
     search: search || undefined,
     salesOwnerId: isAdmin ? salesOwnerId : undefined,
     city: city || undefined,
     category: categoryFilter,
-    unit: isAdmin ? (unitFilter || undefined) : userUnit,
+    unit: unitFilter || undefined,
   });
   const { data: users } = useListUsers();
 
@@ -124,31 +123,29 @@ export default function Leads() {
           />
         </div>
         {isAdmin && (
-          <>
-            <Select value={salesOwnerId?.toString() || "all"} onValueChange={(v) => setSalesOwnerId(v === "all" ? undefined : Number(v))}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="All Owners" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Owners</SelectItem>
-                {users?.map(u => (
-                  <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={unitFilter || "all"} onValueChange={(v) => setUnitFilter(v === "all" ? undefined : v)}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="All Units" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Units</SelectItem>
-                <SelectItem value="Himatnagar">Himatnagar</SelectItem>
-                <SelectItem value="Rajkot">Rajkot</SelectItem>
-                <SelectItem value="Surat">Surat</SelectItem>
-              </SelectContent>
-            </Select>
-          </>
+          <Select value={salesOwnerId?.toString() || "all"} onValueChange={(v) => setSalesOwnerId(v === "all" ? undefined : Number(v))}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="All Owners" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Owners</SelectItem>
+              {users?.map(u => (
+                <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
+        <Select value={unitFilter || "all"} onValueChange={(v) => setUnitFilter(v === "all" ? undefined : v)}>
+          <SelectTrigger className="w-[150px]">
+            <SelectValue placeholder="All Units" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Units</SelectItem>
+            <SelectItem value="Himatnagar">Himatnagar</SelectItem>
+            <SelectItem value="Rajkot">Rajkot</SelectItem>
+            <SelectItem value="Surat">Surat</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Category filter tabs */}

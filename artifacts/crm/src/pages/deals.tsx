@@ -18,10 +18,9 @@ export default function Deals() {
 
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
-  const userUnit = me?.unit && me.unit !== "All" ? me.unit : undefined;
 
   const { data: deals, isLoading } = useListDeals({
-    unit: isAdmin ? (unitFilter || undefined) : userUnit,
+    unit: unitFilter || undefined,
   });
   const { data: users } = useListUsers();
 
@@ -49,49 +48,47 @@ export default function Deals() {
 
       <div className="flex items-center gap-3 shrink-0">
         {isAdmin && (
-          <>
-            <Select value={ownerFilter || "all"} onValueChange={(v) => {
-              const sp = new URLSearchParams(searchStr);
-              if (v === "all") sp.delete("owner");
-              else sp.set("owner", v);
-              navigate(`/deals?${sp.toString()}`);
-            }}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="All Owners" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Owners</SelectItem>
-                {users?.map(u => (
-                  <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={unitFilter || "all"} onValueChange={(v) => {
-              const sp = new URLSearchParams(searchStr);
-              if (v === "all") sp.delete("unit");
-              else sp.set("unit", v);
-              navigate(`/deals?${sp.toString()}`);
-            }}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="All Units" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Units</SelectItem>
-                <SelectItem value="Himatnagar">Himatnagar</SelectItem>
-                <SelectItem value="Rajkot">Rajkot</SelectItem>
-                <SelectItem value="Surat">Surat</SelectItem>
-              </SelectContent>
-            </Select>
-          </>
+          <Select value={ownerFilter || "all"} onValueChange={(v) => {
+            const sp = new URLSearchParams(searchStr);
+            if (v === "all") sp.delete("owner");
+            else sp.set("owner", v);
+            navigate(`/deals?${sp.toString()}`);
+          }}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="All Owners" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Owners</SelectItem>
+              {users?.map(u => (
+                <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
+        <Select value={unitFilter || "all"} onValueChange={(v) => {
+          const sp = new URLSearchParams(searchStr);
+          if (v === "all") sp.delete("unit");
+          else sp.set("unit", v);
+          navigate(`/deals?${sp.toString()}`);
+        }}>
+          <SelectTrigger className="w-[150px]">
+            <SelectValue placeholder="All Units" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Units</SelectItem>
+            <SelectItem value="Himatnagar">Himatnagar</SelectItem>
+            <SelectItem value="Rajkot">Rajkot</SelectItem>
+            <SelectItem value="Surat">Surat</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
-      {(stageFilter || (isAdmin && ownerFilter) || (isAdmin && unitFilter)) && (
+      {(stageFilter || (isAdmin && ownerFilter) || unitFilter) && (
         <div className="flex items-center gap-2 bg-primary/5 border border-primary/20 px-4 py-2 rounded-lg shrink-0">
           <span className="text-sm font-medium text-muted-foreground">Showing:</span>
           {stageFilter && <Badge variant="secondary" className="text-xs">Stage: {stageFilter}</Badge>}
           {isAdmin && ownerFilter && ownerName && <Badge variant="secondary" className="text-xs">Owner: {ownerName}</Badge>}
-          {isAdmin && unitFilter && <Badge variant="secondary" className="text-xs">Unit: {unitFilter}</Badge>}
+          {unitFilter && <Badge variant="secondary" className="text-xs">Unit: {unitFilter}</Badge>}
           <Button variant="ghost" size="sm" onClick={clearFilters} className="ml-auto h-7 gap-1 text-muted-foreground">
             <X className="h-3.5 w-3.5" /> Clear filters
           </Button>
