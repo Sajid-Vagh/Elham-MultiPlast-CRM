@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useGetMe, useLogout, useListContacts, getListContactsQueryKey, useListActivities, getListActivitiesQueryKey, useUpdateActivity } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
-import { playNotificationSound, showBrowserNotification } from "@/lib/notification-sound";
+import { playFollowUpSound, showBrowserNotification } from "@/lib/notification-sound";
 import { useNotificationStream } from "@/lib/use-notification-stream";
 import { NotificationPopup } from "./notification-popup";
 import {
@@ -20,34 +20,22 @@ const ACT_TYPE_ICONS: Record<string, { bg: string; emoji: string }> = {
   FollowUp: { bg: "#ffedd5", emoji: "🔔" },
 };
 
-function useFollowUpNotifications(userId: number | undefined) {
-  const { data: dueContacts } = useListContacts(
-    { followUpDue: true },
-    { query: { enabled: !!userId, staleTime: 5 * 60 * 1000, queryKey: getListContactsQueryKey({ followUpDue: true }) } }
-  );
-  const notifiedRef = useRef(false);
+const REMINDER_SOUND_SS_KEY = "crm_reminder_sound_played_ids";
 
-  useEffect(() => {
-    if (!userId || !dueContacts?.length || notifiedRef.current) return;
-    const fire = () => {
-      notifiedRef.current = true;
-      const count = dueContacts.length;
-      const first = dueContacts[0]!;
-      playNotificationSound();
-      new Notification(`${count} follow-up${count > 1 ? "s" : ""} due today`, {
-        body: `${first.name}${count > 1 ? ` and ${count - 1} more` : ""} — open CRM to review`,
-        icon: "/favicon.ico",
-        tag: "crm-followup",
-      });
-    };
-    if (Notification.permission === "granted") fire();
-    else if (Notification.permission === "default") {
-      Notification.requestPermission().then(p => { if (p === "granted") fire(); });
-    }
-  }, [userId, dueContacts]);
+function getReminderSoundSet(): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(REMINDER_SOUND_SS_KEY);
+    return new Set<string>(raw ? JSON.parse(raw) : []);
+  } catch { return new Set(); }
 }
 
-function useTimeBasedReminders(activities: { id: number; followUpDate?: string | null; followUpTime?: string | null; contact?: { name?: string } | null; deal?: { contact?: { name?: string } | null } | null }[] | undefined, notifiedRef: React.MutableRefObject<Set<string>>) {
+function addReminderSoundId(key: string) {
+  const set = getReminderSoundSet();
+  set.add(key);
+  sessionStorage.setItem(REMINDER_SOUND_SS_KEY, JSON.stringify([...set]));
+}
+
+function useTimeBasedReminders(activities: { id: number; followUpDate?: string | null; followUpTime?: string | null; contact?: { name?: string } | null; deal?: { contact?: { name?: string } | null } | null }[] | undefined) {
   useEffect(() => {
     if (!activities?.length) return;
     const check = () => {
@@ -65,11 +53,11 @@ function useTimeBasedReminders(activities: { id: number; followUpDate?: string |
         const diff = followUpTotal - currentTotal;
         if (diff >= 0 && diff <= 15) {
           const key = `${a.id}-15min`;
-          if (!notifiedRef.current.has(key) && Notification.permission === "granted") {
-            notifiedRef.current = new Set(notifiedRef.current).add(key);
+          if (!getReminderSoundSet().has(key) && Notification.permission === "granted") {
+            addReminderSoundId(key);
             const name = a.contact?.name || a.deal?.contact?.name || "Unknown";
             const timeStr = `${h % 12 || 12}:${m.toString().padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
-            playNotificationSound();
+            playFollowUpSound();
             new Notification(`Reminder: Call ${name} at ${timeStr}`, {
               body: `Follow-up scheduled in ${diff} minute${diff !== 1 ? "s" : ""}`,
               icon: "/favicon.ico",
@@ -82,87 +70,7 @@ function useTimeBasedReminders(activities: { id: number; followUpDate?: string |
     check();
     const interval = setInterval(check, 60_000);
     return () => clearInterval(interval);
-  }, [activities, notifiedRef]);
-}
-
-function useAssignmentNotifications(
-  userId: number | undefined,
-  isAdmin: boolean
-): Array<{ id: number; title: string; message: string; link: string | null }> {
-  const sinceRef = useRef<string | null>(null);
-  const initialLoadRef = useRef(true);
-  const [assignmentPopups, setAssignmentPopups] = useState<Array<{ id: number; title: string; message: string; link: string | null }>>([]);
-  const seenRef = useRef<Set<number>>(new Set());
-
-  // Proactively request notification permission on mount
-  useEffect(() => {
-    if (!userId || isAdmin) return;
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-  }, [userId, isAdmin]);
-
-  if (!sinceRef.current) {
-    const stored = sessionStorage.getItem("crm_notif_since");
-    sinceRef.current = stored || new Date().toISOString();
-    if (!stored) sessionStorage.setItem("crm_notif_since", sinceRef.current);
-  }
-
-  const { data: myContacts } = useListContacts(
-    { salesOwnerId: userId },
-    {
-      query: {
-        enabled: !!userId && !isAdmin,
-        refetchInterval: 10_000,
-        staleTime: 5_000,
-        queryKey: getListContactsQueryKey({ salesOwnerId: userId }),
-      }
-    }
-  );
-
-  useEffect(() => {
-    if (!myContacts || !userId || isAdmin) return;
-    if (initialLoadRef.current) {
-      initialLoadRef.current = false;
-      return;
-    }
-    const since = sinceRef.current!;
-    const newOnes = myContacts.filter(c => c.createdAt > since);
-    for (const c of newOnes) {
-      if (seenRef.current.has(c.id)) continue;
-      seenRef.current = new Set(seenRef.current).add(c.id);
-      const popup = {
-        id: -c.id,
-        title: `New enquiry assigned to you`,
-        message: `${c.name}${c.city ? ` from ${c.city}` : ""}`,
-        link: `/leads/${c.id}`,
-      };
-      setAssignmentPopups(prev => [...prev, popup].slice(-5));
-      playNotificationSound();
-      if (Notification.permission === "granted") {
-        new Notification(`New enquiry assigned to you`, {
-          body: `${c.name}${c.city ? ` from ${c.city}` : ""} — tap to view`,
-          icon: "/favicon.ico",
-          tag: `crm-assign-${c.id}`,
-        });
-      } else if (Notification.permission === "default") {
-        Notification.requestPermission().then(p => {
-          if (p === "granted") {
-            new Notification(`New enquiry assigned to you`, {
-              body: `${c.name}${c.city ? ` from ${c.city}` : ""} — tap to view`,
-              icon: "/favicon.ico",
-              tag: `crm-assign-${c.id}`,
-            });
-          }
-        });
-      }
-    }
-    const now = new Date().toISOString();
-    sinceRef.current = now;
-    sessionStorage.setItem("crm_notif_since", now);
-  }, [myContacts, userId, isAdmin]);
-
-  return assignmentPopups;
+  }, [activities]);
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -173,31 +81,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [dismissedToday, setDismissedToday] = useState<Set<number>>(new Set());
   const [showLoginPopup, setShowLoginPopup] = useState(false);
   const [bellRect, setBellRect] = useState<DOMRect | null>(null);
-  const reminderNotifiedRef = useRef<Set<string>>(new Set());
   const loginPopupShownRef = useRef(sessionStorage.getItem("crm_login_popup_shown") === "true");
   const bellRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  useFollowUpNotifications(user?.id);
-  const assignmentPopups = useAssignmentNotifications(user?.id, user?.role === "admin");
-
-  const { unreadCount: sseUnreadCount, notifications: sseNotifications, latestNotification, markAsRead, markAllAsRead } = useNotificationStream(user?.id);
+  const { unreadCount: sseUnreadCount, notifications: sseNotifications, latestNotification, markAsRead, markAllAsRead, markAsSeen, markAsSeenByRelated } = useNotificationStream(user?.id);
 
   const [activePopups, setActivePopups] = useState<Set<number>>(new Set());
-  const [dismissedAssignmentPopups, setDismissedAssignmentPopups] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (!latestNotification || activePopups.has(latestNotification.id)) return;
     setActivePopups((prev) => new Set(prev).add(latestNotification.id));
-    showBrowserNotification(latestNotification.title, latestNotification.message);
+    showBrowserNotification(latestNotification.title, latestNotification.message, `crm-notif-${latestNotification.id}`);
   }, [latestNotification, activePopups]);
 
   const dismissPopup = useCallback((id: number) => {
     setActivePopups((prev) => { const next = new Set(prev); next.delete(id); return next; });
-  }, []);
-
-  const dismissAssignmentPopup = useCallback((id: number) => {
-    setDismissedAssignmentPopups((prev) => { const next = new Set(prev); next.add(id); return next; });
   }, []);
 
   const { data: upcomingActivities } = useListActivities(
@@ -210,14 +109,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const todayActivities = useMemo(() => {
     if (!upcomingActivities) return [];
-    return upcomingActivities.filter(a => a.followUpDate === today && !dismissedToday.has(a.id));
+    return upcomingActivities.filter(a => a.followUpDate === today && !dismissedToday.has(a.id) && a.callStatus !== "Completed");
   }, [upcomingActivities, today, dismissedToday]);
 
   const unreadCount = todayActivities.length + sseUnreadCount;
 
   const updateActivity = useUpdateActivity();
 
-  useTimeBasedReminders(upcomingActivities, reminderNotifiedRef);
+  useTimeBasedReminders(upcomingActivities);
 
   useEffect(() => {
     if (!isLoading && !user) setLocation("/login");
@@ -265,11 +164,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   }, []);
 
   const handleMarkCompleted = useCallback((activityId: number) => {
+    markAsSeenByRelated(activityId, "activity");
     updateActivity.mutate(
       { id: activityId, data: { callStatus: "Completed" } },
       { onSuccess: () => setDismissedToday(prev => new Set(prev).add(activityId)) }
     );
-  }, [updateActivity]);
+  }, [updateActivity, markAsSeenByRelated]);
 
   if (isLoading) return <div>Loading...</div>;
   if (!user) return null;
@@ -532,16 +432,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Notification popups */}
-      {assignmentPopups.filter(p => !dismissedAssignmentPopups.has(p.id)).slice(0, 3).map(p => (
-        <NotificationPopup
-          key={p.id}
-          id={p.id}
-          title={p.title}
-          message={p.message}
-          link={p.link}
-          onDismiss={dismissAssignmentPopup}
-        />
-      ))}
       {sseNotifications.filter(n => activePopups.has(n.id)).slice(0, 3).map(n => (
         <NotificationPopup
           key={n.id}
@@ -549,6 +439,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           title={n.title}
           message={n.message}
           link={n.link}
+          type={n.type}
           onDismiss={dismissPopup}
         />
       ))}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { playEnquirySound, playFollowUpSound } from "./notification-sound";
 
 interface Notification {
   id: number;
@@ -11,6 +12,40 @@ interface Notification {
   relatedType: string | null;
   readAt: string | null;
   createdAt: string;
+  notificationSeen: boolean;
+  notificationSeenAt: string | null;
+  soundPlayed: boolean;
+  reminderShown: boolean;
+  reminderSoundPlayed: boolean;
+}
+
+const SOUND_PLAYED_SS_KEY = "crm_sound_played_ids";
+const REMINDER_SOUND_SS_KEY = "crm_reminder_sound_played_ids";
+
+function getSoundPlayedSet(): Set<number> {
+  try {
+    const raw = sessionStorage.getItem(SOUND_PLAYED_SS_KEY);
+    return new Set<number>(raw ? JSON.parse(raw) : []);
+  } catch { return new Set(); }
+}
+
+function addSoundPlayedId(id: number) {
+  const set = getSoundPlayedSet();
+  set.add(id);
+  sessionStorage.setItem(SOUND_PLAYED_SS_KEY, JSON.stringify([...set]));
+}
+
+function getReminderSoundPlayedSet(): Set<number> {
+  try {
+    const raw = sessionStorage.getItem(REMINDER_SOUND_SS_KEY);
+    return new Set<number>(raw ? JSON.parse(raw) : []);
+  } catch { return new Set(); }
+}
+
+function addReminderSoundPlayedId(id: number) {
+  const set = getReminderSoundPlayedSet();
+  set.add(id);
+  sessionStorage.setItem(REMINDER_SOUND_SS_KEY, JSON.stringify([...set]));
 }
 
 export function useNotificationStream(userId: number | undefined) {
@@ -67,6 +102,27 @@ export function useNotificationStream(userId: number | undefined) {
           setNotifications((prev) => [n, ...prev].slice(0, 200));
           setUnreadCount((prev) => prev + 1);
           setLatestNotification(n);
+
+          // Play appropriate sound with dedup via sessionStorage
+          if (n.type === "enquiry_assigned") {
+            if (!getSoundPlayedSet().has(n.id)) {
+              playEnquirySound();
+              addSoundPlayedId(n.id);
+              fetch(`/api/notifications/${n.id}/mark-sound-played`, {
+                method: "PATCH",
+                headers: { Authorization: `Bearer ${token}` },
+              }).catch(() => {});
+            }
+          } else if (n.type === "follow_up") {
+            if (!getReminderSoundPlayedSet().has(n.id)) {
+              playFollowUpSound();
+              addReminderSoundPlayedId(n.id);
+              fetch(`/api/notifications/${n.id}/mark-reminder`, {
+                method: "PATCH",
+                headers: { Authorization: `Bearer ${token}` },
+              }).catch(() => {});
+            }
+          }
         } catch {
           // ignore parse errors
         }
@@ -102,6 +158,38 @@ export function useNotificationStream(userId: number | undefined) {
     }
   }, []);
 
+  const markAsSeen = useCallback(async (id: number) => {
+    try {
+      const token = localStorage.getItem("crm_token");
+      await fetch(`/api/notifications/${id}/seen`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const markAsSeenByRelated = useCallback(async (relatedId: number, relatedType: string) => {
+    try {
+      const token = localStorage.getItem("crm_token");
+      const res = await fetch("/api/notifications/seen-by-related", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ relatedId, relatedType }),
+      });
+      const data = await res.json();
+      if (data.notification) {
+        setUnreadCount((prev) => Math.max(0, prev - 1));
+        setNotifications((prev) => prev.filter((n) => n.id !== data.notification.id));
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const markAllAsRead = useCallback(async () => {
     try {
       const token = localStorage.getItem("crm_token");
@@ -116,5 +204,5 @@ export function useNotificationStream(userId: number | undefined) {
     }
   }, []);
 
-  return { notifications, unreadCount, latestNotification, markAsRead, markAllAsRead, fetchUnread };
+  return { notifications, unreadCount, latestNotification, markAsRead, markAllAsRead, markAsSeen, markAsSeenByRelated, fetchUnread };
 }

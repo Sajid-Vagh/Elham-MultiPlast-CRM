@@ -1,0 +1,3 @@
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS sound_played BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS reminder_shown BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS reminder_sound_played BOOLEAN NOT NULL DEFAULT false;

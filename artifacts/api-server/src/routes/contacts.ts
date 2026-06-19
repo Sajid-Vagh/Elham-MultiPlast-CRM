@@ -85,11 +85,12 @@ router.post("/contacts", async (req, res) => {
     if (contact && values.salesOwnerId && values.salesOwnerId !== user.id) {
       const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, values.salesOwnerId));
       if (owner) {
+        const assignmentTime = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
         await createNotification({
           userId: values.salesOwnerId,
-          type: "assignment",
-          title: "New Lead Assigned",
-          message: `Customer: ${contact.name}\nAssigned By: ${user.name}`,
+          type: "enquiry_assigned",
+          title: "New Enquiry Assigned",
+          message: `Customer: ${contact.name}\nMobile: ${contact.mobile || "-"}\nAssigned By: ${user.name}\nTime: ${assignmentTime}`,
           link: `/leads/${contact.id}`,
           relatedId: contact.id,
           relatedType: "contact",
@@ -205,11 +206,12 @@ router.patch("/contacts/:id", async (req, res) => {
       const assignedByName = user?.name || "Admin";
       const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, newOwnerId));
       if (owner) {
+        const assignmentTime = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
         await createNotification({
           userId: newOwnerId,
-          type: "assignment",
-          title: "New Lead Assigned",
-          message: `Customer: ${contact.name}\nAssigned By: ${assignedByName}`,
+          type: "enquiry_assigned",
+          title: "New Enquiry Assigned",
+          message: `Customer: ${contact.name}\nMobile: ${contact.mobile || "-"}\nAssigned By: ${assignedByName}\nTime: ${assignmentTime}`,
           link: `/leads/${contact.id}`,
           relatedId: contact.id,
           relatedType: "contact",

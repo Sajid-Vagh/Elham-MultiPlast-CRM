@@ -57,7 +57,7 @@ router.get("/notifications/stream", async (req: Request, res: Response) => {
   });
 });
 
-// List notifications for current user
+// List notifications for current user (only unseen)
 router.get("/notifications", async (req: Request, res: Response) => {
   const user = await getUser(req, res);
   if (!user) return;
@@ -69,7 +69,7 @@ router.get("/notifications", async (req: Request, res: Response) => {
     const rows = await db
       .select()
       .from(notificationsTable)
-      .where(eq(notificationsTable.userId, user.id))
+      .where(and(eq(notificationsTable.userId, user.id), eq(notificationsTable.notificationSeen, false)))
       .orderBy(desc(notificationsTable.createdAt))
       .limit(limit)
       .offset(offset);
@@ -77,7 +77,7 @@ router.get("/notifications", async (req: Request, res: Response) => {
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)` })
       .from(notificationsTable)
-      .where(eq(notificationsTable.userId, user.id));
+      .where(and(eq(notificationsTable.userId, user.id), eq(notificationsTable.notificationSeen, false)));
 
     res.json({ notifications: rows, total: Number(count) });
   } catch (err) {
@@ -103,7 +103,7 @@ router.get("/notifications/unread-count", async (req: Request, res: Response) =>
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)` })
       .from(notificationsTable)
-      .where(and(eq(notificationsTable.userId, user.id), isNull(notificationsTable.readAt)));
+      .where(and(eq(notificationsTable.userId, user.id), eq(notificationsTable.notificationSeen, false), isNull(notificationsTable.readAt)));
 
     res.json({ unread: Number(count) });
   } catch (err) {
@@ -137,6 +137,123 @@ router.patch("/notifications/:id/read", async (req: Request, res: Response) => {
     res.json(n);
   } catch (err) {
     req.log.error({ err }, "Mark read error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Mark notification as seen (acknowledged)
+router.patch("/notifications/:id/seen", async (req: Request, res: Response) => {
+  const user = await getUser(req, res);
+  if (!user) return;
+
+  const id = Number(req.params.id);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+
+  try {
+    const [n] = await db
+      .update(notificationsTable)
+      .set({ notificationSeen: true, notificationSeenAt: new Date() })
+      .where(and(eq(notificationsTable.id, id), eq(notificationsTable.userId, user.id)))
+      .returning();
+
+    if (!n) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    res.json(n);
+  } catch (err) {
+    req.log.error({ err }, "Mark seen error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Mark notification as seen by related entity (activity)
+router.patch("/notifications/seen-by-related", async (req: Request, res: Response) => {
+  const user = await getUser(req, res);
+  if (!user) return;
+
+  const { relatedId, relatedType } = req.body;
+  if (!relatedId || !relatedType) {
+    res.status(400).json({ error: "relatedId and relatedType are required" });
+    return;
+  }
+
+  try {
+    const [n] = await db
+      .update(notificationsTable)
+      .set({ notificationSeen: true, notificationSeenAt: new Date() })
+      .where(and(
+        eq(notificationsTable.userId, user.id),
+        eq(notificationsTable.relatedId, Number(relatedId)),
+        eq(notificationsTable.relatedType, relatedType as string),
+        eq(notificationsTable.notificationSeen, false)
+      ))
+      .returning();
+
+    res.json({ success: true, notification: n ?? null });
+  } catch (err) {
+    req.log.error({ err }, "Mark seen by related error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Mark notification sound as played
+router.patch("/notifications/:id/mark-sound-played", async (req: Request, res: Response) => {
+  const user = await getUser(req, res);
+  if (!user) return;
+
+  const id = Number(req.params.id);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+
+  try {
+    const [n] = await db
+      .update(notificationsTable)
+      .set({ soundPlayed: true })
+      .where(and(eq(notificationsTable.id, id), eq(notificationsTable.userId, user.id)))
+      .returning();
+
+    if (!n) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    res.json(n);
+  } catch (err) {
+    req.log.error({ err }, "Mark sound played error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Mark follow-up reminder as shown and sound played
+router.patch("/notifications/:id/mark-reminder", async (req: Request, res: Response) => {
+  const user = await getUser(req, res);
+  if (!user) return;
+
+  const id = Number(req.params.id);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+
+  try {
+    const [n] = await db
+      .update(notificationsTable)
+      .set({ reminderShown: true, reminderSoundPlayed: true })
+      .where(and(eq(notificationsTable.id, id), eq(notificationsTable.userId, user.id)))
+      .returning();
+
+    if (!n) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    res.json(n);
+  } catch (err) {
+    req.log.error({ err }, "Mark reminder error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
