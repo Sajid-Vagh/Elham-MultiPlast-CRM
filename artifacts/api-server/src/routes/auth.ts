@@ -1,4 +1,5 @@
 console.log("AUTH ROUTE LOADED");
+
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
 import { db, usersTable } from "@workspace/db";
@@ -49,6 +50,8 @@ router.post("/auth/login", async (req, res) => {
   const parsed = LoginBody.safeParse(req.body);
 
   if (!parsed.success) {
+    console.log("INVALID BODY:", req.body);
+
     return res.status(400).json({
       error: "Invalid input",
     });
@@ -57,8 +60,11 @@ router.post("/auth/login", async (req, res) => {
   const { username, password } = parsed.data;
 
   console.log("LOGIN REQUEST:", username);
+  console.log("BODY:", req.body);
 
   try {
+    console.log("START LOGIN");
+
     const [user] = await db
       .select()
       .from(usersTable)
