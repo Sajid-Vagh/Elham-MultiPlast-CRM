@@ -52,10 +52,16 @@ router.post("/auth/login", async (req, res) => {
     sessions.set(token, user.id);
     const { passwordHash: _, ...safeUser } = user;
     res.json({ user: safeUser, token });
-  } catch (err) {
-    req.log.error({ err }, "Login error");
-    res.status(500).json({ error: "Internal server error" });
-  }
+    } catch (err) {
+  console.error("LOGIN ERROR:", err);
+
+  req.log.error({ err }, "Login error");
+
+  res.status(500).json({
+    error: "Internal server error",
+    message: err instanceof Error ? err.message : String(err),
+  });
+}
 });
 
 router.post("/auth/logout", (req, res) => {
