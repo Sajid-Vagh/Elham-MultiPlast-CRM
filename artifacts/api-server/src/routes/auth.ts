@@ -27,12 +27,17 @@ export async function getUserFromRequest(
 ): Promise<typeof usersTable.$inferSelect | null> {
   const auth = req.headers["authorization"];
 
+  console.log("AUTH HEADER:", auth);
+
   if (!auth || !auth.startsWith("Bearer ")) {
     return null;
   }
 
   const token = auth.slice(7);
+
   const userId = sessions.get(token);
+
+  console.log("USER ID FROM TOKEN:", userId);
 
   if (!userId) {
     return null;
@@ -47,24 +52,25 @@ export async function getUserFromRequest(
 }
 
 router.post("/auth/login", async (req, res) => {
+  console.log("LOGIN ROUTE HIT");
+  console.log("BODY:", req.body);
+
   const parsed = LoginBody.safeParse(req.body);
 
   if (!parsed.success) {
-    console.log("INVALID BODY:", req.body);
+    console.log("INVALID BODY:", parsed.error);
 
     return res.status(400).json({
       error: "Invalid input",
+      details: parsed.error,
     });
   }
 
   const { username, password } = parsed.data;
 
-  console.log("LOGIN REQUEST:", username);
-  console.log("BODY:", req.body);
+  console.log("USERNAME:", username);
 
   try {
-    console.log("START LOGIN");
-
     const [user] = await db
       .select()
       .from(usersTable)
@@ -78,28 +84,14 @@ router.post("/auth/login", async (req, res) => {
       });
     }
 
-    console.log("PASSWORD HASH EXISTS:", !!user.passwordHash);
+    console.log("PASSWORD HASH:", user.passwordHash);
 
-    let valid = false;
+    const valid = await bcrypt.compare(
+      password,
+      user.passwordHash,
+    );
 
-    try {
-      valid = await bcrypt.compare(
-        password,
-        user.passwordHash,
-      );
-
-      console.log("PASSWORD VALID:", valid);
-    } catch (e) {
-      console.error("BCRYPT ERROR:", e);
-
-      return res.status(500).json({
-        error: "bcrypt failed",
-        message:
-          e instanceof Error
-            ? e.message
-            : String(e),
-      });
-    }
+    console.log("PASSWORD VALID:", valid);
 
     if (!valid) {
       return res.status(401).json({
@@ -141,7 +133,19 @@ router.post("/auth/logout", (req, res) => {
 });
 
 router.get("/auth/me", async (req, res) => {
+  console.log("AUTH ME ROUTE HIT");
+
   try {
+    const auth = req.headers["authorization"];
+
+    console.log("AUTH HEADER:", auth);
+
+    if (!auth) {
+      return res.json({
+        message: "route working",
+      });
+    }
+
     const user = await getUserFromRequest(req);
 
     if (!user) {
@@ -157,8 +161,7 @@ router.get("/auth/me", async (req, res) => {
     console.error("AUTH ME ERROR:", err);
 
     return res.status(500).json({
-      error: "Internal server error",
-      message:
+      error:
         err instanceof Error
           ? err.message
           : String(err),
