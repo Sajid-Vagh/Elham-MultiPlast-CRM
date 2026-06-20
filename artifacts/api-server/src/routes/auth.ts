@@ -71,14 +71,28 @@ router.post("/auth/login", async (req, res) => {
       });
     }
 
-    console.log("PASSWORD HASH:", !!user.passwordHash);
+    console.log("PASSWORD HASH EXISTS:", !!user.passwordHash);
 
-    const valid = await bcrypt.compare(
-      password,
-      user.passwordHash,
-    );
+    let valid = false;
 
-    console.log("PASSWORD VALID:", valid);
+    try {
+      valid = await bcrypt.compare(
+        password,
+        user.passwordHash,
+      );
+
+      console.log("PASSWORD VALID:", valid);
+    } catch (e) {
+      console.error("BCRYPT ERROR:", e);
+
+      return res.status(500).json({
+        error: "bcrypt failed",
+        message:
+          e instanceof Error
+            ? e.message
+            : String(e),
+      });
+    }
 
     if (!valid) {
       return res.status(401).json({
