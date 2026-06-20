@@ -32,7 +32,16 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use("/api", router);
 
 app.use((err: any, _req: any, res: any, _next: any) => {
-  res.status(err?.status ?? 500).json({ error: "Internal server error" });
+  console.error("GLOBAL ERROR:", err);
+
+  res.status(err?.status ?? 500).json({
+    error: "Internal server error",
+    message: err?.message ?? String(err),
+    stack:
+      process.env.NODE_ENV !== "production"
+        ? err?.stack
+        : undefined,
+  });
 });
 
 export default app;
