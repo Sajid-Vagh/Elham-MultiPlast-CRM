@@ -9,77 +9,140 @@ const router: IRouter = Router();
 const sessions = new Map<string, number>();
 
 function generateToken(): string {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36) + Math.random().toString(36).slice(2);
+  return (
+    Math.random().toString(36).slice(2) +
+    Date.now().toString(36) +
+    Math.random().toString(36).slice(2)
+  );
 }
 
 export function getUserIdFromToken(token: string): number | null {
   return sessions.get(token) ?? null;
 }
 
-export async function getUserFromRequest(req: any): Promise<typeof usersTable.$inferSelect | null> {
+export async function getUserFromRequest(
+  req: any,
+): Promise<typeof usersTable.$inferSelect | null> {
   const auth = req.headers["authorization"];
-  if (!auth || !auth.startsWith("Bearer ")) return null;
+
+  if (!auth || !auth.startsWith("Bearer ")) {
+    return null;
+  }
+
   const token = auth.slice(7);
   const userId = sessions.get(token);
-  if (!userId) return null;
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+
+  if (!userId) {
+    return null;
+  }
+
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, userId));
+
   return user ?? null;
 }
 
 router.post("/auth/login", async (req, res) => {
   const parsed = LoginBody.safeParse(req.body);
+
   if (!parsed.success) {
-    res.status(400).json({ error: "Invalid input" });
-    return;
+    return res.status(400).json({
+      error: "Invalid input",
+    });
   }
+
   const { username, password } = parsed.data;
-  req.log.info({ username, body: req.body }, "Incoming email");
+
+  console.log("LOGIN REQUEST:", username);
+
   try {
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.username, username));
-    req.log.info({ userFound: !!user, userId: user?.id, username: user?.username }, "User lookup result");
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.username, username));
+
+    console.log("USER FOUND:", !!user);
+
     if (!user) {
-      res.status(404).json({ error: "User not found" });
-      return;
+      return res.status(404).json({
+        error: "User not found",
+      });
     }
-    const valid = await bcrypt.compare(password, user.passwordHash);
-    req.log.info({ passwordValid: valid }, "Password comparison result");
+
+    console.log("PASSWORD HASH:", !!user.passwordHash);
+
+    const valid = await bcrypt.compare(
+      password,
+      user.passwordHash,
+    );
+
+    console.log("PASSWORD VALID:", valid);
+
     if (!valid) {
-      res.status(401).json({ error: "Invalid credentials" });
-      return;
+      return res.status(401).json({
+        error: "Invalid credentials",
+      });
     }
+
     const token = generateToken();
-    req.log.info({ tokenGenerated: !!token }, "JWT generation result");
+
     sessions.set(token, user.id);
+
     const { passwordHash: _, ...safeUser } = user;
-    res.json({ user: safeUser, token });
-    } catch (err) {
-  console.error("LOGIN ERROR:", err);
 
-  req.log.error({ err }, "Login error");
+    return res.json({
+      user: safeUser,
+      token,
+    });
+  } catch (err) {
+    console.error("LOGIN ERROR:", err);
 
-  res.status(500).json({
-    error: "Internal server error",
-    message: err instanceof Error ? err.message : String(err),
-  });
-}
+    return res.status(500).json({
+      error: "Internal server error",
+      message:
+        err instanceof Error
+          ? err.message
+          : String(err),
+    });
+  }
 });
 
 router.post("/auth/logout", (req, res) => {
   const auth = req.headers["authorization"];
+
   if (auth?.startsWith("Bearer ")) {
     sessions.delete(auth.slice(7));
   }
+
   res.json({ ok: true });
 });
 
 router.get("/auth/me", async (req, res) => {
-  const user = await getUserFromRequest(req);
-  if (!user) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
+  try {
+    const user = await getUserFromRequest(req);
+
+    if (!user) {
+      return res.status(401).json({
+        error: "Unauthorized",
+      });
+    }
+
+    const { passwordHash: _, ...safeUser } = user;
+
+    return res.json(safeUser);
+  } catch (err) {
+    console.error("AUTH ME ERROR:", err);
+
+    return res.status(500).json({
+      error: "Internal server error",
+      message:
+        err instanceof Error
+          ? err.message
+          : String(err),
+    });
   }
-  const { passwordHash: _, ...safeUser } = user;
-  res.json(safeUser);
 });
 
 export default router;
