@@ -293,25 +293,50 @@ async function parseSuccessBody(
       return response.blob();
   }
 }
+export const customFetch = async <T>(
+  url: string,
+  options: RequestInit = {},
+): Promise<T> => {
+  const token =
+    typeof window !== "undefined"
+      ? localStorage.getItem("crm_token")
+      : null;
 
-export const customFetch = async <T>(url: string, options: RequestInit = {}): Promise<T> => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('crm_token') : null;
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    Accept: "application/json",
+    "Content-Type": "application/json",
     ...(options.headers as Record<string, string> || {}),
   };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  
-  const response = await fetch(url, { ...options, headers });
-  
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const finalUrl =
+    _baseUrl && url.startsWith("/")
+      ? `${_baseUrl}${url}`
+      : url;
+
+  const response = await fetch(finalUrl, {
+    ...options,
+    headers,
+  });
+
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new ApiError(response, errorData, { method: options.method || 'GET', url });
+
+    throw new ApiError(response, errorData, {
+      method: options.method || "GET",
+      url: finalUrl,
+    });
   }
-  
-  // if NO_BODY_STATUS.has(response.status) or response.status === 204 return null as T
-  if (response.status === 204 || response.status === 205 || response.status === 304) {
-    return null as any as T;
+
+  if (
+    response.status === 204 ||
+    response.status === 205 ||
+    response.status === 304
+  ) {
+    return null as T;
   }
 
   return response.json() as Promise<T>;
