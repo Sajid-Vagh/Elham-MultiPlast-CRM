@@ -26,7 +26,7 @@ export default defineConfig({
       target: "generated",
       client: "react-query",
       mode: "split",
-      baseUrl: "/api",
+      baseUrl: "https://elham-multiplast-crm.onrender.com/api",
       clean: true,
       prettier: true,
       override: {
