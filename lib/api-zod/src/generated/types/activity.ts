@@ -20,9 +20,18 @@ export interface Activity {
   /** @nullable */
   followUpDate?: string | null;
   /** @nullable */
+  followUpTime?: string | null;
+  /** @nullable */
   followUpType?: ActivityFollowUpType;
+  /** @nullable */
+  callStatus?: string | null;
   /** @nullable */
   createdBy?: number | null;
   user?: User;
   createdAt: string;
+  /** @nullable */
+  updatedAt?: string | null;
+  /** @nullable */
+  updatedBy?: number | null;
+  isEdited?: boolean;
 }

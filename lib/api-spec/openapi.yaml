@@ -1217,20 +1217,30 @@ components:
           type: ["integer", "null"]
         type:
           type: string
-          enum: [Call, WhatsApp, Email, Note, FollowUp]
+          enum: [Call, WhatsApp, Email, Note, FollowUp, Meeting]
         notes:
           type: ["string", "null"]
         followUpDate:
           type: ["string", "null"]
+        followUpTime:
+          type: ["string", "null"]
         followUpType:
           type: ["string", "null"]
           enum: [Call, WhatsApp, Email, null]
+        callStatus:
+          type: ["string", "null"]
         createdBy:
           type: ["integer", "null"]
         user:
           $ref: "#/components/schemas/User"
         createdAt:
           type: string
+        updatedAt:
+          type: ["string", "null"]
+        updatedBy:
+          type: ["integer", "null"]
+        isEdited:
+          type: boolean
 
     ActivityInput:
       type: object
@@ -1242,23 +1252,36 @@ components:
           type: ["integer", "null"]
         type:
           type: string
-          enum: [Call, WhatsApp, Email, Note, FollowUp]
+          enum: [Call, WhatsApp, Email, Note, FollowUp, Meeting]
         notes:
           type: ["string", "null"]
         followUpDate:
           type: ["string", "null"]
+        followUpTime:
+          type: ["string", "null"]
         followUpType:
+          type: ["string", "null"]
+        callStatus:
           type: ["string", "null"]
 
     ActivityUpdate:
       type: object
       properties:
+        type:
+          type: string
+          enum: [Call, WhatsApp, Email, Note, FollowUp, Meeting]
         notes:
           type: ["string", "null"]
         followUpDate:
           type: ["string", "null"]
+        followUpTime:
+          type: ["string", "null"]
         followUpType:
           type: ["string", "null"]
+        callStatus:
+          type: ["string", "null"]
+        contactId:
+          type: ["integer", "null"]
 
     ReportSummary:
       type: object

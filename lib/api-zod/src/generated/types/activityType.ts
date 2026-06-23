@@ -15,4 +15,5 @@ export const ActivityType = {
   Email: 'Email',
   Note: 'Note',
   FollowUp: 'FollowUp',
+  Meeting: 'Meeting',
 } as const;

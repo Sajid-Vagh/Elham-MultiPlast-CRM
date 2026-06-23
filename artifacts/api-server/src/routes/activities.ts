@@ -163,7 +163,13 @@ router.patch("/activities/:id", async (req, res) => {
         return;
       }
     }
-    const [activity] = await db.update(activitiesTable).set(parsed.data).where(eq(activitiesTable.id, params.data.id)).returning();
+    const updateData = {
+      ...parsed.data,
+      updatedAt: new Date(),
+      updatedBy: user.id,
+      isEdited: true,
+    };
+    const [activity] = await db.update(activitiesTable).set(updateData).where(eq(activitiesTable.id, params.data.id)).returning();
     if (!activity) { res.status(404).json({ error: "Not found" }); return; }
     res.json(await enrichActivity(activity));
   } catch (err) {

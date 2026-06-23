@@ -5,12 +5,21 @@
  * Elham Multiplast CRM API
  * OpenAPI spec version: 0.1.0
  */
+import type { ActivityType } from './activityType';
 
 export interface ActivityUpdate {
+  /** @nullable */
+  type?: ActivityType | null;
   /** @nullable */
   notes?: string | null;
   /** @nullable */
   followUpDate?: string | null;
   /** @nullable */
+  followUpTime?: string | null;
+  /** @nullable */
   followUpType?: string | null;
+  /** @nullable */
+  callStatus?: string | null;
+  /** @nullable */
+  contactId?: number | null;
 }

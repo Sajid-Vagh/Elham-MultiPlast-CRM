@@ -434,6 +434,7 @@ export const ActivityType = {
   Email: 'Email',
   Note: 'Note',
   FollowUp: 'FollowUp',
+  Meeting: 'Meeting',
 } as const;
 
 /**
@@ -459,11 +460,20 @@ export interface Activity {
   /** @nullable */
   followUpDate?: string | null;
   /** @nullable */
+  followUpTime?: string | null;
+  /** @nullable */
   followUpType?: ActivityFollowUpType;
+  /** @nullable */
+  callStatus?: string | null;
   /** @nullable */
   createdBy?: number | null;
   user?: User;
   createdAt: string;
+  /** @nullable */
+  updatedAt?: string | null;
+  /** @nullable */
+  updatedBy?: number | null;
+  isEdited?: boolean;
 }
 
 export type ActivityInputType = typeof ActivityInputType[keyof typeof ActivityInputType];
@@ -475,6 +485,7 @@ export const ActivityInputType = {
   Email: 'Email',
   Note: 'Note',
   FollowUp: 'FollowUp',
+  Meeting: 'Meeting',
 } as const;
 
 export interface ActivityInput {
@@ -487,16 +498,28 @@ export interface ActivityInput {
   /** @nullable */
   followUpDate?: string | null;
   /** @nullable */
+  followUpTime?: string | null;
+  /** @nullable */
   followUpType?: string | null;
+  /** @nullable */
+  callStatus?: string | null;
 }
 
 export interface ActivityUpdate {
+  /** @nullable */
+  type?: ActivityType | null;
   /** @nullable */
   notes?: string | null;
   /** @nullable */
   followUpDate?: string | null;
   /** @nullable */
+  followUpTime?: string | null;
+  /** @nullable */
   followUpType?: string | null;
+  /** @nullable */
+  callStatus?: string | null;
+  /** @nullable */
+  contactId?: number | null;
 }
 
 export interface ReportSummary {

@@ -2,13 +2,11 @@ console.log("AUTH ROUTE LOADED");
 
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, sessionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { LoginBody } from "@workspace/api-zod";
 
 const router: IRouter = Router();
-
-const sessions = new Map<string, number>();
 
 function generateToken(): string {
   return (
@@ -18,8 +16,12 @@ function generateToken(): string {
   );
 }
 
-export function getUserIdFromToken(token: string): number | null {
-  return sessions.get(token) ?? null;
+export async function getUserIdFromToken(token: string): Promise<number | null> {
+  const [session] = await db
+    .select()
+    .from(sessionsTable)
+    .where(eq(sessionsTable.token, token));
+  return session?.userId ?? null;
 }
 
 export async function getUserFromRequest(
@@ -30,16 +32,18 @@ export async function getUserFromRequest(
   console.log("AUTH HEADER:", auth);
 
   if (!auth || !auth.startsWith("Bearer ")) {
+    console.log("AUTH RESULT: missing or malformed header");
     return null;
   }
 
   const token = auth.slice(7);
+  console.log("TOKEN EXTRACTED:", token.slice(0, 20) + "...");
 
-  const userId = sessions.get(token);
-
+  const userId = await getUserIdFromToken(token);
   console.log("USER ID FROM TOKEN:", userId);
 
   if (!userId) {
+    console.log("AUTH RESULT: no session found for token");
     return null;
   }
 
@@ -47,6 +51,8 @@ export async function getUserFromRequest(
     .select()
     .from(usersTable)
     .where(eq(usersTable.id, userId));
+
+  console.log("AUTH RESULT: user found =", !!user);
 
   return user ?? null;
 }
@@ -84,8 +90,6 @@ router.post("/auth/login", async (req, res) => {
       });
     }
 
-    console.log("PASSWORD HASH:", user.passwordHash);
-
     const valid = await bcrypt.compare(
       password,
       user.passwordHash,
@@ -101,7 +105,12 @@ router.post("/auth/login", async (req, res) => {
 
     const token = generateToken();
 
-    sessions.set(token, user.id);
+    await db.insert(sessionsTable).values({
+      token,
+      userId: user.id,
+    });
+
+    console.log("SESSION CREATED: token=" + token.slice(0, 20) + "... userId=" + user.id);
 
     const { passwordHash: _, ...safeUser } = user;
 
@@ -122,11 +131,13 @@ router.post("/auth/login", async (req, res) => {
   }
 });
 
-router.post("/auth/logout", (req, res) => {
+router.post("/auth/logout", async (req, res) => {
   const auth = req.headers["authorization"];
 
   if (auth?.startsWith("Bearer ")) {
-    sessions.delete(auth.slice(7));
+    const token = auth.slice(7);
+    await db.delete(sessionsTable).where(eq(sessionsTable.token, token));
+    console.log("SESSION DELETED: token=" + token.slice(0, 20) + "...");
   }
 
   res.json({ ok: true });

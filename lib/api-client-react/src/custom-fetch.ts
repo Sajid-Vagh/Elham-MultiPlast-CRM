@@ -293,6 +293,19 @@ async function parseSuccessBody(
       return response.blob();
   }
 }
+function resolveApiUrl(url: string): string {
+  if (_baseUrl && url.startsWith("/")) {
+    return `${_baseUrl}${url}`;
+  }
+
+  if (_baseUrl && url.includes("elham-multiplast-crm.onrender.com")) {
+    const path = url.replace(/https?:\/\/[^\/]+/, "");
+    return `${_baseUrl}${path}`;
+  }
+
+  return url;
+}
+
 export const customFetch = async <T>(
   url: string,
   options: RequestInit = {},
@@ -312,10 +325,7 @@ export const customFetch = async <T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const finalUrl =
-    _baseUrl && url.startsWith("/")
-      ? `${_baseUrl}${url}`
-      : url;
+  const finalUrl = resolveApiUrl(url);
 
   const response = await fetch(finalUrl, {
     ...options,

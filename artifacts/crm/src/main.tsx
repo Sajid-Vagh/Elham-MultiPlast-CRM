@@ -3,8 +3,9 @@ import App from "./App";
 import "./index.css";
 import { setBaseUrl } from "@workspace/api-client-react";
 
-// Production API URL
-setBaseUrl("https://elham-multiplast-crm.onrender.com/api");
+// API base URL — use relative proxy in dev, absolute URL in production
+const isDev = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+setBaseUrl(isDev ? "/api" : "https://elham-multiplast-crm.onrender.com/api");
 
 // Auto-capitalize: first letter of each word in text inputs and textareas
 // Respects localStorage crm_autocap === "off" to disable

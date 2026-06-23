@@ -819,10 +819,12 @@ export const ListActivitiesResponseItem = zod.object({
   "id": zod.number(),
   "dealId": zod.number(),
   "contactId": zod.number().nullish(),
-  "type": zod.enum(['Call', 'WhatsApp', 'Email', 'Note', 'FollowUp']),
+  "type": zod.enum(['Call', 'WhatsApp', 'Email', 'Note', 'FollowUp', 'Meeting']),
   "notes": zod.string().nullish(),
   "followUpDate": zod.string().nullish(),
+  "followUpTime": zod.string().nullish(),
   "followUpType": zod.union([zod.literal('Call'),zod.literal('WhatsApp'),zod.literal('Email'),zod.literal(null)]).nullish(),
+  "callStatus": zod.string().nullish(),
   "createdBy": zod.number().nullish(),
   "user": zod.object({
   "id": zod.number(),
@@ -833,7 +835,10 @@ export const ListActivitiesResponseItem = zod.object({
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
 }).optional(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().nullish(),
+  "updatedBy": zod.number().nullish(),
+  "isEdited": zod.boolean().nullish()
 })
 export const ListActivitiesResponse = zod.array(ListActivitiesResponseItem)
 
@@ -844,20 +849,24 @@ export const ListActivitiesResponse = zod.array(ListActivitiesResponseItem)
 export const CreateActivityBody = zod.object({
   "dealId": zod.number(),
   "contactId": zod.number().nullish(),
-  "type": zod.enum(['Call', 'WhatsApp', 'Email', 'Note', 'FollowUp']),
+  "type": zod.enum(['Call', 'WhatsApp', 'Email', 'Note', 'FollowUp', 'Meeting']),
   "notes": zod.string().nullish(),
   "followUpDate": zod.string().nullish(),
-  "followUpType": zod.string().nullish()
+  "followUpTime": zod.string().nullish(),
+  "followUpType": zod.string().nullish(),
+  "callStatus": zod.string().nullish()
 })
 
 export const CreateActivityResponse = zod.object({
   "id": zod.number(),
   "dealId": zod.number(),
   "contactId": zod.number().nullish(),
-  "type": zod.enum(['Call', 'WhatsApp', 'Email', 'Note', 'FollowUp']),
+  "type": zod.enum(['Call', 'WhatsApp', 'Email', 'Note', 'FollowUp', 'Meeting']),
   "notes": zod.string().nullish(),
   "followUpDate": zod.string().nullish(),
+  "followUpTime": zod.string().nullish(),
   "followUpType": zod.union([zod.literal('Call'),zod.literal('WhatsApp'),zod.literal('Email'),zod.literal(null)]).nullish(),
+  "callStatus": zod.string().nullish(),
   "createdBy": zod.number().nullish(),
   "user": zod.object({
   "id": zod.number(),
@@ -868,7 +877,10 @@ export const CreateActivityResponse = zod.object({
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
 }).optional(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().nullish(),
+  "updatedBy": zod.number().nullish(),
+  "isEdited": zod.boolean().nullish()
 })
 
 
@@ -877,19 +889,25 @@ export const UpdateActivityParams = zod.object({
 })
 
 export const UpdateActivityBody = zod.object({
+  "type": zod.enum(['Call', 'WhatsApp', 'Email', 'Note', 'FollowUp', 'Meeting']).nullish(),
   "notes": zod.string().nullish(),
   "followUpDate": zod.string().nullish(),
-  "followUpType": zod.string().nullish()
+  "followUpTime": zod.string().nullish(),
+  "followUpType": zod.string().nullish(),
+  "callStatus": zod.string().nullish(),
+  "contactId": zod.number().nullish()
 })
 
 export const UpdateActivityResponse = zod.object({
   "id": zod.number(),
   "dealId": zod.number(),
   "contactId": zod.number().nullish(),
-  "type": zod.enum(['Call', 'WhatsApp', 'Email', 'Note', 'FollowUp']),
+  "type": zod.enum(['Call', 'WhatsApp', 'Email', 'Note', 'FollowUp', 'Meeting']),
   "notes": zod.string().nullish(),
   "followUpDate": zod.string().nullish(),
+  "followUpTime": zod.string().nullish(),
   "followUpType": zod.union([zod.literal('Call'),zod.literal('WhatsApp'),zod.literal('Email'),zod.literal(null)]).nullish(),
+  "callStatus": zod.string().nullish(),
   "createdBy": zod.number().nullish(),
   "user": zod.object({
   "id": zod.number(),
@@ -900,7 +918,10 @@ export const UpdateActivityResponse = zod.object({
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
 }).optional(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().nullish(),
+  "updatedBy": zod.number().nullish(),
+  "isEdited": zod.boolean().nullish()
 })
 
 

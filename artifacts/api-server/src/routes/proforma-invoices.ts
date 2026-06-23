@@ -397,7 +397,7 @@ router.get("/proforma-invoices/:id", async (req, res) => {
   }
 });
 
-router.patch("/proforma-invoices/:id", async (req, res) => {
+async function updateInvoiceHandler(req: any, res: any) {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -471,7 +471,10 @@ router.patch("/proforma-invoices/:id", async (req, res) => {
     req.log.error({ err }, "Update proforma invoice error");
     res.status(500).json({ error: "Internal server error" });
   }
-});
+}
+
+router.patch("/proforma-invoices/:id", updateInvoiceHandler);
+router.put("/proforma-invoices/:id", updateInvoiceHandler);
 
 router.post("/proforma-invoices/:id/status", async (req, res) => {
   try {

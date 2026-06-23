@@ -2,7 +2,8 @@ import { useState, useMemo } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import {
   useGetDeal, useUpdateDeal, useDeleteDeal, useListDealProducts, useAddDealProduct, useRemoveDealProduct,
-  useListActivities, useCreateActivity, useListProducts, useListUsers,
+  useListActivities, useCreateActivity, useUpdateActivity, useDeleteActivity, useListProducts, useListUsers,
+  useGetMe,
   getGetDealQueryKey, getListDealProductsQueryKey, getListActivitiesQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -12,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Plus, Trash2, FolderTree } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FolderTree, Pencil, Check, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -40,11 +41,12 @@ const LOST_REASONS = [
 ];
 
 const ACT_STYLE: Record<string, { bg: string; fg: string; icon: string }> = {
-  "Call":     { bg: "#dcfce7", fg: "#15803d", icon: "📞" },
-  "WhatsApp": { bg: "#ccfbf1", fg: "#0f766e", icon: "💬" },
-  "Email":    { bg: "#dbeafe", fg: "#1d4ed8", icon: "✉️" },
-  "Note":     { bg: "#fef9c3", fg: "#a16207", icon: "📝" },
-  "FollowUp": { bg: "#ffedd5", fg: "#c2410c", icon: "🔔" },
+  "Call":     { bg: "#dcfce7", fg: "#15803d", icon: "\u{1F4DE}" },
+  "WhatsApp": { bg: "#ccfbf1", fg: "#0f766e", icon: "\u{1F4AC}" },
+  "Email":    { bg: "#dbeafe", fg: "#1d4ed8", icon: "\u2709\uFE0F" },
+  "Note":     { bg: "#fef9c3", fg: "#a16207", icon: "\u{1F4DD}" },
+  "FollowUp": { bg: "#ffedd5", fg: "#c2410c", icon: "\u{1F514}" },
+  "Meeting":  { bg: "#ede9fe", fg: "#6d28d9", icon: "\u{1F91D}" },
 };
 
 function localDateStr(d: Date): string {
@@ -76,6 +78,9 @@ export default function DealDetail() {
   const addProduct = useAddDealProduct();
   const removeProduct = useRemoveDealProduct();
   const createActivity = useCreateActivity();
+  const updateActivity = useUpdateActivity();
+  const deleteActivity = useDeleteActivity();
+  const { data: currentUser } = useGetMe();
 
   const [prodId, setProdId] = useState("");
   const [prodQty, setProdQty] = useState("1");
@@ -88,6 +93,16 @@ export default function DealDetail() {
   const [actFollowUpTime, setActFollowUpTime] = useState("");
   const [actFollowType, setActFollowType] = useState("Call");
   const [actDialogOpen, setActDialogOpen] = useState(false);
+
+  const [editActivity, setEditActivity] = useState<any>(null);
+  const [editActType, setEditActType] = useState("Call");
+  const [editActNotes, setEditActNotes] = useState("");
+  const [editActFollowUp, setEditActFollowUp] = useState("");
+  const [editActFollowUpTime, setEditActFollowUpTime] = useState("");
+  const [editActFollowType, setEditActFollowType] = useState("Call");
+  const [editActStatus, setEditActStatus] = useState("Pending");
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteActId, setDeleteActId] = useState<number | null>(null);
 
   const [pendingStage, setPendingStage] = useState<string | null>(null);
   const [lostReason, setLostReason] = useState("");
@@ -166,6 +181,67 @@ export default function DealDetail() {
     removeProduct.mutate({ id: dealId, productId: dpId }, {
       onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListDealProductsQueryKey(dealId) }); toast({ title: "Product removed" }); },
     });
+  };
+
+  const handleEditActivity = () => {
+    if (!editActivity) return;
+    const payload: any = {};
+    if (editActType !== editActivity.type) payload.type = editActType;
+    if (editActNotes !== (editActivity.notes || "")) payload.notes = editActNotes || null;
+    if (editActFollowUp !== (editActivity.followUpDate || "")) payload.followUpDate = editActFollowUp || null;
+    if (editActFollowUpTime !== (editActivity.followUpTime || "")) payload.followUpTime = editActFollowUpTime || null;
+    if (editActFollowType !== (editActivity.followUpType || "")) payload.followUpType = editActFollowType || null;
+    if (editActStatus !== (editActivity.callStatus || "Pending")) payload.callStatus = editActStatus;
+    if (Object.keys(payload).length === 0) { setEditDialogOpen(false); return; }
+    updateActivity.mutate({ id: editActivity.id, data: payload }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ dealId }) });
+        queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) });
+        toast({ title: "Activity updated" });
+        setEditDialogOpen(false);
+        setEditActivity(null);
+      },
+      onError: () => toast({ title: "Error updating activity", variant: "destructive" }),
+    });
+  };
+
+  const handleDeleteActivity = () => {
+    if (!deleteActId) return;
+    deleteActivity.mutate(deleteActId, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ dealId }) });
+        toast({ title: "Activity deleted" });
+        setDeleteActId(null);
+      },
+      onError: () => toast({ title: "Error deleting activity", variant: "destructive" }),
+    });
+  };
+
+  const handleCompleteActivity = (act: any) => {
+    updateActivity.mutate({ id: act.id, data: { callStatus: "Completed" } }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ dealId }) });
+        toast({ title: "Activity marked as completed" });
+      },
+      onError: () => toast({ title: "Error completing activity", variant: "destructive" }),
+    });
+  };
+
+  const openEditDialog = (act: any) => {
+    setEditActivity(act);
+    setEditActType(act.type);
+    setEditActNotes(act.notes || "");
+    setEditActFollowUp(act.followUpDate || "");
+    setEditActFollowUpTime(act.followUpTime || "");
+    setEditActFollowType(act.followUpType || "Call");
+    setEditActStatus(act.callStatus || "Pending");
+    setEditDialogOpen(true);
+  };
+
+  const canEditActivity = (act: any) => {
+    if (!currentUser) return false;
+    if (currentUser.role === "admin") return true;
+    return currentUser.id === act.createdBy;
   };
 
   const handleLogActivity = () => {
@@ -323,7 +399,7 @@ export default function DealDetail() {
                     <div><Label>Type</Label>
                       <Select value={actType} onValueChange={setActType}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>{["Call","WhatsApp","Email","Note","FollowUp"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                        <SelectContent>{["Call","WhatsApp","Email","Note","FollowUp","Meeting"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
                     <div><Label>Notes</Label><Textarea value={actNotes} onChange={e => setActNotes(e.target.value)} placeholder="Notes from this interaction..." /></div>
@@ -361,19 +437,66 @@ export default function DealDetail() {
                 </p>
               )}
               {filteredActivities.map(act => {
-                const style = ACT_STYLE[act.type] || { bg: "#f3f4f6", fg: "#374151", icon: "•" };
+                const style = ACT_STYLE[act.type] || { bg: "#f3f4f6", fg: "#374151", icon: "\u2022" };
+                const isCompleted = act.callStatus === "Completed";
                 return (
-                  <div key={act.id} className="flex gap-3 p-3 border rounded-lg bg-card text-sm">
+                  <div key={act.id} className={`flex gap-3 p-3 border rounded-lg bg-card text-sm ${isCompleted ? "border-green-200 bg-green-50/30" : ""}`}>
                     <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-base" style={{ backgroundColor: style.bg }}>
                       {style.icon}
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: style.bg, color: style.fg }}>{act.type}</span>
-                        <span className="text-xs text-muted-foreground">{new Date(act.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: style.bg, color: style.fg }}>{act.type}</span>
+                          {isCompleted && (
+                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Completed</span>
+                          )}
+                          {act.isEdited && (
+                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">Edited</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">{new Date(act.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
+                          {canEditActivity(act) && (
+                            <>
+                              <button
+                                onClick={() => openEditDialog(act)}
+                                className="h-6 w-6 rounded hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
+                                title="Edit"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                              <button
+                                onClick={() => setDeleteActId(act.id)}
+                                className="h-6 w-6 rounded hover:bg-red-50 flex items-center justify-center text-muted-foreground hover:text-red-600"
+                                title="Delete"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                       {act.notes && <p className="text-muted-foreground mt-1.5">{act.notes}</p>}
-                      {act.followUpDate && <p className="text-xs text-primary mt-1">Follow-up: {act.followUpDate} via {act.followUpType}</p>}
+                      {act.followUpDate && (
+                        <div className="flex items-center gap-2 mt-1">
+                          <p className="text-xs text-primary">Follow-up: {act.followUpDate}{act.followUpTime ? ` ${act.followUpTime}` : ""} via {act.followUpType}</p>
+                          {!isCompleted && canEditActivity(act) && (
+                            <button
+                              onClick={() => handleCompleteActivity(act)}
+                              className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 hover:bg-green-200 font-medium"
+                            >
+                              <Check className="h-3 w-3 inline mr-0.5" />Complete
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {act.updatedAt && (
+                        <p className="text-xs text-muted-foreground mt-0.5">Last updated: {new Date(act.updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+                      )}
+                      {act.user && (
+                        <p className="text-xs text-muted-foreground mt-0.5">by {act.user.name}</p>
+                      )}
                     </div>
                   </div>
                 );
@@ -413,6 +536,53 @@ export default function DealDetail() {
         currentCategory={contact?.category}
         onSuccess={() => queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) })}
       />
+
+      {/* Edit Activity Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Activity</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div><Label>Type</Label>
+              <Select value={editActType} onValueChange={setEditActType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{["Call","WhatsApp","Email","Note","FollowUp","Meeting"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div><Label>Notes</Label><Textarea value={editActNotes} onChange={e => setEditActNotes(e.target.value)} placeholder="Notes from this interaction..." /></div>
+            <div><Label>Follow-up Date</Label><Input type="date" value={editActFollowUp} onChange={e => setEditActFollowUp(e.target.value)} /></div>
+            {editActFollowUp && <div><Label>Follow-up Time</Label><Input type="time" value={editActFollowUpTime} onChange={e => setEditActFollowUpTime(e.target.value)} /></div>}
+            <div><Label>Follow-up Type</Label>
+              <Select value={editActFollowType} onValueChange={setEditActFollowType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{["Call","WhatsApp","Email"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div><Label>Status</Label>
+              <Select value={editActStatus} onValueChange={setEditActStatus}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {["Pending","Completed","Cancelled"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={handleEditActivity} disabled={updateActivity.isPending} className="w-full">Save Changes</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Activity Confirmation */}
+      <AlertDialog open={deleteActId !== null} onOpenChange={(open) => { if (!open) setDeleteActId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this activity?</AlertDialogTitle>
+            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteActId(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteActivity} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Won confirmation */}
       <AlertDialog open={wonConfirmOpen} onOpenChange={setWonConfirmOpen}>

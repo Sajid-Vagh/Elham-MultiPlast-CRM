@@ -19,7 +19,7 @@ async function getUser(req: Request, res: Response) {
 router.get("/notifications/stream", async (req: Request, res: Response) => {
   let user = await getUserFromRequest(req);
   if (!user && req.query.token) {
-    const userId = getUserIdFromToken(req.query.token as string);
+    const userId = await getUserIdFromToken(req.query.token as string);
     if (userId) {
       const [u] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
       user = u ?? null;
