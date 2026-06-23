@@ -293,13 +293,25 @@ async function parseSuccessBody(
       return response.blob();
   }
 }
+function getBasePath(base: string): string {
+  return base.replace(/https?:\/\/[^\/]+/, "");
+}
+
 function resolveApiUrl(url: string): string {
   if (_baseUrl && url.startsWith("/")) {
+    const basePath = getBasePath(_baseUrl);
+    if (basePath && url.startsWith(basePath)) {
+      return _baseUrl + url.slice(basePath.length);
+    }
     return `${_baseUrl}${url}`;
   }
 
   if (_baseUrl && url.includes("elham-multiplast-crm.onrender.com")) {
     const path = url.replace(/https?:\/\/[^\/]+/, "");
+    const basePath = getBasePath(_baseUrl);
+    if (basePath && path.startsWith(basePath)) {
+      return `${_baseUrl}${path.slice(basePath.length)}`;
+    }
     return `${_baseUrl}${path}`;
   }
 
