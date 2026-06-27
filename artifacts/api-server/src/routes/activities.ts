@@ -103,13 +103,44 @@ router.post("/activities", async (req, res) => {
     if (!currentUser) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     console.log("[DEBUG] POST /activities - Raw body:", JSON.stringify(req.body));
-    console.log("[DEBUG] POST /activities - Inserting:", JSON.stringify({ ...parsed.data, createdBy: currentUser.id }));
-    const [activity] = await db.insert(activitiesTable).values({
-      ...parsed.data,
-      createdBy: currentUser.id,
-    }).returning();
-    console.log("[DEBUG] POST /activities - Insert result:", JSON.stringify({ id: activity.id, type: activity.type, followUpDate: activity.followUpDate, createdBy: activity.createdBy, dealId: activity.dealId, contactId: activity.contactId }));
-    console.log("[DEBUG] POST /activities - ALL rows in activities table:", (await db.select({ id: activitiesTable.id, dealId: activitiesTable.dealId, type: activitiesTable.type, createdBy: activitiesTable.createdBy, followUpDate: activitiesTable.followUpDate }).from(activitiesTable)).length);
+    console.log("[DEBUG] POST /activities - Creating:", JSON.stringify({ ...parsed.data, createdBy: currentUser.id }));
+
+    let activity: typeof activitiesTable.$inferSelect | undefined;
+
+    // Upsert: ensure only one FollowUp per deal
+    if (parsed.data.type === "FollowUp" && parsed.data.dealId) {
+      const [existing] = await db.select()
+        .from(activitiesTable)
+        .where(
+          and(
+            eq(activitiesTable.dealId, parsed.data.dealId),
+            eq(activitiesTable.type, "FollowUp")
+          )
+        );
+      if (existing) {
+        const [updated] = await db.update(activitiesTable)
+          .set({
+            ...parsed.data,
+            updatedAt: new Date(),
+            updatedBy: currentUser.id,
+            isEdited: true,
+          })
+          .where(eq(activitiesTable.id, existing.id))
+          .returning();
+        activity = updated;
+        console.log("[DEBUG] POST /activities - Updated existing FollowUp:", { id: activity.id, dealId: activity.dealId });
+      }
+    }
+
+    // If no upsert happened, insert new record
+    if (!activity) {
+      const [inserted] = await db.insert(activitiesTable).values({
+        ...parsed.data,
+        createdBy: currentUser.id,
+      }).returning();
+      activity = inserted;
+      console.log("[DEBUG] POST /activities - Inserted new:", { id: activity.id, type: activity.type, followUpDate: activity.followUpDate, createdBy: activity.createdBy, dealId: activity.dealId, contactId: activity.contactId });
+    }
 
     // Notify contact's sales owner about new follow-up
     if (activity && (activity.contactId || activity.dealId)) {
