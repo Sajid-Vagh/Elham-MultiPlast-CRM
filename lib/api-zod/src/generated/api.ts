@@ -294,7 +294,9 @@ export const UpdateContactBody = zod.object({
   "tags": zod.string().nullish(),
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
-  "nextCallDate": zod.string().nullish()
+  "nextCallDate": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "category": zod.string().nullish()
 })
 
 export const UpdateContactResponse = zod.object({
@@ -838,7 +840,7 @@ export const ListActivitiesResponseItem = zod.object({
   "createdAt": zod.string(),
   "updatedAt": zod.string().nullish(),
   "updatedBy": zod.number().nullish(),
-  "isEdited": zod.boolean().nullish()
+  "isEdited": zod.boolean().optional()
 })
 export const ListActivitiesResponse = zod.array(ListActivitiesResponseItem)
 
@@ -880,7 +882,7 @@ export const CreateActivityResponse = zod.object({
   "createdAt": zod.string(),
   "updatedAt": zod.string().nullish(),
   "updatedBy": zod.number().nullish(),
-  "isEdited": zod.boolean().nullish()
+  "isEdited": zod.boolean().optional()
 })
 
 
@@ -889,7 +891,7 @@ export const UpdateActivityParams = zod.object({
 })
 
 export const UpdateActivityBody = zod.object({
-  "type": zod.enum(['Call', 'WhatsApp', 'Email', 'Note', 'FollowUp', 'Meeting']).nullish(),
+  "type": zod.enum(['Call', 'WhatsApp', 'Email', 'Note', 'FollowUp', 'Meeting']).optional(),
   "notes": zod.string().nullish(),
   "followUpDate": zod.string().nullish(),
   "followUpTime": zod.string().nullish(),
@@ -921,7 +923,7 @@ export const UpdateActivityResponse = zod.object({
   "createdAt": zod.string(),
   "updatedAt": zod.string().nullish(),
   "updatedBy": zod.number().nullish(),
-  "isEdited": zod.boolean().nullish()
+  "isEdited": zod.boolean().optional()
 })
 
 

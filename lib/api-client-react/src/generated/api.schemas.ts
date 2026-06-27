@@ -243,6 +243,10 @@ export interface ContactUpdate {
   lastCallDate?: string | null;
   /** @nullable */
   nextCallDate?: string | null;
+  /** @nullable */
+  state?: string | null;
+  /** @nullable */
+  category?: string | null;
 }
 
 export interface DuplicateGroup {
@@ -505,9 +509,20 @@ export interface ActivityInput {
   callStatus?: string | null;
 }
 
+export type ActivityUpdateType = typeof ActivityUpdateType[keyof typeof ActivityUpdateType];
+
+
+export const ActivityUpdateType = {
+  Call: 'Call',
+  WhatsApp: 'WhatsApp',
+  Email: 'Email',
+  Note: 'Note',
+  FollowUp: 'FollowUp',
+  Meeting: 'Meeting',
+} as const;
+
 export interface ActivityUpdate {
-  /** @nullable */
-  type?: ActivityType | null;
+  type?: ActivityUpdateType;
   /** @nullable */
   notes?: string | null;
   /** @nullable */

@@ -277,6 +277,8 @@ router.post("/notifications/read-all", async (req: Request, res: Response) => {
 });
 
 // Helper to create a notification and emit it via SSE
+// Skips creation if an identical unread notification already exists
+// (same userId, type, relatedId, relatedType, and still unread)
 export async function createNotification(params: {
   userId: number;
   type: string;
@@ -286,6 +288,25 @@ export async function createNotification(params: {
   relatedId?: number;
   relatedType?: string;
 }) {
+  if (params.relatedId != null && params.relatedType) {
+    const [existing] = await db
+      .select()
+      .from(notificationsTable)
+      .where(and(
+        eq(notificationsTable.userId, params.userId),
+        eq(notificationsTable.type, params.type),
+        eq(notificationsTable.relatedId, params.relatedId),
+        eq(notificationsTable.relatedType, params.relatedType),
+        eq(notificationsTable.notificationSeen, false),
+        isNull(notificationsTable.readAt),
+      ))
+      .limit(1);
+
+    if (existing) {
+      return existing;
+    }
+  }
+
   const [n] = await db.insert(notificationsTable).values(params).returning();
   if (n) {
     notificationEmitter.emit(NOTIFICATION_EVENT, n);

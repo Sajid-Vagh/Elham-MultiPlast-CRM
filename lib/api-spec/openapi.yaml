@@ -1029,6 +1029,10 @@ components:
           type: ["string", "null"]
         nextCallDate:
           type: ["string", "null"]
+        state:
+          type: ["string", "null"]
+        category:
+          type: ["string", "null"]
 
     DuplicateGroup:
       type: object

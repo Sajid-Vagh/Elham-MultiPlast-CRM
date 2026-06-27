@@ -9,6 +9,7 @@ import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import Leads from "@/pages/leads";
 import LeadsNew from "@/pages/leads-new";
+import LeadsEdit from "@/pages/leads-edit";
 import LeadDetail from "@/pages/lead-detail";
 import Deals from "@/pages/deals";
 import DealDetail from "@/pages/deal-detail";
@@ -48,6 +49,9 @@ function Router() {
       </Route>
       <Route path="/leads/new">
         <ProtectedLayout><LeadsNew /></ProtectedLayout>
+      </Route>
+      <Route path="/leads/:id/edit">
+        {(params) => <ProtectedLayout><LeadsEdit /></ProtectedLayout>}
       </Route>
       <Route path="/leads/:id">
         {(params) => <ProtectedLayout><LeadDetail /></ProtectedLayout>}

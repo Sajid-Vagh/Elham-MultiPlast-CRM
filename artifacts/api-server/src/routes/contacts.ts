@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, usersTable } from "@workspace/db";
-import { eq, or, and, ilike, lte, isNotNull, SQL } from "drizzle-orm";
+import { db, contactsTable, usersTable, activitiesTable, dealsTable } from "@workspace/db";
+import { eq, or, and, ilike, lte, isNotNull, inArray, SQL } from "drizzle-orm";
 import { CreateContactBody, UpdateContactBody, GetContactParams, UpdateContactParams, DeleteContactParams, ListContactsQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -215,6 +215,47 @@ router.patch("/contacts/:id", async (req, res) => {
           link: `/leads/${contact.id}`,
           relatedId: contact.id,
           relatedType: "contact",
+        });
+      }
+    }
+
+    const FIELD_LABELS: Record<string, string> = {
+      name: "Customer Name", mobile: "Mobile", email: "Email",
+      companyName: "Company Name", salesOwnerId: "Sales Owner",
+      otherPhone: "Other Phone", otherEmail: "Other Email",
+      leadSource: "Lead Source", city: "City", state: "State",
+      address: "Address", unit: "Unit", industry: "Industry",
+      tags: "Tags", inquiryDate: "Inquiry Date",
+      lastCallDate: "Last Call Date", nextCallDate: "Next Follow-up",
+      category: "Category"
+    };
+    const changes: string[] = [];
+    const updates = parsed.data as Record<string, any>;
+    for (const [key, newVal] of Object.entries(updates)) {
+      if (newVal === undefined) continue;
+      const oldVal = (oldContact as any)[key];
+      const oldStr = oldVal == null ? "" : String(oldVal);
+      const newStr = newVal == null ? "" : String(newVal);
+      if (oldStr !== newStr) {
+        const label = FIELD_LABELS[key] || key;
+        changes.push(`- ${label}\n  ${oldStr || "(empty)"} → ${newStr || "(empty)"}`);
+      }
+    }
+    if (changes.length > 0) {
+      const [existingDeal] = await db
+        .select({ id: dealsTable.id })
+        .from(dealsTable)
+        .where(eq(dealsTable.contactId, contact.id))
+        .limit(1);
+      const dealId = existingDeal?.id;
+      if (dealId) {
+        const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        await db.insert(activitiesTable).values({
+          dealId,
+          contactId: contact.id,
+          type: "Note",
+          notes: `${user.name} updated Lead\n\nChanged:\n${changes.join("\n\n")}\n\n${now}`,
+          createdBy: user.id,
         });
       }
     }

@@ -12,6 +12,7 @@ export * from './activityInput';
 export * from './activityInputType';
 export * from './activityType';
 export * from './activityUpdate';
+export * from './activityUpdateType';
 export * from './authResponse';
 export * from './bulkDeleteInput';
 export * from './bulkDeleteResult';

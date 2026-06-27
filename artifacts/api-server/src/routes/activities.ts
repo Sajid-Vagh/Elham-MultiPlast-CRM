@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, activitiesTable, usersTable, contactsTable, dealsTable } from "@workspace/db";
+import { db, activitiesTable, usersTable, contactsTable, dealsTable, notificationsTable } from "@workspace/db";
 import { eq, and, gte, lte, SQL } from "drizzle-orm";
 import { CreateActivityBody, UpdateActivityBody, ListActivitiesQueryParams, UpdateActivityParams, DeleteActivityParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
@@ -128,6 +128,15 @@ router.post("/activities", async (req, res) => {
           .where(eq(activitiesTable.id, existing.id))
           .returning();
         activity = updated;
+        await db
+          .update(notificationsTable)
+          .set({ notificationSeen: true, notificationSeenAt: new Date() })
+          .where(and(
+            eq(notificationsTable.relatedId, existing.id),
+            eq(notificationsTable.relatedType, "activity"),
+            eq(notificationsTable.type, "follow_up"),
+            eq(notificationsTable.notificationSeen, false),
+          ));
         console.log("[DEBUG] POST /activities - Updated existing FollowUp:", { id: activity.id, dealId: activity.dealId });
       }
     }

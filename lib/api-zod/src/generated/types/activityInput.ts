@@ -17,5 +17,9 @@ export interface ActivityInput {
   /** @nullable */
   followUpDate?: string | null;
   /** @nullable */
+  followUpTime?: string | null;
+  /** @nullable */
   followUpType?: string | null;
+  /** @nullable */
+  callStatus?: string | null;
 }

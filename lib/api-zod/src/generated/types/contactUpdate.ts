@@ -36,4 +36,8 @@ export interface ContactUpdate {
   lastCallDate?: string | null;
   /** @nullable */
   nextCallDate?: string | null;
+  /** @nullable */
+  state?: string | null;
+  /** @nullable */
+  category?: string | null;
 }

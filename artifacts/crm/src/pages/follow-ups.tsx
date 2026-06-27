@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Calendar, ArrowLeft, Phone, PhoneOff, X, Clock, Filter, FolderTree } from "lucide-react";
-import { Link } from "wouter";
+import { Calendar, ArrowLeft, Phone, PhoneOff, X, Clock, Filter, FolderTree, Eye, Pencil, History } from "lucide-react";
+import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { CategoryBadge } from "@/components/category-badge";
 import { MoveCategoryDialog } from "@/components/move-category-dialog";
@@ -37,6 +37,7 @@ export default function FollowUps() {
   const { toast } = useToast();
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
+  const [, setLocation] = useLocation();
 
   const activeDate = useMemo(() => {
     if (showToday) return todayStr();
@@ -201,8 +202,15 @@ export default function FollowUps() {
                   const isCompleted = activity.callStatus === "Completed";
                   const time = activity.followUpTime;
 
+                  const contactId = activity.contact?.id || activity.deal?.contact?.id;
+                  const leadUrl = contactId ? `/leads/${contactId}` : null;
+
                   return (
-                    <TableRow key={activity.id} className={isCompleted ? "opacity-60" : ""}>
+                    <TableRow
+                      key={activity.id}
+                      className={`${isCompleted ? "opacity-60" : ""} cursor-pointer hover:bg-muted/50`}
+                      onClick={() => { if (leadUrl) setLocation(leadUrl); }}
+                    >
                       <TableCell className="font-medium">{contactName}</TableCell>
                       <TableCell>{contactMobile}</TableCell>
                       <TableCell>{companyName}</TableCell>
@@ -221,16 +229,45 @@ export default function FollowUps() {
                           {isCompleted ? "Completed" : "Pending"}
                         </Badge>
                       </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className={`h-8 w-8 ${isCompleted ? "text-green-600" : "text-orange-600"}`}
-                          onClick={() => handleToggleStatus(activity.id, activity.callStatus)}
-                          title={isCompleted ? "Mark as Pending" : "Mark as Completed"}
-                        >
-                          {isCompleted ? <PhoneOff className="h-4 w-4" /> : <Phone className="h-4 w-4" />}
-                        </Button>
+                      <TableCell className="w-28">
+                        <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            onClick={() => { if (leadUrl) setLocation(leadUrl); }}
+                            title="View Lead"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            onClick={() => { if (leadUrl) setLocation(`${leadUrl}/edit`); }}
+                            title="Edit Lead"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            onClick={() => { if (leadUrl) setLocation(leadUrl); }}
+                            title="Activity History"
+                          >
+                            <History className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-7 w-7 ${isCompleted ? "text-green-600" : "text-orange-600"}`}
+                            onClick={() => handleToggleStatus(activity.id, activity.callStatus)}
+                            title={isCompleted ? "Mark as Pending" : "Mark as Completed"}
+                          >
+                            {isCompleted ? <PhoneOff className="h-3.5 w-3.5" /> : <Phone className="h-3.5 w-3.5" />}
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
