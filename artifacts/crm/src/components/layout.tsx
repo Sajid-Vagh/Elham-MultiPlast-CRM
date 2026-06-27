@@ -201,28 +201,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <aside className="crm-sidebar w-64 flex flex-col">
-        <div className="px-5 py-6 border-b border-[hsl(250_22%_88%)]">
+        <div className="px-5 py-5 border-b border-[hsl(250_22%_88%)]">
           <div className="flex items-start justify-between">
             <div className="flex-1 flex flex-col items-center min-w-0">
-              <div className="w-full max-w-[160px] mx-auto mb-4 flex items-center justify-center">
-                <img
-                  src="/images/logo.png"
-                  alt="Elham MultiPlast LLP"
-                  className="w-full h-auto"
-                  style={{ aspectRatio: "auto" }}
-                />
-              </div>
-              <h1 className="text-base font-bold tracking-wide text-center" style={{ color: "hsl(258 78% 45%)" }}>
+              <img
+                src="/images/logo.png"
+                alt="Elham MultiPlast LLP"
+                className="h-14 w-auto mx-auto mb-2.5"
+              />
+              <h1 className="text-sm font-bold tracking-wide text-center" style={{ color: "hsl(258 78% 45%)" }}>
                 Elham MultiPlast LLP
               </h1>
-              <p className="text-[11px] font-medium mt-0.5 text-center tracking-wide uppercase" style={{ color: "hsl(248 16% 55%)" }}>CRM System</p>
+              <p className="text-[10px] font-medium mt-0.5 text-center tracking-wider uppercase" style={{ color: "hsl(248 16% 55%)" }}>CRM System</p>
             </div>
-            <div className="relative flex-shrink-0 mt-1">
+            <div className="relative flex-shrink-0 mt-0.5">
               <Button
                 ref={bellRef}
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 relative"
+                className="h-7 w-7 relative"
                 onClick={() => {
                   if (bellRef.current) {
                     setBellRect(bellRef.current.getBoundingClientRect());
@@ -230,9 +227,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   setBellOpen(prev => !prev);
                 }}
               >
-                <Bell className="h-4 w-4" />
+                <Bell className="h-3.5 w-3.5" />
                 {unreadCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                  <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-red-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
                     {unreadCount > 9 ? "9+" : unreadCount}
                   </span>
                 )}
