@@ -201,20 +201,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <aside className="crm-sidebar w-64 flex flex-col">
-        <div className="px-5 py-5 border-b border-[hsl(250_22%_88%)]">
-          <div className="flex items-start justify-between">
-            <div className="flex-1 flex flex-col items-center min-w-0">
+        <div className="px-5 py-4 border-b border-[hsl(250_22%_88%)]">
+          <div className="flex items-center justify-between">
+            <div className="flex-1 flex justify-center">
               <img
                 src="/images/logo.png"
                 alt="Elham MultiPlast LLP"
-                className="h-14 w-auto mx-auto mb-2.5"
+                className="h-14 w-auto"
               />
-              <h1 className="text-sm font-bold tracking-wide text-center" style={{ color: "hsl(258 78% 45%)" }}>
-                Elham MultiPlast LLP
-              </h1>
-              <p className="text-[10px] font-medium mt-0.5 text-center tracking-wider uppercase" style={{ color: "hsl(248 16% 55%)" }}>CRM System</p>
             </div>
-            <div className="relative flex-shrink-0 mt-0.5">
+            <div className="relative flex-shrink-0">
               <Button
                 ref={bellRef}
                 variant="ghost"

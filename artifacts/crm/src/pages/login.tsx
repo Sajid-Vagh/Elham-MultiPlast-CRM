@@ -40,11 +40,10 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-sm shadow-xl border-primary/10">
-        <CardHeader className="space-y-3 text-center pb-4 pt-7">
-          <div className="mx-auto mb-2">
+        <CardHeader className="space-y-4 text-center pb-4 pt-7">
+          <div className="mx-auto">
             <img src="/images/logo.png" alt="Elham MultiPlast LLP" className="h-20 w-auto mx-auto" />
           </div>
-          <CardTitle className="text-lg font-bold">Elham MultiPlast LLP</CardTitle>
           <CardDescription>Enter your credentials to access the CRM</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
