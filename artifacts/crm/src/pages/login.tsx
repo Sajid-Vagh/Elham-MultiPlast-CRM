@@ -42,7 +42,7 @@ export default function Login() {
       <Card className="w-full max-w-sm shadow-xl border-primary/10">
         <CardHeader className="space-y-4 text-center pb-4 pt-7">
           <div className="mx-auto">
-            <img src="/images/logo.png" alt="Elham MultiPlast LLP" className="w-[180px] h-auto mx-auto" />
+            <img src="/images/logo1.png" alt="Elham MultiPlast LLP" className="max-w-[200px] w-full h-auto mx-auto" />
           </div>
           <CardDescription>Enter your credentials to access the CRM</CardDescription>
         </CardHeader>

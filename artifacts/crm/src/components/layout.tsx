@@ -174,7 +174,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   if (isLoading) return (
     <div className="h-screen flex items-center justify-center bg-background">
       <div className="text-center">
-        <img src="/images/logo.png" alt="Elham MultiPlast LLP" className="w-auto h-auto max-h-24 mx-auto mb-6" style={{ aspectRatio: "auto" }} />
+        <img src="/images/logo1.png" alt="Elham MultiPlast LLP" className="max-w-[180px] w-full h-auto mx-auto mb-6" />
         <div className="flex items-center justify-center gap-2">
           <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           <p className="text-sm text-muted-foreground">Loading...</p>
@@ -205,9 +205,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center justify-between">
             <div className="flex-1 flex justify-center">
               <img
-                src="/images/logo.png"
+                src="/images/logo1.png"
                 alt="Elham MultiPlast LLP"
-                className="w-[150px] h-auto"
+                className="max-w-[160px] w-full h-auto"
               />
             </div>
             <div className="relative flex-shrink-0">
