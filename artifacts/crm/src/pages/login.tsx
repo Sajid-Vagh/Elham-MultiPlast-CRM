@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Building2, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Login() {
@@ -41,8 +41,8 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-md shadow-lg border-primary/10">
         <CardHeader className="space-y-3 text-center pb-6">
-          <div className="mx-auto bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mb-2">
-            <Building2 className="w-8 h-8 text-primary" />
+          <div className="mx-auto mb-4">
+            <img src="/images/logo.png" alt="Elham MultiPlast LLP" className="h-16 mx-auto" />
           </div>
           <CardTitle className="text-2xl font-bold">Elham MultiPlast LLP</CardTitle>
           <CardDescription>Enter your credentials to access the CRM</CardDescription>

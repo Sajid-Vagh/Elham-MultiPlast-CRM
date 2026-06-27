@@ -131,7 +131,10 @@ ${partyAddressLines.length > 0 ? partyAddressLines.join("<br>") + "<br>" : ""}
 ${cityStatePincode ? cityStatePincode + "<br>" : ""}
 ${invoice.address ? invoice.address + "<br>" : ""}
 </div>
-<div style="font-size:8.5pt;margin-top:2pt;">GSTIN / UIN : ${invoice.gstNumber || ""}</div>
+${invoice.customerType === "Unregistered"
+  ? `<div style="font-size:8.5pt;margin-top:2pt;">ID Proof : ${invoice.idProofType || ""} - ${invoice.idProofNumber || ""}</div>`
+  : `<div style="font-size:8.5pt;margin-top:2pt;">GSTIN / UIN : ${invoice.gstNumber || ""}</div>`
+}
 </div>
 <div class="party-right">
 <div style="font-weight:bold;font-size:9pt;">Order No : ${invoice.invoiceNumber}</div>
@@ -301,20 +304,27 @@ router.post("/proforma-invoices", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { customerName, companyName, address, addressLine1, addressLine2, addressLine3, city, state, pincode, gstNumber, mobile, taxableAmount, freight, cgst, sgst, igst, cgstPercent, sgstPercent, igstPercent, grandTotal, amountInWords, status, notes, items } = req.body;
+    const { customerName, companyName, address, addressLine1, addressLine2, addressLine3, city, state, pincode, gstNumber, mobile, taxableAmount, freight, cgst, sgst, igst, cgstPercent, sgstPercent, igstPercent, grandTotal, amountInWords, status, notes, items, customerType, idProofType, idProofNumber, invoiceNumber } = req.body;
 
     if (!customerName || !items?.length) {
       res.status(400).json({ error: "Customer name and at least one item required" });
       return;
     }
 
-    const invoiceNumber = generateInvoiceNumber();
+    if (invoiceNumber) {
+      const [existing] = await db.select({ id: proformaInvoicesTable.id }).from(proformaInvoicesTable).where(eq(proformaInvoicesTable.invoiceNumber, invoiceNumber));
+      if (existing) {
+        res.status(409).json({ error: "Invoice number already exists" });
+        return;
+      }
+    }
+    const finalInvoiceNumber = invoiceNumber || generateInvoiceNumber();
     const words = amountInWords || amountToWords(Number(grandTotal) || 0);
 
     const [invoice] = await db
       .insert(proformaInvoicesTable)
       .values({
-        invoiceNumber,
+        invoiceNumber: finalInvoiceNumber,
         customerName,
         companyName: companyName || null,
         address: address || null,
@@ -324,7 +334,10 @@ router.post("/proforma-invoices", async (req, res) => {
         city: city || null,
         state: state || null,
         pincode: pincode || null,
+        customerType: customerType || "GST",
         gstNumber: gstNumber || null,
+        idProofType: idProofType || null,
+        idProofNumber: idProofNumber || null,
         mobile: mobile || null,
         taxableAmount: String(taxableAmount || 0),
         freight: String(freight || 0),
@@ -413,7 +426,7 @@ async function updateInvoiceHandler(req: any, res: any) {
       }
     }
 
-    const { customerName, companyName, address, addressLine1, addressLine2, addressLine3, city, state, pincode, gstNumber, mobile, taxableAmount, freight, cgst, sgst, igst, cgstPercent, sgstPercent, igstPercent, grandTotal, amountInWords, notes, items } = req.body;
+    const { customerName, companyName, address, addressLine1, addressLine2, addressLine3, city, state, pincode, gstNumber, mobile, taxableAmount, freight, cgst, sgst, igst, cgstPercent, sgstPercent, igstPercent, grandTotal, amountInWords, notes, items, customerType, idProofType, idProofNumber, invoiceNumber } = req.body;
 
     const updateData: any = {};
     if (customerName !== undefined) updateData.customerName = customerName;
@@ -426,7 +439,18 @@ async function updateInvoiceHandler(req: any, res: any) {
     if (state !== undefined) updateData.state = state;
     if (pincode !== undefined) updateData.pincode = pincode;
     if (gstNumber !== undefined) updateData.gstNumber = gstNumber;
+    if (customerType !== undefined) updateData.customerType = customerType;
+    if (idProofType !== undefined) updateData.idProofType = idProofType;
+    if (idProofNumber !== undefined) updateData.idProofNumber = idProofNumber;
     if (mobile !== undefined) updateData.mobile = mobile;
+    if (invoiceNumber !== undefined) {
+      const [existing] = await db.select({ id: proformaInvoicesTable.id }).from(proformaInvoicesTable).where(eq(proformaInvoicesTable.invoiceNumber, invoiceNumber));
+      if (existing && existing.id !== id) {
+        res.status(409).json({ error: "Invoice number already exists" });
+        return;
+      }
+      updateData.invoiceNumber = invoiceNumber;
+    }
     if (taxableAmount !== undefined) updateData.taxableAmount = String(taxableAmount);
     if (freight !== undefined) updateData.freight = String(freight);
     if (cgst !== undefined) updateData.cgst = String(cgst);

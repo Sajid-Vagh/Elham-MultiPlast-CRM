@@ -171,7 +171,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
     );
   }, [updateActivity, markAsSeenByRelated]);
 
-  if (isLoading) return <div>Loading...</div>;
+  if (isLoading) return (
+    <div className="h-screen flex items-center justify-center bg-background">
+      <div className="text-center">
+        <img src="/images/logo.png" alt="Elham MultiPlast LLP" className="h-14 mx-auto mb-4" />
+        <p className="text-sm text-muted-foreground">Loading...</p>
+      </div>
+    </div>
+  );
   if (!user) return null;
 
   const navItems = [
@@ -193,11 +200,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <aside className="crm-sidebar w-64 flex flex-col">
         <div className="p-5 border-b border-[hsl(250_22%_88%)]">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-lg font-bold tracking-tight" style={{ color: "hsl(258 78% 45%)" }}>
+            <div className="flex-1 flex flex-col items-center">
+              <img src="/images/logo.png" alt="Elham MultiPlast LLP" className="h-14 mb-2" />
+              <h1 className="text-lg font-bold tracking-tight text-center" style={{ color: "hsl(258 78% 45%)" }}>
                 Elham MultiPlast LLP
               </h1>
-              <p className="text-xs mt-0.5" style={{ color: "hsl(248 16% 55%)" }}>CRM System</p>
+              <p className="text-xs mt-0.5 text-center" style={{ color: "hsl(248 16% 55%)" }}>CRM System</p>
             </div>
             <div className="relative">
               <Button

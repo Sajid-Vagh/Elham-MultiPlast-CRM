@@ -91,8 +91,12 @@ export default function ProformaInvoicesPage() {
   const [state, setState] = useState("");
   const [pincode, setPincode] = useState("");
   const [address, setAddress] = useState("");
+  const [customerType, setCustomerType] = useState<"GST" | "Unregistered">("GST");
   const [gstNumber, setGstNumber] = useState("");
+  const [idProofType, setIdProofType] = useState("");
+  const [idProofNumber, setIdProofNumber] = useState("");
   const [mobile, setMobile] = useState("");
+  const [invoiceNumber, setInvoiceNumber] = useState("");
   const [freight, setFreight] = useState(0);
   const [cgstPct, setCgstPct] = useState(0);
   const [sgstPct, setSgstPct] = useState(0);
@@ -104,6 +108,10 @@ export default function ProformaInvoicesPage() {
   const [saving, setSaving] = useState(false);
   const [showPdfPreview, setShowPdfPreview] = useState(false);
   const [pdfHtml, setPdfHtml] = useState("");
+  const [editMode, setEditMode] = useState(false);
+  const [contactSearchQuery, setContactSearchQuery] = useState("");
+  const [contactSearchResults, setContactSearchResults] = useState<any[]>([]);
+  const [showContactSearch, setShowContactSearch] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState("all");
   const [statusDialog, setStatusDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
@@ -186,14 +194,51 @@ export default function ProformaInvoicesPage() {
     setState("");
     setPincode("");
     setAddress("");
+    setCustomerType("GST");
     setGstNumber("");
+    setIdProofType("");
+    setIdProofNumber("");
     setMobile("");
+    setInvoiceNumber("");
     setFreight(0);
     setCgstPct(0);
     setSgstPct(0);
     setIgstPct(0);
     setNotes("");
     setItems([{ productName: "", hsnCode: "", quantity: 1, unit: "Pcs", rate: 0, amount: 0 }]);
+    setEditMode(false);
+  };
+
+  useEffect(() => {
+    if (!contactSearchQuery || contactSearchQuery.length < 2) {
+      setContactSearchResults([]);
+      setShowContactSearch(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/contacts?search=${encodeURIComponent(contactSearchQuery)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setContactSearchResults(data.slice(0, 10));
+          setShowContactSearch(true);
+        }
+      } catch { }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [contactSearchQuery, token]);
+
+  const selectContact = (contact: any) => {
+    setCustomerName(contact.name);
+    setCompanyName(contact.companyName || "");
+    setMobile(contact.mobile || "");
+    setGstNumber(contact.gstNumber || "");
+    setCity(contact.city || "");
+    setAddress(contact.address || "");
+    setShowContactSearch(false);
+    setContactSearchQuery("");
   };
 
   const handleSave = async (status: string) => {
@@ -207,7 +252,7 @@ export default function ProformaInvoicesPage() {
     }
     setSaving(true);
     try {
-      const body = {
+      const body: any = {
         customerName,
         companyName: companyName || null,
         addressLine1: addressLine1 || null,
@@ -217,7 +262,10 @@ export default function ProformaInvoicesPage() {
         state: state || null,
         pincode: pincode || null,
         address: address || null,
+        customerType,
         gstNumber: gstNumber || null,
+        idProofType: customerType === "Unregistered" ? (idProofType || null) : null,
+        idProofNumber: customerType === "Unregistered" ? (idProofNumber || null) : null,
         mobile: mobile || null,
         taxableAmount,
         freight,
@@ -240,23 +288,36 @@ export default function ProformaInvoicesPage() {
           amount: i.quantity * i.rate,
         })),
       };
+      if (invoiceNumber) body.invoiceNumber = invoiceNumber;
 
-      const res = await fetch("/api/proforma-invoices", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body),
-      });
+      let res: Response;
+      if (editMode && selectedInvoice?.id) {
+        res = await fetch(`/api/proforma-invoices/${selectedInvoice.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify(body),
+        });
+      } else {
+        res = await fetch("/api/proforma-invoices", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify(body),
+        });
+      }
 
-      if (!res.ok) throw new Error("Failed to create invoice");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to save invoice");
+      }
 
       const invoice = await res.json();
-      toast({ title: "Invoice Created", description: `${invoice.invoiceNumber} saved as ${status}` });
+      toast({ title: editMode ? "Invoice Updated" : "Invoice Created", description: `${invoice.invoiceNumber} saved as ${status}` });
       resetForm();
       setSelectedInvoice(invoice);
       setMode("detail");
       fetchInvoices();
-    } catch (err) {
-      toast({ title: "Error", description: "Failed to create invoice", variant: "destructive" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to save invoice", variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -485,7 +546,10 @@ hr{border:none;border-top:1px solid #000;margin:2pt 0;}
 <div class="party-label">Party Details :</div>
 <div class="party-name">${inv.customerName}</div>
 <div class="party-address">${partyAddr.length > 0 ? partyAddr.join("<br>") + "<br>" : ""}${cityStatePin ? cityStatePin + "<br>" : ""}${inv.address ? inv.address + "<br>" : ""}</div>
-<div style="font-size:8.5pt;margin-top:2pt;">GSTIN / UIN : ${inv.gstNumber || ""}</div>
+${inv.customerType === "Unregistered"
+  ? `<div style="font-size:8.5pt;margin-top:2pt;">ID Proof : ${inv.idProofType || ""} - ${inv.idProofNumber || ""}</div>`
+  : `<div style="font-size:8.5pt;margin-top:2pt;">GSTIN / UIN : ${inv.gstNumber || ""}</div>`
+}
 </div>
 <div class="party-right">
 <div style="font-weight:bold;font-size:9pt;">Order No : ${inv.invoiceNumber}</div>
@@ -527,7 +591,7 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
           <Button variant="ghost" size="sm" onClick={() => { setMode("list"); resetForm(); }}>
             <ArrowLeft className="h-4 w-4 mr-1" /> Back
           </Button>
-          <h1 className="text-2xl font-bold">New Proforma Invoice</h1>
+          <h1 className="text-2xl font-bold">{editMode ? `Edit Invoice - ${selectedInvoice?.invoiceNumber || ""}` : "New Proforma Invoice"}</h1>
         </div>
 
         <Card>
@@ -535,7 +599,23 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <Label>Party Name *</Label>
-              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Enter party name" />
+              <div className="relative">
+                <Input value={customerName} onChange={(e) => { setCustomerName(e.target.value); setContactSearchQuery(e.target.value); }} placeholder="Enter party name (type to search contacts)" onFocus={() => { if (contactSearchResults.length > 0) setShowContactSearch(true); }} onBlur={() => setTimeout(() => setShowContactSearch(false), 200)} />
+                {showContactSearch && contactSearchResults.length > 0 && (
+                  <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-md shadow-lg mt-1 max-h-48 overflow-y-auto">
+                    {contactSearchResults.map((c: any) => (
+                      <div key={c.id} className="px-3 py-2 hover:bg-muted cursor-pointer text-sm" onMouseDown={() => selectContact(c)}>
+                        <div className="font-medium">{c.name}</div>
+                        <div className="text-xs text-muted-foreground">{c.companyName || ""}{c.companyName && c.mobile ? " · " : ""}{c.mobile || ""}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Invoice Number (leave empty for auto-generated)</Label>
+              <Input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="PI-2026-XXXX" />
             </div>
             <div className="sm:col-span-2">
               <Label>Address Line 1</Label>
@@ -562,9 +642,41 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
               <Input value={pincode} onChange={(e) => setPincode(e.target.value)} placeholder="Pincode" />
             </div>
             <div>
-              <Label>GSTIN / UIN</Label>
-              <Input value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} placeholder="GSTIN / UIN" />
+              <Label>Customer Type</Label>
+              <Select value={customerType} onValueChange={(v: "GST" | "Unregistered") => setCustomerType(v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="GST">GST Registered</SelectItem>
+                  <SelectItem value="Unregistered">Unregistered</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+            {customerType === "GST" ? (
+              <div>
+                <Label>GSTIN / UIN</Label>
+                <Input value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} placeholder="GSTIN / UIN" />
+              </div>
+            ) : (
+              <>
+                <div>
+                  <Label>ID Proof Type</Label>
+                  <Select value={idProofType} onValueChange={setIdProofType}>
+                    <SelectTrigger><SelectValue placeholder="Select proof type" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Aadhar">Aadhar</SelectItem>
+                      <SelectItem value="PAN">PAN</SelectItem>
+                      <SelectItem value="Voter ID">Voter ID</SelectItem>
+                      <SelectItem value="Driving License">Driving License</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>ID Proof Number</Label>
+                  <Input value={idProofNumber} onChange={(e) => setIdProofNumber(e.target.value)} placeholder="ID proof number" />
+                </div>
+              </>
+            )}
             <div>
               <Label>Mobile Number</Label>
               <Input value={mobile} onChange={(e) => setMobile(e.target.value)} placeholder="Mobile number" />
@@ -697,11 +809,14 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
         </Card>
 
         <div className="flex gap-3 justify-end">
+          <Button variant="outline" onClick={() => { if (editMode) { setEditMode(false); setMode("detail"); } else { setMode("list"); resetForm(); } }}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> Cancel
+          </Button>
           <Button variant="outline" onClick={() => handleSave("Draft")} disabled={saving}>
-            <Save className="h-4 w-4 mr-1" /> Save Draft
+            <Save className="h-4 w-4 mr-1" /> {editMode ? "Update Draft" : "Save Draft"}
           </Button>
           <Button onClick={() => handleSave("Sent")} disabled={saving}>
-            <Send className="h-4 w-4 mr-1" /> {saving ? "Saving..." : "Generate & Send"}
+            <Send className="h-4 w-4 mr-1" /> {saving ? "Saving..." : editMode ? "Update & Send" : "Generate & Send"}
           </Button>
         </div>
       </div>
@@ -721,10 +836,50 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
             <p className="text-sm text-muted-foreground">{inv.customerName}</p>
           </div>
           <Badge className={`text-xs px-3 py-1 ${STATUS_COLORS[inv.status] || ""}`}>{inv.status}</Badge>
+          <Button variant="outline" size="sm" onClick={() => {
+            setSelectedInvoice(inv);
+            setCustomerName(inv.customerName || "");
+            setCompanyName(inv.companyName || "");
+            setAddressLine1(inv.addressLine1 || "");
+            setAddressLine2(inv.addressLine2 || "");
+            setAddressLine3(inv.addressLine3 || "");
+            setCity(inv.city || "");
+            setState(inv.state || "");
+            setPincode(inv.pincode || "");
+            setAddress(inv.address || "");
+            setCustomerType(inv.customerType || "GST");
+            setGstNumber(inv.gstNumber || "");
+            setIdProofType(inv.idProofType || "");
+            setIdProofNumber(inv.idProofNumber || "");
+            setMobile(inv.mobile || "");
+            setInvoiceNumber(inv.invoiceNumber || "");
+            setFreight(Number(inv.freight || 0));
+            setCgstPct(Number(inv.cgstPercent || 0));
+            setSgstPct(Number(inv.sgstPercent || 0));
+            setIgstPct(Number(inv.igstPercent || 0));
+            setNotes(inv.notes || "");
+            setItems((inv.items || []).map((i: any) => ({
+              productName: i.productName,
+              hsnCode: i.hsnCode || "",
+              quantity: Number(i.quantity),
+              unit: i.unit || "Pcs",
+              rate: Number(i.rate),
+              amount: Number(i.amount),
+            })));
+            setEditMode(true);
+            setMode("create");
+          }}>
+            <FileText className="h-4 w-4 mr-1" /> Edit
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setStatusDialog({ open: true, invoice: inv })}>
             Update Status
           </Button>
         </div>
+        {editMode && (
+          <div className="w-full text-sm text-muted-foreground bg-blue-50 border border-blue-200 rounded-md px-4 py-2">
+            Showing invoice in read-only view. Click <strong>Edit</strong> to modify.
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card>
@@ -737,7 +892,12 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
               {inv.city && <p><span className="text-muted-foreground">City:</span> {inv.city}</p>}
               {inv.state && <p><span className="text-muted-foreground">State:</span> {inv.state}</p>}
               {inv.pincode && <p><span className="text-muted-foreground">Pincode:</span> {inv.pincode}</p>}
-              {inv.gstNumber && <p><span className="text-muted-foreground">GSTIN/UIN:</span> {inv.gstNumber}</p>}
+              <p><span className="text-muted-foreground">Type:</span> {inv.customerType || "GST"}</p>
+              {inv.customerType === "Unregistered" ? (
+                <><p><span className="text-muted-foreground">ID Proof:</span> {inv.idProofType || ""} - {inv.idProofNumber || ""}</p></>
+              ) : (
+                inv.gstNumber && <p><span className="text-muted-foreground">GSTIN/UIN:</span> {inv.gstNumber}</p>
+              )}
               {inv.mobile && <p><span className="text-muted-foreground">Mobile:</span> {inv.mobile}</p>}
             </CardContent>
           </Card>
