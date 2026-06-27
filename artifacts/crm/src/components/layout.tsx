@@ -174,8 +174,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
   if (isLoading) return (
     <div className="h-screen flex items-center justify-center bg-background">
       <div className="text-center">
-        <img src="/images/logo.png" alt="Elham MultiPlast LLP" className="h-14 mx-auto mb-4" />
-        <p className="text-sm text-muted-foreground">Loading...</p>
+        <img src="/images/logo.png" alt="Elham MultiPlast LLP" className="w-auto h-auto max-h-24 mx-auto mb-6" style={{ aspectRatio: "auto" }} />
+        <div className="flex items-center justify-center gap-2">
+          <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
       </div>
     </div>
   );
@@ -198,16 +201,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <aside className="crm-sidebar w-64 flex flex-col">
-        <div className="p-5 border-b border-[hsl(250_22%_88%)]">
-          <div className="flex items-center justify-between">
-            <div className="flex-1 flex flex-col items-center">
-              <img src="/images/logo.png" alt="Elham MultiPlast LLP" className="h-14 mb-2" />
-              <h1 className="text-lg font-bold tracking-tight text-center" style={{ color: "hsl(258 78% 45%)" }}>
+        <div className="px-5 py-6 border-b border-[hsl(250_22%_88%)]">
+          <div className="flex items-start justify-between">
+            <div className="flex-1 flex flex-col items-center min-w-0">
+              <div className="w-full max-w-[160px] mx-auto mb-4 flex items-center justify-center">
+                <img
+                  src="/images/logo.png"
+                  alt="Elham MultiPlast LLP"
+                  className="w-full h-auto"
+                  style={{ aspectRatio: "auto" }}
+                />
+              </div>
+              <h1 className="text-base font-bold tracking-wide text-center" style={{ color: "hsl(258 78% 45%)" }}>
                 Elham MultiPlast LLP
               </h1>
-              <p className="text-xs mt-0.5 text-center" style={{ color: "hsl(248 16% 55%)" }}>CRM System</p>
+              <p className="text-[11px] font-medium mt-0.5 text-center tracking-wide uppercase" style={{ color: "hsl(248 16% 55%)" }}>CRM System</p>
             </div>
-            <div className="relative">
+            <div className="relative flex-shrink-0 mt-1">
               <Button
                 ref={bellRef}
                 variant="ghost"

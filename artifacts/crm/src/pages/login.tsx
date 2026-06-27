@@ -40,11 +40,11 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-md shadow-lg border-primary/10">
-        <CardHeader className="space-y-3 text-center pb-6">
-          <div className="mx-auto mb-4">
-            <img src="/images/logo.png" alt="Elham MultiPlast LLP" className="h-16 mx-auto" />
+        <CardHeader className="space-y-4 text-center pb-6 pt-8">
+          <div className="mx-auto mb-4 w-full max-w-[200px]">
+            <img src="/images/logo.png" alt="Elham MultiPlast LLP" className="w-full h-auto" style={{ aspectRatio: "auto" }} />
           </div>
-          <CardTitle className="text-2xl font-bold">Elham MultiPlast LLP</CardTitle>
+          <CardTitle className="text-xl font-bold">Elham MultiPlast LLP</CardTitle>
           <CardDescription>Enter your credentials to access the CRM</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
