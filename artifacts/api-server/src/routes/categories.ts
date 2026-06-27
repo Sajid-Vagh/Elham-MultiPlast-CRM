@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, dealsTable, usersTable, categoryHistoryTable, CATEGORIES } from "@workspace/db";
-import { eq, and, SQL, sql } from "drizzle-orm";
+import { db, contactsTable, dealsTable, usersTable, categoryHistoryTable, activitiesTable, productsTable, dealProductsTable, CATEGORIES } from "@workspace/db";
+import { eq, and, inArray, SQL, sql } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 
 const router: IRouter = Router();
@@ -77,10 +77,55 @@ router.get("/categories/:category/contacts", async (req, res) => {
       dealsByContact.get(d.contactId)!.push(d);
     }
 
+    const contactIds = contacts.map(c => c.id);
+    let activities: (typeof activitiesTable.$inferSelect)[] = [];
+    if (contactIds.length > 0) {
+      activities = await db
+        .select()
+        .from(activitiesTable)
+        .where(inArray(activitiesTable.contactId, contactIds));
+    }
+    const activitiesByContact = new Map<number, typeof activities>();
+    for (const a of activities) {
+      if (!a.contactId) continue;
+      if (!activitiesByContact.has(a.contactId)) activitiesByContact.set(a.contactId, []);
+      activitiesByContact.get(a.contactId)!.push(a);
+    }
+
+    const dealIds = deals.map(d => d.id);
+    let dealProducts: (typeof dealProductsTable.$inferSelect)[] = [];
+    if (dealIds.length > 0) {
+      dealProducts = await db
+        .select()
+        .from(dealProductsTable)
+        .where(inArray(dealProductsTable.dealId, dealIds));
+    }
+    const productIds = [...new Set(dealProducts.map(dp => dp.productId))];
+    let products: (typeof productsTable.$inferSelect)[] = [];
+    if (productIds.length > 0) {
+      products = await db
+        .select()
+        .from(productsTable)
+        .where(inArray(productsTable.id, productIds));
+    }
+    const productMap = new Map(products.map(p => [p.id, p]));
+    const dealProductsByDeal = new Map<number, typeof dealProducts>();
+    for (const dp of dealProducts) {
+      if (!dealProductsByDeal.has(dp.dealId)) dealProductsByDeal.set(dp.dealId, []);
+      dealProductsByDeal.get(dp.dealId)!.push(dp);
+    }
+
     res.json(contacts.map(c => ({
       ...c,
       salesOwner: userMap.get(c.salesOwnerId) ?? null,
-      deals: dealsByContact.get(c.id) ?? []
+      deals: (dealsByContact.get(c.id) ?? []).map(d => ({
+        ...d,
+        products: (dealProductsByDeal.get(d.id) ?? []).map(dp => ({
+          ...dp,
+          product: productMap.get(dp.productId) ?? null
+        }))
+      })),
+      activities: activitiesByContact.get(c.id) ?? []
     })));
   } catch (err) {
     req.log.error({ err }, "Get category contacts error");

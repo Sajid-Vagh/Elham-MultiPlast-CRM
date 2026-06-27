@@ -138,15 +138,134 @@ export default function CategoriesPage() {
   };
 
   const exportCsv = () => {
-    const headers = ["Name", "Company", "Mobile", "City", "Unit", "Category", "Assigned To", "Deal Stage", "Last Follow-up", "Next Follow-up"];
-    const rows = contacts.map((c) => [
-      c.name, c.companyName || "", c.mobile, c.city || "", c.unit || "",
-      c.category || "",
-      c.salesOwner?.name || "", c.deals?.map((d: any) => d.stage).join(", ") || "",
-      c.lastCallDate || "", c.nextCallDate || "",
-    ]);
-    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
+    const isCategoryABC = activeCategory && ["Category A", "Category B", "Category C"].includes(activeCategory);
+    const isMyClient = activeCategory === "My Client";
+
+    const esc = (val: string | number | null | undefined): string => {
+      if (val == null) return "";
+      const s = String(val);
+      if (s.includes(",") || s.includes("\"") || s.includes("\n") || s.includes("\r")) {
+        return `"${s.replace(/"/g, "\"\"")}"`;
+      }
+      return s;
+    };
+
+    const fmtDate = (d: string | Date | null | undefined): string => {
+      if (!d) return "";
+      const date = new Date(d);
+      if (isNaN(date.getTime())) return "";
+      return date.toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "numeric" });
+    };
+
+    const baseHeaders = [
+      "Name", "Company", "Mobile", "City", "Unit", "Category", "Assigned To",
+      "Deal Stage", "Last Follow-up", "Next Follow-up",
+      "Latest Comment", "Sales Notes", "Last Updated", "Created Date",
+      "Priority", "Lead Source", "Interested Products"
+    ];
+    const categoryABCHeaders = [
+      "Reason Not Closed", "Latest Follow-up Comment", "Objection",
+      "Next Action", "Expected Order Value"
+    ];
+    const myClientHeaders = [
+      "Products Purchased", "Bottle Type", "Bottle Size",
+      "Monthly Requirement", "Last Order Date", "Payment Terms", "Customer Since"
+    ];
+
+    let headers = [...baseHeaders];
+    if (isCategoryABC) {
+      headers.push(...categoryABCHeaders);
+    } else if (isMyClient) {
+      headers.push(...myClientHeaders);
+    }
+
+    const rows = contacts.map((c: any) => {
+      const deals = c.deals || [];
+      const activities = c.activities || [];
+
+      const sorted = (arr: any[]) =>
+        [...arr].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      const latestComment = sorted(activities.filter((a: any) => a.type !== "FollowUp" && a.notes))[0]?.notes || "";
+      const latestFollowUpComment = sorted(activities.filter((a: any) => a.type === "FollowUp" && a.notes))[0]?.notes || "";
+
+      const salesNotes = deals.map((d: any) => d.notes).filter(Boolean).join("; ") || "";
+
+      const allDates = [
+        ...deals.map((d: any) => d.updatedAt),
+        ...activities.map((a: any) => a.createdAt),
+        c.createdAt
+      ].filter(Boolean).map((d) => new Date(d).getTime());
+      const lastUpdated = allDates.length > 0 ? fmtDate(new Date(Math.max(...allDates))) : "";
+
+      const createdDate = fmtDate(c.createdAt);
+      const leadSource = c.leadSource || "";
+      const priority = "";
+
+      const allProductNames = [
+        ...new Set(
+          deals.flatMap((d: any) => d.products || [])
+            .map((dp: any) => dp.product?.name)
+            .filter(Boolean)
+        )
+      ];
+      const interestedProducts = allProductNames.join(", ");
+
+      const row = [
+        c.name, c.companyName || "", c.mobile, c.city || "", c.unit || "",
+        c.category || "",
+        c.salesOwner?.name || "", deals.map((d: any) => d.stage).join(", ") || "",
+        fmtDate(c.lastCallDate), fmtDate(c.nextCallDate),
+        latestComment, salesNotes, lastUpdated, createdDate,
+        priority, leadSource, interestedProducts
+      ];
+
+      if (isCategoryABC) {
+        const reasonNotClosed = deals.map((d: any) => d.lostReason).filter(Boolean).join("; ") || "";
+        const nextAction = fmtDate(c.nextCallDate);
+        const expectedOrderValue = deals.map((d: any) => d.totalValue).filter(Boolean).join(", ") || "";
+        const objection = "";
+        row.push(reasonNotClosed, latestFollowUpComment, objection, nextAction, expectedOrderValue);
+      } else if (isMyClient) {
+        const wonDeals = deals.filter((d: any) => d.stage === "Won" || d.convertedToClient);
+        const productsPurchased = [
+          ...new Set(
+            wonDeals.flatMap((d: any) => d.products || [])
+              .map((dp: any) => dp.product?.name)
+              .filter(Boolean)
+          )
+        ].join(", ");
+
+        const bottleTypes = [
+          ...new Set(
+            deals.flatMap((d: any) => d.products || [])
+              .map((dp: any) => dp.product?.bottleColour)
+              .filter(Boolean)
+          )
+        ].join(", ");
+
+        const bottleSizes = [
+          ...new Set(
+            deals.flatMap((d: any) => d.products || [])
+              .map((dp: any) => dp.product?.bottleWeight)
+              .filter(Boolean)
+          )
+        ].join(", ");
+
+        const monthlyRequirement = "";
+        const lastOrderDate = fmtDate(c.lastPurchaseDate);
+        const paymentTerms = "";
+        const customerSince = c.customerSince || "";
+
+        row.push(productsPurchased, bottleTypes, bottleSizes, monthlyRequirement, lastOrderDate, paymentTerms, customerSince);
+      }
+
+      return row.map(esc);
+    });
+
+    const bom = "\uFEFF";
+    const csv = bom + [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
