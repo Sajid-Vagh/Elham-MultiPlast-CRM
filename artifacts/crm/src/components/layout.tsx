@@ -207,7 +207,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <img
                 src="/images/logo.png"
                 alt="Elham MultiPlast LLP"
-                className="h-14 w-auto"
+                className="w-[150px] h-auto"
               />
             </div>
             <div className="relative flex-shrink-0">
