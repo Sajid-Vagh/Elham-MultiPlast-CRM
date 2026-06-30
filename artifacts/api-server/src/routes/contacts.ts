@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, usersTable, activitiesTable, dealsTable, notificationsTable, commentHistoryTable } from "@workspace/db";
+import { db, contactsTable, usersTable, activitiesTable, dealsTable, notificationsTable, commentHistoryTable, categoryHistoryTable } from "@workspace/db";
 import { eq, or, and, ilike, lte, isNotNull, isNull, inArray, SQL, desc } from "drizzle-orm";
 import { CreateContactBody, UpdateContactBody, GetContactParams, UpdateContactParams, DeleteContactParams, ListContactsQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
@@ -246,9 +246,9 @@ router.patch("/contacts/:id", async (req, res) => {
       if (customerComments !== oldContact.customerComments) {
         await db.insert(commentHistoryTable).values({
           contactId: params.data.id,
-          comment: customerComments,
+          comment: customerComments || "",
           updatedBy: user.id,
-          updatedAt: now,
+          updatedAt: new Date(),
         });
       }
     }
@@ -274,8 +274,18 @@ router.patch("/contacts/:id", async (req, res) => {
       }
     }
 
-    // If category changed away from "Regular Follow up", close deals and complete pending follow-ups
+    // Track category changes in category_history
     const newCategory = parsed.data.category;
+    if (newCategory !== undefined && newCategory !== oldContact.category) {
+      await db.insert(categoryHistoryTable).values({
+        contactId: params.data.id,
+        previousCategory: oldContact.category,
+        newCategory: newCategory,
+        changedBy: user.id,
+      });
+    }
+
+    // If category changed away from "Regular Follow up", close deals and complete pending follow-ups
     if (newCategory && newCategory !== "Regular Follow up" && oldContact.category === "Regular Follow up") {
       // Auto-close active deals as Lost
       const contactDeals = await db
@@ -426,6 +436,204 @@ router.delete("/contacts/:id", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Delete contact error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Get category history for a contact
+router.get("/contacts/:id/category-history", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const history = await db
+      .select({
+        id: categoryHistoryTable.id,
+        previousCategory: categoryHistoryTable.previousCategory,
+        newCategory: categoryHistoryTable.newCategory,
+        changedBy: categoryHistoryTable.changedBy,
+        changedByName: usersTable.name,
+        reason: categoryHistoryTable.reason,
+        createdAt: categoryHistoryTable.createdAt,
+      })
+      .from(categoryHistoryTable)
+      .leftJoin(usersTable, eq(usersTable.id, categoryHistoryTable.changedBy))
+      .where(eq(categoryHistoryTable.contactId, id))
+      .orderBy(desc(categoryHistoryTable.createdAt));
+    res.json(history);
+  } catch (err) {
+    req.log.error({ err }, "Get category history error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Get combined activity timeline for a contact
+router.get("/contacts/:id/timeline", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, id));
+    if (!contact) { res.status(404).json({ error: "Not found" }); return; }
+
+    const timeline: any[] = [];
+
+    // 1. Lead created event
+    timeline.push({
+      type: "lead_created",
+      description: "Lead Created",
+      user: null,
+      createdAt: contact.createdAt,
+    });
+
+    // 2. Activity events
+    const acts = await db
+      .select({
+        id: activitiesTable.id,
+        type: activitiesTable.type,
+        notes: activitiesTable.notes,
+        followUpDate: activitiesTable.followUpDate,
+        callStatus: activitiesTable.callStatus,
+        createdBy: activitiesTable.createdBy,
+        createdByName: usersTable.name,
+        createdAt: activitiesTable.createdAt,
+        updatedAt: activitiesTable.updatedAt,
+        isEdited: activitiesTable.isEdited,
+      })
+      .from(activitiesTable)
+      .leftJoin(usersTable, eq(usersTable.id, activitiesTable.createdBy!))
+      .where(eq(activitiesTable.contactId, id))
+      .orderBy(activitiesTable.createdAt);
+    for (const a of acts) {
+      timeline.push({
+        type: a.type === "FollowUp" ? "follow_up" : a.type === "Call" ? "call" : a.type === "WhatsApp" ? "whatsapp" : a.type === "Email" ? "email" : a.type === "Note" ? "note" : "activity",
+        description: a.type === "FollowUp" ? "Follow-up Scheduled" : `${a.type} Logged`,
+        notes: a.notes,
+        followUpDate: a.followUpDate,
+        callStatus: a.callStatus,
+        user: a.createdByName ? { name: a.createdByName } : null,
+        isEdited: a.isEdited,
+        createdAt: a.createdAt,
+        updatedAt: a.updatedAt,
+      });
+    }
+
+    // 3. Category history events
+    const catHistory = await db
+      .select({
+        id: categoryHistoryTable.id,
+        previousCategory: categoryHistoryTable.previousCategory,
+        newCategory: categoryHistoryTable.newCategory,
+        changedBy: categoryHistoryTable.changedBy,
+        changedByName: usersTable.name,
+        createdAt: categoryHistoryTable.createdAt,
+      })
+      .from(categoryHistoryTable)
+      .leftJoin(usersTable, eq(usersTable.id, categoryHistoryTable.changedBy))
+      .where(eq(categoryHistoryTable.contactId, id))
+      .orderBy(desc(categoryHistoryTable.createdAt));
+    // Reverse to add in chronological order
+    for (const c of catHistory.reverse()) {
+      timeline.push({
+        type: "category_change",
+        description: `Category changed from "${c.previousCategory || '(none)'}" to "${c.newCategory}"`,
+        user: c.changedByName ? { name: c.changedByName } : null,
+        createdAt: c.createdAt,
+      });
+    }
+
+    // 4. Comment history events
+    const commentHist = await db
+      .select({
+        id: commentHistoryTable.id,
+        comment: commentHistoryTable.comment,
+        updatedBy: commentHistoryTable.updatedBy,
+        updatedByName: usersTable.name,
+        updatedAt: commentHistoryTable.updatedAt,
+      })
+      .from(commentHistoryTable)
+      .leftJoin(usersTable, eq(usersTable.id, commentHistoryTable.updatedBy))
+      .where(eq(commentHistoryTable.contactId, id))
+      .orderBy(desc(commentHistoryTable.updatedAt));
+    // Reverse to add in chronological order
+    for (const h of commentHist.reverse()) {
+      timeline.push({
+        type: "comment_updated",
+        description: "Customer Comments Updated",
+        user: h.updatedByName ? { name: h.updatedByName } : null,
+        createdAt: h.updatedAt,
+      });
+    }
+
+    // 5. Deal events
+    const contactDeals = await db
+      .select({
+        id: dealsTable.id,
+        title: dealsTable.title,
+        stage: dealsTable.stage,
+        totalValue: dealsTable.totalValue,
+        probability: dealsTable.probability,
+        createdAt: dealsTable.createdAt,
+        updatedAt: dealsTable.updatedAt,
+      })
+      .from(dealsTable)
+      .where(eq(dealsTable.contactId, id));
+    for (const d of contactDeals) {
+      timeline.push({
+        type: "deal_created",
+        description: `Deal Created${d.title ? `: ${d.title}` : ""}`,
+        dealStage: d.stage,
+        dealValue: d.totalValue,
+        createdAt: d.createdAt,
+      });
+      if (d.updatedAt && d.updatedAt !== d.createdAt) {
+        timeline.push({
+          type: "deal_updated",
+          description: `Deal Stage: ${d.stage}`,
+          dealStage: d.stage,
+          dealValue: d.totalValue,
+          createdAt: d.updatedAt,
+        });
+      }
+    }
+
+    // Sort by createdAt DESC (newest first)
+    timeline.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    res.json(timeline);
+  } catch (err) {
+    req.log.error({ err }, "Get timeline error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Get notification history for a contact
+router.get("/contacts/:id/notifications", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const notifications = await db
+      .select({
+        id: notificationsTable.id,
+        type: notificationsTable.type,
+        title: notificationsTable.title,
+        message: notificationsTable.message,
+        readAt: notificationsTable.readAt,
+        createdAt: notificationsTable.createdAt,
+      })
+      .from(notificationsTable)
+      .where(and(
+        eq(notificationsTable.relatedId, id),
+        eq(notificationsTable.relatedType, "contact"),
+      ))
+      .orderBy(desc(notificationsTable.createdAt));
+    res.json(notifications);
+  } catch (err) {
+    req.log.error({ err }, "Get notification history error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Phone, Mail, MapPin, Tag, Plus, Trash2, FolderTree, RefreshCw, Star, MessageSquare, Pencil } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, Tag, Plus, Trash2, FolderTree, RefreshCw, Star, MessageSquare, Pencil, Clock, Calendar, ChevronRight, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, History, User, Building, Globe, Hash, ListOrdered, FileText, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -27,6 +27,20 @@ const STAGE_COLORS: Record<string, string> = {
   "Price Given": "bg-yellow-100 text-yellow-700", "Samples Sent": "bg-orange-100 text-orange-700",
   "Samples Received": "bg-purple-100 text-purple-700", "PI Sent": "bg-indigo-100 text-indigo-700",
   "Won": "bg-green-100 text-green-700", "Lost": "bg-red-100 text-red-700",
+};
+
+const TIMELINE_ICONS: Record<string, { bg: string; icon: string }> = {
+  "lead_created":    { bg: "#dbeafe", icon: "🆕" },
+  "follow_up":       { bg: "#ffedd5", icon: "🔔" },
+  "call":            { bg: "#dcfce7", icon: "📞" },
+  "whatsapp":        { bg: "#ccfbf1", icon: "💬" },
+  "email":           { bg: "#dbeafe", icon: "✉️" },
+  "note":            { bg: "#fef9c3", icon: "📝" },
+  "activity":        { bg: "#f3f4f6", icon: "•" },
+  "category_change": { bg: "#f3e8ff", icon: "🏷️" },
+  "comment_updated": { bg: "#e0f2fe", icon: "💬" },
+  "deal_created":    { bg: "#d1fae5", icon: "🤝" },
+  "deal_updated":    { bg: "#e0e7ff", icon: "📊" },
 };
 
 const ACT_STYLE: Record<string, { bg: string; fg: string; icon: string }> = {
@@ -103,6 +117,80 @@ export default function LeadDetail() {
     staleTime: 10_000,
   });
 
+  // Category History
+  const { data: categoryHistory } = useQuery({
+    queryKey: ["category-history", contactId],
+    queryFn: async () => {
+      const token = localStorage.getItem("crm_token");
+      const res = await fetch(`/api/contacts/${contactId}/category-history`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return [];
+      return res.json() as Promise<Array<{ id: number; previousCategory: string | null; newCategory: string; changedBy: number; changedByName: string; reason: string | null; createdAt: string }>>;
+    },
+    enabled: !!contactId,
+    staleTime: 10_000,
+  });
+
+  // Timeline
+  const { data: timeline } = useQuery({
+    queryKey: ["timeline", contactId],
+    queryFn: async () => {
+      const token = localStorage.getItem("crm_token");
+      const res = await fetch(`/api/contacts/${contactId}/timeline`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return [];
+      return res.json() as Promise<Array<{ type: string; description: string; notes?: string; followUpDate?: string; callStatus?: string; dealStage?: string; dealValue?: number; user?: { id?: number; name: string } | null; isEdited?: boolean; createdAt: string; updatedAt?: string }>>;
+    },
+    enabled: !!contactId,
+    staleTime: 10_000,
+  });
+
+  // Notifications
+  const { data: notifications } = useQuery({
+    queryKey: ["contact-notifications", contactId],
+    queryFn: async () => {
+      const token = localStorage.getItem("crm_token");
+      const res = await fetch(`/api/contacts/${contactId}/notifications`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return [];
+      return res.json() as Promise<Array<{ id: number; type: string; title: string; message: string; readAt: string | null; createdAt: string }>>;
+    },
+    enabled: !!contactId,
+    staleTime: 30_000,
+  });
+
+  // Upcoming Follow-up
+  const { data: upcomingFollowUp } = useQuery({
+    queryKey: ["upcoming-followup", contactId],
+    queryFn: async () => {
+      const token = localStorage.getItem("crm_token");
+      const res = await fetch(`/api/activities?contactId=${contactId}&upcoming=true`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const pending = data?.filter?.((a: any) => a.type === "FollowUp" && a.callStatus === "Pending");
+      return pending?.length > 0 ? pending[0] : null;
+    },
+    enabled: !!contactId,
+    staleTime: 10_000,
+  });
+
+  // Edit contact inline dialog
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editField, setEditField] = useState("");
+  const [editValue, setEditValue] = useState("");
+
+  // Schedule follow-up dialog
+  const [schedFuOpen, setSchedFuOpen] = useState(false);
+  const [schedFuDate, setSchedFuDate] = useState("");
+  const [schedFuTime, setSchedFuTime] = useState("");
+  const [schedFuType, setSchedFuType] = useState("Call");
+  const [schedFuNotes, setSchedFuNotes] = useState("");
+
   // Activity date filter
   const [actQuick, setActQuick] = useState("all");
   const [actFromDate, setActFromDate] = useState("");
@@ -129,12 +217,15 @@ export default function LeadDetail() {
   if (!contact) return <div className="p-8">Contact not found.</div>;
 
   const owner = contact.salesOwner;
+  const deal = deals && deals.length > 0 ? deals[0] : null;
+  const followUpActivities = useMemo(() => (activities || []).filter(a => a.type === "FollowUp").reverse(), [activities]);
 
   const handleCreateDeal = () => {
     if (!newDealStage) return;
     createDeal.mutate({ data: { contactId, stage: newDealStage as any, title: newDealTitle || null, salesOwnerId: contact.salesOwnerId } }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListDealsQueryKey({ contactId }) });
+        queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
         toast({ title: "Deal created" });
         setDealDialogOpen(false); setNewDealTitle("");
       },
@@ -145,17 +236,16 @@ export default function LeadDetail() {
   const handleCreateActivity = () => {
     if (!actDealId) { toast({ title: "Select a deal", variant: "destructive" }); return; }
     const payload = { dealId: Number(actDealId), contactId, type: actType as any, notes: actNotes || null, followUpDate: actFollowUp || null, followUpTime: actFollowUpTime || null, followUpType: actFollowType || null };
-    console.log("[DEBUG] lead-detail handleCreateActivity payload:", JSON.stringify(payload));
     createActivity.mutate({ data: payload }, {
-      onSuccess: (result) => {
-        console.log("[DEBUG] lead-detail handleCreateActivity success:", JSON.stringify({ id: result?.id, type: result?.type, followUpDate: result?.followUpDate, createdBy: result?.createdBy }));
+      onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ contactId }) });
         queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey() });
+        queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
+        queryClient.invalidateQueries({ queryKey: ["upcoming-followup", contactId] });
         toast({ title: "Activity logged" });
         setActDialogOpen(false); setActNotes(""); setActFollowUp(""); setActFollowUpTime("");
       },
       onError: (e) => {
-        console.log("[DEBUG] lead-detail handleCreateActivity error:", e);
         toast({ title: "Error logging activity", variant: "destructive" });
       },
     });
@@ -174,107 +264,148 @@ export default function LeadDetail() {
     });
   };
 
-  return (
-    <div className="p-8 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center gap-4">
-        <Link href="/leads"><Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-1" /> Back</Button></Link>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            {owner && <div className="w-4 h-4 rounded-full shadow-sm" style={{ backgroundColor: owner.colorCode }} />}
-            <h1 className="text-2xl font-bold">{contact.name}</h1>
-            {contact.tags && <Badge variant="outline">{contact.tags}</Badge>}
-            <CategoryBadge category={contact.category} />
-          </div>
-          {contact.companyName && <p className="text-muted-foreground">{contact.companyName}</p>}
-        </div>
-        <Button variant="outline" size="sm" onClick={() => setShowMoveCategory(true)}>
-          <FolderTree className="h-4 w-4 mr-1" /> Move
-        </Button>
-        <Link href={`/leads/${contactId}/edit`}><Button variant="outline" size="sm">Edit</Button></Link>
-        <Button
-          variant="outline" size="sm"
-          className="text-destructive border-destructive/40 hover:bg-destructive/10"
-          onClick={() => setDeleteOpen(true)}
-        >
-          <Trash2 className="h-4 w-4 mr-1" /> Delete
-        </Button>
+  const handleInlineEdit = (field: string, value: string) => {
+    updateContact.mutate({ id: contactId, data: { [field]: value || null } as any }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
+        queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
+        queryClient.invalidateQueries({ queryKey: ["category-history", contactId] });
+        queryClient.invalidateQueries({ queryKey: ["category-counts"] });
+        toast({ title: `${field} updated` });
+        setEditDialogOpen(false);
+      },
+      onError: () => toast({ title: "Error updating", variant: "destructive" }),
+    });
+  };
+
+  const handleCompleteFollowUp = (activityId: number) => {
+    fetch(`/api/activities/${activityId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
+      body: JSON.stringify({ callStatus: "Completed" }),
+    }).then(() => {
+      queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ contactId }) });
+      queryClient.invalidateQueries({ queryKey: ["upcoming-followup", contactId] });
+      queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
+      toast({ title: "Follow-up completed" });
+    });
+  };
+
+  const handleScheduleFollowUp = () => {
+    if (!actDealId && !deal) { toast({ title: "Create a deal first", variant: "destructive" }); return; }
+    const theDealId = actDealId || deal?.id;
+    if (!theDealId) return;
+    createActivity.mutate({
+      data: {
+        dealId: Number(theDealId), contactId,
+        type: "FollowUp",
+        notes: schedFuNotes || null,
+        followUpDate: schedFuDate || null,
+        followUpTime: schedFuTime || null,
+        followUpType: schedFuType,
+        callStatus: "Pending",
+      },
+    }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ contactId }) });
+        queryClient.invalidateQueries({ queryKey: ["upcoming-followup", contactId] });
+        queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
+        toast({ title: "Follow-up scheduled" });
+        setSchedFuOpen(false); setSchedFuDate(""); setSchedFuTime(""); setSchedFuNotes("");
+      },
+      onError: () => toast({ title: "Error scheduling follow-up", variant: "destructive" }),
+    });
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: "Copied to clipboard" });
+  };
+
+  const infield = (label: string, field: string, value: string | null | undefined, placeholder: string = "") => (
+    <div className="flex items-center justify-between group">
+      <div>
+        <span className="text-xs text-muted-foreground">{label}: </span>
+        <span>{value || "—"}</span>
       </div>
+      <Button variant="ghost" size="icon" className="h-5 w-5 opacity-0 group-hover:opacity-100" onClick={() => { setEditField(field); setEditValue(value || ""); setEditDialogOpen(true); }} title={`Edit ${label}`}>
+        <Pencil className="h-3 w-3" />
+      </Button>
+    </div>
+  );
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  return (
+    <div className="p-4 max-w-7xl mx-auto space-y-4">
+      {/* ===== SUMMARY CARD ===== */}
+      <Card className="sticky top-0 z-10 shadow-sm border-b">
+        <CardContent className="p-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <Link href="/leads"><Button variant="ghost" size="sm" className="shrink-0 -ml-2"><ArrowLeft className="h-4 w-4 mr-1" /> Back</Button></Link>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                {owner && <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: owner.colorCode }} />}
+                <h1 className="text-xl font-bold truncate">{contact.name}</h1>
+                <CategoryBadge category={(contact as any).category} />
+                {contact.tags && <Badge variant="outline" className="text-[10px]">{contact.tags}</Badge>}
+              </div>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1 flex-wrap">
+                {contact.companyName && <span className="flex items-center gap-1"><Building className="h-3 w-3" />{contact.companyName}</span>}
+                <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{contact.mobile}</span>
+                {deal && <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${STAGE_COLORS[deal.stage] || "bg-gray-100"}`}>{deal.stage}</span>}
+                {upcomingFollowUp && <span className="flex items-center gap-1 text-primary"><Calendar className="h-3 w-3" />{upcomingFollowUp.followUpDate}</span>}
+                {(contact as any).customerSince && <span>Customer since {(contact as any).customerSince}</span>}
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setShowMoveCategory(true)}><FolderTree className="h-3 w-3 mr-1" /> Move</Button>
+              <Link href={`/leads/${contactId}/edit`}><Button size="sm" variant="outline" className="h-7 text-xs">Edit</Button></Link>
+              <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/40 hover:bg-destructive/10" onClick={() => setDeleteOpen(true)}><Trash2 className="h-3 w-3 mr-1" />Delete</Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* ========== LEFT SIDEBAR ========== */}
         <div className="lg:col-span-1 space-y-4">
+          {/* Section 1: Customer Information */}
           <Card>
-            <CardHeader><CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Contact Info</CardTitle></CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" /><span>{contact.mobile}</span></div>
-              {contact.otherPhone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" /><span>{contact.otherPhone}</span></div>}
-              {contact.email && <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" /><span>{contact.email}</span></div>}
-              {contact.otherEmail && <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" /><span>{contact.otherEmail}</span></div>}
-              {contact.city && <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" /><span>{contact.city}{contact.state ? `, ${contact.state}` : ""}</span></div>}
-              {contact.address && <div className="flex items-start gap-2"><MapPin className="h-4 w-4 text-muted-foreground mt-0.5" /><span className="text-xs text-muted-foreground">{contact.address}</span></div>}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Classification</CardTitle></CardHeader>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5" /> Customer Information
+              </CardTitle>
+            </CardHeader>
             <CardContent className="space-y-2 text-sm">
-              {owner && <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full" style={{ backgroundColor: owner.colorCode }} /><span>{owner.name}</span></div>}
-              {contact.industry && <div className="flex items-center gap-2"><Tag className="h-4 w-4 text-muted-foreground" /><span>{contact.industry}</span></div>}
-              {contact.unit && <div><span className="text-muted-foreground">Unit: </span>{contact.unit}</div>}
-              {contact.leadSource && <div><span className="text-muted-foreground">Source: </span>{contact.leadSource}</div>}
-              {contact.inquiryDate && <div><span className="text-muted-foreground">Inquiry: </span>{contact.inquiryDate}</div>}
-              {contact.lastCallDate && <div><span className="text-muted-foreground">Last Call: </span>{contact.lastCallDate}</div>}
-              {contact.nextCallDate && <div className="font-medium text-primary"><span>Next Call: </span>{contact.nextCallDate}</div>}
-              {contact.category && contact.category !== "Regular Follow up" && contact.category !== "My Client" && (
-                <div className="border-t pt-3 mt-3 space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Re-activation</p>
-                  <div className="flex flex-col gap-1.5">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="justify-start h-8 text-xs"
-                      onClick={() => {
-                        updateContact.mutate({ id: contactId, data: { category: "Regular Follow up" as any } }, {
-                          onSuccess: () => {
-                            queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
-                            queryClient.invalidateQueries({ queryKey: ["category-counts"] });
-                            queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
-                            toast({ title: "Moved to Regular Follow up" });
-                          },
-                          onError: () => toast({ title: "Error updating category", variant: "destructive" }),
-                        });
-                      }}
-                    >
-                      <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-                      Move to Regular Follow up
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="justify-start h-8 text-xs"
-                      onClick={() => {
-                        updateContact.mutate({ id: contactId, data: { category: "My Client" as any } }, {
-                          onSuccess: () => {
-                            queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
-                            queryClient.invalidateQueries({ queryKey: ["category-counts"] });
-                            queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
-                            toast({ title: "Moved to My Client" });
-                          },
-                          onError: () => toast({ title: "Error updating category", variant: "destructive" }),
-                        });
-                      }}
-                    >
-                      <Star className="h-3.5 w-3.5 mr-1.5" />
-                      Mark as My Client
-                    </Button>
-                  </div>
+              {infield("Name", "name", contact.name)}
+              {infield("Company", "companyName", contact.companyName)}
+              {infield("Mobile", "mobile", contact.mobile)}
+              {contact.otherPhone && infield("Alt Phone", "otherPhone", contact.otherPhone)}
+              {infield("Email", "email", contact.email)}
+              {contact.otherEmail && infield("Alt Email", "otherEmail", contact.otherEmail)}
+              {infield("Address", "address", contact.address)}
+              {infield("City", "city", contact.city)}
+              {infield("State", "state", (contact as any).state)}
+              {infield("Lead Source", "leadSource", contact.leadSource)}
+              {infield("Industry", "industry", contact.industry)}
+              {infield("Unit", "unit", contact.unit)}
+              {infield("Inquiry Date", "inquiryDate", contact.inquiryDate)}
+              {infield("Customer Since", "customerSince", (contact as any).customerSince)}
+              {infield("Customer Status", "customerStatus", (contact as any).customerStatus)}
+              <div className="border-t pt-2 mt-2">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Created: {new Date(contact.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
+                  {contact.commentUpdatedAt && <span>Updated: {new Date(contact.commentUpdatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>}
                 </div>
-              )}
+              </div>
             </CardContent>
           </Card>
 
-          {/* Customer Comments */}
+          {/* Section 2: Customer Comments */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Customer Comments</CardTitle>
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <MessageSquare className="h-3.5 w-3.5" /> Customer Comments
+              </CardTitle>
               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditComment(contact.customerComments || ""); setCommentDialogOpen(true); }} title="Edit Comments">
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
@@ -304,13 +435,262 @@ export default function LeadDetail() {
               )}
             </CardContent>
           </Card>
+
+          {/* Section 3: Upcoming Follow-up */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5" /> Upcoming Follow-up
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {upcomingFollowUp ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Calendar className="h-4 w-4 text-primary" />
+                    <span className="font-medium">{upcomingFollowUp.followUpDate}</span>
+                    {upcomingFollowUp.followUpTime && <span className="text-muted-foreground">at {upcomingFollowUp.followUpTime}</span>}
+                  </div>
+                  {upcomingFollowUp.followUpType && (
+                    <div className="text-xs text-muted-foreground">
+                      Type: <Badge variant="outline" className="text-[10px]">{upcomingFollowUp.followUpType}</Badge>
+                    </div>
+                  )}
+                  {upcomingFollowUp.notes && (
+                    <p className="text-xs text-muted-foreground whitespace-pre-wrap bg-muted/30 p-2 rounded">{upcomingFollowUp.notes}</p>
+                  )}
+                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                    <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => handleCompleteFollowUp(upcomingFollowUp.id)}>
+                      <CheckCircle className="h-3 w-3 mr-1" /> Complete
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => window.open(`tel:${contact.mobile}`)}>
+                      <Phone className="h-3 w-3 mr-1" /> Call
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">No upcoming follow-up scheduled.</p>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setActDealId(deal?.id?.toString() || ""); setSchedFuOpen(true); }}>
+                    <Calendar className="h-3 w-3 mr-1" /> Schedule Follow-up
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Section 5: Deal Information */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <FileText className="h-3.5 w-3.5" /> Deal Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {deal ? (
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground text-xs">Stage</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STAGE_COLORS[deal.stage] || "bg-gray-100"}`}>{deal.stage}</span>
+                  </div>
+                  {deal.totalValue != null && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground text-xs">Expected Value</span>
+                      <span className="font-medium">₹{Number(deal.totalValue).toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground text-xs">Probability</span>
+                    <span>{deal.probability}%</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground text-xs">Created</span>
+                    <span className="text-xs">{new Date(deal.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
+                  </div>
+                  {deal.updatedAt && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground text-xs">Updated</span>
+                      <span className="text-xs">{new Date(deal.updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
+                    </div>
+                  )}
+                  <Link href={`/deals/${deal.id}`}>
+                    <Button size="sm" variant="outline" className="w-full h-7 text-xs mt-2">
+                      <ExternalLink className="h-3 w-3 mr-1" /> Open Deal
+                    </Button>
+                  </Link>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">No deal exists for this contact.</p>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setDealDialogOpen(true)}>
+                    <Plus className="h-3 w-3 mr-1" /> Create Deal
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Section 9: Attachments (Future Ready) */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <Paperclip className="h-3.5 w-3.5" /> Attachments
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">Attachment storage coming soon.</p>
+              <p className="text-[10px] text-muted-foreground mt-1">Supports: Quotation PDF, Proforma Invoice, Images, Visiting Cards, Documents, GST, PAN, PO</p>
+            </CardContent>
+          </Card>
+
+          {/* Section 10: Quick Actions */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-1.5">
+                <Button size="sm" variant="outline" className="h-8 text-xs justify-start" onClick={() => setCommentDialogOpen(true)}>
+                  <MessageSquare className="h-3 w-3 mr-1.5" /> Edit Comments
+                </Button>
+                <Button size="sm" variant="outline" className="h-8 text-xs justify-start" onClick={() => { setActDealId(deal?.id?.toString() || ""); setSchedFuOpen(true); }}>
+                  <Calendar className="h-3 w-3 mr-1.5" /> Schedule Follow-up
+                </Button>
+                <Button size="sm" variant="outline" className="h-8 text-xs justify-start" onClick={() => setShowMoveCategory(true)}>
+                  <FolderTree className="h-3 w-3 mr-1.5" /> Move Category
+                </Button>
+                <Button size="sm" variant="outline" className="h-8 text-xs justify-start" onClick={() => setDealDialogOpen(true)}>
+                  <Plus className="h-3 w-3 mr-1.5" /> Create Deal
+                </Button>
+                <Button size="sm" variant="outline" className="h-8 text-xs justify-start" onClick={() => window.open(`tel:${contact.mobile}`)}>
+                  <Phone className="h-3 w-3 mr-1.5" /> Call Customer
+                </Button>
+                <Button size="sm" variant="outline" className="h-8 text-xs justify-start" onClick={() => copyToClipboard(contact.mobile)}>
+                  <Copy className="h-3 w-3 mr-1.5" /> Copy Mobile
+                </Button>
+                <Link href={`/leads/${contactId}/edit`} className="col-span-2">
+                  <Button size="sm" variant="default" className="w-full h-8 text-xs">
+                    <Pencil className="h-3 w-3 mr-1.5" /> Edit Lead
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        <div className="lg:col-span-2 space-y-6">
-          {/* Deals */}
+        {/* ========== RIGHT CONTENT ========== */}
+        <div className="lg:col-span-2 space-y-4">
+          {/* Section 4: Complete Follow-up History */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <History className="h-3.5 w-3.5" /> Complete Follow-up History
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {followUpActivities.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-4">No follow-up history.</p>
+              ) : (
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {followUpActivities.slice(0, 20).map((act) => (
+                    <div key={act.id} className="flex items-start gap-2 p-2 border rounded text-sm">
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ backgroundColor: "#ffedd5" }}>🔔</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs text-muted-foreground">{new Date(act.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</span>
+                          <Badge variant="outline" className={`text-[10px] ${act.callStatus === "Completed" ? "border-green-300 text-green-700" : act.callStatus === "Cancelled" ? "border-red-300 text-red-700" : "border-orange-300 text-orange-700"}`}>{act.callStatus || "Pending"}</Badge>
+                          {act.followUpDate && <span className="text-[10px] text-primary">Due: {act.followUpDate}</span>}
+                        </div>
+                        {act.notes && <p className="text-xs text-muted-foreground mt-0.5 whitespace-pre-wrap line-clamp-2">{act.notes}</p>}
+                      </div>
+                    </div>
+                  ))}
+                  {followUpActivities.length > 20 && <p className="text-xs text-center text-muted-foreground">+{followUpActivities.length - 20} more</p>}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Section 6: Activity Timeline */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <ListOrdered className="h-3.5 w-3.5" /> Activity Timeline
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!timeline || timeline.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-4">No timeline events yet.</p>
+              ) : (
+                <div className="relative pl-6 space-y-0">
+                  {timeline.slice(0, 30).map((event, idx) => {
+                    const tStyle = TIMELINE_ICONS[event.type] || { bg: "#f3f4f6", icon: "•" };
+                    const isLast = idx === Math.min(timeline.length, 30) - 1;
+                    return (
+                      <div key={idx} className="relative pb-4">
+                        {!isLast && <div className="absolute left-[11px] top-5 bottom-0 w-0.5 bg-border" />}
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs z-10 ring-2 ring-background" style={{ backgroundColor: tStyle.bg }}>
+                            {tStyle.icon}
+                          </div>
+                          <div className="flex-1 min-w-0 pt-0.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-medium">{event.description}</span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {new Date(event.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            </div>
+                            {event.user && <p className="text-[10px] text-muted-foreground">by {event.user.name}</p>}
+                            {event.notes && <p className="text-xs text-muted-foreground mt-0.5 whitespace-pre-wrap line-clamp-2">{event.notes}</p>}
+                            {event.dealStage && <Badge variant="outline" className="text-[10px] mt-0.5">{event.dealStage}</Badge>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {timeline.length > 30 && <p className="text-xs text-center text-muted-foreground">+{timeline.length - 30} more events</p>}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Section 7: Category History */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <RotateCcw className="h-3.5 w-3.5" /> Category History
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!categoryHistory || categoryHistory.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-4">No category changes recorded.</p>
+              ) : (
+                <div className="space-y-2">
+                  {categoryHistory.map((h) => (
+                    <div key={h.id} className="flex items-start gap-2 p-2 border rounded text-sm">
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ backgroundColor: "#f3e8ff" }}>🏷️</div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                          <CategoryBadge category={h.previousCategory || undefined} />
+                          <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                          <CategoryBadge category={h.newCategory} />
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
+                          <span>by {h.changedByName || `User #${h.changedBy}`}</span>
+                          <span>{new Date(h.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Existing Deals section */}
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold">Deals</h2>
+              <h2 className="font-semibold text-sm">Deals</h2>
               <Dialog open={dealDialogOpen} onOpenChange={setDealDialogOpen}>
                 <DialogTrigger asChild>
                   <Button size="sm"><Plus className="h-4 w-4 mr-1" /> New Deal</Button>
@@ -332,16 +712,16 @@ export default function LeadDetail() {
             </div>
             <div className="space-y-2">
               {deals?.length === 0 && <p className="text-sm text-muted-foreground text-center py-4 border rounded-lg bg-card">No deals yet.</p>}
-              {deals?.map(deal => (
-                <Link key={deal.id} href={`/deals/${deal.id}`}>
+              {deals?.map(d => (
+                <Link key={d.id} href={`/deals/${d.id}`}>
                   <div className="flex items-center justify-between p-3 border rounded-lg bg-card hover:bg-accent transition-colors cursor-pointer">
                     <div>
-                      <p className="font-medium text-sm">{deal.title || `Deal #${deal.id}`}</p>
-                      <p className="text-xs text-muted-foreground">{new Date(deal.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
+                      <p className="font-medium text-sm">{d.title || `Deal #${d.id}`}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(d.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
                     </div>
                     <div className="flex items-center gap-3">
-                      {deal.totalValue && <span className="text-sm font-medium">₹{Number(deal.totalValue).toLocaleString()}</span>}
-                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${STAGE_COLORS[deal.stage] || "bg-gray-100"}`}>{deal.stage}</span>
+                      {d.totalValue && <span className="text-sm font-medium">₹{Number(d.totalValue).toLocaleString()}</span>}
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${STAGE_COLORS[d.stage] || "bg-gray-100"}`}>{d.stage}</span>
                     </div>
                   </div>
                 </Link>
@@ -349,11 +729,46 @@ export default function LeadDetail() {
             </div>
           </div>
 
-          {/* Activity Log */}
+          {/* Section 8: Notification History */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <Bell className="h-3.5 w-3.5" /> Notification History
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!notifications || notifications.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-4">No notifications recorded.</p>
+              ) : (
+                <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                  {notifications.slice(0, 20).map((n) => (
+                    <div key={n.id} className="flex items-start gap-2 p-2 border rounded text-sm">
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ backgroundColor: n.readAt ? "#f3f4f6" : "#dbeafe" }}>
+                        <Bell className="h-3 w-3" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium">{n.title}</span>
+                          {!n.readAt && <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground line-clamp-1">{n.message}</p>
+                        <span className="text-[10px] text-muted-foreground">
+                          {new Date(n.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {notifications.length > 20 && <p className="text-xs text-center text-muted-foreground">+{notifications.length - 20} more</p>}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Existing Activity Log */}
           <div>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <h2 className="font-semibold">Activity Log</h2>
+                <h2 className="font-semibold text-sm">Activity Log</h2>
                 {actQuick !== "all" && (
                   <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
                     {filteredActivities.length} shown
@@ -437,6 +852,9 @@ export default function LeadDetail() {
         </div>
       </div>
 
+      {/* ===== DIALOGS ===== */}
+
+      {/* Delete Confirmation */}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -449,21 +867,15 @@ export default function LeadDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
       {/* Customer Comments Edit Dialog */}
       <Dialog open={commentDialogOpen} onOpenChange={(open) => { setCommentDialogOpen(open); if (!open) setShowFullComment(false); }}>
         <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Edit Customer Comments</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Edit Customer Comments</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
             <div>
               <Label>Comments</Label>
-              <Textarea
-                value={editComment}
-                onChange={e => setEditComment(e.target.value)}
-                placeholder="Enter customer comments (payment terms, requirements, decision makers...)"
-                rows={6}
-              />
+              <Textarea value={editComment} onChange={e => setEditComment(e.target.value)} placeholder="Enter customer comments (payment terms, requirements, decision makers...)" rows={6} />
             </div>
             {commentHistory && commentHistory.length > 0 && (
               <div>
@@ -485,21 +897,58 @@ export default function LeadDetail() {
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setCommentDialogOpen(false)}>Cancel</Button>
             <Button onClick={() => {
-              updateContact.mutate(
-                { id: contactId, data: { customerComments: editComment || null } as any },
-                {
-                  onSuccess: () => {
-                    queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
-                    queryClient.invalidateQueries({ queryKey: ["comment-history", contactId] });
-                    queryClient.invalidateQueries({ queryKey: ["category-counts"] });
-                    queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
-                    toast({ title: "Customer comments updated" });
-                    setCommentDialogOpen(false);
-                  },
-                  onError: () => toast({ title: "Failed to update comments", variant: "destructive" }),
-                }
-              );
+              updateContact.mutate({ id: contactId, data: { customerComments: editComment || null } as any }, {
+                onSuccess: () => {
+                  queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
+                  queryClient.invalidateQueries({ queryKey: ["comment-history", contactId] });
+                  queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
+                  queryClient.invalidateQueries({ queryKey: ["category-counts"] });
+                  queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
+                  toast({ title: "Customer comments updated" });
+                  setCommentDialogOpen(false);
+                },
+                onError: () => toast({ title: "Failed to update comments", variant: "destructive" }),
+              });
             }}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Inline Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Edit {editField}</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <Label>{editField}</Label>
+              <Input value={editValue} onChange={e => setEditValue(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+            <Button onClick={() => handleInlineEdit(editField, editValue)}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Schedule Follow-up Dialog */}
+      <Dialog open={schedFuOpen} onOpenChange={setSchedFuOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Schedule Follow-up</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div><Label>Date</Label><Input type="date" value={schedFuDate} onChange={e => setSchedFuDate(e.target.value)} /></div>
+            <div><Label>Time</Label><Input type="time" value={schedFuTime} onChange={e => setSchedFuTime(e.target.value)} /></div>
+            <div><Label>Type</Label>
+              <Select value={schedFuType} onValueChange={setSchedFuType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{["Call","WhatsApp","Email"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div><Label>Notes</Label><Textarea value={schedFuNotes} onChange={e => setSchedFuNotes(e.target.value)} placeholder="Follow-up notes..." rows={3} /></div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setSchedFuOpen(false)}>Cancel</Button>
+            <Button onClick={handleScheduleFollowUp}>Schedule</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -508,8 +957,12 @@ export default function LeadDetail() {
         open={showMoveCategory}
         onOpenChange={setShowMoveCategory}
         contactIds={[contactId]}
-        currentCategory={contact.category}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) })}
+        currentCategory={(contact as any).category}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
+          queryClient.invalidateQueries({ queryKey: ["category-history", contactId] });
+          queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
+        }}
       />
     </div>
   );
