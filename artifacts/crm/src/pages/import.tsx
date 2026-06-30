@@ -532,6 +532,15 @@ export default function ImportPage() {
     else localStorage.removeItem(unitStorageKey);
   }, [unit, unitStorageKey]);
 
+  // Auto-assign owner for sales users
+  useEffect(() => {
+    if (me?.role && me.role !== "admin" && me.id) {
+      setExcelOwner(String(me.id));
+      setPasteOwner(String(me.id));
+      setIm(p => ({ ...p, salesOwnerId: String(me.id) }));
+    }
+  }, [me?.id, me?.role]);
+
   // ── IndiaMart state ──
   const emptyIm = { companyName: "", clientName: "", clientMobile: "", email: "", city: "", state: "", requirement: "", quantity: "", salesOwnerId: "" };
   const [im, setIm] = useState(emptyIm);
@@ -577,7 +586,7 @@ export default function ImportPage() {
         state:        im.state        || null,
         requirement:  im.requirement  || null,
         quantity:     im.quantity     || null,
-        salesOwnerId: im.salesOwnerId ? Number(im.salesOwnerId) : null,
+        salesOwnerId: me?.role !== "admin" && me?.id ? me.id : im.salesOwnerId ? Number(im.salesOwnerId) : null,
         unit: unit || null,
         category: importCategory,
       } as any,
@@ -821,20 +830,26 @@ export default function ImportPage() {
                 </div>
                 <div>
                   <Label>Sales Owner</Label>
-                  <Select value={im.salesOwnerId || "none"} onValueChange={v => setIm(p => ({ ...p, salesOwnerId: v === "none" ? "" : v }))}>
-                    <SelectTrigger><SelectValue placeholder="Select owner" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Auto-assign</SelectItem>
-                      {users?.map(u => (
-                        <SelectItem key={u.id} value={u.id.toString()}>
-                          <span className="flex items-center gap-2">
-                            <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: u.colorCode }} />
-                            {u.name}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {me?.role === "admin" ? (
+                    <Select value={im.salesOwnerId || "none"} onValueChange={v => setIm(p => ({ ...p, salesOwnerId: v === "none" ? "" : v }))}>
+                      <SelectTrigger><SelectValue placeholder="Select owner" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Auto-assign</SelectItem>
+                        {users?.map(u => (
+                          <SelectItem key={u.id} value={u.id.toString()}>
+                            <span className="flex items-center gap-2">
+                              <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: u.colorCode }} />
+                              {u.name}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="h-9 px-3 rounded-md border bg-muted flex items-center text-sm text-muted-foreground">
+                      {me?.name || "You"} (auto-assigned)
+                    </div>
+                  )}
                 </div>
                 <div className="col-span-2">
                   <Label>Requirement</Label>
@@ -1000,13 +1015,19 @@ export default function ImportPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs text-muted-foreground mb-1 block">Default Sales Owner (if not in sheet)</Label>
-                      <Select value={excelOwner || "none"} onValueChange={v => setExcelOwner(v === "none" ? "" : v)}>
-                        <SelectTrigger><SelectValue placeholder="Select owner" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Required (skip rows without owner)</SelectItem>
-                          {users?.map(u => <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      {me?.role === "admin" ? (
+                        <Select value={excelOwner || "none"} onValueChange={v => setExcelOwner(v === "none" ? "" : v)}>
+                          <SelectTrigger><SelectValue placeholder="Select owner" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Required (skip rows without owner)</SelectItem>
+                            {users?.map(u => <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <div className="h-8 px-3 rounded-md border bg-muted flex items-center text-xs text-muted-foreground">
+                          {me?.name || "You"} (auto-assigned)
+                        </div>
+                      )}
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground mb-1 block">Unit <span className="text-destructive">*</span></Label>
@@ -1126,13 +1147,19 @@ export default function ImportPage() {
                 className="font-mono text-sm"
               />
               <div className="grid grid-cols-4 gap-3">
-                <Select value={pasteOwner || "none"} onValueChange={v => setPasteOwner(v === "none" ? "" : v)}>
-                  <SelectTrigger><SelectValue placeholder="Sales Owner" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Required (skip without owner)</SelectItem>
-                    {users?.map(u => <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                {me?.role === "admin" ? (
+                  <Select value={pasteOwner || "none"} onValueChange={v => setPasteOwner(v === "none" ? "" : v)}>
+                    <SelectTrigger><SelectValue placeholder="Sales Owner" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Required (skip without owner)</SelectItem>
+                      {users?.map(u => <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="h-9 px-3 rounded-md border bg-muted flex items-center text-xs text-muted-foreground">
+                    {me?.name || "You"} (auto-assigned)
+                  </div>
+                )}
                 <Select value={unit} onValueChange={setUnit}>
                   <SelectTrigger><SelectValue placeholder="Unit" /></SelectTrigger>
                   <SelectContent>
