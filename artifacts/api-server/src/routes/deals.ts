@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable } from "@workspace/db";
+import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable, activitiesTable } from "@workspace/db";
 import { eq, and, SQL } from "drizzle-orm";
 import {
   CreateDealBody, UpdateDealBody, GetDealParams, UpdateDealParams, DeleteDealParams,
@@ -32,8 +32,9 @@ router.get("/deals", async (req, res) => {
       conditions.push(eq(dealsTable.salesOwnerId, user.id));
     }
 
+    let isPipelineView = true;
     if (params.success) {
-      if (params.data.contactId) conditions.push(eq(dealsTable.contactId, params.data.contactId));
+      if (params.data.contactId) { conditions.push(eq(dealsTable.contactId, params.data.contactId)); isPipelineView = false; }
       if (params.data.salesOwnerId && user.role === "admin") conditions.push(eq(dealsTable.salesOwnerId, params.data.salesOwnerId));
       if (params.data.stage) conditions.push(eq(dealsTable.stage, params.data.stage));
     }
@@ -46,14 +47,21 @@ router.get("/deals", async (req, res) => {
     const contactMap = new Map(contacts.map(c => [c.id, c]));
     const userMap = new Map(users.map(u => { const { passwordHash: _, ...safe } = u; return [u.id, safe]; }));
 
+    // Pipeline view: only show deals for contacts in "Regular Follow up" category
+    let resultDeals = deals;
+    if (isPipelineView) {
+      const regularFollowUpIds = new Set(contacts.filter(c => c.category === "Regular Follow up").map(c => c.id));
+      resultDeals = deals.filter(d => regularFollowUpIds.has(d.contactId));
+    }
+
     if (params.success && params.data.unit) {
       const unitContacts = new Set(contacts.filter(c => c.unit === params.data.unit).map(c => c.id));
-      const filtered = deals.filter(d => unitContacts.has(d.contactId));
+      const filtered = resultDeals.filter(d => unitContacts.has(d.contactId));
       res.json(filtered.map(d => ({ ...d, contact: contactMap.get(d.contactId) ?? null, salesOwner: d.salesOwnerId ? userMap.get(d.salesOwnerId) ?? null : null })));
       return;
     }
 
-    res.json(deals.map(d => ({ ...d, contact: contactMap.get(d.contactId) ?? null, salesOwner: d.salesOwnerId ? userMap.get(d.salesOwnerId) ?? null : null })));
+    res.json(resultDeals.map(d => ({ ...d, contact: contactMap.get(d.contactId) ?? null, salesOwner: d.salesOwnerId ? userMap.get(d.salesOwnerId) ?? null : null })));
   } catch (err) {
     req.log.error({ err }, "List deals error");
     res.status(500).json({ error: "Internal server error" });
@@ -72,6 +80,11 @@ router.post("/deals", async (req, res) => {
   };
   const probability = parsed.data.probability ?? stageProbabilities[parsed.data.stage] ?? 10;
   try {
+    // Auto-set contact category to Regular Follow up when creating a deal
+    const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, parsed.data.contactId));
+    if (contact && contact.category !== "Regular Follow up") {
+      await db.update(contactsTable).set({ category: "Regular Follow up" }).where(eq(contactsTable.id, contact.id));
+    }
     const [deal] = await db.insert(dealsTable).values({ ...parsed.data, probability }).returning();
     res.status(201).json(await enrichDeal(deal!));
   } catch (err) {
@@ -121,7 +134,7 @@ router.patch("/deals/:id", async (req, res) => {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
-    if (user.role === "sales" && parsed.data.salesOwnerId !== undefined && parsed.data.salesOwnerId !== oldDeal.salesOwnerId) {
+    if (user.role === "sales") {
       delete updateData.salesOwnerId;
     }
 
@@ -201,6 +214,15 @@ router.patch("/deals/:id", async (req, res) => {
 
     if (parsed.data.stage && parsed.data.stage !== oldDeal.stage) {
       const stage = parsed.data.stage;
+      const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      // Create activity for stage change
+      await db.insert(activitiesTable).values({
+        dealId: deal.id,
+        contactId: deal.contactId,
+        type: "Note",
+        notes: `${user.name} moved deal stage from "${oldDeal.stage}" to "${stage}"\n\n${now}`,
+        createdBy: user.id,
+      });
       if (stage === "Won" && deal.salesOwnerId) {
         await createNotification({
           userId: deal.salesOwnerId,

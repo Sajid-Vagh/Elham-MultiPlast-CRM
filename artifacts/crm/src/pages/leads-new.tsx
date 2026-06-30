@@ -45,7 +45,7 @@ export default function LeadsNew() {
   const { toast } = useToast();
 
   const [reEnquiryOpen, setReEnquiryOpen] = useState(false);
-  const canAssign = me?.role === "admin" || me?.canAssignLeads;
+  const canAssign = me?.role === "admin";
   // blurCheck: the value typed in mobile/email field on blur
   const [blurCheck, setBlurCheck] = useState("");
   // popupContact: the matched existing contact to show in the popup

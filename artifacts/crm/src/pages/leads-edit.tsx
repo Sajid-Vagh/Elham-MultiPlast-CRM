@@ -47,7 +47,7 @@ export default function LeadsEdit() {
   const { data: users } = useListUsers();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const canAssign = me?.role === "admin" || me?.canAssignLeads;
+  const canAssign = me?.role === "admin";
 
   const form = useForm<FormData>({
     resolver: zodResolver(schema),

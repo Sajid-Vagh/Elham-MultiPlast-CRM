@@ -250,8 +250,23 @@ router.post("/categories/move", async (req, res) => {
       }
     }
 
-    // If moving away from "Regular Follow up" to other categories, complete pending follow-ups
+    // If moving away from "Regular Follow up" to other categories, complete pending follow-ups and close deals
     if (newCategory !== "Regular Follow up" && movedContactIds.length > 0) {
+      // Auto-close related deals as Lost
+      const contactDeals = await db
+        .select({ id: dealsTable.id, stage: dealsTable.stage })
+        .from(dealsTable)
+        .where(and(
+          inArray(dealsTable.contactId, movedContactIds),
+          eq(dealsTable.stage, "New"),
+        ));
+      if (contactDeals.length > 0) {
+        await db
+          .update(dealsTable)
+          .set({ stage: "Lost", lostReason: "Lead moved out of pipeline category", updatedAt: new Date() })
+          .where(inArray(dealsTable.id, contactDeals.map(d => d.id)));
+      }
+
       const pendingFollowUps = await db
         .select({ id: activitiesTable.id, dealId: activitiesTable.dealId })
         .from(activitiesTable)
@@ -270,14 +285,9 @@ router.post("/categories/move", async (req, res) => {
           .set({ callStatus: "Completed", updatedAt: new Date(), updatedBy: user.id, isEdited: true })
           .where(inArray(activitiesTable.id, followUpIds));
 
-        // Also try by deal relation if no direct contactId match
-        const contactDeals = await db
-          .select({ id: dealsTable.id })
-          .from(dealsTable)
-          .where(inArray(dealsTable.contactId, movedContactIds));
-        const dealIds = contactDeals.map(d => d.id);
+        const allDealIds = contactDeals.map(d => d.id);
 
-        if (dealIds.length > 0) {
+        if (allDealIds.length > 0) {
           const pendingDealFollowUps = await db
             .select({ id: activitiesTable.id })
             .from(activitiesTable)
@@ -285,7 +295,7 @@ router.post("/categories/move", async (req, res) => {
               and(
                 eq(activitiesTable.type, "FollowUp"),
                 eq(activitiesTable.contactId, null as any),
-                inArray(activitiesTable.dealId, dealIds),
+                inArray(activitiesTable.dealId, allDealIds),
                 or(eq(activitiesTable.callStatus, "Pending"), isNull(activitiesTable.callStatus)),
               )
             );

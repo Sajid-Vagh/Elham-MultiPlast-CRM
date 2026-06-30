@@ -78,7 +78,8 @@ router.post("/contacts", async (req, res) => {
     return;
   }
   const values = parsed.data;
-  if (user.role === "sales" && !user.canAssignLeads && !values.salesOwnerId) {
+  // Sales users auto-assign to themselves
+  if (user.role === "sales") {
     values.salesOwnerId = user.id;
   }
   try {
@@ -193,10 +194,9 @@ router.patch("/contacts/:id", async (req, res) => {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
-    if (user.role === "sales" && !user.canAssignLeads && parsed.data.salesOwnerId !== undefined) {
-      if (parsed.data.salesOwnerId !== user.id) {
-        delete parsed.data.salesOwnerId;
-      }
+    // Sales cannot change owner
+    if (user.role === "sales") {
+      delete parsed.data.salesOwnerId;
     }
 
     const [contact] = await db.update(contactsTable).set(parsed.data).where(eq(contactsTable.id, params.data.id)).returning();
@@ -220,9 +220,24 @@ router.patch("/contacts/:id", async (req, res) => {
       }
     }
 
-    // If category changed away from "Regular Follow up", complete pending follow-ups
+    // If category changed away from "Regular Follow up", close deals and complete pending follow-ups
     const newCategory = parsed.data.category;
     if (newCategory && newCategory !== "Regular Follow up" && oldContact.category === "Regular Follow up") {
+      // Auto-close active deals as Lost
+      const contactDeals = await db
+        .select({ id: dealsTable.id })
+        .from(dealsTable)
+        .where(and(
+          eq(dealsTable.contactId, contact.id),
+          eq(dealsTable.stage, "New"),
+        ));
+      if (contactDeals.length > 0) {
+        await db
+          .update(dealsTable)
+          .set({ stage: "Lost", lostReason: "Lead moved out of pipeline category", updatedAt: new Date() })
+          .where(inArray(dealsTable.id, contactDeals.map(d => d.id)));
+      }
+
       // Find and complete pending follow-ups via deal relation
       const [existingDeal] = await db
         .select({ id: dealsTable.id })

@@ -38,12 +38,20 @@ const ImportExcelRequestSchema = z.object({
 });
 
 router.post("/import/excel", async (req, res) => {
+  const currentUser = await getUserFromRequest(req);
+  if (!currentUser) { res.status(401).json({ error: "Unauthorized" }); return; }
+
   const parsed = ImportExcelRequestSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid input", details: parsed.error });
     return;
   }
-  const { rows, defaultSalesOwnerId, category, useCategoryFromFile, duplicateAction } = parsed.data;
+  let { rows, defaultSalesOwnerId, category, useCategoryFromFile, duplicateAction } = parsed.data;
+
+  // Sales users auto-assign to themselves
+  if (currentUser.role === "sales") {
+    defaultSalesOwnerId = currentUser.id;
+  }
 
   req.log.info({ category, useCategoryFromFile, duplicateAction, rowCount: rows.length }, "Excel import request");
 
@@ -219,12 +227,20 @@ const IndiaMartImportSchema = z.object({
 });
 
 router.post("/import/indiamart", async (req, res) => {
+  const currentUser = await getUserFromRequest(req);
+  if (!currentUser) { res.status(401).json({ error: "Unauthorized" }); return; }
+
   const parsed = IndiaMartImportSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid input", details: parsed.error });
     return;
   }
   const fields = parsed.data;
+
+  // Sales users auto-assign to themselves
+  if (currentUser.role === "sales") {
+    fields.salesOwnerId = currentUser.id;
+  }
 
   const contactName = fields.clientName?.trim() || "Unknown Lead";
   const contactMobile = fields.clientMobile?.trim() || "No Contact Number";
@@ -262,8 +278,7 @@ router.post("/import/indiamart", async (req, res) => {
       category: contactCategory,
     }).returning();
 
-    const adminUser = await getUserFromRequest(req);
-    const assignedByName = adminUser?.name || "Admin";
+    const assignedByName = currentUser?.name || "Admin";
     const reqTitle = fields.requirement ? fields.requirement.slice(0, 80) : "";
     await createNotification({
       userId: ownerId,
