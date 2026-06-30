@@ -7,25 +7,12 @@ import { storage } from "../lib/storage";
 import path from "node:path";
 import fs from "node:fs";
 
+const UPLOADS_ROOT = path.resolve(process.cwd(), "uploads");
+
 const router: IRouter = Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 },
-});
-
-const UPLOADS_ROOT = path.resolve(process.cwd(), "uploads");
-
-// Serve uploaded files (Express 5 compatible wildcard)
-router.get("/uploads/:path(*)", async (req: Request, res: Response) => {
-  const relPath = req.params.path || "";
-  const user = await getUserFromRequest(req);
-  if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-  const fullPath = path.join(UPLOADS_ROOT, relPath);
-  if (!fullPath.startsWith(UPLOADS_ROOT)) { res.status(403).json({ error: "Invalid path" }); return; }
-  try {
-    if (!fs.existsSync(fullPath)) { res.status(404).json({ error: "Not found" }); return; }
-    res.sendFile(fullPath);
-  } catch { res.status(500).json({ error: "Internal server error" }); }
 });
 
 // Upload single document
