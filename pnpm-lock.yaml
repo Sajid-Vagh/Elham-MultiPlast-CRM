@@ -120,6 +120,9 @@ importers:
       puppeteer:
         specifier: ^24.7.0
         version: 24.43.1(typescript@5.9.3)
+      xlsx:
+        specifier: ^0.18.5
+        version: 0.18.5
       zod:
         specifier: 'catalog:'
         version: 3.25.76
