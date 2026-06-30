@@ -96,7 +96,7 @@ export default function FollowUps() {
 
   const pendingCount = useMemo(() => {
     if (!filteredActivities) return 0;
-    return filteredActivities.filter(a => a.callStatus !== "Completed").length;
+    return filteredActivities.filter(a => a.callStatus === "Pending").length;
   }, [filteredActivities]);
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -104,12 +104,14 @@ export default function FollowUps() {
   const [editNotes, setEditNotes] = useState("");
   const [editDate, setEditDate] = useState("");
   const [editTime, setEditTime] = useState("");
+  const [editStatus, setEditStatus] = useState("Pending");
 
   const openEditDialog = (activity: FollowUpActivity) => {
     setEditingActivity(activity);
     setEditNotes("");
     setEditDate(activity.followUpDate || "");
     setEditTime(activity.followUpTime || "");
+    setEditStatus(activity.callStatus || "Pending");
     setEditDialogOpen(true);
   };
 
@@ -119,6 +121,7 @@ export default function FollowUps() {
     if (editNotes.trim()) data.notes = editNotes.trim();
     if (editDate !== editingActivity.followUpDate) data.followUpDate = editDate || null;
     if (editTime !== editingActivity.followUpTime) data.followUpTime = editTime || null;
+    if (editStatus !== (editingActivity.callStatus || "Pending")) data.callStatus = editStatus;
 
     if (Object.keys(data).length === 0) {
       setEditDialogOpen(false);
@@ -144,7 +147,7 @@ export default function FollowUps() {
   };
 
   const handleToggleStatus = (activityId: number, currentStatus: string | null | undefined) => {
-    const newStatus = currentStatus === "Completed" ? "Pending" : "Completed";
+    const newStatus = currentStatus === "Pending" ? "Completed" : "Pending";
     updateActivity.mutate(
       { id: activityId, data: { callStatus: newStatus } as any },
       {
@@ -280,6 +283,9 @@ export default function FollowUps() {
                   const contactUnit = activity.contact?.unit || activity.deal?.contact?.unit || "-";
                   const salesPerson = activity.user?.name || (activity.contact?.salesOwner?.name) || "-";
                   const isCompleted = activity.callStatus === "Completed";
+                  const isCancelled = activity.callStatus === "Cancelled";
+                  const isNoResponse = activity.callStatus === "No Response";
+                  const isTerminal = isCompleted || isCancelled || isNoResponse;
                   const time = activity.followUpTime;
 
                   const contactId = activity.contact?.id || activity.deal?.contact?.id;
@@ -288,7 +294,7 @@ export default function FollowUps() {
                   return (
                     <TableRow
                       key={activity.id}
-                      className={`${isCompleted ? "opacity-60" : ""} cursor-pointer hover:bg-muted/50`}
+                      className={`${isTerminal ? "opacity-60" : ""} cursor-pointer hover:bg-muted/50`}
                       onClick={() => { if (leadUrl) setLocation(leadUrl); }}
                     >
                       <TableCell className="font-medium">{contactName}</TableCell>
@@ -305,8 +311,16 @@ export default function FollowUps() {
                       <TableCell className="max-w-[200px] truncate" title={activity.notesDisplay || activity.notes || ""}>{activity.notesDisplay || activity.notes || "-"}</TableCell>
                       <TableCell>{salesPerson}</TableCell>
                       <TableCell>
-                        <Badge variant={isCompleted ? "secondary" : "default"} className="text-[11px]">
-                          {isCompleted ? "Completed" : "Pending"}
+                        <Badge
+                          variant={
+                            isCompleted ? "secondary" :
+                            isCancelled ? "destructive" :
+                            isNoResponse ? "outline" :
+                            "default"
+                          }
+                          className={`text-[11px] ${isCancelled ? "text-red-600 border-red-300" : ""} ${isNoResponse ? "text-amber-600 border-amber-300" : ""}`}
+                        >
+                          {activity.callStatus || "Pending"}
                         </Badge>
                       </TableCell>
                       <TableCell className="w-28">
@@ -341,11 +355,11 @@ export default function FollowUps() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className={`h-7 w-7 ${isCompleted ? "text-green-600" : "text-orange-600"}`}
+                            className={`h-7 w-7 ${activity.callStatus === "Pending" ? "text-orange-600" : "text-muted-foreground"}`}
                             onClick={() => handleToggleStatus(activity.id, activity.callStatus)}
-                            title={isCompleted ? "Mark as Pending" : "Mark as Completed"}
+                            title={activity.callStatus === "Pending" ? "Mark as Completed" : "Mark as Pending"}
                           >
-                            {isCompleted ? <PhoneOff className="h-3.5 w-3.5" /> : <Phone className="h-3.5 w-3.5" />}
+                            {activity.callStatus === "Pending" ? <Phone className="h-3.5 w-3.5" /> : <PhoneOff className="h-3.5 w-3.5" />}
                           </Button>
                         </div>
                       </TableCell>
@@ -376,6 +390,28 @@ export default function FollowUps() {
             <DialogTitle>Edit Follow-up</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
+            {editingActivity?.notesDisplay && (
+              <div>
+                <Label className="text-xs text-muted-foreground">Notes History</Label>
+                <div className="text-xs text-muted-foreground whitespace-pre-wrap bg-muted/30 p-2 rounded-md max-h-32 overflow-y-auto mt-1">
+                  {editingActivity.notesDisplay}
+                </div>
+              </div>
+            )}
+            <div>
+              <Label>Status</Label>
+              <Select value={editStatus} onValueChange={setEditStatus}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Pending">Pending</SelectItem>
+                  <SelectItem value="Completed">Completed</SelectItem>
+                  <SelectItem value="Cancelled">Cancelled</SelectItem>
+                  <SelectItem value="No Response">No Response</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <Label>New Notes (appended to history)</Label>
               <Textarea

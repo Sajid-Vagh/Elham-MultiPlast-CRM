@@ -35,7 +35,7 @@ function notesToDisplay(notes: string | null | undefined): string {
   const entries = parseNotes(notes);
   if (entries.length === 0) return "";
   if (entries.length === 1 && !entries[0]!.date) return entries[0]!.text;
-  return entries.map(e => {
+  return [...entries].reverse().map(e => {
     const prefix = e.date ? `${e.date}${e.time ? ` ${e.time}` : ""}${e.userName ? ` - ${e.userName}` : ""}` : "";
     return prefix ? `${prefix}\n${e.text}` : e.text;
   }).join("\n\n---\n\n");
@@ -167,10 +167,10 @@ router.get("/activities", async (req, res) => {
       };
     });
 
-    // Post-filter for upcoming: only Regular Follow up + not Completed
+    // Post-filter for upcoming: only Regular Follow up + Pending status
     if (upcoming && !dateFilter) {
       enriched = enriched.filter(a => {
-        if (a.callStatus === "Completed") return false;
+        if (a.callStatus !== "Pending") return false;
         const cat = a.contact?.category;
         if (cat !== "Regular Follow up") return false;
         return true;
@@ -424,11 +424,15 @@ router.patch("/activities/:id", async (req, res) => {
       );
     }
 
-    // If marking as Completed, mark related notifications as read
-    if (parsed.data.callStatus === "Completed") {
+    // Dismiss notifications for any non-Pending status change
+    if (parsed.data.callStatus !== undefined && parsed.data.callStatus !== "Pending") {
+      const notifUpdate: Record<string, any> = { notificationSeen: true, notificationSeenAt: new Date() };
+      if (parsed.data.callStatus === "Completed") {
+        notifUpdate.readAt = new Date();
+      }
       await db
         .update(notificationsTable)
-        .set({ readAt: new Date() })
+        .set(notifUpdate)
         .where(and(
           eq(notificationsTable.relatedId, params.data.id),
           eq(notificationsTable.relatedType, "activity"),

@@ -106,14 +106,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
   const followUpCount = useMemo(() => {
     if (!upcomingActivities) return 0;
-    return upcomingActivities.filter(a => a.callStatus !== "Completed").length;
+    return upcomingActivities.filter(a => a.callStatus === "Pending").length;
   }, [upcomingActivities]);
 
   const d = new Date();
   const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const todayActivities = useMemo(() => {
     if (!upcomingActivities) return [];
-    return upcomingActivities.filter(a => a.followUpDate === today && !dismissedToday.has(a.id) && a.callStatus !== "Completed");
+    return upcomingActivities.filter(a => a.followUpDate === today && !dismissedToday.has(a.id) && a.callStatus === "Pending");
   }, [upcomingActivities, today, dismissedToday]);
 
   const unreadCount = sseUnreadCount;
