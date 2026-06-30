@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
-import { useListActivities, useUpdateActivity, useGetMe } from "@workspace/api-client-react";
+import { useUpdateActivity, useGetMe } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,10 +45,37 @@ export default function FollowUps() {
     return dateFilter || "";
   }, [dateFilter, showToday]);
 
-  const { data: activities, isLoading, refetch } = useListActivities(
-    activeDate ? { date: activeDate, ...(isAdmin ? {} : { userId: me?.id }) } : { upcoming: true, ...(isAdmin ? {} : { userId: me?.id }) },
-    { query: { staleTime: 30_000 } }
-  );
+  type FollowUpActivity = {
+    id: number; type: string; notes?: string | null;
+    followUpDate?: string | null; followUpTime?: string | null;
+    callStatus?: string | null; createdBy?: number | null;
+    dealId: number; contactId?: number | null;
+    user?: { id: number; name: string } | null;
+    deal?: { id: number; contactId?: number; contact?: { id?: number; name?: string; mobile?: string; companyName?: string; unit?: string; category?: string; salesOwner?: { name: string } | null } | null } | null;
+    contact?: { id?: number; name?: string; mobile?: string; companyName?: string; unit?: string; category?: string; salesOwner?: { name: string } | null } | null;
+  };
+
+  const { data: activities, isLoading, refetch } = useQuery<FollowUpActivity[]>({
+    queryKey: ["follow-up-activities", activeDate, isAdmin ? "all" : me?.id],
+    queryFn: async () => {
+      const token = localStorage.getItem("crm_token");
+      const params = new URLSearchParams();
+      if (activeDate) {
+        params.set("date", activeDate);
+      } else {
+        params.set("upcoming", "true");
+      }
+      if (!isAdmin && me?.id) {
+        params.set("userId", String(me.id));
+      }
+      const res = await fetch(`/api/activities?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
 
   const activeUnit = unitFilter;
   const filteredActivities = useMemo(() => {

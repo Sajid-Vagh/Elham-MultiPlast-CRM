@@ -37,8 +37,21 @@ router.get("/reports/summary", async (req, res) => {
     const totalWonValue = deals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.totalValue ?? 0), 0);
     const newLeadsThisMonth = contacts.filter(c => c.createdAt >= new Date(monthStart)).length;
 
-    const upcomingActivities = await db.select().from(activitiesTable).where(gte(activitiesTable.followUpDate, today));
-    const upcomingFollowUps = upcomingActivities.length;
+    // Upcoming follow-ups: Regular Follow up category + pending + followUpDate >= today
+    const allUpcomingActivities = await db.select().from(activitiesTable).where(gte(activitiesTable.followUpDate, today));
+    const upcomingFollowUps = allUpcomingActivities.filter(a => {
+      if (a.callStatus === "Completed") return false;
+      const contact = contacts.find(c => c.id === a.contactId);
+      if (contact) return contact.category === "Regular Follow up";
+      if (a.dealId) {
+        const deal = deals.find(d => d.id === a.dealId);
+        if (deal) {
+          const c = contacts.find(cc => cc.id === deal.contactId);
+          return c?.category === "Regular Follow up";
+        }
+      }
+      return false;
+    }).length;
 
     res.json({ totalContacts, totalDeals, wonDeals, lostDeals, activeDeals, totalWonValue, upcomingFollowUps, newLeadsThisMonth });
   } catch (err) {

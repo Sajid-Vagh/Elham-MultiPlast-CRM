@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, usersTable, activitiesTable, dealsTable } from "@workspace/db";
-import { eq, or, and, ilike, lte, isNotNull, inArray, SQL } from "drizzle-orm";
+import { db, contactsTable, usersTable, activitiesTable, dealsTable, notificationsTable } from "@workspace/db";
+import { eq, or, and, ilike, lte, isNotNull, isNull, inArray, SQL } from "drizzle-orm";
 import { CreateContactBody, UpdateContactBody, GetContactParams, UpdateContactParams, DeleteContactParams, ListContactsQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -30,7 +30,8 @@ router.get("/contacts", async (req, res) => {
       if (params.data.city) conditions.push(ilike(contactsTable.city, `%${params.data.city}%`));
       if (params.data.unit) conditions.push(eq(contactsTable.unit, params.data.unit));
       if (params.data.industry) conditions.push(eq(contactsTable.industry, params.data.industry));
-      if (params.data.category) conditions.push(eq(contactsTable.category, params.data.category));
+      const categoryParam = req.query.category as string | undefined;
+      if (categoryParam) conditions.push(eq(contactsTable.category, categoryParam));
       if (params.data.search) {
         const s = `%${params.data.search}%`;
         conditions.push(
@@ -216,6 +217,49 @@ router.patch("/contacts/:id", async (req, res) => {
           relatedId: contact.id,
           relatedType: "contact",
         });
+      }
+    }
+
+    // If category changed away from "Regular Follow up", complete pending follow-ups
+    const newCategory = parsed.data.category;
+    if (newCategory && newCategory !== "Regular Follow up" && oldContact.category === "Regular Follow up") {
+      // Find and complete pending follow-ups via deal relation
+      const [existingDeal] = await db
+        .select({ id: dealsTable.id })
+        .from(dealsTable)
+        .where(eq(dealsTable.contactId, contact.id))
+        .limit(1);
+
+      if (existingDeal) {
+        const pendingFollowUps = await db
+          .select({ id: activitiesTable.id })
+          .from(activitiesTable)
+          .where(
+            and(
+              eq(activitiesTable.dealId, existingDeal.id),
+              eq(activitiesTable.type, "FollowUp"),
+              or(eq(activitiesTable.callStatus, "Pending"), isNull(activitiesTable.callStatus)),
+            )
+          );
+
+        if (pendingFollowUps.length > 0) {
+          const followUpIds = pendingFollowUps.map(f => f.id);
+          await db
+            .update(activitiesTable)
+            .set({ callStatus: "Completed", updatedAt: new Date(), updatedBy: user.id, isEdited: true })
+            .where(inArray(activitiesTable.id, followUpIds));
+
+          await db
+            .update(notificationsTable)
+            .set({ readAt: new Date() })
+            .where(
+              and(
+                inArray(notificationsTable.relatedId, followUpIds),
+                eq(notificationsTable.relatedType, "activity"),
+                isNull(notificationsTable.readAt),
+              )
+            );
+        }
       }
     }
 

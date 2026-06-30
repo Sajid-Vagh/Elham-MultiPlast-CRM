@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { useListContacts, useListUsers, useDeleteContact, useBulkDeleteContacts, getListContactsQueryKey, useGetMe } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,12 +36,43 @@ export default function Leads() {
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
 
-  const { data: contacts, isLoading } = useListContacts({
-    search: search || undefined,
-    salesOwnerId: isAdmin ? salesOwnerId : undefined,
-    city: city || undefined,
-    category: categoryFilter,
-    unit: unitFilter || undefined,
+  // Fetch category counts
+  const { data: categoryCounts } = useQuery({
+    queryKey: ["category-counts"],
+    queryFn: async () => {
+      const token = localStorage.getItem("crm_token");
+      const res = await fetch("/api/categories/counts", {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) return [];
+      return res.json() as Promise<{ category: string; count: number }[]>;
+    },
+    staleTime: 30_000,
+  });
+
+  const totalCount = useMemo(() => {
+    if (!categoryCounts) return 0;
+    return categoryCounts.reduce((sum, c) => sum + c.count, 0);
+  }, [categoryCounts]);
+
+  const { data: contacts, isLoading } = useQuery({
+    queryKey: ["leads-contacts", search, salesOwnerId, city, categoryFilter, unitFilter],
+    queryFn: async () => {
+      const token = localStorage.getItem("crm_token");
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (isAdmin && salesOwnerId) params.set("salesOwnerId", String(salesOwnerId));
+      if (city) params.set("city", city);
+      if (categoryFilter) params.set("category", categoryFilter);
+      if (unitFilter) params.set("unit", unitFilter);
+      const res = await fetch(`/api/contacts?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json() as Promise<any[]>;
+    },
+    staleTime: 10_000,
   });
   const { data: users } = useListUsers();
 
@@ -70,6 +101,7 @@ export default function Leads() {
     deleteContact.mutate({ id: deleteId }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: ["category-counts"] });
         toast({ title: `"${deleteName}" deleted` });
         setDeleteId(null);
         setSelectedIds(prev => { const n = new Set(prev); n.delete(deleteId); return n; });
@@ -148,10 +180,10 @@ export default function Leads() {
         </Select>
       </div>
 
-      {/* Category filter tabs */}
+      {/* Category filter tabs with counts */}
       <div className="flex flex-wrap items-center gap-1.5">
         <button
-          className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+          className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors flex items-center gap-1 ${
             !categoryFilter
               ? "bg-primary text-primary-foreground"
               : "bg-muted text-muted-foreground hover:bg-muted/80"
@@ -159,21 +191,34 @@ export default function Leads() {
           onClick={() => setCategoryFilter(undefined)}
         >
           All
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+            !categoryFilter ? "bg-white/20" : "bg-background/80"
+          }`}>
+            {totalCount}
+          </span>
         </button>
-        {CATEGORIES.map(cat => (
-          <button
-            key={cat}
-            className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
-              categoryFilter === cat
-                ? "text-white"
-                : "bg-muted text-muted-foreground hover:bg-muted/80"
-            }`}
-            style={categoryFilter === cat ? { backgroundColor: CATEGORY_COLORS[cat] } : {}}
-            onClick={() => setCategoryFilter(categoryFilter === cat ? undefined : cat)}
-          >
-            {cat}
-          </button>
-        ))}
+        {CATEGORIES.map(cat => {
+          const count = categoryCounts?.find(c => c.category === cat)?.count ?? 0;
+          return (
+            <button
+              key={cat}
+              className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors flex items-center gap-1 ${
+                categoryFilter === cat
+                  ? "text-white"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+              style={categoryFilter === cat ? { backgroundColor: CATEGORY_COLORS[cat] } : {}}
+              onClick={() => setCategoryFilter(categoryFilter === cat ? undefined : cat)}
+            >
+              {cat}
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                categoryFilter === cat ? "bg-white/20" : "bg-background/80"
+              }`}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Bulk action bar — shown when items are selected */}

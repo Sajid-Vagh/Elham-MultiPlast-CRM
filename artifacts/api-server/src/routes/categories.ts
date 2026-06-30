@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, dealsTable, usersTable, categoryHistoryTable, activitiesTable, productsTable, dealProductsTable, CATEGORIES } from "@workspace/db";
-import { eq, and, inArray, SQL, sql } from "drizzle-orm";
+import { db, contactsTable, dealsTable, usersTable, categoryHistoryTable, activitiesTable, notificationsTable, productsTable, dealProductsTable, CATEGORIES } from "@workspace/db";
+import { eq, and, or, inArray, isNull, SQL, sql } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 
 const router: IRouter = Router();
@@ -215,6 +215,7 @@ router.post("/categories/move", async (req, res) => {
 
     const isAdmin = user.role === "admin";
     const history: any[] = [];
+    const movedContactIds: number[] = [];
 
     for (const contactId of contactIds) {
       const [contact] = await db
@@ -243,7 +244,74 @@ router.post("/categories/move", async (req, res) => {
         })
         .returning();
 
-      if (h) history.push(h);
+      if (h) {
+        history.push(h);
+        movedContactIds.push(contactId);
+      }
+    }
+
+    // If moving away from "Regular Follow up" to other categories, complete pending follow-ups
+    if (newCategory !== "Regular Follow up" && movedContactIds.length > 0) {
+      const pendingFollowUps = await db
+        .select({ id: activitiesTable.id, dealId: activitiesTable.dealId })
+        .from(activitiesTable)
+        .where(
+          and(
+            eq(activitiesTable.type, "FollowUp"),
+            inArray(activitiesTable.contactId, movedContactIds),
+            or(eq(activitiesTable.callStatus, "Pending"), isNull(activitiesTable.callStatus)),
+          )
+        );
+
+      if (pendingFollowUps.length > 0) {
+        const followUpIds = pendingFollowUps.map(f => f.id);
+        await db
+          .update(activitiesTable)
+          .set({ callStatus: "Completed", updatedAt: new Date(), updatedBy: user.id, isEdited: true })
+          .where(inArray(activitiesTable.id, followUpIds));
+
+        // Also try by deal relation if no direct contactId match
+        const contactDeals = await db
+          .select({ id: dealsTable.id })
+          .from(dealsTable)
+          .where(inArray(dealsTable.contactId, movedContactIds));
+        const dealIds = contactDeals.map(d => d.id);
+
+        if (dealIds.length > 0) {
+          const pendingDealFollowUps = await db
+            .select({ id: activitiesTable.id })
+            .from(activitiesTable)
+            .where(
+              and(
+                eq(activitiesTable.type, "FollowUp"),
+                eq(activitiesTable.contactId, null as any),
+                inArray(activitiesTable.dealId, dealIds),
+                or(eq(activitiesTable.callStatus, "Pending"), isNull(activitiesTable.callStatus)),
+              )
+            );
+
+          if (pendingDealFollowUps.length > 0) {
+            await db
+              .update(activitiesTable)
+              .set({ callStatus: "Completed", updatedAt: new Date(), updatedBy: user.id, isEdited: true })
+              .where(inArray(activitiesTable.id, pendingDealFollowUps.map(f => f.id)));
+
+            followUpIds.push(...pendingDealFollowUps.map(f => f.id));
+          }
+        }
+
+        // Mark related notifications as read
+        await db
+          .update(notificationsTable)
+          .set({ readAt: new Date() })
+          .where(
+            and(
+              inArray(notificationsTable.relatedId, followUpIds),
+              eq(notificationsTable.relatedType, "activity"),
+              isNull(notificationsTable.readAt),
+            )
+          );
+      }
     }
 
     res.json({ success: true, moved: history.length, history });

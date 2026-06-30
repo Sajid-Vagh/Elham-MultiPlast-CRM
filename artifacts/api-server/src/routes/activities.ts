@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, activitiesTable, usersTable, contactsTable, dealsTable, notificationsTable } from "@workspace/db";
-import { eq, and, gte, lte, SQL } from "drizzle-orm";
+import { db, activitiesTable, usersTable, contactsTable, dealsTable, notificationsTable, CATEGORIES } from "@workspace/db";
+import { eq, and, gte, lte, isNull, SQL, inArray } from "drizzle-orm";
 import { CreateActivityBody, UpdateActivityBody, ListActivitiesQueryParams, UpdateActivityParams, DeleteActivityParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -45,46 +45,76 @@ router.get("/activities", async (req, res) => {
       if (params.data.dealId) conditions.push(eq(activitiesTable.dealId, params.data.dealId));
       if (params.data.contactId) conditions.push(eq(activitiesTable.contactId, params.data.contactId));
       if (params.data.userId) conditions.push(eq(activitiesTable.createdBy, params.data.userId));
-      if (params.data.upcoming) {
-        const d = new Date();
-        const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-        conditions.push(gte(activitiesTable.followUpDate, today));
-      }
-      if (params.data.date) {
-        conditions.push(eq(activitiesTable.followUpDate, params.data.date));
-      }
     }
-    console.log("[DEBUG] GET /activities - User:", { id: user.id, role: user.role, name: user.name });
-    console.log("[DEBUG] GET /activities - Query:", req.query);
-    console.log("[DEBUG] GET /activities - Parsed params:", params.success ? params.data : params.error);
-    console.log("[DEBUG] GET /activities - Conditions count:", conditions.length);
+
+    // Handle upcoming + date filters with proper support for extra query params
+    const dateFilter = req.query.date as string | undefined;
+    const callStatusFilter = req.query.callStatus as string | undefined;
+    const categoryFilter = req.query.category as string | undefined;
+    const upcoming = req.query.upcoming === "true";
+
+    if (dateFilter) {
+      conditions.push(eq(activitiesTable.followUpDate, dateFilter));
+    }
+
+    if (callStatusFilter) {
+      conditions.push(eq(activitiesTable.callStatus, callStatusFilter));
+    }
+
+    // For upcoming, we filter by followUpDate >= today + post-filter for category and status
+    if (upcoming && !dateFilter) {
+      const d = new Date();
+      const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      conditions.push(gte(activitiesTable.followUpDate, today));
+    }
+
     const activities = conditions.length
       ? await db.select().from(activitiesTable).where(and(...conditions)).orderBy(activitiesTable.createdAt)
       : await db.select().from(activitiesTable).orderBy(activitiesTable.createdAt);
-    console.log("[DEBUG] GET /activities - Activities found:", activities.length);
-    console.log("[DEBUG] GET /activities - Activity IDs:", activities.map(a => ({ id: a.id, type: a.type, followUpDate: a.followUpDate, createdBy: a.createdBy, dealId: a.dealId })));
-
-    // Also log all activities for this deal (regardless of createdBy) for comparison
-    if (params.success && params.data.dealId) {
-      const allForDeal = await db.select({ id: activitiesTable.id, type: activitiesTable.type, createdBy: activitiesTable.createdBy, followUpDate: activitiesTable.followUpDate }).from(activitiesTable).where(eq(activitiesTable.dealId, params.data.dealId));
-      console.log("[DEBUG] GET /activities - ALL activities for deal", params.data.dealId, ":", JSON.stringify(allForDeal));
-    }
-
-    const users = await db.select().from(usersTable);
-    const userMap = new Map(users.map(u => { const { passwordHash: _, ...safe } = u; return [u.id, safe]; }));
-
-    const deals = await db.select().from(dealsTable);
-    const dealMap = new Map(deals.map(d => [d.id, d]));
 
     const contacts = await db.select().from(contactsTable);
     const contactMap = new Map(contacts.map(c => [c.id, c]));
 
-    res.json(activities.map(a => ({
-      ...a,
-      user: a.createdBy ? userMap.get(a.createdBy) ?? null : null,
-      deal: dealMap.get(a.dealId) ?? null,
-      contact: a.contactId ? contactMap.get(a.contactId) ?? null : (dealMap.get(a.dealId)?.contactId ? contactMap.get(dealMap.get(a.dealId)!.contactId) ?? null : null),
-    })));
+    const deals = await db.select().from(dealsTable);
+    const dealMap = new Map(deals.map(d => [d.id, d]));
+
+    const users = await db.select().from(usersTable);
+    const userMap = new Map(users.map(u => { const { passwordHash: _, ...safe } = u; return [u.id, safe]; }));
+
+    // Enrich with contact data
+    let enriched = activities.map(a => {
+      let contact = a.contactId ? contactMap.get(a.contactId) ?? null : null;
+      if (!contact && a.dealId) {
+        const deal = dealMap.get(a.dealId);
+        if (deal) contact = contactMap.get(deal.contactId) ?? null;
+      }
+      return {
+        ...a,
+        user: a.createdBy ? userMap.get(a.createdBy) ?? null : null,
+        deal: a.dealId ? dealMap.get(a.dealId) ?? null : null,
+        contact,
+      };
+    });
+
+    // Post-filter for upcoming: only Regular Follow up + not Completed
+    if (upcoming && !dateFilter) {
+      enriched = enriched.filter(a => {
+        if (a.callStatus === "Completed") return false;
+        const cat = a.contact?.category;
+        if (cat !== "Regular Follow up") return false;
+        return true;
+      });
+    }
+
+    // Post-filter for category
+    if (categoryFilter) {
+      enriched = enriched.filter(a => {
+        const cat = a.contact?.category;
+        return cat === categoryFilter;
+      });
+    }
+
+    res.json(enriched);
   } catch (err) {
     req.log.error({ err }, "List activities error");
     res.status(500).json({ error: "Internal server error" });
@@ -94,16 +124,12 @@ router.get("/activities", async (req, res) => {
 router.post("/activities", async (req, res) => {
   const parsed = CreateActivityBody.safeParse(req.body);
   if (!parsed.success) {
-    console.log("[DEBUG] POST /activities - Invalid input:", parsed.error);
     res.status(400).json({ error: "Invalid input", details: parsed.error });
     return;
   }
   try {
     const currentUser = await getUserFromRequest(req);
     if (!currentUser) { res.status(401).json({ error: "Unauthorized" }); return; }
-
-    console.log("[DEBUG] POST /activities - Raw body:", JSON.stringify(req.body));
-    console.log("[DEBUG] POST /activities - Creating:", JSON.stringify({ ...parsed.data, createdBy: currentUser.id }));
 
     let activity: typeof activitiesTable.$inferSelect | undefined;
 
@@ -128,6 +154,7 @@ router.post("/activities", async (req, res) => {
           .where(eq(activitiesTable.id, existing.id))
           .returning();
         activity = updated;
+        // Mark old notification as seen when follow-up is updated
         await db
           .update(notificationsTable)
           .set({ notificationSeen: true, notificationSeenAt: new Date() })
@@ -137,7 +164,6 @@ router.post("/activities", async (req, res) => {
             eq(notificationsTable.type, "follow_up"),
             eq(notificationsTable.notificationSeen, false),
           ));
-        console.log("[DEBUG] POST /activities - Updated existing FollowUp:", { id: activity.id, dealId: activity.dealId });
       }
     }
 
@@ -148,39 +174,43 @@ router.post("/activities", async (req, res) => {
         createdBy: currentUser.id,
       }).returning();
       activity = inserted;
-      console.log("[DEBUG] POST /activities - Inserted new:", { id: activity.id, type: activity.type, followUpDate: activity.followUpDate, createdBy: activity.createdBy, dealId: activity.dealId, contactId: activity.contactId });
     }
 
     // Notify contact's sales owner about new follow-up
     if (activity && (activity.contactId || activity.dealId)) {
       let contactOwnerId: number | null = null;
+      let contactCategory: string | null = null;
       if (activity.contactId) {
-        const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId }).from(contactsTable).where(eq(contactsTable.id, activity.contactId));
+        const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId, category: contactsTable.category }).from(contactsTable).where(eq(contactsTable.id, activity.contactId));
         if (contact?.salesOwnerId) contactOwnerId = contact.salesOwnerId;
+        if (contact?.category) contactCategory = contact.category;
       } else if (activity.dealId) {
         const [deal] = await db.select({ contactId: dealsTable.contactId }).from(dealsTable).where(eq(dealsTable.id, activity.dealId));
         if (deal) {
-          const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+          const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId, category: contactsTable.category }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
           if (contact?.salesOwnerId) contactOwnerId = contact.salesOwnerId;
+          if (contact?.category) contactCategory = contact.category;
         }
       }
-      if (contactOwnerId) {
-        await createNotification({
-          userId: contactOwnerId,
-          type: "follow_up",
-          title: "Follow-up Scheduled",
-          message: activity.followUpDate
-            ? `Follow-up on ${activity.followUpDate}${activity.followUpTime ? ` at ${activity.followUpTime}` : ""}\nType: ${activity.type}${activity.notes ? `\nNotes: ${activity.notes.slice(0, 100)}` : ""}\nBy: ${currentUser.name || "System"}`
-            : `New ${activity.type} activity recorded`,
-          link: activity.dealId ? `/deals/${activity.dealId}` : activity.contactId ? `/leads/${activity.contactId}` : "#",
-          relatedId: activity.id,
-          relatedType: "activity",
-        });
+      // Only create notification for Regular Follow up leads or if follow-up date is set
+      if (contactOwnerId && activity.followUpDate) {
+        if (contactCategory === "Regular Follow up" || parsed.data.type !== "FollowUp") {
+          await createNotification({
+            userId: contactOwnerId,
+            type: "follow_up",
+            title: "Follow-up Scheduled",
+            message: activity.followUpDate
+              ? `Follow-up on ${activity.followUpDate}${activity.followUpTime ? ` at ${activity.followUpTime}` : ""}\nType: ${activity.type}${activity.notes ? `\nNotes: ${activity.notes.slice(0, 100)}` : ""}\nBy: ${currentUser.name || "System"}`
+              : `New ${activity.type} activity recorded`,
+            link: activity.dealId ? `/deals/${activity.dealId}` : activity.contactId ? `/leads/${activity.contactId}` : "#",
+            relatedId: activity.id,
+            relatedType: "activity",
+          });
+        }
       }
     }
 
     const enriched = await enrichActivity(activity!);
-    console.log("[DEBUG] POST /activities - Enriched response:", JSON.stringify({ id: enriched.id, dealId: enriched.dealId, type: enriched.type, createdBy: enriched.createdBy, followUpDate: enriched.followUpDate, createdAt: enriched.createdAt }));
     res.status(201).json(enriched);
   } catch (err) {
     req.log.error({ err }, "Create activity error");
@@ -209,6 +239,19 @@ router.patch("/activities/:id", async (req, res) => {
       updatedBy: user.id,
       isEdited: true,
     };
+
+    // If marking as Completed, mark related notifications as read
+    if (parsed.data.callStatus === "Completed") {
+      await db
+        .update(notificationsTable)
+        .set({ readAt: new Date() })
+        .where(and(
+          eq(notificationsTable.relatedId, params.data.id),
+          eq(notificationsTable.relatedType, "activity"),
+          isNull(notificationsTable.readAt),
+        ));
+    }
+
     const [activity] = await db.update(activitiesTable).set(updateData).where(eq(activitiesTable.id, params.data.id)).returning();
     if (!activity) { res.status(404).json({ error: "Not found" }); return; }
     res.json(await enrichActivity(activity));

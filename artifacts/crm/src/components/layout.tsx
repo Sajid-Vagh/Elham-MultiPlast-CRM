@@ -97,13 +97,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const dismissPopup = useCallback((id: number) => {
     setActivePopups((prev) => { const next = new Set(prev); next.delete(id); return next; });
-  }, []);
+    markAsSeen(id);
+  }, [markAsSeen]);
 
   const { data: upcomingActivities } = useListActivities(
     { upcoming: true },
     { query: { enabled: !!user, staleTime: 5 * 60 * 1000, queryKey: getListActivitiesQueryKey({ upcoming: true }) } }
   );
-  const followUpCount = upcomingActivities?.length ?? 0;
+  const followUpCount = useMemo(() => {
+    if (!upcomingActivities) return 0;
+    return upcomingActivities.filter(a => a.callStatus !== "Completed").length;
+  }, [upcomingActivities]);
 
   const d = new Date();
   const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -112,7 +116,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     return upcomingActivities.filter(a => a.followUpDate === today && !dismissedToday.has(a.id) && a.callStatus !== "Completed");
   }, [upcomingActivities, today, dismissedToday]);
 
-  const unreadCount = todayActivities.length + sseUnreadCount;
+  const unreadCount = sseUnreadCount;
 
   const updateActivity = useUpdateActivity();
 
