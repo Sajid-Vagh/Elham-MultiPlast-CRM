@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, usersTable, activitiesTable, dealsTable, notificationsTable, commentHistoryTable, categoryHistoryTable } from "@workspace/db";
+import { db, contactsTable, usersTable, activitiesTable, dealsTable, notificationsTable, commentHistoryTable, categoryHistoryTable, documentsTable } from "@workspace/db";
 import { eq, or, and, ilike, lte, isNotNull, isNull, inArray, SQL, desc } from "drizzle-orm";
 import { CreateContactBody, UpdateContactBody, GetContactParams, UpdateContactParams, DeleteContactParams, ListContactsQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
@@ -594,6 +594,36 @@ router.get("/contacts/:id/timeline", async (req, res) => {
           description: `Deal Stage: ${d.stage}`,
           dealStage: d.stage,
           dealValue: d.totalValue,
+          createdAt: d.updatedAt,
+        });
+      }
+    }
+
+    // 6. Document events
+    const contactDocs = await db
+      .select({
+        id: documentsTable.id,
+        name: documentsTable.name,
+        documentType: documentsTable.documentType,
+        version: documentsTable.version,
+        uploadedBy: documentsTable.uploadedBy,
+        createdAt: documentsTable.createdAt,
+        updatedAt: documentsTable.updatedAt,
+      })
+      .from(documentsTable)
+      .where(and(eq(documentsTable.contactId, id), eq(documentsTable.isDeleted, false)));
+    for (const d of contactDocs) {
+      timeline.push({
+        type: "document_uploaded",
+        description: `${d.documentType} Uploaded: ${d.name}`,
+        user: null,
+        createdAt: d.createdAt,
+      });
+      if (d.version > 1 && d.updatedAt && d.updatedAt !== d.createdAt) {
+        timeline.push({
+          type: "document_replaced",
+          description: `${d.documentType} Replaced: ${d.name} (v${d.version})`,
+          user: null,
           createdAt: d.updatedAt,
         });
       }

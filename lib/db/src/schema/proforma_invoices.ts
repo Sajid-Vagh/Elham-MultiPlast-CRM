@@ -1,9 +1,11 @@
-import { pgTable, text, serial, timestamp, integer, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, numeric, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
+import { contactsTable } from "./contacts";
+import { dealsTable } from "./deals";
 
-export const INVOICE_STATUSES = ["Draft", "Sent", "Approved", "Rejected", "Converted to Order"] as const;
+export const INVOICE_STATUSES = ["Draft", "Sent", "Viewed", "Approved", "Rejected", "Expired", "Converted to Order"] as const;
 export type InvoiceStatus = typeof INVOICE_STATUSES[number];
 
 export const proformaInvoicesTable = pgTable("proforma_invoices", {
@@ -11,6 +13,9 @@ export const proformaInvoicesTable = pgTable("proforma_invoices", {
   invoiceNumber: text("invoice_number").notNull().unique(),
   customerName: text("customer_name").notNull(),
   companyName: text("company_name"),
+  contactId: integer("contact_id").references(() => contactsTable.id, { onDelete: "set null" }),
+  dealId: integer("deal_id").references(() => dealsTable.id, { onDelete: "set null" }),
+  salesOwnerId: integer("sales_owner_id").references(() => usersTable.id, { onDelete: "set null" }),
   address: text("address"),
   addressLine1: text("address_line1"),
   addressLine2: text("address_line2"),
@@ -35,6 +40,7 @@ export const proformaInvoicesTable = pgTable("proforma_invoices", {
   amountInWords: text("amount_in_words"),
   status: text("status").notNull().default("Draft"),
   notes: text("notes"),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
   createdBy: integer("created_by").notNull().references(() => usersTable.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
@@ -45,9 +51,15 @@ export const proformaInvoiceItemsTable = pgTable("proforma_invoice_items", {
   invoiceId: integer("invoice_id").notNull().references(() => proformaInvoicesTable.id, { onDelete: "cascade" }),
   productName: text("product_name").notNull(),
   hsnCode: text("hsn_code"),
+  bottleType: text("bottle_type"),
+  capacity: text("capacity"),
+  weight: text("weight"),
   quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull(),
   unit: text("unit").notNull().default("Pcs"),
   rate: numeric("rate", { precision: 12, scale: 2 }).notNull(),
+  discountPercent: numeric("discount_percent", { precision: 5, scale: 2 }).default("0"),
+  discount: numeric("discount", { precision: 14, scale: 2 }).default("0"),
+  gstPercent: numeric("gst_percent", { precision: 5, scale: 2 }).default("0"),
   amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
 });
 

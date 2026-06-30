@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import {
   useGetContact, useListDeals, useListActivities, useCreateDeal, useCreateActivity,
@@ -20,6 +20,8 @@ import { Label } from "@/components/ui/label";
 import { DialogFooter } from "@/components/ui/dialog";
 import { CategoryBadge } from "@/components/category-badge";
 import { MoveCategoryDialog } from "@/components/move-category-dialog";
+import { DocumentManager } from "@/components/document-manager";
+import { DocumentUploadDialog } from "@/components/document-upload-dialog";
 import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
 
 const STAGE_COLORS: Record<string, string> = {
@@ -41,6 +43,8 @@ const TIMELINE_ICONS: Record<string, { bg: string; icon: string }> = {
   "comment_updated": { bg: "#e0f2fe", icon: "💬" },
   "deal_created":    { bg: "#d1fae5", icon: "🤝" },
   "deal_updated":    { bg: "#e0e7ff", icon: "📊" },
+  "document_uploaded": { bg: "#fef9c3", icon: "📄" },
+  "document_replaced": { bg: "#fce7f3", icon: "🔄" },
 };
 
 const ACT_STYLE: Record<string, { bg: string; fg: string; icon: string }> = {
@@ -97,6 +101,7 @@ export default function LeadDetail() {
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [showMoveCategory, setShowMoveCategory] = useState(false);
+  const [uploadDocOpen, setUploadDocOpen] = useState(false);
 
   // Customer Comments
   const [commentDialogOpen, setCommentDialogOpen] = useState(false);
@@ -530,20 +535,41 @@ export default function LeadDetail() {
             </CardContent>
           </Card>
 
-          {/* Section 9: Attachments (Future Ready) */}
+          {/* Section 9: Proforma Invoices */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                <Paperclip className="h-3.5 w-3.5" /> Attachments
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <FileText className="h-3.5 w-3.5" /> Proforma Invoices
+                </CardTitle>
+                <Link href={`/proforma-invoices`}>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={(e) => {
+                    e.preventDefault();
+                    window.location.href = `/proforma-invoices`;
+                  }}>View All</Button>
+                </Link>
+              </div>
             </CardHeader>
             <CardContent>
-              <p className="text-xs text-muted-foreground">Attachment storage coming soon.</p>
-              <p className="text-[10px] text-muted-foreground mt-1">Supports: Quotation PDF, Proforma Invoice, Images, Visiting Cards, Documents, GST, PAN, PO</p>
+              <ProformaInvoiceList contactId={contactId} />
             </CardContent>
           </Card>
 
-          {/* Section 10: Quick Actions */}
+          {/* Section 10: Documents */}
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <Paperclip className="h-3.5 w-3.5" /> Documents
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <DocumentManager contactId={contactId} compact />
+            </CardContent>
+          </Card>
+
+          {/* Section 11: Quick Actions */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Quick Actions</CardTitle>
@@ -561,6 +587,12 @@ export default function LeadDetail() {
                 </Button>
                 <Button size="sm" variant="outline" className="h-8 text-xs justify-start" onClick={() => setDealDialogOpen(true)}>
                   <Plus className="h-3 w-3 mr-1.5" /> Create Deal
+                </Button>
+                <Button size="sm" variant="outline" className="h-8 text-xs justify-start" onClick={() => window.location.href = `/proforma-invoices`}>
+                  <FileText className="h-3 w-3 mr-1.5" /> Proforma Invoice
+                </Button>
+                <Button size="sm" variant="outline" className="h-8 text-xs justify-start" onClick={() => setUploadDocOpen(true)}>
+                  <Paperclip className="h-3 w-3 mr-1.5" /> Upload Document
                 </Button>
                 <Button size="sm" variant="outline" className="h-8 text-xs justify-start" onClick={() => window.open(`tel:${contact.mobile}`)}>
                   <Phone className="h-3 w-3 mr-1.5" /> Call Customer
@@ -964,6 +996,68 @@ export default function LeadDetail() {
           queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
         }}
       />
+
+      {/* Upload Document Dialog */}
+      <DocumentUploadDialog
+        open={uploadDocOpen}
+        onOpenChange={setUploadDocOpen}
+        contactId={contactId}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
+          queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
+        }}
+      />
+    </div>
+  );
+}
+
+function ProformaInvoiceList({ contactId }: { contactId: number }) {
+  const [proformas, setProformas] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const token = typeof window !== "undefined" ? localStorage.getItem("crm_token") : null;
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`/api/proforma-invoices/all?customer=${encodeURIComponent("")}&search=`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const all: any[] = await res.json();
+          setProformas(all.filter(p => p.contactId === contactId).slice(0, 5));
+        }
+      } catch { } finally {
+        setLoading(false);
+      }
+    })();
+  }, [contactId, token]);
+
+  if (loading) return <p className="text-xs text-muted-foreground">Loading...</p>;
+  if (proformas.length === 0) return <p className="text-xs text-muted-foreground">No proforma invoices yet.</p>;
+
+  return (
+    <div className="space-y-1.5">
+      {proformas.map((p: any) => (
+        <Link key={p.id} href={`/proforma-invoices`} className="block">
+          <div className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 transition-colors cursor-pointer text-xs">
+            <div>
+              <span className="font-medium">{p.invoiceNumber}</span>
+              <span className="text-muted-foreground ml-2">{p.customerName}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge className={`text-[10px] px-1.5 py-0 ${(p.status === "Draft" ? "bg-gray-100 text-gray-700" : p.status === "Sent" ? "bg-blue-100 text-blue-700" : p.status === "Approved" ? "bg-green-100 text-green-700" : p.status === "Rejected" ? "bg-red-100 text-red-700" : "bg-purple-100 text-purple-700")}`}>
+                {p.status}
+              </Badge>
+              <span className="text-muted-foreground">₹{Number(p.grandTotal || 0).toLocaleString()}</span>
+            </div>
+          </div>
+        </Link>
+      ))}
+      {proformas.length >= 5 && (
+        <Link href="/proforma-invoices">
+          <p className="text-xs text-blue-600 text-center mt-1 hover:underline cursor-pointer">View all proformas →</p>
+        </Link>
+      )}
     </div>
   );
 }

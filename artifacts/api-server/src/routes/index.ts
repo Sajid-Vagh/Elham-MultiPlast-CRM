@@ -12,6 +12,7 @@ import categoriesRouter from "./categories";
 import proformaInvoicesRouter from "./proforma-invoices";
 import notificationsRouter from "./notifications";
 import dashboardRouter from "./dashboard";
+import documentsRouter from "./documents";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(categoriesRouter);
 router.use(proformaInvoicesRouter);
 router.use(notificationsRouter);
 router.use(dashboardRouter);
+router.use(documentsRouter);
 
 export default router;

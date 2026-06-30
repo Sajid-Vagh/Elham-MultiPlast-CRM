@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useLocation } from "wouter";
+import { useGetMe } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,12 +25,14 @@ import { useToast } from "@/hooks/use-toast";
 const STATUS_COLORS: Record<string, string> = {
   "Draft": "bg-gray-100 text-gray-700",
   "Sent": "bg-blue-100 text-blue-700",
+  "Viewed": "bg-cyan-100 text-cyan-700",
   "Approved": "bg-green-100 text-green-700",
   "Rejected": "bg-red-100 text-red-700",
+  "Expired": "bg-yellow-100 text-yellow-700",
   "Converted to Order": "bg-purple-100 text-purple-700",
 };
 
-const INVOICE_STATUSES = ["Draft", "Sent", "Approved", "Rejected", "Converted to Order"];
+const INVOICE_STATUSES = ["Draft", "Sent", "Viewed", "Approved", "Rejected", "Expired", "Converted to Order"];
 
 function numberToWords(num: number): string {
   if (num === 0) return "Zero Rupees Only";
@@ -61,15 +64,22 @@ function numberToWords(num: number): string {
 interface InvoiceItem {
   productName: string;
   hsnCode: string;
+  bottleType: string;
+  capacity: string;
+  weight: string;
   quantity: number;
   unit: string;
   rate: number;
+  discountPercent: number;
+  discount: number;
+  gstPercent: number;
   amount: number;
 }
 
 export default function ProformaInvoicesPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { data: me } = useGetMe();
   const token = localStorage.getItem("crm_token");
 
   const [tab, setTab] = useState("all");
@@ -103,7 +113,7 @@ export default function ProformaInvoicesPage() {
   const [igstPct, setIgstPct] = useState(0);
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<InvoiceItem[]>([
-    { productName: "", hsnCode: "", quantity: 1, unit: "Pcs", rate: 0, amount: 0 },
+    { productName: "", hsnCode: "", bottleType: "", capacity: "", weight: "", quantity: 1, unit: "Pcs", rate: 0, discountPercent: 0, discount: 0, gstPercent: 0, amount: 0 },
   ]);
   const [saving, setSaving] = useState(false);
   const [showPdfPreview, setShowPdfPreview] = useState(false);
@@ -154,7 +164,11 @@ export default function ProformaInvoicesPage() {
   const totalPages = Math.ceil(filteredInvoices.length / perPage);
   const paginatedInvoices = filteredInvoices.slice((page - 1) * perPage, page * perPage);
 
-  const calcAmount = (item: InvoiceItem) => item.quantity * item.rate;
+  const calcAmount = (item: InvoiceItem) => {
+    const gross = item.quantity * item.rate;
+    const disc = item.discountPercent > 0 ? gross * item.discountPercent / 100 : (item.discount || 0);
+    return gross - disc;
+  };
   const taxableAmount = items.reduce((sum, item) => sum + item.quantity * item.rate, 0);
   const baseAmount = taxableAmount + freight;
   const cgstAmount = baseAmount * cgstPct / 100;
@@ -163,20 +177,29 @@ export default function ProformaInvoicesPage() {
   const grandTotal = baseAmount + cgstAmount + sgstAmount + igstAmount;
   const amountInWords = numberToWords(grandTotal);
 
+  const recalcItem = (item: InvoiceItem) => {
+    const gross = item.quantity * item.rate;
+    const discAmt = item.discountPercent > 0 ? gross * item.discountPercent / 100 : (item.discount || 0);
+    return { ...item, discount: discAmt, amount: gross - discAmt };
+  };
+
   const updateItem = (idx: number, field: keyof InvoiceItem, value: any) => {
     const updated = items.map((item, i) => {
       if (i !== idx) return item;
       const newItem = { ...item, [field]: value };
-      if (field === "quantity" || field === "rate") {
-        newItem.amount = newItem.quantity * newItem.rate;
-      }
-      return newItem;
+      return recalcItem(newItem);
     });
     setItems(updated);
   };
 
   const addItem = () => {
-    setItems([...items, { productName: "", hsnCode: "", quantity: 1, unit: "Pcs", rate: 0, amount: 0 }]);
+    setItems([...items, { productName: "", hsnCode: "", bottleType: "", capacity: "", weight: "", quantity: 1, unit: "Pcs", rate: 0, discountPercent: 0, discount: 0, gstPercent: 0, amount: 0 }]);
+  };
+
+  const duplicateItem = (idx: number) => {
+    const newItems = [...items];
+    newItems.splice(idx + 1, 0, { ...items[idx] });
+    setItems(newItems);
   };
 
   const removeItem = (idx: number) => {
@@ -205,7 +228,7 @@ export default function ProformaInvoicesPage() {
     setSgstPct(0);
     setIgstPct(0);
     setNotes("");
-    setItems([{ productName: "", hsnCode: "", quantity: 1, unit: "Pcs", rate: 0, amount: 0 }]);
+    setItems([{ productName: "", hsnCode: "", bottleType: "", capacity: "", weight: "", quantity: 1, unit: "Pcs", rate: 0, discountPercent: 0, discount: 0, gstPercent: 0, amount: 0 }]);
     setEditMode(false);
   };
 
@@ -279,14 +302,24 @@ export default function ProformaInvoicesPage() {
         amountInWords,
         status,
         notes: notes || null,
-        items: items.map((i) => ({
-          productName: i.productName,
-          hsnCode: i.hsnCode || null,
-          quantity: i.quantity,
-          unit: i.unit,
-          rate: i.rate,
-          amount: i.quantity * i.rate,
-        })),
+        items: items.map((i) => {
+          const gross = i.quantity * i.rate;
+          const discAmt = i.discountPercent > 0 ? gross * i.discountPercent / 100 : (i.discount || 0);
+          return {
+            productName: i.productName,
+            hsnCode: i.hsnCode || null,
+            bottleType: i.bottleType || null,
+            capacity: i.capacity || null,
+            weight: i.weight || null,
+            quantity: i.quantity,
+            unit: i.unit,
+            rate: i.rate,
+            discountPercent: i.discountPercent,
+            discount: discAmt,
+            gstPercent: i.gstPercent,
+            amount: gross - discAmt,
+          };
+        }),
       };
       if (invoiceNumber) body.invoiceNumber = invoiceNumber;
 
@@ -431,6 +464,47 @@ export default function ProformaInvoicesPage() {
     const phone = invoice.mobile || "";
     const msg = encodeURIComponent(`Dear ${invoice.customerName},\n\nPlease find attached Proforma Invoice ${invoice.invoiceNumber} dated ${new Date(invoice.createdAt).toLocaleDateString("en-IN")}.\n\nTotal Amount: ₹${Number(invoice.grandTotal).toFixed(2)}\n\nRegards,\nElham Multiplast LLP`);
     window.open(`https://wa.me/${phone}?text=${msg}`, "_blank");
+  };
+
+  const handleDuplicate = async (invoice: any) => {
+    try {
+      const res = await fetch(`/api/proforma-invoices/${invoice.id}/duplicate`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const newInv = await res.json();
+        toast({ title: "Duplicated", description: `New invoice ${newInv.invoiceNumber} created` });
+        fetchInvoices();
+        setSelectedInvoice(newInv);
+        setMode("detail");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Error", description: err.error || "Failed to duplicate", variant: "destructive" });
+      }
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to duplicate invoice", variant: "destructive" });
+    }
+  };
+
+  const handleDelete = async (invoice: any) => {
+    if (!window.confirm(`Delete invoice ${invoice.invoiceNumber}? This action cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/proforma-invoices/${invoice.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        toast({ title: "Deleted", description: "Invoice deleted successfully" });
+        setMode("list");
+        fetchInvoices();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Error", description: err.error || "Failed to delete", variant: "destructive" });
+      }
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to delete invoice", variant: "destructive" });
+    }
   };
 
   const handleSendEmail = (invoice: any) => {
@@ -702,12 +776,17 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
                   <TableRow>
                     <TableHead className="w-8">#</TableHead>
                     <TableHead>Product Name</TableHead>
-                    <TableHead>HSN Code</TableHead>
-                    <TableHead className="w-20">Qty</TableHead>
-                    <TableHead className="w-20">Unit</TableHead>
-                    <TableHead className="w-24">Rate (₹)</TableHead>
-                    <TableHead className="w-24">Amount (₹)</TableHead>
-                    <TableHead className="w-8"></TableHead>
+                    <TableHead>HSN</TableHead>
+                    <TableHead>Bottle Type</TableHead>
+                    <TableHead>Capacity</TableHead>
+                    <TableHead>Weight</TableHead>
+                    <TableHead className="w-16">Qty</TableHead>
+                    <TableHead className="w-16">Unit</TableHead>
+                    <TableHead className="w-20">Rate (₹)</TableHead>
+                    <TableHead className="w-16">Disc %</TableHead>
+                    <TableHead className="w-16">GST %</TableHead>
+                    <TableHead className="w-20">Amount (₹)</TableHead>
+                    <TableHead className="w-16"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -715,33 +794,26 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
                     <TableRow key={idx}>
                       <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
                       <TableCell>
-                        <Input
-                          value={item.productName}
-                          onChange={(e) => updateItem(idx, "productName", e.target.value)}
-                          placeholder="Product name"
-                          className="h-8"
-                        />
+                        <Input value={item.productName} onChange={(e) => updateItem(idx, "productName", e.target.value)} placeholder="Product name" className="h-8 min-w-28" />
                       </TableCell>
                       <TableCell>
-                        <Input
-                          value={item.hsnCode}
-                          onChange={(e) => updateItem(idx, "hsnCode", e.target.value)}
-                          placeholder="HSN"
-                          className="h-8"
-                        />
+                        <Input value={item.hsnCode} onChange={(e) => updateItem(idx, "hsnCode", e.target.value)} placeholder="HSN" className="h-8 w-20" />
                       </TableCell>
                       <TableCell>
-                        <Input
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))}
-                          min={0}
-                          className="h-8 text-center"
-                        />
+                        <Input value={item.bottleType} onChange={(e) => updateItem(idx, "bottleType", e.target.value)} placeholder="Type" className="h-8 w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <Input value={item.capacity} onChange={(e) => updateItem(idx, "capacity", e.target.value)} placeholder="Capacity" className="h-8 w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <Input value={item.weight} onChange={(e) => updateItem(idx, "weight", e.target.value)} placeholder="Weight" className="h-8 w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <Input type="number" value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} min={0} className="h-8 text-center w-16" />
                       </TableCell>
                       <TableCell>
                         <Select value={item.unit} onValueChange={(v) => updateItem(idx, "unit", v)}>
-                          <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className="h-8 w-16"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             {["Pcs", "Kg", "Gms", "Ltr", "Mtr", "Box", "Pack", "Nos"].map((u) => (
                               <SelectItem key={u} value={u}>{u}</SelectItem>
@@ -750,21 +822,26 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
                         </Select>
                       </TableCell>
                       <TableCell>
-                        <Input
-                          type="number"
-                          value={item.rate}
-                          onChange={(e) => updateItem(idx, "rate", Number(e.target.value))}
-                          min={0}
-                          className="h-8 text-right"
-                        />
+                        <Input type="number" value={item.rate} onChange={(e) => updateItem(idx, "rate", Number(e.target.value))} min={0} className="h-8 text-right w-20" />
                       </TableCell>
-                      <TableCell className="text-right font-medium">
+                      <TableCell>
+                        <Input type="number" value={item.discountPercent} onChange={(e) => updateItem(idx, "discountPercent", Number(e.target.value))} min={0} max={100} className="h-8 text-center w-16" />
+                      </TableCell>
+                      <TableCell>
+                        <Input type="number" value={item.gstPercent} onChange={(e) => updateItem(idx, "gstPercent", Number(e.target.value))} min={0} max={100} className="h-8 text-center w-16" />
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-sm">
                         {calcAmount(item).toFixed(2)}
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => removeItem(idx)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <div className="flex gap-0.5">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => duplicateItem(idx)} title="Duplicate row">
+                            <Plus className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => removeItem(idx)} title="Remove row">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -861,9 +938,15 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
             setItems((inv.items || []).map((i: any) => ({
               productName: i.productName,
               hsnCode: i.hsnCode || "",
+              bottleType: i.bottleType || "",
+              capacity: i.capacity || "",
+              weight: i.weight || "",
               quantity: Number(i.quantity),
               unit: i.unit || "Pcs",
               rate: Number(i.rate),
+              discountPercent: Number(i.discountPercent || 0),
+              discount: Number(i.discount || 0),
+              gstPercent: Number(i.gstPercent || 0),
               amount: Number(i.amount),
             })));
             setEditMode(true);
@@ -921,28 +1004,34 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
           <CardContent>
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>#</TableHead>
-                  <TableHead>Product</TableHead>
-                  <TableHead>HSN</TableHead>
-                  <TableHead>Qty</TableHead>
-                  <TableHead>Unit</TableHead>
-                  <TableHead>Rate</TableHead>
-                  <TableHead>Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {inv.items?.map((item: any, idx: number) => (
-                  <TableRow key={item.id || idx}>
-                    <TableCell>{idx + 1}</TableCell>
-                    <TableCell>{item.productName}</TableCell>
-                    <TableCell>{item.hsnCode || "-"}</TableCell>
-                    <TableCell>{item.quantity}</TableCell>
-                    <TableCell>{item.unit}</TableCell>
-                    <TableCell>₹{Number(item.rate).toFixed(2)}</TableCell>
-                    <TableCell className="font-medium">₹{Number(item.amount).toFixed(2)}</TableCell>
+                  <TableRow>
+                    <TableHead>#</TableHead>
+                    <TableHead>Product</TableHead>
+                    <TableHead>HSN</TableHead>
+                    <TableHead>Type / Capacity / Weight</TableHead>
+                    <TableHead>Qty</TableHead>
+                    <TableHead>Unit</TableHead>
+                    <TableHead>Rate</TableHead>
+                    <TableHead>Disc %</TableHead>
+                    <TableHead>Amount</TableHead>
                   </TableRow>
-                ))}
+                </TableHeader>
+                <TableBody>
+                  {inv.items?.map((item: any, idx: number) => (
+                    <TableRow key={item.id || idx}>
+                      <TableCell>{idx + 1}</TableCell>
+                      <TableCell>{item.productName}</TableCell>
+                      <TableCell>{item.hsnCode || "-"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {[item.bottleType, item.capacity, item.weight].filter(Boolean).join(" / ") || "-"}
+                      </TableCell>
+                      <TableCell>{item.quantity}</TableCell>
+                      <TableCell>{item.unit}</TableCell>
+                      <TableCell>₹{Number(item.rate).toFixed(2)}</TableCell>
+                      <TableCell>{item.discountPercent ? `${item.discountPercent}%` : "-"}</TableCell>
+                      <TableCell className="font-medium">₹{Number(item.amount).toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))}
               </TableBody>
             </Table>
           </CardContent>
@@ -964,6 +1053,14 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
           <Button onClick={() => handleSendEmail(inv)} variant="outline">
             <Mail className="h-4 w-4 mr-1" /> Email
           </Button>
+          <Button onClick={() => handleDuplicate(inv)} variant="outline">
+            <FileText className="h-4 w-4 mr-1" /> Duplicate
+          </Button>
+          {me?.role === "admin" && (
+            <Button onClick={() => handleDelete(inv)} variant="outline" className="text-red-600 border-red-200">
+              <Trash2 className="h-4 w-4 mr-1" /> Delete
+            </Button>
+          )}
         </div>
 
         <Dialog open={showPdfPreview} onOpenChange={setShowPdfPreview}>

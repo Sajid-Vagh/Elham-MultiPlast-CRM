@@ -9,3 +9,4 @@ export * from "./category_history";
 export * from "./comment_history";
 export * from "./proforma_invoices";
 export * from "./sessions";
+export * from "./documents";

@@ -1,14 +1,43 @@
 import { Router, type IRouter } from "express";
-import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, usersTable, INVOICE_STATUSES } from "@workspace/db";
-import { eq, desc, and, SQL, sql } from "drizzle-orm";
+import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, usersTable, contactsTable, dealsTable, INVOICE_STATUSES } from "@workspace/db";
+import { eq, desc, and, SQL, sql, like, gte, lte, inArray, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { amountToWords } from "../lib/amount-to-words";
 import * as XLSX from "xlsx";
 
 const router: IRouter = Router();
 
-function generateInvoiceNumber(): string {
-  return "PI-" + new Date().getFullYear() + "-" + String(Math.floor(Math.random() * 10000)).padStart(4, "0");
+const COMPANY_DEFAULTS = {
+  name: "ELHAM MULTIPLAST LLP",
+  gstin: "24AAJFE2064P1Z6",
+  address: "PLOT NO. 1429-1430, NR. FORTUNE PETROL PUMP, OPP. KHIJADIYA TALAV, ILOL, HIMATNAGAR, SABARKANTHA, GUJARAT - 383220",
+  email: "elhammultiplast@gmail.com",
+  bankName: "ICICI BANK, HIMATNAGAR",
+  accountNo: "045205014806",
+  ifsc: "ICIC0000452",
+  pan: "",
+  phone: "",
+  website: "",
+  defaultTerms: ["Freight Charges Additional", "100% Advance Payment"],
+  disclaimer: "Products supplied are generic industrial packaging developed independently by Elham Multiplast LLP for functional applications. Any branding, labeling, or market usage by the buyer shall be at the buyer's sole responsibility.",
+};
+
+async function getNextInvoiceNumber(): Promise<string> {
+  const year = new Date().getFullYear();
+  const prefix = `PI-${year}-`;
+  const [last] = await db
+    .select({ num: proformaInvoicesTable.invoiceNumber })
+    .from(proformaInvoicesTable)
+    .where(like(proformaInvoicesTable.invoiceNumber, `${prefix}%`))
+    .orderBy(desc(proformaInvoicesTable.invoiceNumber))
+    .limit(1);
+  let nextSeq = 1;
+  if (last) {
+    const parts = last.num.split("-");
+    const seq = parseInt(parts[2] || "0", 10);
+    if (!isNaN(seq)) nextSeq = seq + 1;
+  }
+  return `${prefix}${String(nextSeq).padStart(4, "0")}`;
 }
 
 function renderInvoiceHtml(invoice: any, items: any[]): string {
@@ -36,7 +65,7 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
       (item: any, i: number) => `
     <tr>
       <td style="text-align:center">${i + 1}</td>
-      <td>${item.productName}</td>
+      <td>${item.productName}${item.bottleType ? ` (${item.bottleType})` : ""}${item.capacity ? ` ${item.capacity}` : ""}${item.weight ? ` ${item.weight}` : ""}</td>
       <td style="text-align:center">${item.hsnCode || "-"}</td>
       <td style="text-align:center">${item.quantity}</td>
       <td style="text-align:center">${item.unit}</td>
@@ -54,6 +83,9 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
     <tr><td colspan="5" style="text-align:right;padding:3px 6px">SGST @ ${sgstPct}%</td><td style="text-align:right;padding:3px 6px">${sgstAmount.toFixed(2)}</td></tr>`;
 
   const totalTax = cgstAmount + sgstAmount + igstAmount;
+
+  const terms = (invoice.terms || COMPANY_DEFAULTS.defaultTerms).map((t: string) => `<li>${t}</li>`).join("\n");
+  const bankDetails = invoice.bankDetails || COMPANY_DEFAULTS;
 
   return `<!DOCTYPE html>
 <html>
@@ -111,14 +143,12 @@ hr{ border: none; border-top: 1px solid #000; margin: 2pt 0; }
 <div class="invoice">
 
 <div class="header">
-<div class="gstin-top">GSTIN : 24AAJFE2064P1Z6</div>
-<div class="company-name">ELHAM MULTIPLAST LLP</div>
+<div class="gstin-top">GSTIN : ${invoice.companyGstin || COMPANY_DEFAULTS.gstin}</div>
+<div class="company-name">${invoice.companyName || COMPANY_DEFAULTS.name}</div>
 <div class="company-address">
-PLOT NO. 1429-1430, NR. FORTUNE PETROL PUMP,<br>
-OPP. KHIJADIYA TALAV, ILOL, HIMATNAGAR,<br>
-SABARKANTHA, GUJARAT - 383220
+${(invoice.companyAddress || COMPANY_DEFAULTS.address).replace(/\n/g, "<br>")}
 </div>
-<div class="company-email">elhammultiplast@gmail.com</div>
+<div class="company-email">${invoice.companyEmail || COMPANY_DEFAULTS.email}</div>
 <div class="invoice-title">PROFORMA INVOICE</div>
 </div>
 
@@ -197,17 +227,16 @@ ${isInterstate
 <td style="width:50%;border:0;padding:3pt 6pt;">
 <div class="bank-details">
 <strong>Bank Details</strong><br>
-ICICI BANK, HIMATNAGAR<br>
-A/C NO: 045205014806<br>
-IFSC: ICIC0000452
+${bankDetails.bankName || "ICICI BANK, HIMATNAGAR"}<br>
+A/C NO: ${bankDetails.accountNo || "045205014806"}<br>
+IFSC: ${bankDetails.ifsc || "ICIC0000452"}
 </div>
 </td>
 <td style="width:50%;border:0;padding:3pt 6pt;">
 <div class="terms">
 <strong>Terms &amp; Conditions</strong>
 <ul>
-<li>Freight Charges Additional</li>
-<li>100% Advance Payment</li>
+${terms}
 </ul>
 </div>
 </td>
@@ -216,7 +245,7 @@ IFSC: ICIC0000452
 </div>
 
 <div class="disclaimer">
-<strong>DISCLAIMER : </strong>Products supplied are generic industrial packaging developed independently by Elham Multiplast LLP for functional applications. Any branding, labeling, or market usage by the buyer shall be at the buyer's sole responsibility.
+<strong>DISCLAIMER : </strong>${invoice.disclaimer || COMPANY_DEFAULTS.disclaimer}
 </div>
 
 <div class="signature-section">
@@ -226,7 +255,7 @@ IFSC: ICIC0000452
 <div style="border-top:1px solid #000;width:120px;font-size:7pt;text-align:center;padding-top:1pt;">Receiver Signature</div>
 </div>
 <div class="sign-right">
-<div style="margin-bottom:40pt;">For ELHAM MULTIPLAST LLP</div>
+<div style="margin-bottom:40pt;">For ${invoice.companyName || COMPANY_DEFAULTS.name}</div>
 <br>
 <div>Authorised Signatory</div>
 </div>
@@ -252,6 +281,18 @@ async function enrichInvoice(invoice: typeof proformaInvoicesTable.$inferSelect)
     }
   }
 
+  let contact = null;
+  if (invoice.contactId) {
+    const [c] = await db.select().from(contactsTable).where(eq(contactsTable.id, invoice.contactId));
+    if (c) contact = c;
+  }
+
+  let deal = null;
+  if (invoice.dealId) {
+    const [d] = await db.select().from(dealsTable).where(eq(dealsTable.id, invoice.dealId));
+    if (d) deal = d;
+  }
+
   return {
     ...invoice,
     taxableAmount: Number(invoice.taxableAmount),
@@ -267,9 +308,14 @@ async function enrichInvoice(invoice: typeof proformaInvoicesTable.$inferSelect)
       ...i,
       quantity: Number(i.quantity),
       rate: Number(i.rate),
+      discount: Number(i.discount || 0),
+      discountPercent: Number(i.discountPercent || 0),
+      gstPercent: Number(i.gstPercent || 0),
       amount: Number(i.amount),
     })),
     createdByUser,
+    contact,
+    deal,
   };
 }
 
@@ -278,23 +324,88 @@ router.get("/proforma-invoices", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { status } = req.query as Record<string, string | undefined>;
-    const conditions: SQL[] = [];
+    const { status, search, dateFrom, dateTo, ownerId, customer, page, limit } = req.query as Record<string, string | undefined>;
+    const conditions: SQL[] = [eq(proformaInvoicesTable.isDeleted, false)];
 
     if (user.role === "sales") {
       conditions.push(eq(proformaInvoicesTable.createdBy, user.id));
     }
 
-    if (status) conditions.push(eq(proformaInvoicesTable.status, status));
+    if (status && status !== "all") conditions.push(eq(proformaInvoicesTable.status, status));
+    if (ownerId) conditions.push(eq(proformaInvoicesTable.salesOwnerId, Number(ownerId)));
+    if (customer) conditions.push(sql`LOWER(${proformaInvoicesTable.customerName}) LIKE ${`%${customer.toLowerCase()}%`}`);
+    if (search) {
+      conditions.push(sql`(
+        ${proformaInvoicesTable.invoiceNumber} ILIKE ${`%${search}%`} OR
+        ${proformaInvoicesTable.customerName} ILIKE ${`%${search}%`} OR
+        ${proformaInvoicesTable.companyName} ILIKE ${`%${search}%`} OR
+        ${proformaInvoicesTable.mobile} ILIKE ${`%${search}%`}
+      )`);
+    }
+    if (dateFrom) conditions.push(gte(proformaInvoicesTable.createdAt, new Date(dateFrom)));
+    if (dateTo) conditions.push(lte(proformaInvoicesTable.createdAt, new Date(dateTo + "T23:59:59")));
 
-    const invoices = conditions.length
-      ? await db.select().from(proformaInvoicesTable).where(and(...conditions)).orderBy(desc(proformaInvoicesTable.createdAt))
-      : await db.select().from(proformaInvoicesTable).orderBy(desc(proformaInvoicesTable.createdAt));
+    const pageNum = Math.max(1, parseInt(page || "1", 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(limit || "15", 10) || 15));
+    const offset = (pageNum - 1) * pageSize;
+
+    const [{ count }] = await db
+      .select({ count: sql`count(*)::int` })
+      .from(proformaInvoicesTable)
+      .where(and(...conditions));
+
+    const invoices = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(and(...conditions))
+      .orderBy(desc(proformaInvoicesTable.createdAt))
+      .limit(pageSize)
+      .offset(offset);
+
+    const enriched = await Promise.all(invoices.map(enrichInvoice));
+    res.json({ data: enriched, total: count, page: pageNum, totalPages: Math.ceil(count / pageSize) });
+  } catch (err) {
+    req.log.error({ err }, "List proforma invoices error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/proforma-invoices/all", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const { status, search, dateFrom, dateTo, ownerId, customer } = req.query as Record<string, string | undefined>;
+    const conditions: SQL[] = [eq(proformaInvoicesTable.isDeleted, false)];
+
+    if (user.role === "sales") {
+      conditions.push(eq(proformaInvoicesTable.createdBy, user.id));
+    }
+
+    if (status && status !== "all") conditions.push(eq(proformaInvoicesTable.status, status));
+    if (ownerId) conditions.push(eq(proformaInvoicesTable.salesOwnerId, Number(ownerId)));
+    if (customer) conditions.push(sql`LOWER(${proformaInvoicesTable.customerName}) LIKE ${`%${customer.toLowerCase()}%`}`);
+    if (search) {
+      conditions.push(sql`(
+        ${proformaInvoicesTable.invoiceNumber} ILIKE ${`%${search}%`} OR
+        ${proformaInvoicesTable.customerName} ILIKE ${`%${search}%`} OR
+        ${proformaInvoicesTable.companyName} ILIKE ${`%${search}%`} OR
+        ${proformaInvoicesTable.mobile} ILIKE ${`%${search}%`}
+      )`);
+    }
+    if (dateFrom) conditions.push(gte(proformaInvoicesTable.createdAt, new Date(dateFrom)));
+    if (dateTo) conditions.push(lte(proformaInvoicesTable.createdAt, new Date(dateTo + "T23:59:59")));
+
+    const invoices = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(and(...conditions))
+      .orderBy(desc(proformaInvoicesTable.createdAt));
 
     const enriched = await Promise.all(invoices.map(enrichInvoice));
     res.json(enriched);
   } catch (err) {
-    req.log.error({ err }, "List proforma invoices error");
+    req.log.error({ err }, "List all proforma invoices error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -304,22 +415,32 @@ router.post("/proforma-invoices", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { customerName, companyName, address, addressLine1, addressLine2, addressLine3, city, state, pincode, gstNumber, mobile, taxableAmount, freight, cgst, sgst, igst, cgstPercent, sgstPercent, igstPercent, grandTotal, amountInWords, status, notes, items, customerType, idProofType, idProofNumber, invoiceNumber } = req.body;
+    const { customerName, companyName, contactId, dealId, address, addressLine1, addressLine2, addressLine3, city, state, pincode, gstNumber, mobile, taxableAmount, freight, cgst, sgst, igst, cgstPercent, sgstPercent, igstPercent, grandTotal, amountInWords, status, notes, items, customerType, idProofType, idProofNumber, invoiceNumber, terms, companyGstin, companyAddress, companyEmail, bankDetails, disclaimer } = req.body;
 
     if (!customerName || !items?.length) {
       res.status(400).json({ error: "Customer name and at least one item required" });
       return;
     }
 
-    if (invoiceNumber) {
-      const [existing] = await db.select({ id: proformaInvoicesTable.id }).from(proformaInvoicesTable).where(eq(proformaInvoicesTable.invoiceNumber, invoiceNumber));
+    let finalInvoiceNumber = invoiceNumber;
+    if (finalInvoiceNumber) {
+      const [existing] = await db.select({ id: proformaInvoicesTable.id }).from(proformaInvoicesTable).where(eq(proformaInvoicesTable.invoiceNumber, finalInvoiceNumber));
       if (existing) {
         res.status(409).json({ error: "Invoice number already exists" });
         return;
       }
+    } else {
+      finalInvoiceNumber = await getNextInvoiceNumber();
     }
-    const finalInvoiceNumber = invoiceNumber || generateInvoiceNumber();
+
     const words = amountInWords || amountToWords(Number(grandTotal) || 0);
+
+    let resolvedContactId = contactId || null;
+    let resolvedSalesOwnerId = null;
+    if (resolvedContactId) {
+      const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, resolvedContactId));
+      if (contact) resolvedSalesOwnerId = contact.salesOwnerId;
+    }
 
     const [invoice] = await db
       .insert(proformaInvoicesTable)
@@ -327,6 +448,9 @@ router.post("/proforma-invoices", async (req, res) => {
         invoiceNumber: finalInvoiceNumber,
         customerName,
         companyName: companyName || null,
+        contactId: resolvedContactId,
+        dealId: dealId || null,
+        salesOwnerId: resolvedSalesOwnerId,
         address: address || null,
         addressLine1: addressLine1 || null,
         addressLine2: addressLine2 || null,
@@ -360,9 +484,15 @@ router.post("/proforma-invoices", async (req, res) => {
         invoiceId: invoice!.id,
         productName: item.productName,
         hsnCode: item.hsnCode || null,
+        bottleType: item.bottleType || null,
+        capacity: item.capacity || null,
+        weight: item.weight || null,
         quantity: String(item.quantity),
         unit: item.unit || "Pcs",
         rate: String(item.rate),
+        discountPercent: String(item.discountPercent || 0),
+        discount: String(item.discount || 0),
+        gstPercent: String(item.gstPercent || 0),
         amount: String(item.amount),
       });
     }
@@ -394,7 +524,7 @@ router.get("/proforma-invoices/:id", async (req, res) => {
     const [invoice] = await db
       .select()
       .from(proformaInvoicesTable)
-      .where(eq(proformaInvoicesTable.id, id));
+      .where(and(eq(proformaInvoicesTable.id, id), eq(proformaInvoicesTable.isDeleted, false)));
 
     if (!invoice) { res.status(404).json({ error: "Not found" }); return; }
 
@@ -418,19 +548,30 @@ async function updateInvoiceHandler(req: any, res: any) {
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
+    const [existing] = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(and(eq(proformaInvoicesTable.id, id), eq(proformaInvoicesTable.isDeleted, false)));
+    if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+
     if (user.role === "sales") {
-      const [existing] = await db.select({ createdBy: proformaInvoicesTable.createdBy }).from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, id));
-      if (!existing || existing.createdBy !== user.id) {
+      if (existing.createdBy !== user.id) {
         res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      if (existing.status !== "Draft") {
+        res.status(403).json({ error: "Only draft invoices can be edited" });
         return;
       }
     }
 
-    const { customerName, companyName, address, addressLine1, addressLine2, addressLine3, city, state, pincode, gstNumber, mobile, taxableAmount, freight, cgst, sgst, igst, cgstPercent, sgstPercent, igstPercent, grandTotal, amountInWords, notes, items, customerType, idProofType, idProofNumber, invoiceNumber } = req.body;
+    const { customerName, companyName, contactId, dealId, address, addressLine1, addressLine2, addressLine3, city, state, pincode, gstNumber, mobile, taxableAmount, freight, cgst, sgst, igst, cgstPercent, sgstPercent, igstPercent, grandTotal, amountInWords, notes, items, customerType, idProofType, idProofNumber, invoiceNumber, terms, companyGstin, companyAddress, companyEmail, bankDetails, disclaimer } = req.body;
 
     const updateData: any = {};
     if (customerName !== undefined) updateData.customerName = customerName;
     if (companyName !== undefined) updateData.companyName = companyName;
+    if (contactId !== undefined) updateData.contactId = contactId;
+    if (dealId !== undefined) updateData.dealId = dealId;
     if (address !== undefined) updateData.address = address;
     if (addressLine1 !== undefined) updateData.addressLine1 = addressLine1;
     if (addressLine2 !== undefined) updateData.addressLine2 = addressLine2;
@@ -444,8 +585,8 @@ async function updateInvoiceHandler(req: any, res: any) {
     if (idProofNumber !== undefined) updateData.idProofNumber = idProofNumber;
     if (mobile !== undefined) updateData.mobile = mobile;
     if (invoiceNumber !== undefined) {
-      const [existing] = await db.select({ id: proformaInvoicesTable.id }).from(proformaInvoicesTable).where(eq(proformaInvoicesTable.invoiceNumber, invoiceNumber));
-      if (existing && existing.id !== id) {
+      const [dup] = await db.select({ id: proformaInvoicesTable.id }).from(proformaInvoicesTable).where(eq(proformaInvoicesTable.invoiceNumber, invoiceNumber));
+      if (dup && dup.id !== id) {
         res.status(409).json({ error: "Invoice number already exists" });
         return;
       }
@@ -477,9 +618,15 @@ async function updateInvoiceHandler(req: any, res: any) {
           invoiceId: id,
           productName: item.productName,
           hsnCode: item.hsnCode || null,
+          bottleType: item.bottleType || null,
+          capacity: item.capacity || null,
+          weight: item.weight || null,
           quantity: String(item.quantity),
           unit: item.unit || "Pcs",
           rate: String(item.rate),
+          discountPercent: String(item.discountPercent || 0),
+          discount: String(item.discount || 0),
+          gstPercent: String(item.gstPercent || 0),
           amount: String(item.amount),
         });
       }
@@ -489,6 +636,13 @@ async function updateInvoiceHandler(req: any, res: any) {
       .select()
       .from(proformaInvoicesTable)
       .where(eq(proformaInvoicesTable.id, id));
+
+    if (contactId && !existing.contactId) {
+      const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, contactId));
+      if (contact && !updateData.salesOwnerId) {
+        await db.update(proformaInvoicesTable).set({ salesOwnerId: contact.salesOwnerId }).where(eq(proformaInvoicesTable.id, id));
+      }
+    }
 
     res.json(await enrichInvoice(invoice!));
   } catch (err) {
@@ -517,9 +671,14 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
     const [invoice] = await db
       .select()
       .from(proformaInvoicesTable)
-      .where(eq(proformaInvoicesTable.id, id));
+      .where(and(eq(proformaInvoicesTable.id, id), eq(proformaInvoicesTable.isDeleted, false)));
 
     if (!invoice) { res.status(404).json({ error: "Not found" }); return; }
+
+    if (user.role === "sales" && invoice.createdBy !== user.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
 
     const prevStatus = invoice.status;
     await db
@@ -547,6 +706,94 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
   }
 });
 
+router.post("/proforma-invoices/:id/duplicate", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const [source] = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(and(eq(proformaInvoicesTable.id, id), eq(proformaInvoicesTable.isDeleted, false)));
+
+    if (!source) { res.status(404).json({ error: "Not found" }); return; }
+
+    if (user.role === "sales" && source.createdBy !== user.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const sourceItems = await db
+      .select()
+      .from(proformaInvoiceItemsTable)
+      .where(eq(proformaInvoiceItemsTable.invoiceId, id));
+
+    const newInvoiceNumber = await getNextInvoiceNumber();
+    const [invoice] = await db
+      .insert(proformaInvoicesTable)
+      .values({
+        invoiceNumber: newInvoiceNumber,
+        customerName: source.customerName,
+        companyName: source.companyName,
+        contactId: source.contactId,
+        dealId: source.dealId,
+        salesOwnerId: source.salesOwnerId,
+        address: source.address,
+        addressLine1: source.addressLine1,
+        addressLine2: source.addressLine2,
+        addressLine3: source.addressLine3,
+        city: source.city,
+        state: source.state,
+        pincode: source.pincode,
+        customerType: source.customerType,
+        gstNumber: source.gstNumber,
+        idProofType: source.idProofType,
+        idProofNumber: source.idProofNumber,
+        mobile: source.mobile,
+        taxableAmount: source.taxableAmount,
+        freight: source.freight,
+        cgst: source.cgst,
+        sgst: source.sgst,
+        igst: source.igst,
+        cgstPercent: source.cgstPercent,
+        sgstPercent: source.sgstPercent,
+        igstPercent: source.igstPercent,
+        grandTotal: source.grandTotal,
+        amountInWords: source.amountInWords,
+        status: "Draft",
+        notes: source.notes,
+        createdBy: user.id,
+      })
+      .returning();
+
+    for (const item of sourceItems) {
+      await db.insert(proformaInvoiceItemsTable).values({
+        invoiceId: invoice!.id,
+        productName: item.productName,
+        hsnCode: item.hsnCode,
+        bottleType: item.bottleType,
+        capacity: item.capacity,
+        weight: item.weight,
+        quantity: item.quantity,
+        unit: item.unit,
+        rate: item.rate,
+        discountPercent: item.discountPercent,
+        discount: item.discount,
+        gstPercent: item.gstPercent,
+        amount: item.amount,
+      });
+    }
+
+    res.status(201).json(await enrichInvoice(invoice!));
+  } catch (err) {
+    req.log.error({ err }, "Duplicate proforma invoice error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.delete("/proforma-invoices/:id", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
@@ -555,16 +802,17 @@ router.delete("/proforma-invoices/:id", async (req, res) => {
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-    if (user.role === "sales") {
-      const [existing] = await db.select({ createdBy: proformaInvoicesTable.createdBy }).from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, id));
-      if (!existing || existing.createdBy !== user.id) {
-        res.status(403).json({ error: "Forbidden" });
-        return;
-      }
+    if (user.role !== "admin") {
+      res.status(403).json({ error: "Only admins can delete invoices" });
+      return;
     }
 
-    await db.delete(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, id));
-    res.status(204).send();
+    await db
+      .update(proformaInvoicesTable)
+      .set({ isDeleted: true })
+      .where(eq(proformaInvoicesTable.id, id));
+
+    res.status(200).json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Delete proforma invoice error");
     res.status(500).json({ error: "Internal server error" });
@@ -644,6 +892,157 @@ router.get("/proforma-invoices/:id/pdf", async (req, res) => {
     }
   } catch (err) {
     req.log.error({ err }, "Get proforma invoice PDF error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/proforma-invoices/report/summary", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const { dateFrom, dateTo, ownerId, status } = req.query as Record<string, string | undefined>;
+    const conditions: SQL[] = [eq(proformaInvoicesTable.isDeleted, false)];
+
+    if (user.role === "sales") conditions.push(eq(proformaInvoicesTable.createdBy, user.id));
+    if (status) conditions.push(eq(proformaInvoicesTable.status, status));
+    if (ownerId) conditions.push(eq(proformaInvoicesTable.salesOwnerId, Number(ownerId)));
+    if (dateFrom) conditions.push(gte(proformaInvoicesTable.createdAt, new Date(dateFrom)));
+    if (dateTo) conditions.push(lte(proformaInvoicesTable.createdAt, new Date(dateTo + "T23:59:59")));
+
+    const invoices = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(and(...conditions));
+
+    const totalInvoices = invoices.length;
+    const totalAmount = invoices.reduce((s, inv) => s + Number(inv.grandTotal || 0), 0);
+    const statusCounts = INVOICE_STATUSES.map(st => ({
+      status: st,
+      count: invoices.filter(inv => inv.status === st).length,
+      amount: invoices.filter(inv => inv.status === st).reduce((s, inv) => s + Number(inv.grandTotal || 0), 0),
+    }));
+
+    const byCustomer: Record<string, { count: number; amount: number }> = {};
+    for (const inv of invoices) {
+      const key = inv.customerName;
+      if (!byCustomer[key]) byCustomer[key] = { count: 0, amount: 0 };
+      byCustomer[key].count++;
+      byCustomer[key].amount += Number(inv.grandTotal || 0);
+    }
+    const customerStats = Object.entries(byCustomer)
+      .map(([customer, stats]) => ({ customer, ...stats }))
+      .sort((a, b) => b.amount - a.amount);
+
+    const byOwner: Record<string, { count: number; amount: number }> = {};
+    const users = await db.select().from(usersTable);
+    const userMap = new Map(users.map(u => [u.id, u.name]));
+    for (const inv of invoices) {
+      const owner = inv.salesOwnerId ? userMap.get(inv.salesOwnerId) || "Unknown" : "Unassigned";
+      if (!byOwner[owner]) byOwner[owner] = { count: 0, amount: 0 };
+      byOwner[owner].count++;
+      byOwner[owner].amount += Number(inv.grandTotal || 0);
+    }
+    const ownerStats = Object.entries(byOwner)
+      .map(([owner, stats]) => ({ owner, ...stats }))
+      .sort((a, b) => b.amount - a.amount);
+
+    const byMonth: Record<string, { count: number; amount: number }> = {};
+    for (const inv of invoices) {
+      const d = new Date(inv.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      if (!byMonth[key]) byMonth[key] = { count: 0, amount: 0 };
+      byMonth[key].count++;
+      byMonth[key].amount += Number(inv.grandTotal || 0);
+    }
+    const monthlyStats = Object.entries(byMonth)
+      .map(([month, stats]) => ({ month, ...stats }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    res.json({
+      totalInvoices,
+      totalAmount,
+      statusCounts,
+      byCustomer: customerStats.slice(0, 20),
+      byOwner: ownerStats,
+      byMonth: monthlyStats,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Proforma report summary error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/proforma-invoices/report/export", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const { dateFrom, dateTo, ownerId, status } = req.query as Record<string, string | undefined>;
+    const conditions: SQL[] = [eq(proformaInvoicesTable.isDeleted, false)];
+
+    if (user.role === "sales") conditions.push(eq(proformaInvoicesTable.createdBy, user.id));
+    if (status) conditions.push(eq(proformaInvoicesTable.status, status));
+    if (ownerId) conditions.push(eq(proformaInvoicesTable.salesOwnerId, Number(ownerId)));
+    if (dateFrom) conditions.push(gte(proformaInvoicesTable.createdAt, new Date(dateFrom)));
+    if (dateTo) conditions.push(lte(proformaInvoicesTable.createdAt, new Date(dateTo + "T23:59:59")));
+
+    const invoices = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(and(...conditions))
+      .orderBy(desc(proformaInvoicesTable.createdAt));
+
+    const fmt = (req.query.format as string) || "xlsx";
+
+    const users = await db.select().from(usersTable);
+    const userMap = new Map(users.map(u => [u.id, u.name]));
+
+    const finalRows = invoices.map(inv => ({
+      "Invoice #": inv.invoiceNumber,
+      "Date": inv.createdAt ? new Date(inv.createdAt).toLocaleDateString("en-IN") : "",
+      "Customer": inv.customerName,
+      "Company": inv.companyName || "",
+      "Mobile": inv.mobile || "",
+      "GSTIN": inv.gstNumber || "",
+      "Taxable": Number(inv.taxableAmount || 0).toFixed(2),
+      "CGST": Number(inv.cgst || 0).toFixed(2),
+      "SGST": Number(inv.sgst || 0).toFixed(2),
+      "IGST": Number(inv.igst || 0).toFixed(2),
+      "Freight": Number(inv.freight || 0).toFixed(2),
+      "Grand Total": Number(inv.grandTotal || 0).toFixed(2),
+      "Status": inv.status || "Draft",
+      "Created By": userMap.get(inv.createdBy) || "",
+    }));
+
+    if (fmt === "csv") {
+      const headers = Object.keys(finalRows[0] || {});
+      const csv = [
+        headers.join(","),
+        ...finalRows.map(row =>
+          headers.map(h => {
+            const val = (row as any)[h];
+            const str = val == null ? "" : String(val);
+            return str.includes(",") || str.includes('"') || str.includes("\n")
+              ? `"${str.replace(/"/g, '""')}"`
+              : str;
+          }).join(",")
+        ),
+      ].join("\n");
+      res.setHeader("Content-Type", "text/csv;charset=utf-8");
+      res.setHeader("Content-Disposition", "attachment; filename=proforma-report.csv");
+      res.send(csv);
+    } else {
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(finalRows);
+      XLSX.utils.book_append_sheet(wb, ws, "Proformas");
+      const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", "attachment; filename=proforma-report.xlsx");
+      res.send(buf);
+    }
+  } catch (err) {
+    req.log.error({ err }, "Proforma report export error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

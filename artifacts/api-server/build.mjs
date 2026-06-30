@@ -99,6 +99,7 @@ async function buildAll() {
       "playwright",
       "puppeteer",
       "puppeteer-core",
+      "xlsx",
       "electron",
     ],
     sourcemap: "linked",
