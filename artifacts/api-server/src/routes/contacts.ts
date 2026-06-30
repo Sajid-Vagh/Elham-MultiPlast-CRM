@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, usersTable, activitiesTable, dealsTable, notificationsTable } from "@workspace/db";
-import { eq, or, and, ilike, lte, isNotNull, isNull, inArray, SQL } from "drizzle-orm";
+import { db, contactsTable, usersTable, activitiesTable, dealsTable, notificationsTable, commentHistoryTable } from "@workspace/db";
+import { eq, or, and, ilike, lte, isNotNull, isNull, inArray, SQL, desc } from "drizzle-orm";
 import { CreateContactBody, UpdateContactBody, GetContactParams, UpdateContactParams, DeleteContactParams, ListContactsQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -10,7 +10,12 @@ const router: IRouter = Router();
 async function withOwner(contact: typeof contactsTable.$inferSelect) {
   const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, contact.salesOwnerId));
   const { passwordHash: _, ...safeOwner } = owner ?? {};
-  return { ...contact, salesOwner: owner ? safeOwner : null };
+  let commentUser = null;
+  if (contact.commentUpdatedBy) {
+    const [u] = await db.select().from(usersTable).where(eq(usersTable.id, contact.commentUpdatedBy));
+    if (u) { const { passwordHash: _, ...safe } = u; commentUser = safe; }
+  }
+  return { ...contact, salesOwner: owner ? safeOwner : null, commentUpdatedByUser: commentUser };
 }
 
 router.get("/contacts", async (req, res) => {
@@ -39,7 +44,8 @@ router.get("/contacts", async (req, res) => {
             ilike(contactsTable.name, s),
             ilike(contactsTable.mobile, s),
             ilike(contactsTable.companyName, s),
-            ilike(contactsTable.city, s)
+            ilike(contactsTable.city, s),
+            ilike(contactsTable.customerComments, s)
           )!
         );
       }
@@ -180,6 +186,33 @@ router.get("/contacts/:id", async (req, res) => {
   }
 });
 
+// Get comment history for a contact
+router.get("/contacts/:id/comments", async (req, res) => {
+  const parsed = GetContactParams.safeParse({ id: Number(req.params.id) });
+  if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const history = await db
+      .select({
+        id: commentHistoryTable.id,
+        contactId: commentHistoryTable.contactId,
+        comment: commentHistoryTable.comment,
+        updatedBy: commentHistoryTable.updatedBy,
+        updatedAt: commentHistoryTable.updatedAt,
+        updatedByName: usersTable.name,
+      })
+      .from(commentHistoryTable)
+      .leftJoin(usersTable, eq(usersTable.id, commentHistoryTable.updatedBy))
+      .where(eq(commentHistoryTable.contactId, parsed.data.id))
+      .orderBy(desc(commentHistoryTable.updatedAt));
+    res.json(history);
+  } catch (err) {
+    req.log.error({ err }, "Get comment history error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.patch("/contacts/:id", async (req, res) => {
   const params = UpdateContactParams.safeParse({ id: Number(req.params.id) });
   if (!params.success) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -199,7 +232,28 @@ router.patch("/contacts/:id", async (req, res) => {
       delete parsed.data.salesOwnerId;
     }
 
-    const [contact] = await db.update(contactsTable).set(parsed.data).where(eq(contactsTable.id, params.data.id)).returning();
+    // Handle customer comments separately with history tracking
+    const { customerComments, ...restUpdate } = parsed.data;
+    const updatePayload = { ...restUpdate } as Record<string, any>;
+
+    if (customerComments !== undefined) {
+      const now = new Date();
+      updatePayload.customerComments = customerComments;
+      updatePayload.commentUpdatedAt = now;
+      updatePayload.commentUpdatedBy = user.id;
+
+      // Save history entry for every comment change
+      if (customerComments !== oldContact.customerComments) {
+        await db.insert(commentHistoryTable).values({
+          contactId: params.data.id,
+          comment: customerComments,
+          updatedBy: user.id,
+          updatedAt: now,
+        });
+      }
+    }
+
+    const [contact] = await db.update(contactsTable).set(updatePayload).where(eq(contactsTable.id, params.data.id)).returning();
     if (!contact) { res.status(404).json({ error: "Not found" }); return; }
 
     const newOwnerId = parsed.data.salesOwnerId;

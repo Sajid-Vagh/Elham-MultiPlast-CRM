@@ -210,6 +210,13 @@ export default function Deals() {
                                 <Badge variant="outline" className="text-[10px] px-1.5 py-0">{deal.contact.unit}</Badge>
                               )}
                             </div>
+                            {deal.contact?.customerComments && (
+                              <div className="mt-1 text-xs text-muted-foreground line-clamp-1" title={deal.contact.customerComments}>
+                                {deal.contact.customerComments.length > 80
+                                  ? `${deal.contact.customerComments.slice(0, 80)}...`
+                                  : deal.contact.customerComments}
+                              </div>
+                            )}
                             {deal.totalValue != null && (
                               <div className="mt-2 text-xs font-semibold text-primary">
                                 ₹{Number(deal.totalValue).toLocaleString()}
@@ -243,6 +250,9 @@ export default function Deals() {
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0">{activeDeal.contact.unit}</Badge>
                   )}
                 </div>
+                {activeDeal.contact?.customerComments && (
+                  <div className="mt-1 text-xs text-muted-foreground line-clamp-1">{activeDeal.contact.customerComments}</div>
+                )}
                 {activeDeal.totalValue != null && (
                   <div className="mt-2 text-xs font-semibold text-primary">₹{Number(activeDeal.totalValue).toLocaleString()}</div>
                 )}

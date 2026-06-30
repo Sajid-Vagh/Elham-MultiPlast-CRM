@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { Plus, Search, Trash2, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
@@ -271,6 +271,7 @@ export default function Leads() {
               <TableHead>Industry</TableHead>
               <TableHead>Category</TableHead>
               <TableHead>Unit</TableHead>
+              <TableHead>Comments</TableHead>
               <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
@@ -303,6 +304,26 @@ export default function Leads() {
                     <TableCell>{contact.mobile}</TableCell>
                     <TableCell>{contact.city || "-"}</TableCell>
                     <TableCell>{contact.state || "-"}</TableCell>
+                    <TableCell className="max-w-[150px]">
+                      {contact.customerComments ? (
+                        <div className="group relative">
+                          <span className="text-xs text-muted-foreground cursor-pointer block truncate">
+                            {contact.customerComments.length > 100
+                              ? `${contact.customerComments.slice(0, 100)}...`
+                              : contact.customerComments}
+                          </span>
+                          {contact.customerComments.length > 100 && (
+                            <div className="fixed z-50 hidden group-hover:block">
+                              <div className="absolute bottom-0 left-0 bg-popover border rounded-md shadow-lg p-3 text-xs whitespace-pre-wrap max-w-xs max-h-48 overflow-y-auto">
+                                {contact.customerComments}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       {contact.salesOwner && (
                         <div className="flex items-center gap-2">

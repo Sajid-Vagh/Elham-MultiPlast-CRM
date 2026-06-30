@@ -141,10 +141,11 @@ router.post("/import/excel", async (req, res) => {
               nextCallDate: row.nextCallDate?.trim() ?? null,
               industry: row.industry?.trim() ?? null,
               unit: row.unit?.trim() ?? null,
-              category: contactCategory,
-              address: row.address?.trim() ?? null,
-              tags: row.tags?.trim() ?? null,
-            })
+            category: contactCategory,
+            address: row.address?.trim() ?? null,
+            tags: row.tags?.trim() ?? null,
+            customerComments: row.comments?.trim() ?? null,
+          })
             .where(eq(contactsTable.id, existing[0]!.id));
           updated++;
         } catch (err: any) {
@@ -186,6 +187,7 @@ router.post("/import/excel", async (req, res) => {
         category: contactCategory,
         address: row.address?.trim() ?? null,
         tags: row.tags?.trim() ?? null,
+        customerComments: row.comments?.trim() ?? null,
       });
       imported++;
     } catch (err: any) {

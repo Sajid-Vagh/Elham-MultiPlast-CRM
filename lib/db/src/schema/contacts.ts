@@ -31,6 +31,9 @@ export const contactsTable = pgTable("contacts", {
   totalRevenue: numeric("total_revenue", { precision: 14, scale: 2 }),
   lastPurchaseDate: text("last_purchase_date"),
   customerStatus: text("customer_status").default("Active"),
+  customerComments: text("customer_comments"),
+  commentUpdatedAt: timestamp("comment_updated_at", { withTimezone: true }),
+  commentUpdatedBy: integer("comment_updated_by").references(() => usersTable.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

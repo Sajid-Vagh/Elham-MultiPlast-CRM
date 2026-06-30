@@ -5,7 +5,7 @@ import {
   useUpdateContact, useDeleteContact, useListUsers,
   getListDealsQueryKey, getListActivitiesQueryKey, getGetContactQueryKey, getListContactsQueryKey
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,10 +13,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Phone, Mail, MapPin, Tag, Plus, Trash2, FolderTree, RefreshCw, Star } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, Tag, Plus, Trash2, FolderTree, RefreshCw, Star, MessageSquare, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { DialogFooter } from "@/components/ui/dialog";
 import { CategoryBadge } from "@/components/category-badge";
 import { MoveCategoryDialog } from "@/components/move-category-dialog";
 import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
@@ -82,6 +83,25 @@ export default function LeadDetail() {
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [showMoveCategory, setShowMoveCategory] = useState(false);
+
+  // Customer Comments
+  const [commentDialogOpen, setCommentDialogOpen] = useState(false);
+  const [editComment, setEditComment] = useState("");
+  const [showFullComment, setShowFullComment] = useState(false);
+
+  const { data: commentHistory } = useQuery({
+    queryKey: ["comment-history", contactId],
+    queryFn: async () => {
+      const token = localStorage.getItem("crm_token");
+      const res = await fetch(`/api/contacts/${contactId}/comments`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return [];
+      return res.json() as Promise<Array<{ id: number; comment: string; updatedBy: number; updatedAt: string; updatedByName: string }>>;
+    },
+    enabled: !!contactId,
+    staleTime: 10_000,
+  });
 
   // Activity date filter
   const [actQuick, setActQuick] = useState("all");
@@ -250,6 +270,40 @@ export default function LeadDetail() {
               )}
             </CardContent>
           </Card>
+
+          {/* Customer Comments */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Customer Comments</CardTitle>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditComment(contact.customerComments || ""); setCommentDialogOpen(true); }} title="Edit Comments">
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            </CardHeader>
+            <CardContent className="text-sm">
+              {contact.customerComments ? (
+                <div>
+                  <p className="whitespace-pre-wrap text-sm">
+                    {showFullComment || contact.customerComments.length <= 100
+                      ? contact.customerComments
+                      : `${contact.customerComments.slice(0, 100)}...`}
+                  </p>
+                  {contact.customerComments.length > 100 && (
+                    <Button variant="link" size="sm" className="h-auto p-0 text-xs mt-1" onClick={() => setShowFullComment(!showFullComment)}>
+                      {showFullComment ? "View Less" : "View More"}
+                    </Button>
+                  )}
+                  {contact.commentUpdatedAt && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Last updated: {new Date(contact.commentUpdatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      {(contact as any).commentUpdatedByUser?.name ? ` by ${(contact as any).commentUpdatedByUser.name}` : ""}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-xs">No customer comments recorded.</p>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         <div className="lg:col-span-2 space-y-6">
@@ -395,6 +449,61 @@ export default function LeadDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {/* Customer Comments Edit Dialog */}
+      <Dialog open={commentDialogOpen} onOpenChange={(open) => { setCommentDialogOpen(open); if (!open) setShowFullComment(false); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Customer Comments</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <Label>Comments</Label>
+              <Textarea
+                value={editComment}
+                onChange={e => setEditComment(e.target.value)}
+                placeholder="Enter customer comments (payment terms, requirements, decision makers...)"
+                rows={6}
+              />
+            </div>
+            {commentHistory && commentHistory.length > 0 && (
+              <div>
+                <Label className="text-xs text-muted-foreground">Comment History</Label>
+                <div className="max-h-48 overflow-y-auto space-y-2 mt-1 border rounded-md p-2 bg-muted/30">
+                  {commentHistory.map((h) => (
+                    <div key={h.id} className="text-xs border-b border-muted pb-2 last:border-0">
+                      <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                        <span className="font-medium text-foreground">{h.updatedByName || `User #${h.updatedBy}`}</span>
+                        <span>{new Date(h.updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                      </div>
+                      <p className="whitespace-pre-wrap">{h.comment}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setCommentDialogOpen(false)}>Cancel</Button>
+            <Button onClick={() => {
+              updateContact.mutate(
+                { id: contactId, data: { customerComments: editComment || null } as any },
+                {
+                  onSuccess: () => {
+                    queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
+                    queryClient.invalidateQueries({ queryKey: ["comment-history", contactId] });
+                    queryClient.invalidateQueries({ queryKey: ["category-counts"] });
+                    queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
+                    toast({ title: "Customer comments updated" });
+                    setCommentDialogOpen(false);
+                  },
+                  onError: () => toast({ title: "Failed to update comments", variant: "destructive" }),
+                }
+              );
+            }}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <MoveCategoryDialog
         open={showMoveCategory}
         onOpenChange={setShowMoveCategory}

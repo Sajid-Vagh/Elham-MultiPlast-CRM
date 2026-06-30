@@ -181,6 +181,9 @@ export const ListContactsResponseItem = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
+  "customerComments": zod.string().nullish(),
+  "commentUpdatedAt": zod.string().nullish(),
+  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 })
 export const ListContactsResponse = zod.array(ListContactsResponseItem)
@@ -235,6 +238,9 @@ export const CreateContactResponse = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
+  "customerComments": zod.string().nullish(),
+  "commentUpdatedAt": zod.string().nullish(),
+  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 })
 
@@ -270,6 +276,9 @@ export const GetContactResponse = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
+  "customerComments": zod.string().nullish(),
+  "commentUpdatedAt": zod.string().nullish(),
+  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 })
 
@@ -296,6 +305,7 @@ export const UpdateContactBody = zod.object({
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
   "state": zod.string().nullish(),
+  "customerComments": zod.string().nullish(),
   "category": zod.string().nullish()
 })
 
@@ -326,6 +336,9 @@ export const UpdateContactResponse = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
+  "customerComments": zod.string().nullish(),
+  "commentUpdatedAt": zod.string().nullish(),
+  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 })
 
@@ -382,6 +395,9 @@ export const ListDuplicateContactsResponseItem = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
+  "customerComments": zod.string().nullish(),
+  "commentUpdatedAt": zod.string().nullish(),
+  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 }))
 })
@@ -522,6 +538,9 @@ export const ListDealsResponseItem = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
+  "customerComments": zod.string().nullish(),
+  "commentUpdatedAt": zod.string().nullish(),
+  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 }).optional(),
   "title": zod.string().nullish(),
@@ -590,6 +609,9 @@ export const CreateDealResponse = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
+  "customerComments": zod.string().nullish(),
+  "commentUpdatedAt": zod.string().nullish(),
+  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 }).optional(),
   "title": zod.string().nullish(),
@@ -647,6 +669,9 @@ export const GetDealResponse = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
+  "customerComments": zod.string().nullish(),
+  "commentUpdatedAt": zod.string().nullish(),
+  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 }).optional(),
   "title": zod.string().nullish(),
@@ -714,6 +739,9 @@ export const UpdateDealResponse = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
+  "customerComments": zod.string().nullish(),
+  "commentUpdatedAt": zod.string().nullish(),
+  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 }).optional(),
   "title": zod.string().nullish(),
@@ -1060,7 +1088,8 @@ export const ImportExcelBody = zod.object({
   "nextCallDate": zod.string().nullish(),
   "industry": zod.string().nullish(),
   "unit": zod.string().nullish(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "comments": zod.string().nullish()
 })),
   "defaultSalesOwnerId": zod.number().nullish()
 })
@@ -1114,6 +1143,9 @@ export const ImportIndiaMartResponse = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
+  "customerComments": zod.string().nullish(),
+  "commentUpdatedAt": zod.string().nullish(),
+  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 })
 

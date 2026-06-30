@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Calendar, ArrowLeft, Phone, PhoneOff, X, Clock, Filter, FolderTree, Eye, Pencil, History } from "lucide-react";
+import { Calendar, ArrowLeft, Phone, PhoneOff, X, Clock, Filter, FolderTree, Eye, Pencil, History, MessageSquare } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { CategoryBadge } from "@/components/category-badge";
@@ -55,8 +55,8 @@ export default function FollowUps() {
     callStatus?: string | null; createdBy?: number | null;
     dealId: number; contactId?: number | null;
     user?: { id: number; name: string } | null;
-    deal?: { id: number; contactId?: number; contact?: { id?: number; name?: string; mobile?: string; companyName?: string; unit?: string; category?: string; salesOwner?: { name: string } | null } | null } | null;
-    contact?: { id?: number; name?: string; mobile?: string; companyName?: string; unit?: string; category?: string; salesOwner?: { name: string } | null } | null;
+    deal?: { id: number; contactId?: number; contact?: { id?: number; name?: string; mobile?: string; companyName?: string; unit?: string; category?: string; customerComments?: string | null; salesOwner?: { name: string } | null } | null } | null;
+    contact?: { id?: number; name?: string; mobile?: string; companyName?: string; unit?: string; category?: string; customerComments?: string | null; salesOwner?: { name: string } | null } | null;
   };
 
   const { data: activities, isLoading, refetch } = useQuery<FollowUpActivity[]>({
@@ -270,6 +270,7 @@ export default function FollowUps() {
                   <TableHead>Follow-up Date</TableHead>
                   <TableHead>Time</TableHead>
                   <TableHead>Notes</TableHead>
+                  <TableHead>Comments</TableHead>
                   <TableHead>Sales Person</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-20">Action</TableHead>
@@ -288,6 +289,7 @@ export default function FollowUps() {
                   const isTerminal = isCompleted || isCancelled || isNoResponse;
                   const time = activity.followUpTime;
 
+                  const custComments = activity.contact?.customerComments || activity.deal?.contact?.customerComments || null;
                   const contactId = activity.contact?.id || activity.deal?.contact?.id;
                   const leadUrl = contactId ? `/leads/${contactId}` : null;
 
@@ -309,6 +311,13 @@ export default function FollowUps() {
                       <TableCell>{activity.followUpDate ? new Date(activity.followUpDate + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "-"}</TableCell>
                       <TableCell>{formatTime(time)}</TableCell>
                       <TableCell className="max-w-[200px] truncate" title={activity.notesDisplay || activity.notes || ""}>{activity.notesDisplay || activity.notes || "-"}</TableCell>
+                      <TableCell className="max-w-[150px]">
+                        {custComments ? (
+                          <span className="text-xs text-muted-foreground block truncate" title={custComments}>
+                            {custComments.length > 100 ? `${custComments.slice(0, 100)}...` : custComments}
+                          </span>
+                        ) : "-"}
+                      </TableCell>
                       <TableCell>{salesPerson}</TableCell>
                       <TableCell>
                         <Badge

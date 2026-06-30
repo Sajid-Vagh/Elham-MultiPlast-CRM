@@ -178,6 +178,12 @@ export interface Contact {
   lastCallDate?: string | null;
   /** @nullable */
   nextCallDate?: string | null;
+  /** @nullable */
+  customerComments?: string | null;
+  /** @nullable */
+  commentUpdatedAt?: string | null;
+  /** @nullable */
+  commentUpdatedBy?: number | null;
   createdAt: string;
 }
 
@@ -245,6 +251,8 @@ export interface ContactUpdate {
   nextCallDate?: string | null;
   /** @nullable */
   state?: string | null;
+  /** @nullable */
+  customerComments?: string | null;
   /** @nullable */
   category?: string | null;
 }
