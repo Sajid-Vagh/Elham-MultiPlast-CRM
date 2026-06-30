@@ -15,9 +15,9 @@ const upload = multer({
 
 const UPLOADS_ROOT = path.resolve(process.cwd(), "uploads");
 
-// Serve uploaded files
-router.get("/uploads/*", async (req: Request, res: Response) => {
-  const relPath = req.params[0] || req.path.replace("/uploads/", "");
+// Serve uploaded files (Express 5 compatible wildcard)
+router.get("/uploads/:path(*)", async (req: Request, res: Response) => {
+  const relPath = req.params.path || "";
   const user = await getUserFromRequest(req);
   if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
   const fullPath = path.join(UPLOADS_ROOT, relPath);
