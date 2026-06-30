@@ -102,6 +102,7 @@ export default function Leads() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
         queryClient.invalidateQueries({ queryKey: ["category-counts"] });
+        queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
         toast({ title: `"${deleteName}" deleted` });
         setDeleteId(null);
         setSelectedIds(prev => { const n = new Set(prev); n.delete(deleteId); return n; });
@@ -118,6 +119,8 @@ export default function Leads() {
     bulkDelete.mutate({ data: { ids } }, {
       onSuccess: (result) => {
         queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: ["category-counts"] });
+        queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
         toast({ title: `${result.deleted} lead${result.deleted !== 1 ? "s" : ""} deleted` });
         setSelectedIds(new Set());
         setBulkDeleteOpen(false);

@@ -1,12 +1,15 @@
 import { useState, useMemo } from "react";
-import { useUpdateActivity, useGetMe } from "@workspace/api-client-react";
-import { useQuery } from "@tanstack/react-query";
+import { useUpdateActivity, useGetMe, getListActivitiesQueryKey, getListDealsQueryKey } from "@workspace/api-client-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { Calendar, ArrowLeft, Phone, PhoneOff, X, Clock, Filter, FolderTree, Eye, Pencil, History } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -47,6 +50,7 @@ export default function FollowUps() {
 
   type FollowUpActivity = {
     id: number; type: string; notes?: string | null;
+    notesDisplay?: string | null;
     followUpDate?: string | null; followUpTime?: string | null;
     callStatus?: string | null; createdBy?: number | null;
     dealId: number; contactId?: number | null;
@@ -88,20 +92,68 @@ export default function FollowUps() {
   }, [activities, activeUnit]);
 
   const updateActivity = useUpdateActivity();
+  const queryClient = useQueryClient();
 
   const pendingCount = useMemo(() => {
     if (!filteredActivities) return 0;
     return filteredActivities.filter(a => a.callStatus !== "Completed").length;
   }, [filteredActivities]);
 
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingActivity, setEditingActivity] = useState<FollowUpActivity | null>(null);
+  const [editNotes, setEditNotes] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [editTime, setEditTime] = useState("");
+
+  const openEditDialog = (activity: FollowUpActivity) => {
+    setEditingActivity(activity);
+    setEditNotes("");
+    setEditDate(activity.followUpDate || "");
+    setEditTime(activity.followUpTime || "");
+    setEditDialogOpen(true);
+  };
+
+  const handleEditFollowUp = () => {
+    if (!editingActivity) return;
+    const data: Record<string, any> = {};
+    if (editNotes.trim()) data.notes = editNotes.trim();
+    if (editDate !== editingActivity.followUpDate) data.followUpDate = editDate || null;
+    if (editTime !== editingActivity.followUpTime) data.followUpTime = editTime || null;
+
+    if (Object.keys(data).length === 0) {
+      setEditDialogOpen(false);
+      return;
+    }
+
+    updateActivity.mutate(
+      { id: editingActivity.id, data: data as any },
+      {
+        onSuccess: () => {
+          toast({ title: "Follow-up updated" });
+          refetch();
+          queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey() });
+          queryClient.invalidateQueries({ queryKey: ["follow-up-activities"] });
+          queryClient.invalidateQueries({ queryKey: getListDealsQueryKey() });
+          setEditDialogOpen(false);
+        },
+        onError: () => {
+          toast({ title: "Failed to update follow-up", variant: "destructive" });
+        },
+      }
+    );
+  };
+
   const handleToggleStatus = (activityId: number, currentStatus: string | null | undefined) => {
     const newStatus = currentStatus === "Completed" ? "Pending" : "Completed";
     updateActivity.mutate(
-      { id: activityId, data: { callStatus: newStatus } },
+      { id: activityId, data: { callStatus: newStatus } as any },
       {
         onSuccess: () => {
           toast({ title: `Call marked as ${newStatus}` });
           refetch();
+          queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey() });
+          queryClient.invalidateQueries({ queryKey: ["follow-up-activities"] });
+          queryClient.invalidateQueries({ queryKey: getListDealsQueryKey() });
         },
         onError: () => {
           toast({ title: "Failed to update status", variant: "destructive" });
@@ -250,7 +302,7 @@ export default function FollowUps() {
                       </TableCell>
                       <TableCell>{activity.followUpDate ? new Date(activity.followUpDate + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "-"}</TableCell>
                       <TableCell>{formatTime(time)}</TableCell>
-                      <TableCell className="max-w-[200px] truncate" title={activity.notes || ""}>{activity.notes || "-"}</TableCell>
+                      <TableCell className="max-w-[200px] truncate" title={activity.notesDisplay || activity.notes || ""}>{activity.notesDisplay || activity.notes || "-"}</TableCell>
                       <TableCell>{salesPerson}</TableCell>
                       <TableCell>
                         <Badge variant={isCompleted ? "secondary" : "default"} className="text-[11px]">
@@ -272,8 +324,8 @@ export default function FollowUps() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                            onClick={() => { if (leadUrl) setLocation(`${leadUrl}/edit`); }}
-                            title="Edit Lead"
+                            onClick={() => openEditDialog(activity)}
+                            title="Edit Follow-up"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
@@ -316,6 +368,40 @@ export default function FollowUps() {
           </CardContent>
         </Card>
       )}
+
+      {/* Follow-up Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Follow-up</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <Label>New Notes (appended to history)</Label>
+              <Textarea
+                value={editNotes}
+                onChange={e => setEditNotes(e.target.value)}
+                placeholder="Add notes for this follow-up..."
+                rows={4}
+              />
+            </div>
+            <div>
+              <Label>Follow-up Date</Label>
+              <Input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} />
+            </div>
+            {editDate && (
+              <div>
+                <Label>Follow-up Time</Label>
+                <Input type="time" value={editTime} onChange={e => setEditTime(e.target.value)} />
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleEditFollowUp} disabled={updateActivity.isPending}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

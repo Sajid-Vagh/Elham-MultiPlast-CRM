@@ -130,7 +130,7 @@ export default function LeadDetail() {
       onSuccess: (result) => {
         console.log("[DEBUG] lead-detail handleCreateActivity success:", JSON.stringify({ id: result?.id, type: result?.type, followUpDate: result?.followUpDate, createdBy: result?.createdBy }));
         queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ contactId }) });
-        queryClient.invalidateQueries({ queryKey: ["/api/activities"] });
+        queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey() });
         toast({ title: "Activity logged" });
         setActDialogOpen(false); setActNotes(""); setActFollowUp(""); setActFollowUpTime("");
       },
@@ -145,6 +145,8 @@ export default function LeadDetail() {
     deleteContact.mutate({ id: contactId }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: ["category-counts"] });
+        queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
         toast({ title: `"${contact.name}" deleted` });
         setLocation("/leads");
       },
@@ -213,6 +215,8 @@ export default function LeadDetail() {
                         updateContact.mutate({ id: contactId, data: { category: "Regular Follow up" as any } }, {
                           onSuccess: () => {
                             queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
+                            queryClient.invalidateQueries({ queryKey: ["category-counts"] });
+                            queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
                             toast({ title: "Moved to Regular Follow up" });
                           },
                           onError: () => toast({ title: "Error updating category", variant: "destructive" }),
@@ -230,6 +234,8 @@ export default function LeadDetail() {
                         updateContact.mutate({ id: contactId, data: { category: "My Client" as any } }, {
                           onSuccess: () => {
                             queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
+                            queryClient.invalidateQueries({ queryKey: ["category-counts"] });
+                            queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
                             toast({ title: "Moved to My Client" });
                           },
                           onError: () => toast({ title: "Error updating category", variant: "destructive" }),
@@ -365,7 +371,8 @@ export default function LeadDetail() {
                         <span className="font-medium text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: style.bg, color: style.fg }}>{act.type}</span>
                         <span className="text-xs text-muted-foreground">{new Date(act.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
                       </div>
-                      {act.notes && <p className="text-muted-foreground mt-1.5">{act.notes}</p>}
+                      {(act as any).notesDisplay && <p className="text-muted-foreground mt-1.5 whitespace-pre-wrap">{(act as any).notesDisplay}</p>}
+                      {!(act as any).notesDisplay && act.notes && <p className="text-muted-foreground mt-1.5">{act.notes}</p>}
                       {act.followUpDate && <p className="text-xs text-primary mt-1">Follow-up: {act.followUpDate} via {act.followUpType}</p>}
                     </div>
                   </div>

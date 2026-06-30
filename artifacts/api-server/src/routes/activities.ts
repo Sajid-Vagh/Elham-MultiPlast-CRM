@@ -7,6 +7,76 @@ import { createNotification } from "./notifications";
 
 const router: IRouter = Router();
 
+type NoteEntry = {
+  text: string;
+  date: string;
+  time: string;
+  userName: string;
+  userId: number;
+};
+
+function isJsonNotes(n: string | null | undefined): boolean {
+  if (!n) return false;
+  const t = n.trim();
+  if (!t.startsWith("[")) return false;
+  try { JSON.parse(t); return true; } catch { return false; }
+}
+
+function parseNotes(notes: string | null | undefined): NoteEntry[] {
+  if (!notes) return [];
+  if (isJsonNotes(notes)) {
+    try { return JSON.parse(notes!) as NoteEntry[]; } catch { return []; }
+  }
+  // Legacy plain text: convert to single entry
+  return [{ text: notes, date: "", time: "", userName: "", userId: 0 }];
+}
+
+function notesToDisplay(notes: string | null | undefined): string {
+  const entries = parseNotes(notes);
+  if (entries.length === 0) return "";
+  if (entries.length === 1 && !entries[0]!.date) return entries[0]!.text;
+  return entries.map(e => {
+    const prefix = e.date ? `${e.date}${e.time ? ` ${e.time}` : ""}${e.userName ? ` - ${e.userName}` : ""}` : "";
+    return prefix ? `${prefix}\n${e.text}` : e.text;
+  }).join("\n\n---\n\n");
+}
+
+function appendNotesHistory(
+  existingNotes: string | null | undefined,
+  newNotes: string | null | undefined,
+  user: { id: number; name: string }
+): string {
+  const entries = parseNotes(existingNotes);
+  if (newNotes) {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    const timeStr = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+    entries.push({
+      text: newNotes,
+      date: dateStr,
+      time: timeStr,
+      userName: user.name,
+      userId: user.id,
+    });
+  }
+  return JSON.stringify(entries);
+}
+
+async function createAuditEntry(
+  dealId: number,
+  contactId: number | null | undefined,
+  description: string,
+  userId: number
+) {
+  await db.insert(activitiesTable).values({
+    dealId,
+    contactId: contactId ?? null,
+    type: "Note",
+    notes: description,
+    createdBy: userId,
+  });
+}
+
 async function enrichActivity(a: typeof activitiesTable.$inferSelect) {
   let user = null;
   if (a.createdBy) {
@@ -26,7 +96,7 @@ async function enrichActivity(a: typeof activitiesTable.$inferSelect) {
     const [c] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
     if (c) contact = c;
   }
-  return { ...a, user, deal, contact };
+  return { ...a, notesDisplay: notesToDisplay(a.notes), user, deal, contact };
 }
 
 router.get("/activities", async (req, res) => {
@@ -81,7 +151,7 @@ router.get("/activities", async (req, res) => {
     const users = await db.select().from(usersTable);
     const userMap = new Map(users.map(u => { const { passwordHash: _, ...safe } = u; return [u.id, safe]; }));
 
-    // Enrich with contact data
+    // Enrich with contact data and display-ready notes
     let enriched = activities.map(a => {
       let contact = a.contactId ? contactMap.get(a.contactId) ?? null : null;
       if (!contact && a.dealId) {
@@ -90,6 +160,7 @@ router.get("/activities", async (req, res) => {
       }
       return {
         ...a,
+        notesDisplay: notesToDisplay(a.notes),
         user: a.createdBy ? userMap.get(a.createdBy) ?? null : null,
         deal: a.dealId ? dealMap.get(a.dealId) ?? null : null,
         contact,
@@ -144,16 +215,60 @@ router.post("/activities", async (req, res) => {
           )
         );
       if (existing) {
+        // Build update data with notes history
+        const updateData: Record<string, any> = {
+          ...parsed.data,
+          updatedAt: new Date(),
+          updatedBy: currentUser.id,
+          isEdited: true,
+        };
+
+        // Append notes to history instead of replacing
+        if (parsed.data.notes !== undefined) {
+          updateData.notes = appendNotesHistory(existing.notes, parsed.data.notes, currentUser);
+        } else {
+          updateData.notes = existing.notes;
+        }
+
         const [updated] = await db.update(activitiesTable)
-          .set({
-            ...parsed.data,
-            updatedAt: new Date(),
-            updatedBy: currentUser.id,
-            isEdited: true,
-          })
+          .set(updateData)
           .where(eq(activitiesTable.id, existing.id))
           .returning();
         activity = updated;
+
+        // Create audit entries for changes
+        if (parsed.data.followUpDate !== undefined && parsed.data.followUpDate !== existing.followUpDate) {
+          const oldDate = existing.followUpDate || "(none)";
+          const newDate = parsed.data.followUpDate || "(none)";
+          const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+          await createAuditEntry(
+            updated!.dealId,
+            updated!.contactId,
+            `${currentUser.name} changed Follow-up Date\n${oldDate} → ${newDate}\n\n${now}`,
+            currentUser.id
+          );
+        }
+
+        if (parsed.data.callStatus !== undefined && parsed.data.callStatus !== existing.callStatus) {
+          const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+          await createAuditEntry(
+            updated!.dealId,
+            updated!.contactId,
+            `${currentUser.name} changed Status\n${existing.callStatus || "Pending"} → ${parsed.data.callStatus}\n\n${now}`,
+            currentUser.id
+          );
+        }
+
+        if (parsed.data.followUpTime !== undefined && parsed.data.followUpTime !== existing.followUpTime) {
+          const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+          await createAuditEntry(
+            updated!.dealId,
+            updated!.contactId,
+            `${currentUser.name} changed Follow-up Time\n${existing.followUpTime || "(none)"} → ${parsed.data.followUpTime || "(none)"}\n\n${now}`,
+            currentUser.id
+          );
+        }
+
         // Mark old notification as seen when follow-up is updated
         await db
           .update(notificationsTable)
@@ -169,11 +284,38 @@ router.post("/activities", async (req, res) => {
 
     // If no upsert happened, insert new record
     if (!activity) {
+      const notesValue = (parsed.data.type === "FollowUp" && parsed.data.notes)
+        ? JSON.stringify([{
+            text: parsed.data.notes,
+            date: new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
+            time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
+            userName: currentUser.name,
+            userId: currentUser.id,
+          }])
+        : parsed.data.notes ?? null;
+
       const [inserted] = await db.insert(activitiesTable).values({
-        ...parsed.data,
+        dealId: parsed.data.dealId,
+        contactId: parsed.data.contactId ?? null,
+        type: parsed.data.type,
+        notes: notesValue,
+        followUpDate: parsed.data.followUpDate ?? null,
+        followUpTime: parsed.data.followUpTime ?? null,
+        followUpType: parsed.data.followUpType ?? null,
+        callStatus: parsed.data.callStatus ?? "Pending",
         createdBy: currentUser.id,
       }).returning();
       activity = inserted;
+      // Create audit entry for new FollowUp
+      if (parsed.data.type === "FollowUp") {
+        const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        await createAuditEntry(
+          inserted!.dealId,
+          inserted!.contactId,
+          `${currentUser.name} created Follow-up\nDate: ${inserted!.followUpDate || "(not set)"}${inserted!.followUpTime ? ` Time: ${inserted!.followUpTime}` : ""}\n\n${now}`,
+          currentUser.id
+        );
+      }
     }
 
     // Notify contact's sales owner about new follow-up
@@ -195,12 +337,13 @@ router.post("/activities", async (req, res) => {
       // Only create notification for Regular Follow up leads or if follow-up date is set
       if (contactOwnerId && activity.followUpDate) {
         if (contactCategory === "Regular Follow up" || parsed.data.type !== "FollowUp") {
+          const displayNotes = notesToDisplay(activity.notes).slice(0, 150);
           await createNotification({
             userId: contactOwnerId,
             type: "follow_up",
             title: "Follow-up Scheduled",
             message: activity.followUpDate
-              ? `Follow-up on ${activity.followUpDate}${activity.followUpTime ? ` at ${activity.followUpTime}` : ""}\nType: ${activity.type}${activity.notes ? `\nNotes: ${activity.notes.slice(0, 100)}` : ""}\nBy: ${currentUser.name || "System"}`
+              ? `Follow-up on ${activity.followUpDate}${activity.followUpTime ? ` at ${activity.followUpTime}` : ""}\nType: ${activity.type}${displayNotes ? `\nNotes: ${displayNotes}` : ""}\nBy: ${currentUser.name || "System"}`
               : `New ${activity.type} activity recorded`,
             link: activity.dealId ? `/deals/${activity.dealId}` : activity.contactId ? `/leads/${activity.contactId}` : "#",
             relatedId: activity.id,
@@ -233,12 +376,53 @@ router.patch("/activities/:id", async (req, res) => {
         return;
       }
     }
-    const updateData = {
+    const [existingActivity] = await db.select().from(activitiesTable).where(eq(activitiesTable.id, params.data.id));
+    if (!existingActivity) { res.status(404).json({ error: "Not found" }); return; }
+
+    const updateData: Record<string, any> = {
       ...parsed.data,
       updatedAt: new Date(),
       updatedBy: user.id,
       isEdited: true,
     };
+
+    // Append notes to history instead of replacing
+    if (parsed.data.notes !== undefined) {
+      updateData.notes = appendNotesHistory(existingActivity.notes, parsed.data.notes, user);
+    } else {
+      updateData.notes = existingActivity.notes;
+    }
+
+    // Create audit entries for changes
+    if (parsed.data.followUpDate !== undefined && parsed.data.followUpDate !== existingActivity.followUpDate) {
+      const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      await createAuditEntry(
+        existingActivity.dealId,
+        existingActivity.contactId,
+        `${user.name} changed Follow-up Date\n${existingActivity.followUpDate || "(none)"} → ${parsed.data.followUpDate || "(none)"}\n\n${now}`,
+        user.id
+      );
+    }
+
+    if (parsed.data.callStatus !== undefined && parsed.data.callStatus !== existingActivity.callStatus) {
+      const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      await createAuditEntry(
+        existingActivity.dealId,
+        existingActivity.contactId,
+        `${user.name} changed Status\n${existingActivity.callStatus || "Pending"} → ${parsed.data.callStatus}\n\n${now}`,
+        user.id
+      );
+    }
+
+    if (parsed.data.followUpTime !== undefined && parsed.data.followUpTime !== existingActivity.followUpTime) {
+      const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      await createAuditEntry(
+        existingActivity.dealId,
+        existingActivity.contactId,
+        `${user.name} changed Follow-up Time\n${existingActivity.followUpTime || "(none)"} → ${parsed.data.followUpTime || "(none)"}\n\n${now}`,
+        user.id
+      );
+    }
 
     // If marking as Completed, mark related notifications as read
     if (parsed.data.callStatus === "Completed") {

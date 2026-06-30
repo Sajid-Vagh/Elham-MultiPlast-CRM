@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useParams, useLocation } from "wouter";
-import { useGetContact, useUpdateContact, useListUsers, useGetMe } from "@workspace/api-client-react";
+import { useGetContact, useUpdateContact, useListUsers, useGetMe, getGetContactQueryKey, getListContactsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -109,7 +109,10 @@ export default function LeadsEdit() {
       },
     }, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["getContact", contactId] });
+        queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId as any) });
+        queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: ["category-counts"] });
+        queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
         toast({ title: "Lead updated successfully" });
         setLocation(`/leads/${contactId}`);
       },

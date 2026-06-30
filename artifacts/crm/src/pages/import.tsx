@@ -585,6 +585,8 @@ export default function ImportPage() {
       onSuccess: (contact) => {
         setImResult({ success: true, contact });
         queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: ["category-counts"] });
+        queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
         setIm(emptyIm);
         setParsePreview(null);
         toast({ title: `Lead "${im.clientName}" imported from IndiaMart` });
@@ -672,6 +674,8 @@ export default function ImportPage() {
       onSuccess: (result) => {
         setExcelResult(result);
         queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: ["category-counts"] });
+        queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
         toast({ title: `Imported ${result.imported} leads into ${(result as any).importedInto}` });
         if (result.imported > 0) {
           playNotificationSound();
@@ -701,6 +705,8 @@ export default function ImportPage() {
       onSuccess: (result) => {
         setPasteResult(result);
         queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: ["category-counts"] });
+        queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
         toast({ title: `Imported ${result.imported} leads` });
         if (result.imported > 0) {
           playNotificationSound();

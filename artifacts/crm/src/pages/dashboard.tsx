@@ -1,5 +1,6 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useGetReportSummary, useGetPipelineReport, useListContacts, useListActivities, useGetMe } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Briefcase, Users, DollarSign, TrendingUp, AlertCircle, PhoneCall, X, Clock, Phone, CheckCircle2, FolderTree } from "lucide-react";
@@ -23,18 +24,20 @@ function todayStr(): string {
 
 export default function Dashboard() {
   const [followUpDateFilter, setFollowUpDateFilter] = useState("");
-  const [categoryCounts, setCategoryCounts] = useState<{ category: string; count: number }[]>([]);
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
 
-  useEffect(() => {
-    fetch("/api/categories/counts", {
-      headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
-    })
-      .then(r => r.json())
-      .then(data => setCategoryCounts(data))
-      .catch(() => {});
-  }, []);
+  const { data: categoryCounts } = useQuery<{ category: string; count: number }[]>({
+    queryKey: ["category-counts"],
+    queryFn: async () => {
+      const res = await fetch("/api/categories/counts", {
+        headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
 
   const { data: summary, isLoading: isLoadingSummary } = useGetReportSummary();
   const { data: pipeline, isLoading: isLoadingPipeline } = useGetPipelineReport();
@@ -280,7 +283,7 @@ export default function Dashboard() {
         )}
 
         {/* Category Summary Widget */}
-        {categoryCounts.length > 0 && (
+        {categoryCounts && categoryCounts.length > 0 && (
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">

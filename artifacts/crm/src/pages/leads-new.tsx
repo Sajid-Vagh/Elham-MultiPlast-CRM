@@ -106,6 +106,8 @@ export default function LeadsNew() {
     }, {
       onSuccess: (contact) => {
         queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: ["category-counts"] });
+        queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
         toast({ title: "Lead created successfully" });
         setLocation(`/leads/${contact.id}`);
       },
