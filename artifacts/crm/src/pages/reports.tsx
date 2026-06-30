@@ -37,14 +37,6 @@ const STAGE_COLORS: Record<string, string> = {
 
 const PIE_COLORS = ["#f87171","#fb923c","#fbbf24","#a3e635","#34d399","#60a5fa","#a78bfa","#f472b6","#94a3b8"];
 
-const TAB_EXCEL_ENDPOINTS: Record<string, string> = {
-  pipeline: "/api/reports/deals",
-  "by-owner": "/api/reports/deals",
-  "by-city": "/api/reports/leads",
-  "by-product": "/api/reports/deals",
-  "lost-reasons": "/api/reports/deals",
-};
-
 function downloadCSV(data: any[], filename: string) {
   if (!data.length) return;
   const headers = Object.keys(data[0]);
@@ -118,13 +110,9 @@ export default function Reports() {
   }, []);
 
   const exportExcel = useCallback(() => {
-    const params = new URLSearchParams();
-    if (month) params.set("month", month);
-    if (unit) params.set("unit", unit);
-    if (ownerId) params.set("ownerId", ownerId);
-    const endpoint = TAB_EXCEL_ENDPOINTS[activeTab] || "/api/reports/deals";
-    window.open(`${window.location.origin}${endpoint}?${params.toString()}`, "_blank");
-  }, [month, unit, ownerId, activeTab]);
+    const data = getCurrentTabData() ?? [];
+    downloadCSV(data, `report-${activeTab}.csv`);
+  }, [getCurrentTabData, activeTab]);
 
   return (
     <div className="p-8 space-y-6">
