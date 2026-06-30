@@ -1,13 +1,16 @@
 import { useState, useMemo } from "react";
-import { useGetReportSummary, useGetPipelineReport, useListContacts, useListActivities, useGetMe } from "@workspace/api-client-react";
+import { useGetReportSummary, useGetMe } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Briefcase, Users, DollarSign, TrendingUp, AlertCircle, PhoneCall, X, Clock, Phone, CheckCircle2, FolderTree } from "lucide-react";
+import { Briefcase, Users, DollarSign, TrendingUp, AlertCircle, PhoneCall, X, Clock, Phone, CheckCircle2, FolderTree, UserCheck, Activity, BarChart3, PieChart as PieChartIcon, ChevronRight, UserPlus, Download } from "lucide-react";
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, PieChart, Pie, Legend, Tooltip, LineChart, Line } from "recharts";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 function daysDiff(dateStr: string): number {
   const today = new Date();
@@ -22,74 +25,179 @@ function todayStr(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+const PIE_COLORS = ["#f87171","#fb923c","#fbbf24","#a3e635","#34d399","#60a5fa","#a78bfa","#f472b6","#94a3b8"];
+const STAGE_COLORS: Record<string, string> = {
+  "New": "#94a3b8", "CL Sent": "#60a5fa", "Price Given": "#fbbf24",
+  "Samples Sent": "#fb923c", "Samples Received": "#a78bfa", "PI Sent": "#818cf8",
+  "Won": "#4ade80", "Lost": "#f87171",
+};
+
 export default function Dashboard() {
   const [followUpDateFilter, setFollowUpDateFilter] = useState("");
+  const [ownerFilter, setOwnerFilter] = useState("");
+  const [unitFilter, setUnitFilter] = useState("");
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
 
-  const { data: categoryCounts } = useQuery<{ category: string; count: number }[]>({
-    queryKey: ["category-counts"],
+  const token = typeof window !== "undefined" ? localStorage.getItem("crm_token") : null;
+  const authHeaders = { Authorization: `Bearer ${token}` };
+
+  const { data: kpi } = useQuery({
+    queryKey: ["dashboard-kpi", ownerFilter, unitFilter],
     queryFn: async () => {
-      const res = await fetch("/api/categories/counts", {
-        headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
-      });
-      if (!res.ok) return [];
-      return res.json();
+      const params = new URLSearchParams();
+      if (ownerFilter) params.set("ownerId", ownerFilter);
+      if (unitFilter) params.set("unit", unitFilter);
+      const res = await fetch(`/api/dashboard/kpi?${params.toString()}`, { headers: authHeaders });
+      if (!res.ok) return null;
+      return res.json() as Promise<{
+        totalContacts: number; totalDeals: number; wonDeals: number; lostDeals: number;
+        activeDeals: number; totalWonValue: number; categoryCounts: { category: string; count: number }[];
+        unitStats: Record<string, number>; todayTotal: number; todayCompleted: number; todayPending: number;
+        overdueCount: number; newLeadsThisMonth: number; myClientsCount: number; conversionRate: number;
+      }>;
     },
+    enabled: !!token,
     staleTime: 30_000,
   });
 
-  const { data: summary, isLoading: isLoadingSummary } = useGetReportSummary();
-  const { data: pipeline, isLoading: isLoadingPipeline } = useGetPipelineReport();
-  const { data: dueContacts, isLoading: isLoadingDue } = useListContacts({ followUpDue: true });
-  const { data: todayActivities } = useListActivities({ date: todayStr() });
-  const { data: allContacts } = useListContacts();
+  const { data: salesPerformance } = useQuery({
+    queryKey: ["dashboard-sales-performance"],
+    queryFn: async () => {
+      const res = await fetch("/api/dashboard/sales-performance", { headers: authHeaders });
+      if (!res.ok) return [];
+      return res.json() as Promise<{
+        userId: number; userName: string; colorCode: string; unit: string;
+        totalContacts: number; totalDeals: number; wonDeals: number; lostDeals: number;
+        activeDeals: number; totalWonValue: number; myClients: number;
+        conversionRate: number; followUpRate: number;
+      }[]>;
+    },
+    enabled: !!token && isAdmin,
+    staleTime: 30_000,
+  });
+
+  const { data: charts } = useQuery({
+    queryKey: ["dashboard-charts"],
+    queryFn: async () => {
+      const res = await fetch("/api/dashboard/charts", { headers: authHeaders });
+      if (!res.ok) return null;
+      return res.json() as Promise<{
+        categoryDistribution: { name: string; value: number }[];
+        dealStageDistribution: { stage: string; count: number }[];
+        monthlyTrends: { month: string; contacts: number; deals: number }[];
+      }>;
+    },
+    enabled: !!token,
+    staleTime: 60_000,
+  });
+
+  const { data: recentActivities } = useQuery({
+    queryKey: ["dashboard-recent-activities"],
+    queryFn: async () => {
+      const res = await fetch("/api/dashboard/recent-activities", { headers: authHeaders });
+      if (!res.ok) return [];
+      return res.json() as Promise<{
+        id: number; type: string; notes: string | null; callStatus: string | null;
+        followUpDate: string | null; contactId: number | null; contactName: string;
+        createdBy: number | null; createdByName: string; createdAt: string;
+      }[]>;
+    },
+    enabled: !!token,
+    staleTime: 30_000,
+  });
+
+  const { data: dueContacts } = useQuery({
+    queryKey: ["due-contacts"],
+    queryFn: async () => {
+      const res = await fetch("/api/contacts?followUpDue=true", { headers: authHeaders });
+      if (!res.ok) return [];
+      return res.json() as Promise<any[]>;
+    },
+    enabled: !!token,
+    staleTime: 30_000,
+  });
+
+  const { data: allContacts } = useQuery({
+    queryKey: ["all-contacts-counts"],
+    queryFn: async () => {
+      const res = await fetch("/api/contacts", { headers: authHeaders });
+      if (!res.ok) return [];
+      return res.json() as Promise<any[]>;
+    },
+    enabled: !!token,
+    staleTime: 60_000,
+  });
+
+  const { data: users } = useQuery({
+    queryKey: ["users-list"],
+    queryFn: async () => {
+      const res = await fetch("/api/users", { headers: authHeaders });
+      if (!res.ok) return [];
+      return res.json() as Promise<any[]>;
+    },
+    enabled: !!token && isAdmin,
+    staleTime: 60_000,
+  });
 
   const unitStats = useMemo(() => {
-    if (!allContacts) return { Himatnagar: 0, Rajkot: 0, Surat: 0 };
+    if (!allContacts) return {};
     const stats: Record<string, number> = {};
     for (const c of allContacts) {
       const u = c.unit || "Unassigned";
       stats[u] = (stats[u] || 0) + 1;
     }
-    return { Himatnagar: stats.Himatnagar || 0, Rajkot: stats.Rajkot || 0, Surat: stats.Surat || 0 };
+    return stats;
   }, [allContacts]);
 
-  const todayStats = useMemo(() => {
-    if (!todayActivities) return { today: 0, completed: 0, pending: 0 };
-    const total = todayActivities.length;
-    const completed = todayActivities.filter(a => a.callStatus === "Completed").length;
-    return { today: total, completed, pending: total - completed };
-  }, [todayActivities]);
-
-  const overdueCount = useMemo(() => {
-    if (!dueContacts) return 0;
+  const overdueList = useMemo(() => {
+    if (!dueContacts) return [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    return dueContacts.filter(c => {
-      if (!c.nextCallDate) return false;
-      const d = new Date(c.nextCallDate);
-      d.setHours(0, 0, 0, 0);
-      return d < today;
-    }).length;
+    return dueContacts
+      .filter(c => {
+        if (!c.nextCallDate) return false;
+        const d = new Date(c.nextCallDate);
+        d.setHours(0, 0, 0, 0);
+        return d < today;
+      })
+      .sort((a, b) => new Date(a.nextCallDate).getTime() - new Date(b.nextCallDate).getTime());
   }, [dueContacts]);
 
-  if (isLoadingSummary || isLoadingPipeline) {
-    return <div className="p-8 flex items-center justify-center h-full">Loading dashboard...</div>;
-  }
-
-  // Filter follow-ups by selected date
   const filteredDueContacts = followUpDateFilter
     ? dueContacts?.filter(c => c.nextCallDate === followUpDateFilter)
     : dueContacts;
 
   return (
     <div className="p-8 space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">Overview of your sales performance and pipeline.</p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
+          <p className="text-muted-foreground mt-1">Overview of your sales performance and pipeline.</p>
+        </div>
+        {isAdmin && (
+          <div className="flex gap-2 flex-wrap">
+            {users && (
+              <Select value={ownerFilter} onValueChange={v => setOwnerFilter(v === "all" ? "" : v)}>
+                <SelectTrigger className="w-36 h-8 text-sm"><SelectValue placeholder="All Owners" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Owners</SelectItem>
+                  {users.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+            <Select value={unitFilter} onValueChange={v => setUnitFilter(v === "all" ? "" : v)}>
+              <SelectTrigger className="w-36 h-8 text-sm"><SelectValue placeholder="All Units" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Units</SelectItem>
+                {["Himatnagar","Surat","Rajkot"].map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
+      {/* ── KPI CARDS ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -97,10 +205,8 @@ export default function Dashboard() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{summary?.totalContacts || 0}</div>
-            <p className="text-xs text-muted-foreground">
-              +{summary?.newLeadsThisMonth || 0} this month
-            </p>
+            <div className="text-2xl font-bold">{kpi?.totalContacts ?? 0}</div>
+            <p className="text-xs text-muted-foreground">+{kpi?.newLeadsThisMonth ?? 0} this month</p>
           </CardContent>
         </Card>
         <Card>
@@ -109,7 +215,8 @@ export default function Dashboard() {
             <Briefcase className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{summary?.activeDeals || 0}</div>
+            <div className="text-2xl font-bold">{kpi?.activeDeals ?? 0}</div>
+            <p className="text-xs text-muted-foreground">{kpi?.wonDeals} won / {kpi?.lostDeals} lost</p>
           </CardContent>
         </Card>
         <Card>
@@ -118,77 +225,286 @@ export default function Dashboard() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹{summary?.totalWonValue?.toLocaleString() || 0}</div>
+            <div className="text-2xl font-bold">₹{kpi?.totalWonValue?.toLocaleString() || 0}</div>
+            <p className="text-xs text-muted-foreground">{kpi?.totalDeals} total deals</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Win Rate</CardTitle>
+            <CardTitle className="text-sm font-medium">Win Rate / Conversion</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {summary?.totalDeals ? Math.round((summary.wonDeals / summary.totalDeals) * 100) : 0}%
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {summary?.wonDeals} won / {summary?.lostDeals} lost
-            </p>
+            <div className="text-2xl font-bold">{kpi?.totalDeals ? Math.round((kpi.wonDeals / kpi.totalDeals) * 100) : 0}%</div>
+            <p className="text-xs text-muted-foreground">{kpi?.conversionRate ?? 0}% conversion to client</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Today's Calls Widget */}
-      {!isLoadingDue && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Link href="/follow-ups" className="block">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer border-blue-200">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Today's Calls</CardTitle>
-                <Phone className="h-4 w-4 text-blue-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-blue-600">{todayStats.today}</div>
-              </CardContent>
-            </Card>
-          </Link>
-          <Link href="/follow-ups" className="block">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer border-green-200">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Completed</CardTitle>
-                <CheckCircle2 className="h-4 w-4 text-green-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-green-600">{todayStats.completed}</div>
-              </CardContent>
-            </Card>
-          </Link>
-          <Link href="/follow-ups" className="block">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer border-orange-200">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Pending</CardTitle>
-                <Clock className="h-4 w-4 text-orange-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-orange-600">{todayStats.pending}</div>
-              </CardContent>
-            </Card>
-          </Link>
-          <Link href="/follow-ups" className="block">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer border-red-200">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Overdue</CardTitle>
-                <AlertCircle className="h-4 w-4 text-red-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-red-600">{overdueCount}</div>
-              </CardContent>
-            </Card>
-          </Link>
+      {/* Today's Calls + Additional KPI mini-cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <Link href="/follow-ups" className="block">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer border-blue-200">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-xs font-medium">Today's Calls</CardTitle>
+              <Phone className="h-4 w-4 text-blue-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold text-blue-600">{kpi?.todayTotal ?? 0}</div>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/follow-ups" className="block">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer border-green-200">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-xs font-medium">Completed</CardTitle>
+              <CheckCircle2 className="h-4 w-4 text-green-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold text-green-600">{kpi?.todayCompleted ?? 0}</div>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/follow-ups" className="block">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer border-orange-200">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-xs font-medium">Pending</CardTitle>
+              <Clock className="h-4 w-4 text-orange-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold text-orange-600">{kpi?.todayPending ?? 0}</div>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/follow-ups" className="block">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer border-red-200">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-xs font-medium">Overdue</CardTitle>
+              <AlertCircle className="h-4 w-4 text-red-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold text-red-600">{kpi?.overdueCount ?? 0}</div>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/leads" className="block">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer border-purple-200">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-xs font-medium">My Clients</CardTitle>
+              <UserCheck className="h-4 w-4 text-purple-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold text-purple-600">{kpi?.myClientsCount ?? 0}</div>
+            </CardContent>
+          </Card>
+        </Link>
+        <Card className="border-amber-200">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-xs font-medium">Conversion</CardTitle>
+            <UserPlus className="h-4 w-4 text-amber-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold text-amber-600">{kpi?.conversionRate ?? 0}%</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── SALES PERFORMANCE (admin only) ── */}
+      {isAdmin && salesPerformance && salesPerformance.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-blue-500" />
+                Sales Performance
+              </CardTitle>
+              <Badge variant="outline" className="text-xs">{salesPerformance.length} users</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Sales Person</TableHead>
+                  <TableHead>Unit</TableHead>
+                  <TableHead>Leads</TableHead>
+                  <TableHead>Deals</TableHead>
+                  <TableHead className="text-green-600">Won</TableHead>
+                  <TableHead className="text-red-500">Lost</TableHead>
+                  <TableHead>Won Value</TableHead>
+                  <TableHead>Clients</TableHead>
+                  <TableHead>Conv. Rate</TableHead>
+                  <TableHead>Follow-up %</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {salesPerformance.map(row => (
+                  <TableRow key={row.userId}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: row.colorCode }} />
+                        <span className="font-medium">{row.userName}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{row.unit}</TableCell>
+                    <TableCell>{row.totalContacts}</TableCell>
+                    <TableCell>{row.totalDeals}</TableCell>
+                    <TableCell className="text-green-600 font-medium">{row.wonDeals}</TableCell>
+                    <TableCell className="text-red-500">{row.lostDeals}</TableCell>
+                    <TableCell>₹{row.totalWonValue.toLocaleString()}</TableCell>
+                    <TableCell>{row.myClients}</TableCell>
+                    <TableCell>
+                      <span className={`font-medium ${row.conversionRate >= 20 ? "text-green-600" : row.conversionRate >= 10 ? "text-amber-600" : "text-red-500"}`}>
+                        {row.conversionRate}%
+                      </span>
+                    </TableCell>
+                    <TableCell>{row.followUpRate}%</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── OVERDUE FOLLOW-UPS ── */}
+      {overdueList.length > 0 && (
+        <Card className="border-red-200 bg-red-50/50">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-red-600" />
+              <CardTitle className="text-red-700">Overdue Follow-ups ({overdueList.length})</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {overdueList.slice(0, 9).map(contact => {
+                const diff = contact.nextCallDate ? daysDiff(contact.nextCallDate) : 0;
+                return (
+                  <Link key={contact.id} href={`/leads/${contact.id}`}>
+                    <div className="flex items-center gap-3 p-3 bg-white border border-red-200 rounded-md hover:bg-red-50 transition-colors cursor-pointer">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-red-100">
+                        <PhoneCall className="h-4 w-4 text-red-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{contact.name}</p>
+                        {contact.salesOwner && (
+                          <div className="flex items-center gap-1">
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: contact.salesOwner.colorCode }} />
+                            <span className="text-xs text-muted-foreground">{contact.salesOwner.name}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">
+                          {Math.abs(diff)}d overdue
+                        </span>
+                        {contact.mobile && (
+                          <p className="text-xs text-muted-foreground mt-0.5">{contact.mobile}</p>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+            {overdueList.length > 9 && (
+              <Link href="/follow-ups">
+                <p className="text-sm text-red-600 text-center mt-3 hover:underline cursor-pointer">
+                  View all {overdueList.length} overdue follow-ups <ChevronRight className="h-3 w-3 inline" />
+                </p>
+              </Link>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── CHARTS SECTION ── */}
+      {charts && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Category Distribution Pie */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <PieChart className="h-4 w-4 text-orange-500" />
+                Category Distribution
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie
+                    data={charts.categoryDistribution.filter(d => d.value > 0)}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={80}
+                    label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
+                  >
+                    {charts.categoryDistribution.filter(d => d.value > 0).map((_, i) => (
+                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* Deal Stage Distribution Bar */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <BarChart3 className="h-4 w-4 text-blue-500" />
+                Deal Stages
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={charts.dealStageDistribution} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="stage" tick={{ fontSize: 10 }} angle={-20} textAnchor="end" height={50} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Bar dataKey="count" name="Deals" radius={[3,3,0,0]}>
+                    {charts.dealStageDistribution.map((entry, i) => (
+                      <Cell key={i} fill={STAGE_COLORS[entry.stage] || PIE_COLORS[i % PIE_COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* Monthly Trends Line */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <TrendingUp className="h-4 w-4 text-green-500" />
+                Monthly Trends (12m)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={charts.monthlyTrends} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="month" tick={{ fontSize: 9 }} interval={2} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="contacts" stroke="#3b82f6" name="Leads" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="deals" stroke="#10b981" name="Deals" strokeWidth={2} dot={false} />
+                  <Legend />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
         </div>
       )}
 
-      {/* Follow-up reminders — overdue/due-today contacts */}
-      {!isLoadingDue && dueContacts && dueContacts.length > 0 && (
+      {/* ── FOLLOW-UP REMINDERS ── */}
+      {dueContacts && dueContacts.length > 0 && (
         <Card className="border-orange-200 bg-orange-50/50">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between flex-wrap gap-3">
@@ -199,7 +515,6 @@ export default function Dashboard() {
                   {filteredDueContacts?.length ?? 0}
                 </Badge>
               </CardTitle>
-              {/* Date filter */}
               <div className="flex items-center gap-2">
                 <label className="text-xs text-muted-foreground whitespace-nowrap">Filter by date:</label>
                 <Input
@@ -265,73 +580,128 @@ export default function Dashboard() {
         </Card>
       )}
 
-        {/* Unit-wise Stats */}
-        {isAdmin && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {["Himatnagar", "Rajkot", "Surat"].map(u => (
-              <Card key={u}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">{u}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{unitStats[u as keyof typeof unitStats]}</div>
-                  <p className="text-xs text-muted-foreground">Leads</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
+      {/* ── UNIT STATS ── */}
+      {isAdmin && Object.keys(unitStats).length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          {Object.entries(unitStats).map(([unit, count]) => (
+            <Card key={unit}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">{unit}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{count}</div>
+                <p className="text-xs text-muted-foreground">Leads</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
-        {/* Category Summary Widget */}
-        {categoryCounts && categoryCounts.length > 0 && (
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <FolderTree className="h-5 w-5 text-orange-500" />
-                  Category Summary
-                </CardTitle>
-                <Link href="/categories">
-                  <Badge className="cursor-pointer bg-orange-100 text-orange-700 hover:bg-orange-200 border-0">
-                    View All
-                  </Badge>
-                </Link>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                {categoryCounts.map(({ category, count }) => (
-                  <Link key={category} href={`/categories`} className="block">
-                    <div className="text-center p-3 rounded-lg border hover:shadow-sm transition-shadow cursor-pointer">
-                      <span className="text-2xl">{category === "My Client" ? "⭐" : category === "Regular Follow up" ? "📋" : "📁"}</span>
-                      <p className="text-lg font-bold mt-1" style={{ color: CATEGORY_COLORS[category] }}>
-                        {count}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate">{category}</p>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
+      {/* ── CATEGORY SUMMARY ── */}
+      {kpi?.categoryCounts && kpi.categoryCounts.some(c => c.count > 0) && (
         <Card>
-          <CardHeader>
-            <CardTitle>Pipeline Overview</CardTitle>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <FolderTree className="h-5 w-5 text-orange-500" />
+                Category Summary
+              </CardTitle>
+              <Link href="/categories">
+                <Badge className="cursor-pointer bg-orange-100 text-orange-700 hover:bg-orange-200 border-0">
+                  View All
+                </Badge>
+              </Link>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {pipeline?.map((stageCount) => (
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+              {kpi.categoryCounts.map(({ category, count }) => (
+                <Link key={category} href={`/categories`} className="block">
+                  <div className="text-center p-3 rounded-lg border hover:shadow-sm transition-shadow cursor-pointer">
+                    <span className="text-2xl">{category === "My Client" ? "⭐" : category === "Regular Follow up" ? "📋" : "📁"}</span>
+                    <p className="text-lg font-bold mt-1" style={{ color: CATEGORY_COLORS[category] }}>
+                      {count}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">{category}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── RECENT ACTIVITIES ── */}
+      {recentActivities && recentActivities.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5 text-blue-500" />
+                Recent Activities
+              </CardTitle>
+              <Link href="/follow-ups">
+                <Badge variant="outline" className="cursor-pointer">View All</Badge>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {recentActivities.slice(0, 15).map(a => (
+                <Link key={a.id} href={`/leads/${a.contactId}`} className="block">
+                  <div className="flex items-start gap-3 p-2.5 rounded-md hover:bg-muted/50 transition-colors">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                      a.callStatus === "Completed" ? "bg-green-100" :
+                      a.callStatus === "Pending" ? "bg-orange-100" : "bg-blue-100"
+                    }`}>
+                      {a.type === "FollowUp" ? (
+                        <Phone className={`h-3.5 w-3.5 ${
+                          a.callStatus === "Completed" ? "text-green-600" :
+                          a.callStatus === "Pending" ? "text-orange-600" : "text-blue-600"
+                        }`} />
+                      ) : (
+                        <Activity className="h-3.5 w-3.5 text-blue-600" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{a.contactName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {a.type === "FollowUp" ? `Follow-up: ${a.callStatus ?? "Scheduled"}` : a.type}
+                        {a.followUpDate && ` — ${a.followUpDate}`}
+                      </p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(a.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{a.createdByName}</p>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── PIPELINE OVERVIEW ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Pipeline Overview</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {charts?.dealStageDistribution.filter(s => s.stage !== "Won" && s.stage !== "Lost").map((stageCount) => {
+              const maxCount = Math.max(...charts.dealStageDistribution.filter(s => s.stage !== "Won" && s.stage !== "Lost").map(s => s.count), 1);
+              return (
                 <div key={stageCount.stage} className="flex items-center">
                   <div className="w-32 text-sm font-medium">{stageCount.stage}</div>
                   <div className="flex-1 h-4 bg-muted rounded-full overflow-hidden mx-4">
                     <div
-                      className="h-full bg-primary"
+                      className="h-full rounded-full"
                       style={{
-                        width: `${pipeline.reduce((acc, curr) => Math.max(acc, curr.count), 0) > 0
-                          ? (stageCount.count / pipeline.reduce((acc, curr) => Math.max(acc, curr.count), 0)) * 100
-                          : 0}%`
+                        width: `${(stageCount.count / maxCount) * 100}%`,
+                        backgroundColor: STAGE_COLORS[stageCount.stage] || "#3b82f6",
                       }}
                     />
                   </div>
@@ -339,13 +709,14 @@ export default function Dashboard() {
                     {stageCount.count} deals
                   </div>
                 </div>
-              ))}
-              {!pipeline?.length && (
-                <p className="text-sm text-muted-foreground text-center py-4">No active deals in pipeline.</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+              );
+            })}
+            {(!charts?.dealStageDistribution || charts.dealStageDistribution.filter(s => s.stage !== "Won" && s.stage !== "Lost").length === 0) && (
+              <p className="text-sm text-muted-foreground text-center py-4">No active deals in pipeline.</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

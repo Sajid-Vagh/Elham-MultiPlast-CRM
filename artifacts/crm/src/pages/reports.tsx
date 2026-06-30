@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import {
   useGetPipelineReport, useGetReportByOwner, useGetReportByCity,
@@ -9,8 +9,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, PieChart, Pie, Legend } from "recharts";
-import { TrendingUp, Users, Briefcase, DollarSign, XCircle } from "lucide-react";
+import { TrendingUp, Users, Briefcase, DollarSign, XCircle, Download } from "lucide-react";
 
 function MonthPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return <Input type="month" value={value} onChange={e => onChange(e.target.value)} className="w-40" />;
@@ -36,10 +37,45 @@ const STAGE_COLORS: Record<string, string> = {
 
 const PIE_COLORS = ["#f87171","#fb923c","#fbbf24","#a3e635","#34d399","#60a5fa","#a78bfa","#f472b6","#94a3b8"];
 
+const TAB_EXCEL_ENDPOINTS: Record<string, string> = {
+  pipeline: "/api/reports/deals",
+  "by-owner": "/api/reports/deals",
+  "by-city": "/api/reports/leads",
+  "by-product": "/api/reports/deals",
+  "lost-reasons": "/api/reports/deals",
+};
+
+function downloadCSV(data: any[], filename: string) {
+  if (!data.length) return;
+  const headers = Object.keys(data[0]);
+  const csv = [
+    headers.join(","),
+    ...data.map(row =>
+      headers.map(h => {
+        const val = row[h];
+        const str = val == null ? "" : String(val);
+        return str.includes(",") || str.includes('"') || str.includes("\n")
+          ? `"${str.replace(/"/g, '""')}"`
+          : str;
+      }).join(",")
+    ),
+  ].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export default function Reports() {
   const [month, setMonth] = useState("");
   const [unit, setUnit] = useState("");
   const [ownerId, setOwnerId] = useState("");
+  const [activeTab, setActiveTab] = useState("pipeline");
   const [, navigate] = useLocation();
 
   const { data: summary } = useGetReportSummary();
@@ -61,6 +97,35 @@ export default function Reports() {
     navigate(`/deals?${p.toString()}`);
   };
 
+  const getCurrentTabData = useCallback(() => {
+    switch (activeTab) {
+      case "pipeline": return pipeline;
+      case "by-owner": return byOwner;
+      case "by-city": return byCity;
+      case "by-product": return byProduct;
+      case "lost-reasons": return lostReasons;
+      default: return [];
+    }
+  }, [activeTab, pipeline, byOwner, byCity, byProduct, lostReasons]);
+
+  const exportCSV = useCallback(() => {
+    const data = getCurrentTabData() ?? [];
+    downloadCSV(data, `report-${activeTab}.csv`);
+  }, [getCurrentTabData, activeTab]);
+
+  const exportPrint = useCallback(() => {
+    window.print();
+  }, []);
+
+  const exportExcel = useCallback(() => {
+    const params = new URLSearchParams();
+    if (month) params.set("month", month);
+    if (unit) params.set("unit", unit);
+    if (ownerId) params.set("ownerId", ownerId);
+    const endpoint = TAB_EXCEL_ENDPOINTS[activeTab] || "/api/reports/deals";
+    window.open(`${window.location.origin}${endpoint}?${params.toString()}`, "_blank");
+  }, [month, unit, ownerId, activeTab]);
+
   return (
     <div className="p-8 space-y-6">
       <div>
@@ -75,7 +140,7 @@ export default function Reports() {
         <Card><CardContent className="p-4 flex items-center gap-3"><DollarSign className="h-8 w-8 text-amber-500/60" /><div><p className="text-xs text-muted-foreground">Won Value</p><p className="text-xl font-bold">₹{Number(summary?.totalWonValue ?? 0).toLocaleString()}</p></div></CardContent></Card>
       </div>
 
-      <Tabs defaultValue="pipeline">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
           <TabsList>
             <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
@@ -100,6 +165,22 @@ export default function Reports() {
               </Select>
             )}
           </div>
+        </div>
+
+        {/* Export buttons */}
+        <div className="flex gap-2 flex-wrap mb-4">
+          <Button variant="outline" size="sm" onClick={exportCSV}>
+            <Download className="h-3.5 w-3.5 mr-1" />
+            CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportPrint}>
+            <Download className="h-3.5 w-3.5 mr-1" />
+            Print
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportExcel}>
+            <Download className="h-3.5 w-3.5 mr-1" />
+            Excel
+          </Button>
         </div>
 
         {/* ── PIPELINE TAB ── */}
