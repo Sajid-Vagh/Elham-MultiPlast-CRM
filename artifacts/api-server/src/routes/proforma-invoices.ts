@@ -375,7 +375,7 @@ router.post("/proforma-invoices/gst-lookup", async (req, res) => {
   const rapidApiHost = process.env.RAPIDAPI_GST_HOST;
   if (rapidApiKey && rapidApiHost) {
     try {
-      const raRes = await axios.get(`https://${rapidApiHost}/api/gstin/validate?gstin=${encodeURIComponent(cleanGstin)}`, {
+      const raRes = await axios.get(`https://${rapidApiHost}/gst.php?gst_no=${encodeURIComponent(cleanGstin)}`, {
         headers: {
           "x-rapidapi-host": rapidApiHost,
           "x-rapidapi-key": rapidApiKey,
