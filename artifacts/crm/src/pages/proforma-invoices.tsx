@@ -133,6 +133,10 @@ export default function ProformaInvoicesPage() {
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [existingCustomer, setExistingCustomer] = useState<any>(null);
   const [lastFetchedGstData, setLastFetchedGstData] = useState<any>(null);
+  const [productSearchQuery, setProductSearchQuery] = useState("");
+  const [productSearchResults, setProductSearchResults] = useState<any[]>([]);
+  const [showProductSearch, setShowProductSearch] = useState(false);
+  const [activeProductIdx, setActiveProductIdx] = useState(-1);
 
   const [statusFilter, setStatusFilter] = useState("all");
   const [statusDialog, setStatusDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
@@ -268,6 +272,10 @@ export default function ProformaInvoicesPage() {
     setShowSaveCustomer(false);
     setExistingCustomer(null);
     setLastFetchedGstData(null);
+    setProductSearchQuery("");
+    setProductSearchResults([]);
+    setShowProductSearch(false);
+    setActiveProductIdx(-1);
   };
 
   useEffect(() => {
@@ -290,6 +298,44 @@ export default function ProformaInvoicesPage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [contactSearchQuery, token]);
+
+  // Product search autocomplete
+  useEffect(() => {
+    if (!productSearchQuery || productSearchQuery.length < 1) {
+      setProductSearchResults([]);
+      setShowProductSearch(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/products/search?q=${encodeURIComponent(productSearchQuery)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const json = await res.json();
+          setProductSearchResults(Array.isArray(json) ? json.slice(0, 10) : []);
+          setShowProductSearch(true);
+        }
+      } catch { }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [productSearchQuery, token]);
+
+  const selectProduct = (idx: number, product: any) => {
+    updateItem(idx, "productName", product.name);
+    if (product.pricePerUnit) updateItem(idx, "rate", Number(product.pricePerUnit));
+    setShowProductSearch(false);
+    setProductSearchQuery("");
+    setActiveProductIdx(-1);
+  };
+
+  const handleGstBlur = () => {
+    const gstin = gstNumber.toUpperCase().trim();
+    const gstinRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+    if (gstinRegex.test(gstin)) {
+      handleGstFetch();
+    }
+  };
 
   const selectContact = (contact: any) => {
     setCustomerName(contact.name);
@@ -594,6 +640,33 @@ export default function ProformaInvoicesPage() {
 
       const invoice = await res.json();
       toast({ title: editMode ? "Invoice Updated" : "Invoice Created", description: `${invoice.invoiceNumber} saved as ${status}` });
+
+      // Auto-save customer to Customer Master if new GSTIN and not already saved
+      const gstin = gstNumber.toUpperCase().trim();
+      if (!editMode && !customerMasterId && !existingCustomer && gstin && companyName && gstin.length === 15) {
+        try {
+          await fetch("/api/customer-master", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              companyName: customerName,
+              tradeName: tradeName || null,
+              gstin,
+              addressLine1: addressLine1 || null,
+              addressLine2: addressLine2 || null,
+              addressLine3: addressLine3 || null,
+              city: city || null,
+              district: district || null,
+              state: state || null,
+              pincode: pincode || null,
+              mobile: mobile || null,
+              customerType,
+              gstStatus: gstStatus || "Active",
+            }),
+          });
+        } catch { /* silent fail - auto-save is best-effort */ }
+      }
+
       resetForm();
       setSelectedInvoice(invoice);
       setMode("detail");
@@ -777,7 +850,7 @@ export default function ProformaInvoicesPage() {
     const dateStr = new Date(inv.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" });
 
     return `<!DOCTYPE html>
-<html lang="en">
+<html>
 <head><meta charset="UTF-8"><title>Proforma Invoice - ${inv.invoiceNumber}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -785,110 +858,96 @@ export default function ProformaInvoicesPage() {
 <style>
 @page{size:A4 portrait;margin:10mm 14mm;}
 *{margin:0;padding:0;box-sizing:border-box;}
-html{font-size:13px;}
-body{font-family:'Inter','Source Sans 3','IBM Plex Sans','Noto Sans',Arial,sans-serif;font-size:9pt;color:#1a1a1a;line-height:1.45;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
-.invoice{width:100%;min-height:267mm;position:relative;}
-.invoice-inner{padding:0;}
-.header{text-align:center;padding:14pt 0 10pt 0;border-bottom:1.5pt solid #1a1a1a;margin-bottom:12pt;}
-.gstin-top{text-align:left;font-size:7.5pt;color:#555;margin-bottom:4pt;letter-spacing:0.3pt;}
-.company-name{font-size:18pt;font-weight:700;letter-spacing:0.8pt;text-transform:uppercase;margin:4pt 0;color:#1a1a1a;}
-.company-address{font-size:7.5pt;line-height:1.6;color:#444;max-width:70%;margin:0 auto;}
-.company-email{font-size:7.5pt;color:#444;margin-top:2pt;}
-.invoice-title{font-size:16pt;font-weight:700;margin:8pt 0 2pt 0;letter-spacing:2pt;text-transform:uppercase;color:#1a1a1a;}
-.invoice-divider{width:60px;height:2pt;background:#1a1a1a;margin:4pt auto 0 auto;}
-.party-section{display:flex;gap:0;margin-bottom:10pt;}
-.party-left{width:60%;padding:6pt 10pt 6pt 0;}
-.party-right{width:40%;padding:6pt 0 6pt 10pt;text-align:right;border-left:1pt solid #ddd;}
-.party-label{font-size:7.5pt;font-weight:600;text-transform:uppercase;letter-spacing:0.5pt;color:#666;margin-bottom:4pt;}
-.party-name{font-size:11pt;font-weight:700;margin-bottom:3pt;color:#1a1a1a;}
-.party-address{font-size:8.5pt;line-height:1.55;color:#333;}
-.party-meta{font-size:8.5pt;margin-top:4pt;color:#444;}
-.party-right .party-meta{text-align:right;}
-.party-right .party-meta strong{font-weight:600;}
-.order-text{font-size:8.5pt;font-style:italic;text-align:center;padding:6pt 0;margin-bottom:8pt;border-top:1pt solid #ddd;border-bottom:1pt solid #ddd;color:#444;}
-table.items{width:100%;border-collapse:collapse;margin-bottom:10pt;font-size:8.5pt;}
-table.items thead{background:#f2f2f2;}
-table.items th{border:1pt solid #ccc;padding:5pt 6pt;text-align:center;font-weight:600;font-size:8pt;color:#1a1a1a;text-transform:uppercase;letter-spacing:0.3pt;}
-table.items td{border:1pt solid #ccc;padding:4pt 6pt;vertical-align:middle;}
-table.items tbody tr:nth-child(even){background:#fafafa;}
-.cell-center{text-align:center;}
-.cell-right{text-align:right;font-variant-numeric:tabular-nums;}
-table.items .cell-right{font-family:'Inter','Source Sans 3','IBM Plex Sans','Noto Sans',Arial,sans-serif;font-weight:500;}
-.summary-table{width:100%;border-collapse:collapse;margin-bottom:0;}
-.summary-table td{border:0;padding:3pt 6pt;font-size:8.5pt;}
-.summary-table .total-row td{border-top:1.5pt solid #1a1a1a;font-weight:700;font-size:10pt;padding:5pt 6pt;}
-.tax-summary{width:100%;border-collapse:collapse;margin-top:8pt;font-size:8pt;}
-.tax-summary thead{background:#f2f2f2;}
-.tax-summary th{border:1pt solid #ccc;padding:4pt 5pt;text-align:center;font-weight:600;font-size:7.5pt;color:#1a1a1a;text-transform:uppercase;letter-spacing:0.3pt;}
-.tax-summary td{border:1pt solid #ccc;padding:3pt 5pt;text-align:center;}
-.amount-words{margin:10pt 0 8pt 0;padding:8pt 10pt;background:#f9f9f9;border-left:3pt solid #1a1a1a;font-size:9pt;line-height:1.5;}
-.amount-words strong{font-weight:700;}
-.footer-section{width:100%;margin:8pt 0 6pt 0;}
+body{font-family:'Inter','Source Sans 3',Arial,sans-serif;font-size:9pt;color:#000;line-height:1.3;}
+.invoice{width:190mm;min-height:267mm;margin:0 auto;border:1.5px solid #000;padding:0;position:relative;}
+.header{text-align:center;padding:8pt 10pt 4pt 10pt;border-bottom:1.5px solid #000;}
+.gstin-top{text-align:left;font-size:8pt;margin-bottom:2pt;}
+.company-name{font-size:18pt;font-weight:bold;letter-spacing:0.5pt;margin:2pt 0;}
+.company-address{font-size:8pt;line-height:1.5;color:#222;}
+.company-email{font-size:8pt;margin-top:2pt;}
+.invoice-title{font-size:14pt;font-weight:bold;margin:4pt 0;text-decoration:underline;}
+.party-section{display:flex;border-bottom:1px solid #000;}
+.party-left{width:58%;padding:6pt 8pt;border-right:1px solid #000;}
+.party-right{width:42%;padding:6pt 8pt;text-align:right;}
+.party-label{font-weight:bold;font-size:9pt;margin-bottom:4pt;}
+.party-name{font-weight:bold;font-size:10pt;}
+.party-address{font-size:8.5pt;line-height:1.5;margin-top:2pt;}
+.order-text{font-size:8.5pt;font-style:italic;margin:4pt 0;padding:3pt 0;border-bottom:1px solid #000;text-align:center;}
+table.items{width:100%;border-collapse:collapse;font-size:8.5pt;}
+table.items th{background:#f0f0f0;border:1px solid #000;padding:4pt 5pt;text-align:center;font-weight:bold;font-size:8pt;}
+table.items td{border:1px solid #000;padding:3pt 5pt;}
+.summary-table{width:100%;border-collapse:collapse;margin-top:0;border-top:1px solid #000;}
+.summary-table td{border:0;padding:2pt 6pt;}
+.summary-table .total-row{border-top:1.5px solid #000;font-weight:bold;font-size:10pt;}
+.tax-summary{margin-top:6pt;width:100%;border-collapse:collapse;font-size:8pt;}
+.tax-summary th{background:#f0f0f0;border:1px solid #000;padding:3pt 4pt;text-align:center;font-weight:bold;font-size:7.5pt;}
+.tax-summary td{border:1px solid #000;padding:2pt 4pt;text-align:center;}
+.amount-words{margin:6pt 8pt;font-size:8.5pt;}
+.amount-words strong{font-size:9pt;}
+.footer-section{width:100%;margin:4pt 0;padding:0 8pt;}
 .footer-section table{width:100%;border-collapse:collapse;}
-.footer-section td{vertical-align:top;padding:4pt 6pt;width:50%;}
-.bank-details{font-size:8pt;line-height:1.7;color:#333;}
-.bank-details strong{font-weight:600;font-size:8.5pt;}
-.terms{font-size:8pt;line-height:1.6;color:#333;}
-.terms strong{font-weight:600;font-size:8.5pt;}
+.footer-section td{vertical-align:top;padding:3pt 6pt;width:50%;border:0;}
+.disclaimer{border-top:1px solid #000;padding:4pt 8pt;font-size:7.5pt;text-align:justify;line-height:1.4;}
+.disclaimer strong{font-size:8pt;}
+.bank-details{font-size:8pt;line-height:1.6;}
+.bank-details strong{font-size:8.5pt;}
+.terms{font-size:8pt;line-height:1.5;}
+.terms strong{font-size:8.5pt;}
 .terms ul{margin:2pt 0 0 14pt;padding:0;}
 .terms li{margin-bottom:1pt;}
-.disclaimer{border-top:1pt solid #ddd;padding:6pt 0;margin-top:6pt;font-size:7pt;text-align:justify;line-height:1.5;color:#555;}
-.disclaimer strong{font-weight:600;color:#333;}
-.signature-section{display:flex;margin:14pt 0 4pt 0;padding-top:8pt;border-top:1pt solid #ddd;}
+.signature-section{display:flex;margin:8pt 8pt 4pt 8pt;font-size:8.5pt;}
 .sign-left{width:50%;}
-.sign-right{width:50%;text-align:right;font-weight:600;}
-hr{border:none;border-top:1pt solid #ccc;margin:4pt 0;}
-@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+.sign-right{width:50%;text-align:right;font-weight:bold;}
+hr{border:none;border-top:1px solid #000;margin:2pt 0;}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}.invoice{page-break-after:avoid;}}
 </style></head><body>
-<div class="invoice"><div class="invoice-inner">
+<div class="invoice">
 <div class="header">
 <div class="gstin-top">GSTIN : 24AAJFE2064P1Z6</div>
 <div class="company-name">ELHAM MULTIPLAST LLP</div>
 <div class="company-address">PLOT NO. 1429-1430, NR. FORTUNE PETROL PUMP,<br>OPP. KHIJADIYA TALAV, ILOL, HIMATNAGAR,<br>SABARKANTHA, GUJARAT - 383220</div>
 <div class="company-email">elhammultiplast@gmail.com</div>
 <div class="invoice-title">PROFORMA INVOICE</div>
-<div class="invoice-divider"></div>
 </div>
 <div class="party-section">
 <div class="party-left">
-<div class="party-label">Bill To</div>
+<div class="party-label">Party Details :</div>
 <div class="party-name">${inv.customerName}</div>
 <div class="party-address">${partyAddr.length > 0 ? partyAddr.join("<br>") + "<br>" : ""}${cityStatePin ? cityStatePin + "<br>" : ""}${inv.address ? inv.address + "<br>" : ""}</div>
 ${inv.customerType === "Unregistered"
-  ? `<div class="party-meta">ID Proof : ${inv.idProofType || ""} - ${inv.idProofNumber || ""}</div>`
-  : `<div class="party-meta">GSTIN / UIN : ${inv.gstNumber || ""}</div>`
+  ? `<div style="font-size:8.5pt;margin-top:2pt;">ID Proof : ${inv.idProofType || ""} - ${inv.idProofNumber || ""}</div>`
+  : `<div style="font-size:8.5pt;margin-top:2pt;">GSTIN / UIN : ${inv.gstNumber || ""}</div>`
 }
 </div>
 <div class="party-right">
-<div class="party-label">Invoice Details</div>
-<div class="party-meta"><strong>Invoice No.</strong><br>${inv.invoiceNumber}</div>
-<div class="party-meta" style="margin-top:6pt;"><strong>Date</strong><br>${dateStr}</div>
+<div style="font-weight:bold;font-size:9pt;">Order No : ${inv.invoiceNumber}</div>
+<div style="margin-top:4pt;font-size:8.5pt;">Date : ${dateStr}</div>
 </div>
 </div>
 <div class="order-text">We are pleased to receive the order for the following items</div>
 <table class="items">
-<thead><tr><th style="width:5%">Sr.</th><th style="width:34%">Description of Goods</th><th style="width:10%">HSN Code</th><th style="width:7%">Qty</th><th style="width:7%">Unit</th><th style="width:11%">Rate (₹)</th><th style="width:13%">Amount (₹)</th></tr></thead>
-<tbody>${(inv.items || []).map((item: any, i: number) => `<tr><td class="cell-center">${i+1}</td><td>${item.productName}${item.bottleType ? ` (${item.bottleType})` : ""}${item.capacity ? ` ${item.capacity}` : ""}${item.weight ? ` ${item.weight}` : ""}</td><td class="cell-center">${item.hsnCode || "-"}</td><td class="cell-center">${item.quantity}</td><td class="cell-center">${item.unit}</td><td class="cell-right">${Number(item.rate).toFixed(2)}</td><td class="cell-right">${Number(item.amount).toFixed(2)}</td></tr>`).join("\n")}</tbody>
+<thead><tr><th style="width:5%">S.N.</th><th style="width:32%">Description of Goods</th><th style="width:11%">HSN Code</th><th style="width:8%">Qty</th><th style="width:8%">Unit</th><th style="width:10%">Price</th><th style="width:12%">Amount</th></tr></thead>
+<tbody>${(inv.items || []).map((item: any, i: number) => `<tr><td style="text-align:center">${i+1}</td><td>${item.productName}${item.bottleType ? ` (${item.bottleType})` : ""}${item.capacity ? ` ${item.capacity}` : ""}${item.weight ? ` ${item.weight}` : ""}</td><td style="text-align:center">${item.hsnCode || "-"}</td><td style="text-align:center">${item.quantity}</td><td style="text-align:center">${item.unit}</td><td style="text-align:right">${Number(item.rate).toFixed(2)}</td><td style="text-align:right">${Number(item.amount).toFixed(2)}</td></tr>`).join("\n")}</tbody>
 </table>
 <table class="summary-table">
-${freight > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt;">Freight Charges</td><td style="text-align:right;padding:3pt 6pt;">${freight.toFixed(2)}</td></tr>` : ""}
-${cgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt;">CGST @ ${cgstPct}%</td><td style="text-align:right;padding:3pt 6pt;">${cgstAmt.toFixed(2)}</td></tr>` : ""}
-${sgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt;">SGST @ ${sgstPct}%</td><td style="text-align:right;padding:3pt 6pt;">${sgstAmt.toFixed(2)}</td></tr>` : ""}
-${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt;">IGST @ ${igstPct}%</td><td style="text-align:right;padding:3pt 6pt;">${igstAmt.toFixed(2)}</td></tr>` : ""}
-<tr class="total-row"><td colspan="5" style="text-align:right;padding:4pt 6pt;">Grand Total</td><td style="text-align:right;padding:4pt 6pt;">${grandTotal.toFixed(2)}</td></tr>
+${freight > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">Freight Charges</td><td style="text-align:right;padding:3pt 6pt">${freight.toFixed(2)}</td></tr>` : ""}
+${cgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">CGST @ ${cgstPct}%</td><td style="text-align:right;padding:3pt 6pt">${cgstAmt.toFixed(2)}</td></tr>` : ""}
+${sgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">SGST @ ${sgstPct}%</td><td style="text-align:right;padding:3pt 6pt">${sgstAmt.toFixed(2)}</td></tr>` : ""}
+${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IGST @ ${igstPct}%</td><td style="text-align:right;padding:3pt 6pt">${igstAmt.toFixed(2)}</td></tr>` : ""}
+<tr class="total-row"><td colspan="5" style="text-align:right;padding:3pt 6pt">Grand Total</td><td style="text-align:right;padding:3pt 6pt">${grandTotal.toFixed(2)}</td></tr>
 </table>
 <table class="tax-summary">
-<thead><tr><th>Tax Rate</th><th>Taxable Amount</th><th>CGST</th><th>SGST</th><th>Total Tax</th></tr></thead>
-<tbody>${isInterstate ? `<tr><td>IGST @ ${igstPct}%</td><td>₹${baseAmt.toFixed(2)}</td><td>0.00</td><td>0.00</td><td>₹${igstAmt.toFixed(2)}</td></tr>` : `<tr><td>CGST @ ${cgstPct}% + SGST @ ${sgstPct}%</td><td>₹${baseAmt.toFixed(2)}</td><td>₹${cgstAmt.toFixed(2)}</td><td>₹${sgstAmt.toFixed(2)}</td><td>₹${totalTax.toFixed(2)}</td></tr>`}</tbody>
+<thead><tr><th>Tax Rate</th><th>Taxable Amount</th><th>CGST Amount</th><th>SGST Amount</th><th>Total Tax</th></tr></thead>
+<tbody>${isInterstate ? `<tr><td>IGST @ ${igstPct}%</td><td>${baseAmt.toFixed(2)}</td><td>0.00</td><td>0.00</td><td>${igstAmt.toFixed(2)}</td></tr>` : `<tr><td>CGST @ ${cgstPct}% + SGST @ ${sgstPct}%</td><td>${baseAmt.toFixed(2)}</td><td>${cgstAmt.toFixed(2)}</td><td>${sgstAmt.toFixed(2)}</td><td>${totalTax.toFixed(2)}</td></tr>`}</tbody>
 </table>
 <div class="amount-words"><strong>Amount in Words :</strong> ${inv.amountInWords || ""}</div>
 <div class="footer-section"><table><tr>
-<td><div class="bank-details"><strong>Bank Details</strong><br>ICICI BANK, HIMATNAGAR<br>A/C NO: 045205014806<br>IFSC: ICIC0000452</div></td>
-<td><div class="terms"><strong>Terms &amp; Conditions</strong><ul><li>Freight Charges Additional</li><li>100% Advance Payment</li></ul></div></td>
+<td style="width:50%;border:0;padding:3pt 6pt;"><div class="bank-details"><strong>Bank Details</strong><br>ICICI BANK, HIMATNAGAR<br>A/C NO: 045205014806<br>IFSC: ICIC0000452</div></td>
+<td style="width:50%;border:0;padding:3pt 6pt;"><div class="terms"><strong>Terms &amp; Conditions</strong><ul><li>Freight Charges Additional</li><li>100% Advance Payment</li></ul></div></td>
 </tr></table></div>
 <div class="disclaimer"><strong>DISCLAIMER : </strong>Products supplied are generic industrial packaging developed independently by Elham Multiplast LLP for functional applications. Any branding, labeling, or market usage by the buyer shall be at the buyer's sole responsibility.</div>
-<div class="signature-section"><div class="sign-left"><div style="font-size:7.5pt;color:#666;">Receiver's Signature</div><div style="margin-top:16pt;border-top:1pt solid #999;width:130px;font-size:7pt;text-align:center;padding-top:2pt;color:#666;">Receiver Signature</div></div><div class="sign-right"><div style="margin-bottom:28pt;color:#1a1a1a;">For ELHAM MULTIPLAST LLP</div><div style="border-top:1pt solid #999;width:130px;margin-left:auto;padding-top:2pt;font-size:7pt;color:#666;">Authorised Signatory</div></div></div>
-</div></div></body></html>`;
+<div class="signature-section"><div class="sign-left">Receiver's Signature</div><div class="sign-right">For ELHAM MULTIPLAST LLP</div></div>
+</div></body></html>`;
   };
 
   if (loading && mode === "list") return <div className="p-6">Loading...</div>;
@@ -978,7 +1037,7 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt;">I
                 <div className="flex gap-2">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                    <Input value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} placeholder="Enter GSTIN (e.g. 24AAJFE2064P1Z6)" className="pl-9" onKeyDown={(e) => { if (e.key === "Enter") handleGstFetch(); }} />
+                    <Input value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} placeholder="Enter GSTIN (e.g. 24AAJFE2064P1Z6)" className="pl-9" onBlur={handleGstBlur} onKeyDown={(e) => { if (e.key === "Enter") handleGstFetch(); }} />
                   </div>
                   <Button type="button" variant="secondary" size="sm" onClick={handleGstFetch} disabled={gstLoading || !gstNumber.trim()} className="shrink-0 gap-1.5">
                     {gstLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -1089,9 +1148,19 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt;">I
                   {items.map((item, idx) => (
                     <TableRow key={idx}>
                       <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
-                      <TableCell>
-                        <Input value={item.productName} onChange={(e) => updateItem(idx, "productName", e.target.value)} placeholder="Product name" className="h-8 min-w-28" />
-                      </TableCell>
+                        <TableCell className="relative">
+                          <Input value={item.productName} onChange={(e) => { updateItem(idx, "productName", e.target.value); setProductSearchQuery(e.target.value); setActiveProductIdx(idx); }} placeholder="Type product name" className="h-8 min-w-28" onFocus={() => setActiveProductIdx(idx)} onBlur={() => setTimeout(() => setShowProductSearch(false), 200)} />
+                          {showProductSearch && activeProductIdx === idx && productSearchResults.length > 0 && (
+                            <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-md shadow-lg mt-1 max-h-48 overflow-y-auto">
+                              {productSearchResults.map((p: any) => (
+                                <div key={p.id} className="px-3 py-2 hover:bg-muted cursor-pointer text-sm" onMouseDown={() => selectProduct(idx, p)}>
+                                  <div className="font-medium">{p.name}</div>
+                                  <div className="text-xs text-muted-foreground">{p.productCode}{p.pricePerUnit ? ` · ₹${Number(p.pricePerUnit).toFixed(2)}` : ""}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </TableCell>
                       <TableCell>
                         <Input value={item.hsnCode} onChange={(e) => updateItem(idx, "hsnCode", e.target.value)} placeholder="HSN" className="h-8 w-20" />
                       </TableCell>

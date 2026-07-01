@@ -1,12 +1,34 @@
 import { Router, type IRouter } from "express";
 import { db, productsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, like, or, sql } from "drizzle-orm";
 import { CreateProductBody, UpdateProductBody, GetProductParams, UpdateProductParams, DeleteProductParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 
 const router: IRouter = Router();
 
 const DUPLICATE_MSG = "Product Code already exists. Please use a different Product Code.";
+
+router.get("/products/search", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const q = (req.query.q as string || "").trim();
+    if (!q || q.length < 1) { res.json([]); return; }
+    const products = await db
+      .select()
+      .from(productsTable)
+      .where(or(
+        sql`LOWER(${productsTable.name}) LIKE ${`%${q.toLowerCase()}%`}`,
+        sql`LOWER(${productsTable.productCode}) LIKE ${`%${q.toLowerCase()}%`}`,
+      ))
+      .orderBy(productsTable.name)
+      .limit(20);
+    res.json(products);
+  } catch (err) {
+    req.log.error({ err }, "Search products error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 router.get("/products", async (req, res) => {
   try {
