@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import {
   Plus, Download, Printer, Share2, Mail, Eye, FileText, Save, ArrowLeft, Trash2, Search,
   ChevronLeft, ChevronRight, Send, Loader2, RefreshCw,
@@ -139,6 +140,7 @@ export default function ProformaInvoicesPage() {
   const [activeProductIdx, setActiveProductIdx] = useState(-1);
 
   const [statusFilter, setStatusFilter] = useState("all");
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
   const [statusDialog, setStatusDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
   const [newStatus, setNewStatus] = useState("");
   const [statusNotes, setStatusNotes] = useState("");
@@ -798,16 +800,19 @@ export default function ProformaInvoicesPage() {
     }
   };
 
-  const handleDelete = async (invoice: any) => {
-    if (!window.confirm(`Delete invoice ${invoice.invoiceNumber}? This action cannot be undone.`)) return;
+  const handleDelete = async () => {
+    const invoice = deleteDialog.invoice;
+    if (!invoice) return;
     try {
       const res = await fetch(`/api/proforma-invoices/${invoice.id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        toast({ title: "Deleted", description: "Invoice deleted successfully" });
+        toast({ title: "Deleted", description: "Proforma Invoice deleted successfully." });
+        setDeleteDialog({ open: false, invoice: null });
         setMode("list");
+        setShowPdfPreview(false);
         fetchInvoices();
       } else {
         const err = await res.json().catch(() => ({}));
@@ -816,6 +821,10 @@ export default function ProformaInvoicesPage() {
     } catch (err) {
       toast({ title: "Error", description: "Failed to delete invoice", variant: "destructive" });
     }
+  };
+
+  const openDeleteDialog = (invoice: any) => {
+    setDeleteDialog({ open: true, invoice });
   };
 
   const handleSendEmail = (invoice: any) => {
@@ -970,6 +979,28 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
 <div class="signature-section"><div class="sign-left">Receiver's Signature</div><div class="sign-right">For ELHAM MULTIPLAST LLP</div></div>
 </div></body></html>`;
   };
+
+  const deleteDialogEl = (
+    <AlertDialog open={deleteDialog.open} onOpenChange={(o) => setDeleteDialog({ ...deleteDialog, open: o })}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete Proforma Invoice?</AlertDialogTitle>
+          <AlertDialogDescription className="space-y-2">
+            <div className="text-sm text-muted-foreground">
+              <div><strong>Invoice No:</strong> {deleteDialog.invoice?.invoiceNumber}</div>
+              <div><strong>Customer Name:</strong> {deleteDialog.invoice?.customerName}</div>
+              <div><strong>Date:</strong> {deleteDialog.invoice?.createdAt ? new Date(deleteDialog.invoice.createdAt).toLocaleDateString("en-IN") : ""}</div>
+            </div>
+            <p className="pt-2">Are you sure you want to delete this Proforma Invoice?</p>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => setDeleteDialog({ open: false, invoice: null })}>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 
   if (loading && mode === "list") return <div className="p-6">Loading...</div>;
 
@@ -1283,6 +1314,7 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
           </Button>
         </div>
       </div>
+      {deleteDialogEl}
     );
   }
 
@@ -1446,11 +1478,9 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
           <Button onClick={() => handleDuplicate(inv)} variant="outline">
             <FileText className="h-4 w-4 mr-1" /> Duplicate
           </Button>
-          {me?.role === "admin" && (
-            <Button onClick={() => handleDelete(inv)} variant="outline" className="text-red-600 border-red-200">
-              <Trash2 className="h-4 w-4 mr-1" /> Delete
-            </Button>
-          )}
+          <Button onClick={() => openDeleteDialog(inv)} variant="outline" className="text-red-600 border-red-200">
+            <Trash2 className="h-4 w-4 mr-1" /> Delete
+          </Button>
         </div>
 
         <Dialog open={showPdfPreview} onOpenChange={setShowPdfPreview}>
@@ -1468,12 +1498,17 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
               }}>
                 <Printer className="h-4 w-4 mr-1" /> Print
               </Button>
-              <Button onClick={() => handleDownloadPdf(inv)}>
+              <Button variant="outline" onClick={() => handleDownloadPdf(inv)}>
                 <Download className="h-4 w-4 mr-1" /> Download PDF
+              </Button>
+              <Button variant="outline" className="text-red-600 border-red-200" onClick={() => { setShowPdfPreview(false); openDeleteDialog(inv); }}>
+                <Trash2 className="h-4 w-4 mr-1" /> Delete
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {deleteDialogEl}
 
         <Dialog open={statusDialog.open} onOpenChange={(o) => setStatusDialog({ ...statusDialog, open: o })}>
           <DialogContent className="sm:max-w-sm">
@@ -1578,6 +1613,9 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleShareWhatsApp(inv)} title="Share WhatsApp">
                           <Share2 className="h-4 w-4" />
                         </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => openDeleteDialog(inv)} title="Delete">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -1602,5 +1640,6 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
         </div>
       )}
     </div>
+    {deleteDialogEl}
   );
 }

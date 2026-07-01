@@ -46,6 +46,8 @@ export const proformaInvoicesTable = pgTable("proforma_invoices", {
   status: text("status").notNull().default("Draft"),
   notes: text("notes"),
   isDeleted: boolean("is_deleted").default(false).notNull(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  deletedBy: integer("deleted_by").references(() => usersTable.id, { onDelete: "set null" }),
   createdBy: integer("created_by").notNull().references(() => usersTable.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

@@ -1002,15 +1002,29 @@ router.delete("/proforma-invoices/:id", async (req, res) => {
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-    if (user.role !== "admin") {
-      res.status(403).json({ error: "Only admins can delete invoices" });
-      return;
-    }
+    const [invoice] = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(eq(proformaInvoicesTable.id, id));
 
+    if (!invoice) { res.status(404).json({ error: "Not found" }); return; }
+
+    // Soft-delete: mark as deleted with timestamp and user
     await db
       .update(proformaInvoicesTable)
-      .set({ isDeleted: true })
+      .set({ isDeleted: true, deletedAt: new Date(), deletedBy: user.id })
       .where(eq(proformaInvoicesTable.id, id));
+
+    // Add activity log entry
+    const userName = user.name || `User #${user.id}`;
+    const nowStr = new Date().toLocaleString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    await db.insert(proformaInvoiceHistoryTable).values({
+      invoiceId: id,
+      statusFrom: invoice.status,
+      statusTo: "Deleted",
+      changedBy: user.id,
+      notes: `Proforma Invoice ${invoice.invoiceNumber} deleted by ${userName} on ${nowStr}`,
+    });
 
     res.status(200).json({ success: true });
   } catch (err) {
