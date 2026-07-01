@@ -23,6 +23,7 @@ export interface GstDetails {
   tradeName: string;
   gstin: string;
   address: string;
+  city: string;
   state: string;
   stateCode: string;
   pincode: string;
@@ -35,6 +36,31 @@ export interface GstProvider {
 
 const cache = new Map<string, { data: GstDetails; timestamp: number }>();
 const CACHE_TTL = 30 * 60 * 1000;
+
+const CITY_FIELDS = ["city", "district", "dst", "location", "loc", "locality", "ctj", "cityName", "city_name", "districtName", "district_name"];
+
+const STATE_CITY_MAP: Record<string, string> = {
+  "24": "Ahmedabad", "27": "Mumbai", "29": "Bengaluru",
+  "33": "Chennai", "36": "Hyderabad", "09": "Lucknow",
+  "07": "Delhi", "06": "Gurugram", "08": "Jaipur",
+};
+
+function extractCity(data: any, fallbackAddress: string): string {
+  for (const key of CITY_FIELDS) {
+    const val = data[key];
+    if (val && typeof val === "string" && val.trim().length > 0) {
+      return val.trim();
+    }
+  }
+  const segments = fallbackAddress.split(",").map((s) => s.trim()).filter(Boolean);
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const s = segments[i];
+    if (/^[A-Za-z\s]{2,}$/.test(s) && s.length < 40) {
+      return s;
+    }
+  }
+  return "";
+}
 
 class DefaultGstProvider implements GstProvider {
   async lookup(gstin: string): Promise<GstDetails> {
@@ -75,11 +101,14 @@ class DefaultGstProvider implements GstProvider {
       throw new Error("Invalid response from GST lookup service.");
     }
 
+    const resolvedAddress = data.address || data.partyAddress || data.businessAddress || data.addr || "";
+
     const details: GstDetails = {
       legalName: data.legalName || data.tradeNam || data.businessName || data.legal_business_name || "",
       tradeName: data.tradeName || data.trade_nam || data.trade_name || data.business_name || "",
       gstin: data.gstin || data.gstNo || data.gst_no || gstin,
-      address: data.address || data.partyAddress || data.businessAddress || data.addr || "",
+      address: resolvedAddress,
+      city: extractCity(data, resolvedAddress),
       state: data.state || data.partyState || data.stateName || data.state_name || "",
       stateCode: data.stateCode || data.state_code || data.partyStateCode || gstin.substring(0, 2),
       pincode: data.pincode || data.pinCode || data.pin_code || "",
@@ -91,6 +120,24 @@ class DefaultGstProvider implements GstProvider {
   }
 }
 
+const MOCK_CITIES: Record<string, string> = {
+  "24": "Ahmedabad", "27": "Mumbai", "29": "Bengaluru",
+  "33": "Chennai", "36": "Hyderabad", "09": "Lucknow",
+  "07": "Delhi", "06": "Gurugram", "08": "Jaipur",
+};
+
+const MOCK_STATES: Record<string, string> = {
+  "24": "Gujarat", "27": "Maharashtra", "29": "Karnataka",
+  "33": "Tamil Nadu", "36": "Telangana", "09": "Uttar Pradesh",
+  "07": "Delhi", "06": "Haryana", "08": "Rajasthan",
+};
+
+const MOCK_PINCODES: Record<string, string> = {
+  "24": "380001", "27": "400001", "29": "560001",
+  "33": "600001", "36": "500001", "09": "226001",
+  "07": "110001", "06": "122001", "08": "302001",
+};
+
 class MockGstProvider implements GstProvider {
   async lookup(gstin: string): Promise<GstDetails> {
     const cached = cache.get(gstin);
@@ -101,20 +148,19 @@ class MockGstProvider implements GstProvider {
     await new Promise((r) => setTimeout(r, 800));
 
     const stateCode = gstin.substring(0, 2);
-    const stateNames: Record<string, string> = {
-      "24": "Gujarat", "27": "Maharashtra", "29": "Karnataka",
-      "33": "Tamil Nadu", "36": "Telangana", "09": "Uttar Pradesh",
-      "07": "Delhi", "06": "Haryana", "08": "Rajasthan",
-    };
+    const city = MOCK_CITIES[stateCode] || "Ahmedabad";
+    const state = MOCK_STATES[stateCode] || "Gujarat";
+    const pincode = MOCK_PINCODES[stateCode] || "380001";
 
     const details: GstDetails = {
       legalName: "Sample Business Pvt. Ltd.",
       tradeName: "Sample Business",
       gstin,
-      address: "123, Business Avenue, Industrial Area, Near Main Road",
-      state: stateNames[stateCode] || "Gujarat",
+      address: `123, Business Avenue, Industrial Area, ${city}, ${state} ${pincode}`,
+      city,
+      state,
       stateCode,
-      pincode: "380001",
+      pincode,
       status: "Active",
     };
 

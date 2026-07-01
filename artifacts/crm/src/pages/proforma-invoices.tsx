@@ -296,6 +296,7 @@ export default function ProformaInvoicesPage() {
       setAddressLine2(lines.length > 2 ? lines.slice(1, -1).join(", ") : lines.length === 2 ? lines[1] : "");
       setAddressLine3(lines.length > 2 ? lines[lines.length - 1] || "" : "");
     }
+    if (data.city) setCity(data.city);
     if (data.state) setState(data.state);
     if (data.pincode) setPincode(data.pincode);
     if (data.gstin) setGstNumber(data.gstin);
