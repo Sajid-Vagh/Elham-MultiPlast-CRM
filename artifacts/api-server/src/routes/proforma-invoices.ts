@@ -3,6 +3,7 @@ import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHi
 import { eq, desc, and, SQL, sql, like, gte, lte, inArray, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { amountToWords } from "../lib/amount-to-words";
+import { getGstProvider, clearGstCache } from "../lib/gst-provider";
 import * as XLSX from "xlsx";
 
 const router: IRouter = Router();
@@ -509,6 +510,53 @@ router.post("/proforma-invoices", async (req, res) => {
     res.status(201).json(await enrichInvoice(invoice!));
   } catch (err) {
     req.log.error({ err }, "Create proforma invoice error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+
+router.post("/proforma-invoices/gst-lookup", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const { gstNumber } = req.body;
+    if (!gstNumber || typeof gstNumber !== "string") {
+      res.status(400).json({ error: "GST number is required" });
+      return;
+    }
+
+    const gstin = gstNumber.toUpperCase().trim();
+    if (!GSTIN_REGEX.test(gstin)) {
+      res.status(400).json({ error: "Invalid GSTIN format. Must be 15 alphanumeric characters (e.g. 24AAJFE2064P1Z6)." });
+      return;
+    }
+
+    const provider = getGstProvider();
+    const details = await provider.lookup(gstin);
+    res.json(details);
+  } catch (err: any) {
+    if (err.message?.includes("not configured")) {
+      res.status(503).json({ error: err.message });
+    } else if (err.message?.includes("not found")) {
+      res.status(404).json({ error: err.message });
+    } else {
+      req.log.error({ err }, "GST lookup error");
+      res.status(502).json({ error: err.message || "GST lookup failed" });
+    }
+  }
+});
+
+router.post("/proforma-invoices/gst-clear-cache", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+    clearGstCache();
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "GST cache clear error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

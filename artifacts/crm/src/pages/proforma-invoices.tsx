@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   Plus, Download, Printer, Share2, Mail, Eye, FileText, Save, ArrowLeft, Trash2, Search,
-  ChevronLeft, ChevronRight, Send,
+  ChevronLeft, ChevronRight, Send, Loader2, RefreshCw,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -76,6 +76,8 @@ interface InvoiceItem {
   amount: number;
 }
 
+const gstCache = new Map<string, any>();
+
 export default function ProformaInvoicesPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -122,6 +124,7 @@ export default function ProformaInvoicesPage() {
   const [contactSearchQuery, setContactSearchQuery] = useState("");
   const [contactSearchResults, setContactSearchResults] = useState<any[]>([]);
   const [showContactSearch, setShowContactSearch] = useState(false);
+  const [gstLoading, setGstLoading] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState("all");
   const [statusDialog, setStatusDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
@@ -282,6 +285,57 @@ export default function ProformaInvoicesPage() {
     setAddress(contact.address || "");
     setShowContactSearch(false);
     setContactSearchQuery("");
+  };
+
+  const applyGstDetails = (data: any) => {
+    if (data.legalName) setCustomerName(data.legalName);
+    if (!data.legalName && data.tradeName) setCustomerName(data.tradeName);
+    if (data.address) {
+      const lines = data.address.split(",").map((l: string) => l.trim()).filter(Boolean);
+      setAddressLine1(lines[0] || "");
+      setAddressLine2(lines.length > 2 ? lines.slice(1, -1).join(", ") : lines.length === 2 ? lines[1] : "");
+      setAddressLine3(lines.length > 2 ? lines[lines.length - 1] || "" : "");
+    }
+    if (data.state) setState(data.state);
+    if (data.pincode) setPincode(data.pincode);
+    if (data.gstin) setGstNumber(data.gstin);
+  };
+
+  const handleGstFetch = async () => {
+    const gstin = gstNumber.toUpperCase().trim();
+    const gstinRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+    if (!gstinRegex.test(gstin)) {
+      toast({ title: "Invalid GSTIN", description: "Please enter a valid 15-character GST number (e.g. 24AAJFE2064P1Z6)", variant: "destructive" });
+      return;
+    }
+
+    const cached = gstCache.get(gstin);
+    if (cached) {
+      applyGstDetails(cached);
+      toast({ title: "GST Details Found", description: `Loaded cached details for ${cached.legalName || cached.tradeName || gstin}` });
+      return;
+    }
+
+    setGstLoading(true);
+    try {
+      const res = await fetch("/api/proforma-invoices/gst-lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ gstNumber: gstin }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "GST lookup failed");
+      }
+      const data = await res.json();
+      gstCache.set(gstin, data);
+      applyGstDetails(data);
+      toast({ title: "GST Details Fetched", description: `Loaded details for ${data.legalName || data.tradeName || gstin}` });
+    } catch (err: any) {
+      toast({ title: "GST Lookup Failed", description: err.message || "Unable to fetch GST details", variant: "destructive" });
+    } finally {
+      setGstLoading(false);
+    }
   };
 
   const handleSave = async (status: string) => {
@@ -746,9 +800,18 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
               </Select>
             </div>
             {customerType === "GST" ? (
-              <div>
+              <div className="sm:col-span-2">
                 <Label>GSTIN / UIN</Label>
-                <Input value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} placeholder="GSTIN / UIN" />
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                    <Input value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} placeholder="Enter GSTIN (e.g. 24AAJFE2064P1Z6)" className="pl-9" onKeyDown={(e) => { if (e.key === "Enter") handleGstFetch(); }} />
+                  </div>
+                  <Button type="button" variant="secondary" size="sm" onClick={handleGstFetch} disabled={gstLoading || !gstNumber.trim()} className="shrink-0 gap-1.5">
+                    {gstLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    {gstLoading ? "Fetching..." : "Fetch Details"}
+                  </Button>
+                </div>
               </div>
             ) : (
               <>
