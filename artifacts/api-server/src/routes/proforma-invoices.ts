@@ -350,23 +350,24 @@ router.post("/proforma-invoices/gst-lookup", async (req, res) => {
   const cleanGstin = gstin.trim().toUpperCase();
 
   // ── Helper: normalize any source into frontend format ──
+  const pradr = (src: any) => src?.pradr?.addr || src?.pradr || {};
   const normalize = (src: any): any => ({
     success: true,
-    legalName: src.legalName || src.legal_name || src.companyName || src.businessName || "",
-    tradeName: src.tradeName || src.trade_name || "",
-    address: src.address || "",
-    addressLine1: src.addressLine1 || src.address_line1 || src.addr1 || src.building_name || "",
-    addressLine2: src.addressLine2 || src.address_line2 || src.street || src.locality || "",
-    addressLine3: src.addressLine3 || src.address_line3 || src.landmark || "",
-    city: src.city || src.cityName || src.city_name || "",
-    district: src.district || src.districtName || src.district_name || "",
-    state: (src.state || src.stateName || "").replace(/^\d+\s*-\s*/, ""),
-    stateCode: src.stateCode || src.state_code || "",
-    pincode: src.pincode || src.pinCode || src.pinc || "",
+    legalName: src.legalName || src.legal_name || src.lgnm || src.companyName || src.businessName || "",
+    tradeName: src.tradeName || src.trade_name || src.tradeNam || "",
+    address: src.address || [pradr(src).bno, pradr(src).bnm, pradr(src).flno, pradr(src).st, pradr(src).loc].filter(Boolean).join(", ") || "",
+    addressLine1: src.addressLine1 || src.address_line1 || src.addr1 || pradr(src).bno || pradr(src).bnm || "",
+    addressLine2: src.addressLine2 || src.address_line2 || src.street || src.locality || pradr(src).st || pradr(src).loc || "",
+    addressLine3: src.addressLine3 || src.address_line3 || src.landmark || pradr(src).flno || "",
+    city: src.city || src.cityName || src.city_name || pradr(src).city || "",
+    district: src.district || src.districtName || src.district_name || pradr(src).dst || "",
+    state: (src.state || src.stateName || src.parts?.stateName || pradr(src).stcd || "").replace(/^\d+\s*-\s*/, ""),
+    stateCode: src.stateCode || src.state_code || src.parts?.stateCode || "",
+    pincode: src.pincode || src.pinCode || src.pinc || pradr(src).pncd || "",
     gstin: src.gstin || cleanGstin,
-    status: src.status || src.company_status || "Active",
-    businessConstitution: src.businessConstitution || src.constitution || src.business_constitution || src.gstType || src.gst_type || "",
-    registrationStatus: src.registrationStatus || src.registration_status || src.status || "Active",
+    status: src.status || src.sts || src.company_status || "Active",
+    businessConstitution: src.businessConstitution || src.constitution || src.ctb || src.business_constitution || src.gstType || src.gst_type || "",
+    registrationStatus: src.registrationStatus || src.sts || src.registration_status || src.status || "Active",
   });
 
   // ── Tier 1: RapidAPI India GSTIN Validator ──
@@ -387,9 +388,15 @@ router.post("/proforma-invoices/gst-lookup", async (req, res) => {
       // Handle common wrapper patterns: { data: {...} }, { result: {...} }, or flat
       const raData = raBody?.data || raBody?.result || raBody;
       if (raBody?.success !== false && raData) {
-        return res.json(normalize(raData));
+        const mapped = normalize(raData);
+        // Only accept if the API actually returned business details
+        if (mapped.legalName) {
+          return res.json(mapped);
+        }
+        console.log("[RapidAPI GST] response lacks business details (no legalName), falling through", raBody);
+      } else {
+        console.log("[RapidAPI GST] unexpected response shape — falling through", raBody);
       }
-      console.log("[RapidAPI GST] unexpected response shape — falling through", raBody);
     } catch (raErr: any) {
       const status = raErr?.response?.status;
       const body = raErr?.response?.data;
