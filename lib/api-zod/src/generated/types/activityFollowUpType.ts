@@ -9,11 +9,4 @@
 /**
  * @nullable
  */
-export type ActivityFollowUpType = typeof ActivityFollowUpType[keyof typeof ActivityFollowUpType] | null;
-
-
-export const ActivityFollowUpType = {
-  Call: 'Call',
-  WhatsApp: 'WhatsApp',
-  Email: 'Email',
-} as const;
+export type ActivityFollowUpType = string | null;

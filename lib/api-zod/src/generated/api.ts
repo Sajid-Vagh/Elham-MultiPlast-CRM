@@ -853,8 +853,11 @@ export const ListActivitiesResponseItem = zod.object({
   "notes": zod.string().nullish(),
   "followUpDate": zod.string().nullish(),
   "followUpTime": zod.string().nullish(),
-  "followUpType": zod.union([zod.literal('Call'),zod.literal('WhatsApp'),zod.literal('Email'),zod.literal(null)]).nullish(),
+  "followUpType": zod.string().nullish(),
   "callStatus": zod.string().nullish(),
+  "priority": zod.string().nullish(),
+  "reminder": zod.string().nullish(),
+  "assignedTo": zod.number().nullish(),
   "createdBy": zod.number().nullish(),
   "user": zod.object({
   "id": zod.number(),
@@ -884,7 +887,10 @@ export const CreateActivityBody = zod.object({
   "followUpDate": zod.string().nullish(),
   "followUpTime": zod.string().nullish(),
   "followUpType": zod.string().nullish(),
-  "callStatus": zod.string().nullish()
+  "callStatus": zod.string().nullish(),
+  "priority": zod.enum(['High', 'Medium', 'Low']).nullish(),
+  "reminder": zod.string().nullish(),
+  "assignedTo": zod.number().nullish()
 })
 
 export const CreateActivityResponse = zod.object({
@@ -895,8 +901,11 @@ export const CreateActivityResponse = zod.object({
   "notes": zod.string().nullish(),
   "followUpDate": zod.string().nullish(),
   "followUpTime": zod.string().nullish(),
-  "followUpType": zod.union([zod.literal('Call'),zod.literal('WhatsApp'),zod.literal('Email'),zod.literal(null)]).nullish(),
+  "followUpType": zod.string().nullish(),
   "callStatus": zod.string().nullish(),
+  "priority": zod.string().nullish(),
+  "reminder": zod.string().nullish(),
+  "assignedTo": zod.number().nullish(),
   "createdBy": zod.number().nullish(),
   "user": zod.object({
   "id": zod.number(),
@@ -925,6 +934,9 @@ export const UpdateActivityBody = zod.object({
   "followUpTime": zod.string().nullish(),
   "followUpType": zod.string().nullish(),
   "callStatus": zod.string().nullish(),
+  "priority": zod.enum(['High', 'Medium', 'Low']).nullish(),
+  "reminder": zod.string().nullish(),
+  "assignedTo": zod.number().nullish(),
   "contactId": zod.number().nullish()
 })
 
@@ -936,8 +948,11 @@ export const UpdateActivityResponse = zod.object({
   "notes": zod.string().nullish(),
   "followUpDate": zod.string().nullish(),
   "followUpTime": zod.string().nullish(),
-  "followUpType": zod.union([zod.literal('Call'),zod.literal('WhatsApp'),zod.literal('Email'),zod.literal(null)]).nullish(),
+  "followUpType": zod.string().nullish(),
   "callStatus": zod.string().nullish(),
+  "priority": zod.string().nullish(),
+  "reminder": zod.string().nullish(),
+  "assignedTo": zod.number().nullish(),
   "createdBy": zod.number().nullish(),
   "user": zod.object({
   "id": zod.number(),

@@ -22,9 +22,15 @@ export interface Activity {
   /** @nullable */
   followUpTime?: string | null;
   /** @nullable */
-  followUpType?: ActivityFollowUpType;
+  followUpType?: string | null;
   /** @nullable */
   callStatus?: string | null;
+  /** @nullable */
+  priority?: string | null;
+  /** @nullable */
+  reminder?: string | null;
+  /** @nullable */
+  assignedTo?: number | null;
   /** @nullable */
   createdBy?: number | null;
   user?: User;

@@ -303,6 +303,9 @@ router.post("/activities", async (req, res) => {
         followUpTime: parsed.data.followUpTime ?? null,
         followUpType: parsed.data.followUpType ?? null,
         callStatus: parsed.data.callStatus ?? "Pending",
+        priority: parsed.data.priority ?? "Medium",
+        reminder: parsed.data.reminder ?? null,
+        assignedTo: parsed.data.assignedTo ?? null,
         createdBy: currentUser.id,
       }).returning();
       activity = inserted;

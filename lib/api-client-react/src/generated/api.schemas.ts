@@ -452,14 +452,7 @@ export const ActivityType = {
 /**
  * @nullable
  */
-export type ActivityFollowUpType = typeof ActivityFollowUpType[keyof typeof ActivityFollowUpType] | null;
-
-
-export const ActivityFollowUpType = {
-  Call: 'Call',
-  WhatsApp: 'WhatsApp',
-  Email: 'Email',
-} as const;
+export type ActivityFollowUpType = string | null;
 
 export interface Activity {
   id: number;
@@ -474,9 +467,15 @@ export interface Activity {
   /** @nullable */
   followUpTime?: string | null;
   /** @nullable */
-  followUpType?: ActivityFollowUpType;
+  followUpType?: string | null;
   /** @nullable */
   callStatus?: string | null;
+  /** @nullable */
+  priority?: string | null;
+  /** @nullable */
+  reminder?: string | null;
+  /** @nullable */
+  assignedTo?: number | null;
   /** @nullable */
   createdBy?: number | null;
   user?: User;
@@ -515,6 +514,12 @@ export interface ActivityInput {
   followUpType?: string | null;
   /** @nullable */
   callStatus?: string | null;
+  /** @nullable */
+  priority?: string | null;
+  /** @nullable */
+  reminder?: string | null;
+  /** @nullable */
+  assignedTo?: number | null;
 }
 
 export type ActivityUpdateType = typeof ActivityUpdateType[keyof typeof ActivityUpdateType];
@@ -541,6 +546,12 @@ export interface ActivityUpdate {
   followUpType?: string | null;
   /** @nullable */
   callStatus?: string | null;
+  /** @nullable */
+  priority?: string | null;
+  /** @nullable */
+  reminder?: string | null;
+  /** @nullable */
+  assignedTo?: number | null;
   /** @nullable */
   contactId?: number | null;
 }
