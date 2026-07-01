@@ -382,14 +382,19 @@ router.post("/proforma-invoices/gst-lookup", async (req, res) => {
         },
         timeout: 8000,
       });
+      console.log("[RapidAPI GST] status=%d body=%j", raRes.status, raRes.data);
       const raBody = raRes.data;
       // Handle common wrapper patterns: { data: {...} }, { result: {...} }, or flat
       const raData = raBody?.data || raBody?.result || raBody;
       if (raBody?.success !== false && raData) {
         return res.json(normalize(raData));
       }
+      console.log("[RapidAPI GST] unexpected response shape — falling through", raBody);
     } catch (raErr: any) {
-      req.log.warn({ err: raErr.message, gstin: cleanGstin }, "RapidAPI GST lookup failed, trying next tier");
+      const status = raErr?.response?.status;
+      const body = raErr?.response?.data;
+      console.error("[RapidAPI GST] ERROR status=%d body=%j message=%s", status, body, raErr.message);
+      req.log.warn({ err: raErr.message, status, body, gstin: cleanGstin }, "RapidAPI GST lookup failed, trying next tier");
     }
   }
 
