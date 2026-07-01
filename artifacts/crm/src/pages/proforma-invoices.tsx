@@ -131,6 +131,7 @@ export default function ProformaInvoicesPage() {
   const [existingCustomer, setExistingCustomer] = useState<any>(null);
   const [gstinNotFound, setGstinNotFound] = useState(false);
   const [gstLoading, setGstLoading] = useState(false);
+  const [gstError, setGstError] = useState("");
   const [productSearchQuery, setProductSearchQuery] = useState("");
   const [productSearchResults, setProductSearchResults] = useState<any[]>([]);
   const [showProductSearch, setShowProductSearch] = useState(false);
@@ -381,32 +382,6 @@ export default function ProformaInvoicesPage() {
     setGstStatus(data.registrationStatus || data.status || "");
   };
 
-  const handleGstFetch = async () => {
-    const gstin = gstNumber.trim().toUpperCase();
-    if (!gstin || gstin.length < 15) {
-      toast({ title: "Error", description: "Please enter a valid 15-character GSTIN", variant: "destructive" });
-      return;
-    }
-    setGstLoading(true);
-    try {
-      const res = await fetch("/api/proforma-invoices/gst-lookup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ gstin }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.error || "GST lookup failed");
-      }
-      applyGstDetails(data);
-      toast({ title: "✅ GST Details Fetched", description: `Found: ${data.companyName || data.legalName || data.tradeName || gstin}` });
-    } catch (err: any) {
-      toast({ title: "GST Lookup Failed", description: err.message || "Could not fetch GST details", variant: "destructive" });
-    } finally {
-      setGstLoading(false);
-    }
-  };
-
   const checkExistingCustomer = async (gstin: string) => {
     if (!gstin || gstin.length < 15) return;
     try {
@@ -420,12 +395,34 @@ export default function ProformaInvoicesPage() {
         setExistingCustomer(data);
         applyExistingCustomer(data);
         setGstinNotFound(false);
-      } else {
-        setExistingCustomer(null);
-        setGstinNotFound(true);
+        setGstError("");
+        return;
       }
     } catch {
-      setExistingCustomer(null);
+      // fall through to live lookup
+    }
+
+    // Not in Customer Master → auto-fetch live from GST API
+    setExistingCustomer(null);
+    setGstinNotFound(true);
+    setGstLoading(true);
+    try {
+      const liveRes = await fetch("/api/proforma-invoices/gst-lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ gstin }),
+      });
+      const liveData = await liveRes.json();
+      if (liveData.success) {
+        applyGstDetails(liveData);
+        setGstError("");
+      } else {
+        setGstError(liveData.error || "Could not fetch GST details");
+      }
+    } catch {
+      setGstError("GST lookup failed. Please enter details manually.");
+    } finally {
+      setGstLoading(false);
     }
   };
 
@@ -535,13 +532,18 @@ export default function ProformaInvoicesPage() {
     }
   };
 
-  // Auto-check for existing customer when GSTIN changes
+  // Auto-fetch GST details when GSTIN changes (like cleartax)
   useEffect(() => {
     if (gstNumber.length >= 15) {
-      const timer = setTimeout(() => checkExistingCustomer(gstNumber.toUpperCase().trim()), 500);
+      setGstError("");
+      const timer = setTimeout(() => {
+        checkExistingCustomer(gstNumber.toUpperCase().trim());
+      }, 500);
       return () => clearTimeout(timer);
     } else {
       setExistingCustomer(null);
+      setGstinNotFound(false);
+      setGstError("");
     }
   }, [gstNumber]);
 
@@ -1054,21 +1056,20 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
             {customerType === "GST" ? (
               <div className="sm:col-span-2">
                 <Label>GSTIN / UIN</Label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
+                <div className="relative">
+                  {gstLoading ? (
+                    <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />
+                  ) : (
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                    <Input value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} placeholder="Enter GSTIN (e.g. 24AAJFE2064P1Z6)" className="pl-9" />
-                  </div>
-                  {!existingCustomer && gstNumber.trim().length >= 15 && (
-                    <Button onClick={handleGstFetch} disabled={gstLoading} variant="outline" size="sm" className="whitespace-nowrap">
-                      {gstLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                      {gstLoading ? "Verifying..." : "Verify GST"}
-                    </Button>
                   )}
+                  <Input value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} placeholder="Enter GSTIN (e.g. 24AAJFE2064P1Z6)" className="pl-9" />
                 </div>
-                {gstinNotFound && (
+                {gstLoading && (
+                  <div className="mt-2 text-sm text-blue-600">Fetching GST details...</div>
+                )}
+                {gstError && (
                   <div className="mt-2 text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-                    No customer found with this GSTIN. Click "Verify GST" to fetch from the government database.
+                    {gstError}
                   </div>
                 )}
               </div>

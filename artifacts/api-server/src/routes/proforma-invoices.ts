@@ -3,6 +3,7 @@ import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHi
 import { eq, desc, and, SQL, sql, like, gte, lte, inArray, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { amountToWords } from "../lib/amount-to-words";
+import { getGstProvider } from "../lib/gst-provider";
 import axios from "axios";
 import * as XLSX from "xlsx";
 
@@ -338,7 +339,7 @@ async function extractLiveGstLightweight(gstin: string) {
   throw new Error("Details could not be parsed from HTML");
 }
 
-// ── GST Lookup via free lightweight extraction + local DB fallback ──
+// ── GST Lookup — returns ALL structured fields, auto-fill ready ──
 router.post("/proforma-invoices/gst-lookup", async (req, res) => {
   const { gstin } = req.body;
 
@@ -348,15 +349,24 @@ router.post("/proforma-invoices/gst-lookup", async (req, res) => {
 
   const cleanGstin = gstin.trim().toUpperCase();
 
-  // Tier 1: Lightweight HTML extraction
+  // Tier 1: GSTZen API (structured JSON — all fields)
+  try {
+    const provider = getGstProvider();
+    const details = await provider.lookup(cleanGstin);
+    return res.json({ success: true, ...details });
+  } catch (apiErr: any) {
+    req.log.warn({ err: apiErr, gstin: cleanGstin }, "GSTZen API failed, trying HTML extraction");
+  }
+
+  // Tier 2: Lightweight HTML extraction (fallback)
   try {
     const data = await extractLiveGstLightweight(cleanGstin);
     return res.json({ success: true, ...data });
-  } catch (err: any) {
-    req.log.warn({ err, gstin: cleanGstin }, "Live extraction failed, trying DB fallback");
+  } catch (htmlErr: any) {
+    req.log.warn({ err: htmlErr, gstin: cleanGstin }, "HTML extraction failed, trying DB fallback");
   }
 
-  // Tier 2: Local database fallback
+  // Tier 3: Local database fallback
   try {
     const [customer] = await db
       .select()
@@ -367,7 +377,19 @@ router.post("/proforma-invoices/gst-lookup", async (req, res) => {
       return res.json({
         success: true,
         companyName: customer.companyName || "",
+        tradeName: customer.tradeName || "",
         address: [customer.addressLine1, customer.addressLine2, customer.addressLine3].filter(Boolean).join(", "),
+        addressLine1: customer.addressLine1 || "",
+        addressLine2: customer.addressLine2 || "",
+        addressLine3: customer.addressLine3 || "",
+        city: customer.city || "",
+        district: customer.district || "",
+        state: customer.state || "",
+        pincode: customer.pincode || "",
+        gstin: cleanGstin,
+        status: customer.gstStatus || "Active",
+        businessConstitution: customer.customerType || "",
+        registrationStatus: customer.gstStatus || "Active",
       });
     }
   } catch (dbErr) {
