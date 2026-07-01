@@ -3,7 +3,7 @@ import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHi
 import { eq, desc, and, SQL, sql, like, gte, lte, inArray, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { amountToWords } from "../lib/amount-to-words";
-import { getGstProvider, clearGstCache } from "../lib/gst-provider";
+import { getGstProvider, clearGstCache, type GstDetails } from "../lib/gst-provider";
 import * as XLSX from "xlsx";
 
 const router: IRouter = Router();
@@ -527,9 +527,38 @@ router.post("/proforma-invoices/gst-lookup", async (req, res) => {
       return;
     }
 
+    // Check Customer Master first — if this GSTIN was saved previously, return saved data
+    const [customer] = await db
+      .select()
+      .from(customerMasterTable)
+      .where(eq(customerMasterTable.gstin, gstin));
+
+    if (customer) {
+      const details: GstDetails = {
+        legalName: customer.companyName || "",
+        tradeName: customer.tradeName || "",
+        gstin: customer.gstin,
+        address: [customer.addressLine1, customer.addressLine2, customer.addressLine3, customer.city, customer.state, customer.pincode].filter(Boolean).join(", "),
+        addressLine1: customer.addressLine1 || "",
+        addressLine2: customer.addressLine2 || "",
+        addressLine3: customer.addressLine3 || "",
+        city: customer.city || "",
+        district: customer.district || "",
+        state: customer.state || "",
+        stateCode: customer.gstin.substring(0, 2),
+        pincode: customer.pincode || "",
+        status: customer.gstStatus || "Active",
+        businessConstitution: customer.businessConstitution || "",
+        registrationStatus: customer.gstStatus || "Active",
+      };
+      req.log.info({ gstin, source: "customer_master" }, "GST lookup from Customer Master");
+      res.json(details);
+      return;
+    }
+
     const provider = getGstProvider();
     const details = await provider.lookup(gstin);
-    req.log.info({ gstin, details }, "GST lookup result");
+    req.log.info({ gstin, details, source: "gst_provider" }, "GST lookup result");
     res.json(details);
   } catch (err: any) {
     if (err.message?.includes("not configured")) {
