@@ -218,12 +218,13 @@ export default function LeadDetail() {
     return list;
   }, [activities, actFromDate, actToDate]);
 
+  const followUpActivities = useMemo(() => (activities || []).filter(a => a.type === "FollowUp").reverse(), [activities]);
+
   if (isLoading) return <div className="p-8">Loading...</div>;
   if (!contact) return <div className="p-8">Contact not found.</div>;
 
   const owner = contact.salesOwner;
   const deal = deals && deals.length > 0 ? deals[0] : null;
-  const followUpActivities = useMemo(() => (activities || []).filter(a => a.type === "FollowUp").reverse(), [activities]);
 
   const handleCreateDeal = () => {
     if (!newDealStage) return;
