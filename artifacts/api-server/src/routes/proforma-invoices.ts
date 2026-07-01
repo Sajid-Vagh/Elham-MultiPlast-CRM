@@ -385,18 +385,39 @@ router.post("/proforma-invoices/gst-lookup", async (req, res) => {
       });
       console.log("[RapidAPI GST] status=%d body=%j", raRes.status, raRes.data);
       const raBody = raRes.data;
-      // Handle common wrapper patterns: { data: {...} }, { result: {...} }, or flat
-      const raData = raBody?.data || raBody?.result || raBody;
-      if (raBody?.success !== false && raData) {
-        const mapped = normalize(raData);
-        // Only accept if the API actually returned business details
-        if (mapped.legalName) {
-          return res.json(mapped);
+      const source = raBody?.data || raBody?.result || raBody;
+      // Only proceed if the API returned a legal name (business details present)
+      if (source?.lgnm) {
+        // Parse city and state from the comma-separated adr string
+        // adr format: "..., City, State, Pincode"
+        let cityFromAddr = "";
+        let stateFromAddr = "";
+        if (source.adr) {
+          const addrParts = source.adr.split(",").map((s: string) => s.trim()).filter(Boolean);
+          stateFromAddr = addrParts.length >= 2 ? addrParts[addrParts.length - 2] : "";
+          cityFromAddr = addrParts.length >= 3 ? addrParts[addrParts.length - 3] : "";
         }
-        console.log("[RapidAPI GST] response lacks business details (no legalName), falling through", raBody);
-      } else {
-        console.log("[RapidAPI GST] unexpected response shape — falling through", raBody);
+        const mapped = {
+          success: true,
+          legalName: source.lgnm || "",
+          tradeName: source.tradeName || "",
+          address: source.adr || "",
+          addressLine1: "",
+          addressLine2: "",
+          addressLine3: "",
+          city: cityFromAddr,
+          district: "",
+          state: stateFromAddr,
+          stateCode: "",
+          pincode: source.pincode || "",
+          gstin: source.gstin || cleanGstin,
+          status: "Active",
+          businessConstitution: source.ctb || "",
+          registrationStatus: source.sts || "Active",
+        };
+        return res.json(mapped);
       }
+      console.log("[RapidAPI GST] response lacks business details (no lgnm), falling through", raBody);
     } catch (raErr: any) {
       const status = raErr?.response?.status;
       const body = raErr?.response?.data;
