@@ -659,49 +659,17 @@ export default function ProformaInvoicesPage() {
         toast({ title: "Error", description: "No content to generate PDF", variant: "destructive" });
         return;
       }
-      const { default: jsPDF } = await import("jspdf");
-      const { default: html2canvas } = await import("html2canvas");
-      const container = document.createElement("div");
-      container.innerHTML = html;
-      container.style.width = "210mm";
-      container.style.position = "absolute";
-      container.style.left = "-9999px";
-      container.style.top = "0";
-      container.style.background = "#fff";
-      document.body.appendChild(container);
-      try {
-        const canvas = await html2canvas(container, {
-          scale: 2,
-          useCORS: true,
-          logging: false,
-          width: container.scrollWidth,
-          height: container.scrollHeight,
-        });
-        const imgData = canvas.toDataURL("image/jpeg", 0.95);
-        const pdf = new jsPDF("p", "mm", "a4");
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = pdf.internal.pageSize.getHeight();
-        const imgWidth = pdfWidth;
-        const imgHeight = (canvas.height * pdfWidth) / canvas.width;
-        let heightLeft = imgHeight;
-        let position = 0;
-        pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
-        heightLeft -= pdfHeight;
-        while (heightLeft > 0) {
-          position -= pdfHeight;
-          pdf.addPage();
-          pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
-          heightLeft -= pdfHeight;
-        }
-        pdf.save(`Proforma_${invoice.invoiceNumber}.pdf`);
-        toast({ title: "PDF Downloaded", description: "Generated successfully" });
-      } finally {
-        document.body.removeChild(container);
+      toast({ title: "Opening Print Dialog", description: "Use Save as PDF in the print dialog for a high-quality vector PDF" });
+      const w = window.open("", "_blank");
+      if (w) {
+        w.document.write(html);
+        w.document.title = `Proforma_${invoice.invoiceNumber}`;
+        w.document.close();
+        w.focus();
+        setTimeout(() => w.print(), 500);
       }
     } catch (err) {
-      toast({ title: "PDF Generation Failed", description: "Opening in browser print instead", variant: "default" });
-      const w = window.open("", "_blank");
-      if (w) { w.document.write(htmlContent || pdfHtml); w.document.title = `Proforma_${invoice.invoiceNumber}`; w.print(); }
+      toast({ title: "Error", description: "Failed to open print dialog", variant: "destructive" });
     }
   };
 
@@ -809,100 +777,118 @@ export default function ProformaInvoicesPage() {
     const dateStr = new Date(inv.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" });
 
     return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Proforma Invoice</title>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Proforma Invoice - ${inv.invoiceNumber}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-@page{size:A4;margin:0;}
+@page{size:A4 portrait;margin:10mm 14mm;}
 *{margin:0;padding:0;box-sizing:border-box;}
-body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.3;}
-.invoice{width:190mm;min-height:267mm;margin:8mm auto;border:1.5px solid #000;position:relative;}
-.header{text-align:center;padding:8pt 10pt 4pt;border-bottom:1.5px solid #000;}
-.gstin-top{text-align:left;font-size:8pt;margin-bottom:2pt;}
-.company-name{font-size:18pt;font-weight:bold;letter-spacing:0.5pt;margin:2pt 0;}
-.company-address{font-size:8pt;line-height:1.5;color:#222;}
-.company-email{font-size:8pt;margin-top:2pt;}
-.invoice-title{font-size:14pt;font-weight:bold;margin:4pt 0;text-decoration:underline;}
-.party-section{display:flex;border-bottom:1px solid #000;}
-.party-left{width:58%;padding:6pt 8pt;border-right:1px solid #000;}
-.party-right{width:42%;padding:6pt 8pt;text-align:right;}
-.party-label{font-weight:bold;font-size:9pt;margin-bottom:4pt;}
-.party-name{font-weight:bold;font-size:10pt;}
-.party-address{font-size:8.5pt;line-height:1.5;margin-top:2pt;}
-.order-text{font-size:8.5pt;font-style:italic;margin:4pt 0;padding:3pt 0;border-bottom:1px solid #000;text-align:center;}
-table.items{width:100%;border-collapse:collapse;font-size:8.5pt;}
-table.items th{border:1px solid #000;padding:4pt 5pt;text-align:center;font-weight:bold;font-size:8pt;background:#f0f0f0;}
-table.items td{border:1px solid #000;padding:3pt 5pt;}
-.summary-table{width:100%;border-collapse:collapse;border-top:1px solid #000;}
-.summary-table td{border:0;padding:2pt 6pt;}
-.summary-table .total-row{border-top:1.5px solid #000;font-weight:bold;font-size:10pt;}
-.tax-summary{margin-top:6pt;width:100%;border-collapse:collapse;font-size:8pt;}
-.tax-summary th{border:1px solid #000;padding:3pt 4pt;text-align:center;font-weight:bold;font-size:7.5pt;background:#f0f0f0;}
-.tax-summary td{border:1px solid #000;padding:2pt 4pt;text-align:center;}
-.amount-words{margin:6pt 8pt;font-size:8.5pt;}
-.amount-words strong{font-size:9pt;}
-.footer-section{width:100%;margin:4pt 0;padding:0 8pt;}
+html{font-size:13px;}
+body{font-family:'Inter','Source Sans 3','IBM Plex Sans','Noto Sans',Arial,sans-serif;font-size:9pt;color:#1a1a1a;line-height:1.45;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
+.invoice{width:100%;min-height:267mm;position:relative;}
+.invoice-inner{padding:0;}
+.header{text-align:center;padding:14pt 0 10pt 0;border-bottom:1.5pt solid #1a1a1a;margin-bottom:12pt;}
+.gstin-top{text-align:left;font-size:7.5pt;color:#555;margin-bottom:4pt;letter-spacing:0.3pt;}
+.company-name{font-size:18pt;font-weight:700;letter-spacing:0.8pt;text-transform:uppercase;margin:4pt 0;color:#1a1a1a;}
+.company-address{font-size:7.5pt;line-height:1.6;color:#444;max-width:70%;margin:0 auto;}
+.company-email{font-size:7.5pt;color:#444;margin-top:2pt;}
+.invoice-title{font-size:16pt;font-weight:700;margin:8pt 0 2pt 0;letter-spacing:2pt;text-transform:uppercase;color:#1a1a1a;}
+.invoice-divider{width:60px;height:2pt;background:#1a1a1a;margin:4pt auto 0 auto;}
+.party-section{display:flex;gap:0;margin-bottom:10pt;}
+.party-left{width:60%;padding:6pt 10pt 6pt 0;}
+.party-right{width:40%;padding:6pt 0 6pt 10pt;text-align:right;border-left:1pt solid #ddd;}
+.party-label{font-size:7.5pt;font-weight:600;text-transform:uppercase;letter-spacing:0.5pt;color:#666;margin-bottom:4pt;}
+.party-name{font-size:11pt;font-weight:700;margin-bottom:3pt;color:#1a1a1a;}
+.party-address{font-size:8.5pt;line-height:1.55;color:#333;}
+.party-meta{font-size:8.5pt;margin-top:4pt;color:#444;}
+.party-right .party-meta{text-align:right;}
+.party-right .party-meta strong{font-weight:600;}
+.order-text{font-size:8.5pt;font-style:italic;text-align:center;padding:6pt 0;margin-bottom:8pt;border-top:1pt solid #ddd;border-bottom:1pt solid #ddd;color:#444;}
+table.items{width:100%;border-collapse:collapse;margin-bottom:10pt;font-size:8.5pt;}
+table.items thead{background:#f2f2f2;}
+table.items th{border:1pt solid #ccc;padding:5pt 6pt;text-align:center;font-weight:600;font-size:8pt;color:#1a1a1a;text-transform:uppercase;letter-spacing:0.3pt;}
+table.items td{border:1pt solid #ccc;padding:4pt 6pt;vertical-align:middle;}
+table.items tbody tr:nth-child(even){background:#fafafa;}
+.cell-center{text-align:center;}
+.cell-right{text-align:right;font-variant-numeric:tabular-nums;}
+table.items .cell-right{font-family:'Inter','Source Sans 3','IBM Plex Sans','Noto Sans',Arial,sans-serif;font-weight:500;}
+.summary-table{width:100%;border-collapse:collapse;margin-bottom:0;}
+.summary-table td{border:0;padding:3pt 6pt;font-size:8.5pt;}
+.summary-table .total-row td{border-top:1.5pt solid #1a1a1a;font-weight:700;font-size:10pt;padding:5pt 6pt;}
+.tax-summary{width:100%;border-collapse:collapse;margin-top:8pt;font-size:8pt;}
+.tax-summary thead{background:#f2f2f2;}
+.tax-summary th{border:1pt solid #ccc;padding:4pt 5pt;text-align:center;font-weight:600;font-size:7.5pt;color:#1a1a1a;text-transform:uppercase;letter-spacing:0.3pt;}
+.tax-summary td{border:1pt solid #ccc;padding:3pt 5pt;text-align:center;}
+.amount-words{margin:10pt 0 8pt 0;padding:8pt 10pt;background:#f9f9f9;border-left:3pt solid #1a1a1a;font-size:9pt;line-height:1.5;}
+.amount-words strong{font-weight:700;}
+.footer-section{width:100%;margin:8pt 0 6pt 0;}
 .footer-section table{width:100%;border-collapse:collapse;}
-.footer-section td{vertical-align:top;padding:3pt 6pt;width:50%;border:0;}
-.disclaimer{border-top:1px solid #000;padding:4pt 8pt;font-size:7.5pt;text-align:justify;line-height:1.4;}
-.disclaimer strong{font-size:8pt;}
-.bank-details{font-size:8pt;line-height:1.6;}
-.bank-details strong{font-size:8.5pt;}
-.terms{font-size:8pt;line-height:1.5;}
-.terms strong{font-size:8.5pt;}
+.footer-section td{vertical-align:top;padding:4pt 6pt;width:50%;}
+.bank-details{font-size:8pt;line-height:1.7;color:#333;}
+.bank-details strong{font-weight:600;font-size:8.5pt;}
+.terms{font-size:8pt;line-height:1.6;color:#333;}
+.terms strong{font-weight:600;font-size:8.5pt;}
 .terms ul{margin:2pt 0 0 14pt;padding:0;}
 .terms li{margin-bottom:1pt;}
-.signature-section{display:flex;margin:8pt 8pt 4pt;font-size:8.5pt;}
+.disclaimer{border-top:1pt solid #ddd;padding:6pt 0;margin-top:6pt;font-size:7pt;text-align:justify;line-height:1.5;color:#555;}
+.disclaimer strong{font-weight:600;color:#333;}
+.signature-section{display:flex;margin:14pt 0 4pt 0;padding-top:8pt;border-top:1pt solid #ddd;}
 .sign-left{width:50%;}
-.sign-right{width:50%;text-align:right;font-weight:bold;}
-hr{border:none;border-top:1px solid #000;margin:2pt 0;}
+.sign-right{width:50%;text-align:right;font-weight:600;}
+hr{border:none;border-top:1pt solid #ccc;margin:4pt 0;}
 @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
 </style></head><body>
-<div class="invoice">
+<div class="invoice"><div class="invoice-inner">
 <div class="header">
 <div class="gstin-top">GSTIN : 24AAJFE2064P1Z6</div>
 <div class="company-name">ELHAM MULTIPLAST LLP</div>
 <div class="company-address">PLOT NO. 1429-1430, NR. FORTUNE PETROL PUMP,<br>OPP. KHIJADIYA TALAV, ILOL, HIMATNAGAR,<br>SABARKANTHA, GUJARAT - 383220</div>
 <div class="company-email">elhammultiplast@gmail.com</div>
 <div class="invoice-title">PROFORMA INVOICE</div>
+<div class="invoice-divider"></div>
 </div>
 <div class="party-section">
 <div class="party-left">
-<div class="party-label">Party Details :</div>
+<div class="party-label">Bill To</div>
 <div class="party-name">${inv.customerName}</div>
 <div class="party-address">${partyAddr.length > 0 ? partyAddr.join("<br>") + "<br>" : ""}${cityStatePin ? cityStatePin + "<br>" : ""}${inv.address ? inv.address + "<br>" : ""}</div>
 ${inv.customerType === "Unregistered"
-  ? `<div style="font-size:8.5pt;margin-top:2pt;">ID Proof : ${inv.idProofType || ""} - ${inv.idProofNumber || ""}</div>`
-  : `<div style="font-size:8.5pt;margin-top:2pt;">GSTIN / UIN : ${inv.gstNumber || ""}</div>`
+  ? `<div class="party-meta">ID Proof : ${inv.idProofType || ""} - ${inv.idProofNumber || ""}</div>`
+  : `<div class="party-meta">GSTIN / UIN : ${inv.gstNumber || ""}</div>`
 }
 </div>
 <div class="party-right">
-<div style="font-weight:bold;font-size:9pt;">Order No : ${inv.invoiceNumber}</div>
-<div style="margin-top:4pt;font-size:8.5pt;">Date : ${dateStr}</div>
+<div class="party-label">Invoice Details</div>
+<div class="party-meta"><strong>Invoice No.</strong><br>${inv.invoiceNumber}</div>
+<div class="party-meta" style="margin-top:6pt;"><strong>Date</strong><br>${dateStr}</div>
 </div>
 </div>
 <div class="order-text">We are pleased to receive the order for the following items</div>
 <table class="items">
-<thead><tr><th style="width:5%">S.N.</th><th style="width:32%">Description of Goods</th><th style="width:11%">HSN Code</th><th style="width:8%">Qty</th><th style="width:8%">Unit</th><th style="width:10%">Price</th><th style="width:12%">Amount</th></tr></thead>
-<tbody>${(inv.items || []).map((item: any, i: number) => `<tr><td style="text-align:center">${i+1}</td><td>${item.productName}</td><td style="text-align:center">${item.hsnCode || "-"}</td><td style="text-align:center">${item.quantity}</td><td style="text-align:center">${item.unit}</td><td style="text-align:right">${Number(item.rate).toFixed(2)}</td><td style="text-align:right">${Number(item.amount).toFixed(2)}</td></tr>`).join("\n")}</tbody>
+<thead><tr><th style="width:5%">Sr.</th><th style="width:34%">Description of Goods</th><th style="width:10%">HSN Code</th><th style="width:7%">Qty</th><th style="width:7%">Unit</th><th style="width:11%">Rate (₹)</th><th style="width:13%">Amount (₹)</th></tr></thead>
+<tbody>${(inv.items || []).map((item: any, i: number) => `<tr><td class="cell-center">${i+1}</td><td>${item.productName}${item.bottleType ? ` (${item.bottleType})` : ""}${item.capacity ? ` ${item.capacity}` : ""}${item.weight ? ` ${item.weight}` : ""}</td><td class="cell-center">${item.hsnCode || "-"}</td><td class="cell-center">${item.quantity}</td><td class="cell-center">${item.unit}</td><td class="cell-right">${Number(item.rate).toFixed(2)}</td><td class="cell-right">${Number(item.amount).toFixed(2)}</td></tr>`).join("\n")}</tbody>
 </table>
 <table class="summary-table">
-${freight > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">Freight Charges</td><td style="text-align:right;padding:3pt 6pt">${freight.toFixed(2)}</td></tr>` : ""}
-${cgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">CGST @ ${cgstPct}%</td><td style="text-align:right;padding:3pt 6pt">${cgstAmt.toFixed(2)}</td></tr>` : ""}
-${sgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">SGST @ ${sgstPct}%</td><td style="text-align:right;padding:3pt 6pt">${sgstAmt.toFixed(2)}</td></tr>` : ""}
-${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IGST @ ${igstPct}%</td><td style="text-align:right;padding:3pt 6pt">${igstAmt.toFixed(2)}</td></tr>` : ""}
-<tr class="total-row"><td colspan="5" style="text-align:right;padding:3pt 6pt">Grand Total</td><td style="text-align:right;padding:3pt 6pt">${grandTotal.toFixed(2)}</td></tr>
+${freight > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt;">Freight Charges</td><td style="text-align:right;padding:3pt 6pt;">${freight.toFixed(2)}</td></tr>` : ""}
+${cgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt;">CGST @ ${cgstPct}%</td><td style="text-align:right;padding:3pt 6pt;">${cgstAmt.toFixed(2)}</td></tr>` : ""}
+${sgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt;">SGST @ ${sgstPct}%</td><td style="text-align:right;padding:3pt 6pt;">${sgstAmt.toFixed(2)}</td></tr>` : ""}
+${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt;">IGST @ ${igstPct}%</td><td style="text-align:right;padding:3pt 6pt;">${igstAmt.toFixed(2)}</td></tr>` : ""}
+<tr class="total-row"><td colspan="5" style="text-align:right;padding:4pt 6pt;">Grand Total</td><td style="text-align:right;padding:4pt 6pt;">${grandTotal.toFixed(2)}</td></tr>
 </table>
 <table class="tax-summary">
-<thead><tr><th>Tax Rate</th><th>Taxable Amount</th><th>CGST Amount</th><th>SGST Amount</th><th>Total Tax</th></tr></thead>
-<tbody>${isInterstate ? `<tr><td>IGST @ ${igstPct}%</td><td>${baseAmt.toFixed(2)}</td><td>0.00</td><td>0.00</td><td>${igstAmt.toFixed(2)}</td></tr>` : `<tr><td>CGST @ ${cgstPct}% + SGST @ ${sgstPct}%</td><td>${baseAmt.toFixed(2)}</td><td>${cgstAmt.toFixed(2)}</td><td>${sgstAmt.toFixed(2)}</td><td>${totalTax.toFixed(2)}</td></tr>`}</tbody>
+<thead><tr><th>Tax Rate</th><th>Taxable Amount</th><th>CGST</th><th>SGST</th><th>Total Tax</th></tr></thead>
+<tbody>${isInterstate ? `<tr><td>IGST @ ${igstPct}%</td><td>₹${baseAmt.toFixed(2)}</td><td>0.00</td><td>0.00</td><td>₹${igstAmt.toFixed(2)}</td></tr>` : `<tr><td>CGST @ ${cgstPct}% + SGST @ ${sgstPct}%</td><td>₹${baseAmt.toFixed(2)}</td><td>₹${cgstAmt.toFixed(2)}</td><td>₹${sgstAmt.toFixed(2)}</td><td>₹${totalTax.toFixed(2)}</td></tr>`}</tbody>
 </table>
 <div class="amount-words"><strong>Amount in Words :</strong> ${inv.amountInWords || ""}</div>
 <div class="footer-section"><table><tr>
-<td style="width:50%;border:0;padding:3pt 6pt;"><div class="bank-details"><strong>Bank Details</strong><br>ICICI BANK, HIMATNAGAR<br>A/C NO: 045205014806<br>IFSC: ICIC0000452</div></td>
-<td style="width:50%;border:0;padding:3pt 6pt;"><div class="terms"><strong>Terms &amp; Conditions</strong><ul><li>Freight Charges Additional</li><li>100% Advance Payment</li></ul></div></td>
+<td><div class="bank-details"><strong>Bank Details</strong><br>ICICI BANK, HIMATNAGAR<br>A/C NO: 045205014806<br>IFSC: ICIC0000452</div></td>
+<td><div class="terms"><strong>Terms &amp; Conditions</strong><ul><li>Freight Charges Additional</li><li>100% Advance Payment</li></ul></div></td>
 </tr></table></div>
 <div class="disclaimer"><strong>DISCLAIMER : </strong>Products supplied are generic industrial packaging developed independently by Elham Multiplast LLP for functional applications. Any branding, labeling, or market usage by the buyer shall be at the buyer's sole responsibility.</div>
-<div class="signature-section"><div class="sign-left"><div style="font-size:8pt;">Receiver's Signature</div><br><br><div style="border-top:1px solid #000;width:120px;font-size:7pt;text-align:center;padding-top:1pt;">Receiver Signature</div></div><div class="sign-right"><div style="margin-bottom:40pt;">For ELHAM MULTIPLAST LLP</div><br><div>Authorised Signatory</div></div></div>
-</div></body></html>`;
+<div class="signature-section"><div class="sign-left"><div style="font-size:7.5pt;color:#666;">Receiver's Signature</div><div style="margin-top:16pt;border-top:1pt solid #999;width:130px;font-size:7pt;text-align:center;padding-top:2pt;color:#666;">Receiver Signature</div></div><div class="sign-right"><div style="margin-bottom:28pt;color:#1a1a1a;">For ELHAM MULTIPLAST LLP</div><div style="border-top:1pt solid #999;width:130px;margin-left:auto;padding-top:2pt;font-size:7pt;color:#666;">Authorised Signatory</div></div></div>
+</div></div></body></html>`;
   };
 
   if (loading && mode === "list") return <div className="p-6">Loading...</div>;
