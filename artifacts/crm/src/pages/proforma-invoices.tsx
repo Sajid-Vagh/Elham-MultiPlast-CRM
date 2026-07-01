@@ -388,10 +388,10 @@ export default function ProformaInvoicesPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ gstin }),
       });
-      if (res.ok) {
-        const customer = await res.json();
-        setExistingCustomer(customer);
-        applyExistingCustomer(customer);
+      const data = await res.json();
+      if (data.found) {
+        setExistingCustomer(data);
+        applyExistingCustomer(data);
         setGstinNotFound(false);
       } else {
         setExistingCustomer(null);

@@ -23,11 +23,11 @@ router.post("/customer-master/lookup-by-gstin", async (req, res) => {
       .where(eq(customerMasterTable.gstin, gstin.toUpperCase().trim()));
 
     if (!customer) {
-      res.status(404).json({ error: "Customer not found" });
+      res.json({ found: false, error: "Customer not found" });
       return;
     }
 
-    res.json(customer);
+    res.json({ found: true, ...customer });
   } catch (err) {
     req.log.error({ err }, "Customer master lookup error");
     res.status(500).json({ error: "Internal server error" });
