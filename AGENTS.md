@@ -64,3 +64,60 @@
 - `lib/db/migrations/009_add_category_history.sql`: migration to create category_history table in DB
 - `artifacts/api-server/src/routes/contacts.ts`: category history tracking, GET endpoints for category-history, timeline, notifications
 - `artifacts/crm/src/pages/lead-detail.tsx`: Customer 360° Profile with all 10 sections + summary card + quick actions
+
+---
+
+# Proforma Invoice Module
+
+## Goal
+Deliver a working Proforma Invoice module with Customer Master, real GST auto-fill via a free provider, product auto-population, auto-calculations, printed PDF matching the original Elham Multiplast layout, and soft-delete.
+
+## Constraints
+- Printed PDF must keep the original layout almost identical (Party Details :, Order No, Date, S.N. header, outer `border:1.5px solid #000` box). Only improve fonts and print quality, not redesign.
+- GSTIN auto-fetch must trigger automatically 500ms after entry without requiring manual button click.
+- The form must NEVER show placeholder/sample values after a successful GST lookup; every field overwritten unconditionally.
+- Product selection auto-populates product name and rate from the `products` table via autocomplete.
+- All invoice calculations (Amount, Freight, Taxable, CGST, SGST, IGST, Grand Total, Amount in Words) automatic.
+- Customer Master duplicate check: if GSTIN exists, show "Use Existing" / "Update Existing", never create duplicates.
+- On invoice save, auto-save customer to Customer Master if new.
+- Every user can delete invoices (not just admins); soft-delete with `deletedAt`/`deletedBy`, hidden from all views.
+- **CRM must NEVER generate fake company names or fake addresses. If GST lookup cannot return real data, return an error.** No mock provider in production. No sample data. No fake addresses.
+- GST lookup is now live via 4-tier approach: GSTVerify → GSTZen API → HTML scraping → Customer Master fallback. No mock data.
+- GST lookup must work with a FREE provider — no premium API key subscriptions.
+- The flow should work like cleartax.in: enter GSTIN → auto-fetch → auto-fill all fields.
+
+## Progress
+### Done
+- Customer Master DB schema, proforma invoices schema extended, migrations (013, 014).
+- `POST /proforma-invoices/gst-lookup` endpoint with 4-tier fallback (GSTVerify → GSTZen → HTML scrape → Customer Master).
+- Frontend: 500ms debounce auto-fetch, no "Verify GST" button, `gstLoading`/`gstError` states.
+- `applyGstDetails` updated with `companyName` fallback on `legalName`/`tradeName`.
+- GSTVerify API key configured — **9 demo credits remaining** (₹0.10/call thereafter).
+- Product autocomplete backend + frontend.
+- Auto-save customer to Customer Master on invoice save.
+- Soft-delete for all users.
+- PDF layout reverted to original design.
+
+### In Progress
+- (none)
+
+### Blocked
+- (none)
+
+## Key Decisions
+- `POST /proforma-invoices/gst-lookup` returns HTTP 200 always, with `{ success: true/false }` body.
+- GSTVerify is Tier 1 (free, working), GSTZen is Tier 2 (needs paid sub), HTML scrape Tier 3 (unreliable), Customer Master Tier 4 (fallback).
+- `normalize()` helper maps snake_case from APIs to camelCase expected by frontend.
+- `ApiGstProvider` kept for backward compat (GSTZen).
+- No mock provider exists anywhere.
+
+## Relevant Files
+- `artifacts/api-server/src/routes/proforma-invoices.ts`: gst-lookup (4-tier), renderInvoiceHtml, soft-delete DELETE.
+- `artifacts/api-server/src/lib/gst-provider.ts`: GstProvider interface + ApiGstProvider (GSTZen).
+- `artifacts/api-server/src/routes/customer-master.ts`: CRUD + lookup endpoints.
+- `artifacts/api-server/src/routes/products.ts`: GET /products/search?q=.
+- `artifacts/crm/src/pages/proforma-invoices.tsx`: full frontend with auto-fetch, autocomplete, calculations, delete.
+- `lib/db/src/schema/customer_master.ts`: Customer Master table.
+- `lib/db/src/schema/proforma_invoices.ts`: proforma_invoices table (with customerMasterId, deletedAt/by).
+- `lib/db/migrations/013_add_customer_master.sql`, `014_add_deleted_at_by.sql`.
+- `.env`: `GSTVERIFY_API_KEY` (primary), `GST_API_URL` + `GST_API_KEY` (fallback).

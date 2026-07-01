@@ -349,24 +349,63 @@ router.post("/proforma-invoices/gst-lookup", async (req, res) => {
 
   const cleanGstin = gstin.trim().toUpperCase();
 
-  // Tier 1: GSTZen API (structured JSON — all fields)
-  try {
-    const provider = getGstProvider();
-    const details = await provider.lookup(cleanGstin);
-    return res.json({ success: true, ...details });
-  } catch (apiErr: any) {
-    req.log.warn({ err: apiErr, gstin: cleanGstin }, "GSTZen API failed, trying HTML extraction");
+  // ── Helper: normalize any source into frontend format ──
+  const normalize = (src: any): any => ({
+    success: true,
+    legalName: src.legalName || src.legal_name || src.companyName || src.businessName || "",
+    tradeName: src.tradeName || src.trade_name || "",
+    address: src.address || "",
+    addressLine1: src.addressLine1 || src.address_line1 || src.addr1 || src.building_name || "",
+    addressLine2: src.addressLine2 || src.address_line2 || src.street || src.locality || "",
+    addressLine3: src.addressLine3 || src.address_line3 || src.landmark || "",
+    city: src.city || src.cityName || src.city_name || "",
+    district: src.district || src.districtName || src.district_name || "",
+    state: (src.state || src.stateName || "").replace(/^\d+\s*-\s*/, ""),
+    stateCode: src.stateCode || src.state_code || "",
+    pincode: src.pincode || src.pinCode || src.pinc || "",
+    gstin: src.gstin || cleanGstin,
+    status: src.status || src.company_status || "Active",
+    businessConstitution: src.businessConstitution || src.constitution || src.business_constitution || src.gstType || src.gst_type || "",
+    registrationStatus: src.registrationStatus || src.registration_status || src.status || "Active",
+  });
+
+  // ── Tier 1: GSTVerify (free — 10 demo calls, then ₹0.10/call) ──
+  const gstVerifyKey = process.env.GSTVERIFY_API_KEY;
+  if (gstVerifyKey) {
+    try {
+      const gvRes = await axios.get(`https://gstverify.co.in/api/v1/verify/${cleanGstin}`, {
+        headers: { "X-API-Key": gstVerifyKey, Accept: "application/json" },
+        timeout: 8000,
+      });
+      const gvBody = gvRes.data;
+      if (gvBody?.success && gvBody?.data) {
+        return res.json(normalize(gvBody.data));
+      }
+    } catch (gvErr: any) {
+      req.log.warn({ err: gvErr.message, gstin: cleanGstin }, "GSTVerify failed, trying next tier");
+    }
   }
 
-  // Tier 2: Lightweight HTML extraction (fallback)
+  // ── Tier 2: GSTZen API ──
+  if (process.env.GST_API_URL && process.env.GST_API_KEY) {
+    try {
+      const provider = getGstProvider();
+      const details = await provider.lookup(cleanGstin);
+      return res.json({ success: true, ...details });
+    } catch (apiErr: any) {
+      req.log.warn({ err: apiErr.message, gstin: cleanGstin }, "GSTZen API failed");
+    }
+  }
+
+  // ── Tier 3: Lightweight HTML extraction ──
   try {
     const data = await extractLiveGstLightweight(cleanGstin);
     return res.json({ success: true, ...data });
-  } catch (htmlErr: any) {
-    req.log.warn({ err: htmlErr, gstin: cleanGstin }, "HTML extraction failed, trying DB fallback");
+  } catch {
+    // silent
   }
 
-  // Tier 3: Local database fallback
+  // ── Tier 4: Local database fallback ──
   try {
     const [customer] = await db
       .select()
@@ -374,9 +413,8 @@ router.post("/proforma-invoices/gst-lookup", async (req, res) => {
       .where(eq(customerMasterTable.gstin, cleanGstin))
       .limit(1);
     if (customer) {
-      return res.json({
-        success: true,
-        companyName: customer.companyName || "",
+      return res.json(normalize({
+        legalName: customer.companyName || "",
         tradeName: customer.tradeName || "",
         address: [customer.addressLine1, customer.addressLine2, customer.addressLine3].filter(Boolean).join(", "),
         addressLine1: customer.addressLine1 || "",
@@ -390,10 +428,10 @@ router.post("/proforma-invoices/gst-lookup", async (req, res) => {
         status: customer.gstStatus || "Active",
         businessConstitution: customer.customerType || "",
         registrationStatus: customer.gstStatus || "Active",
-      });
+      }));
     }
-  } catch (dbErr) {
-    req.log.error({ err: dbErr }, "GST DB fallback error");
+  } catch {
+    // silent
   }
 
   return res.json({ success: false, error: "Could not extract live details for this GSTIN. Please enter details manually." });
