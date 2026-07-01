@@ -128,6 +128,20 @@ export default function ProformaInvoicesPage() {
   const [newStatus, setNewStatus] = useState("");
   const [statusNotes, setStatusNotes] = useState("");
 
+  const ensureArray = (json: any): any[] => {
+    if (Array.isArray(json)) return json;
+    if (json && typeof json === "object") {
+      if (Array.isArray(json.data)) return json.data;
+      if (Array.isArray(json.items)) return json.items;
+      if (Array.isArray(json.invoices)) return json.invoices;
+      if (Array.isArray(json.records)) return json.records;
+    }
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[proforma-invoices] Expected array but got:", json);
+    }
+    return [];
+  };
+
   const fetchInvoices = async () => {
     try {
       const url = statusFilter !== "all" ? `/api/proforma-invoices?status=${statusFilter}` : "/api/proforma-invoices";
@@ -135,11 +149,14 @@ export default function ProformaInvoicesPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        const data = await res.json();
-        setInvoices(data);
+        const json = await res.json();
+        setInvoices(ensureArray(json));
+      } else {
+        setInvoices([]);
       }
     } catch (err) {
       console.error(err);
+      setInvoices([]);
     } finally {
       setLoading(false);
     }
@@ -150,9 +167,10 @@ export default function ProformaInvoicesPage() {
   }, [mode, statusFilter]);
 
   const filteredInvoices = useMemo(() => {
-    if (!search) return invoices;
+    const list = Array.isArray(invoices) ? invoices : [];
+    if (!search) return list;
     const s = search.toLowerCase();
-    return invoices.filter(
+    return list.filter(
       (inv) =>
         inv.customerName?.toLowerCase().includes(s) ||
         inv.invoiceNumber?.toLowerCase().includes(s) ||
@@ -161,8 +179,10 @@ export default function ProformaInvoicesPage() {
     );
   }, [invoices, search]);
 
-  const totalPages = Math.ceil(filteredInvoices.length / perPage);
-  const paginatedInvoices = filteredInvoices.slice((page - 1) * perPage, page * perPage);
+  const totalPages = Math.max(1, Math.ceil((filteredInvoices?.length || 0) / perPage));
+  const paginatedInvoices = Array.isArray(filteredInvoices)
+    ? filteredInvoices.slice((page - 1) * perPage, page * perPage)
+    : [];
 
   const calcAmount = (item: InvoiceItem) => {
     const gross = item.quantity * item.rate;
@@ -244,8 +264,8 @@ export default function ProformaInvoicesPage() {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) {
-          const data = await res.json();
-          setContactSearchResults(data.slice(0, 10));
+          const json = await res.json();
+          setContactSearchResults(ensureArray(json).slice(0, 10));
           setShowContactSearch(true);
         }
       } catch { }
