@@ -369,7 +369,31 @@ router.post("/proforma-invoices/gst-lookup", async (req, res) => {
     registrationStatus: src.registrationStatus || src.registration_status || src.status || "Active",
   });
 
-  // ── Tier 1: GSTVerify (free — 10 demo calls, then ₹0.10/call) ──
+  // ── Tier 1: RapidAPI India GSTIN Validator ──
+  const rapidApiKey = process.env.RAPIDAPI_GST_KEY;
+  const rapidApiHost = process.env.RAPIDAPI_GST_HOST;
+  if (rapidApiKey && rapidApiHost) {
+    try {
+      const raRes = await axios.get(`https://${rapidApiHost}/api/gstin/validate?gstin=${encodeURIComponent(cleanGstin)}`, {
+        headers: {
+          "x-rapidapi-host": rapidApiHost,
+          "x-rapidapi-key": rapidApiKey,
+          "Content-Type": "application/json",
+        },
+        timeout: 8000,
+      });
+      const raBody = raRes.data;
+      // Handle common wrapper patterns: { data: {...} }, { result: {...} }, or flat
+      const raData = raBody?.data || raBody?.result || raBody;
+      if (raBody?.success !== false && raData) {
+        return res.json(normalize(raData));
+      }
+    } catch (raErr: any) {
+      req.log.warn({ err: raErr.message, gstin: cleanGstin }, "RapidAPI GST lookup failed, trying next tier");
+    }
+  }
+
+  // ── Tier 2: GSTVerify (free — 10 demo calls, then ₹0.10/call) ──
   const gstVerifyKey = process.env.GSTVERIFY_API_KEY;
   if (gstVerifyKey) {
     try {
@@ -386,7 +410,7 @@ router.post("/proforma-invoices/gst-lookup", async (req, res) => {
     }
   }
 
-  // ── Tier 2: GSTZen API ──
+  // ── Tier 3: GSTZen API ──
   if (process.env.GST_API_URL && process.env.GST_API_KEY) {
     try {
       const provider = getGstProvider();
@@ -397,7 +421,7 @@ router.post("/proforma-invoices/gst-lookup", async (req, res) => {
     }
   }
 
-  // ── Tier 3: Lightweight HTML extraction ──
+  // ── Tier 4: Lightweight HTML extraction ──
   try {
     const data = await extractLiveGstLightweight(cleanGstin);
     return res.json({ success: true, ...data });
@@ -405,7 +429,7 @@ router.post("/proforma-invoices/gst-lookup", async (req, res) => {
     // silent
   }
 
-  // ── Tier 4: Local database fallback ──
+  // ── Tier 5: Local database fallback ──
   try {
     const [customer] = await db
       .select()
