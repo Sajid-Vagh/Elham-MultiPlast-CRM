@@ -3,7 +3,7 @@ import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHi
 import { eq, desc, and, SQL, sql, like, gte, lte, inArray, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { amountToWords } from "../lib/amount-to-words";
-import { getGstProvider, clearGstCache, type GstDetails } from "../lib/gst-provider";
+// GST provider integration point reserved for future use
 import * as XLSX from "xlsx";
 
 const router: IRouter = Router();
@@ -504,83 +504,6 @@ router.post("/proforma-invoices", async (req, res) => {
     res.status(201).json(await enrichInvoice(invoice!));
   } catch (err) {
     req.log.error({ err }, "Create proforma invoice error");
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
-
-router.post("/proforma-invoices/gst-lookup", async (req, res) => {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
-    const { gstNumber } = req.body;
-    if (!gstNumber || typeof gstNumber !== "string") {
-      res.status(400).json({ error: "GST number is required" });
-      return;
-    }
-
-    const gstin = gstNumber.toUpperCase().trim();
-    if (!GSTIN_REGEX.test(gstin)) {
-      res.status(400).json({ error: "Invalid GSTIN format. Must be 15 alphanumeric characters (e.g. 24AAJFE2064P1Z6)." });
-      return;
-    }
-
-    // Check Customer Master first — if this GSTIN was saved previously, return saved data
-    const [customer] = await db
-      .select()
-      .from(customerMasterTable)
-      .where(eq(customerMasterTable.gstin, gstin));
-
-    if (customer) {
-      const details: GstDetails = {
-        legalName: customer.companyName || "",
-        tradeName: customer.tradeName || "",
-        gstin: customer.gstin,
-        address: [customer.addressLine1, customer.addressLine2, customer.addressLine3, customer.city, customer.state, customer.pincode].filter(Boolean).join(", "),
-        addressLine1: customer.addressLine1 || "",
-        addressLine2: customer.addressLine2 || "",
-        addressLine3: customer.addressLine3 || "",
-        city: customer.city || "",
-        district: customer.district || "",
-        state: customer.state || "",
-        stateCode: customer.gstin.substring(0, 2),
-        pincode: customer.pincode || "",
-        status: customer.gstStatus || "Active",
-        businessConstitution: customer.businessConstitution || "",
-        registrationStatus: customer.gstStatus || "Active",
-      };
-      req.log.info({ gstin, source: "customer_master" }, "GST lookup from Customer Master");
-      res.json(details);
-      return;
-    }
-
-    const provider = getGstProvider();
-    const details = await provider.lookup(gstin);
-    req.log.info({ gstin, details, source: "gst_provider" }, "GST lookup result");
-    res.json(details);
-  } catch (err: any) {
-    if (err.message?.includes("not configured")) {
-      res.status(503).json({ error: err.message });
-    } else if (err.message?.includes("not found")) {
-      res.status(404).json({ error: err.message });
-    } else {
-      req.log.error({ err }, "GST lookup error");
-      res.status(502).json({ error: err.message || "GST lookup failed" });
-    }
-  }
-});
-
-router.post("/proforma-invoices/gst-clear-cache", async (req, res) => {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
-    clearGstCache();
-    res.json({ success: true });
-  } catch (err) {
-    req.log.error({ err }, "GST cache clear error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

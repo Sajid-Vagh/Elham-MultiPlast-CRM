@@ -19,7 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import {
   Plus, Download, Printer, Share2, Mail, Eye, FileText, Save, ArrowLeft, Trash2, Search,
-  ChevronLeft, ChevronRight, Send, Loader2, RefreshCw,
+  ChevronLeft, ChevronRight, Send, Loader2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -77,8 +77,6 @@ interface InvoiceItem {
   amount: number;
 }
 
-const gstCache = new Map<string, any>();
-
 export default function ProformaInvoicesPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -125,15 +123,13 @@ export default function ProformaInvoicesPage() {
   const [contactSearchQuery, setContactSearchQuery] = useState("");
   const [contactSearchResults, setContactSearchResults] = useState<any[]>([]);
   const [showContactSearch, setShowContactSearch] = useState(false);
-  const [gstLoading, setGstLoading] = useState(false);
   const [district, setDistrict] = useState("");
   const [tradeName, setTradeName] = useState("");
   const [gstStatus, setGstStatus] = useState("");
   const [customerMasterId, setCustomerMasterId] = useState<number | null>(null);
-  const [showSaveCustomer, setShowSaveCustomer] = useState(false);
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [existingCustomer, setExistingCustomer] = useState<any>(null);
-  const [lastFetchedGstData, setLastFetchedGstData] = useState<any>(null);
+  const [gstinNotFound, setGstinNotFound] = useState(false);
   const [productSearchQuery, setProductSearchQuery] = useState("");
   const [productSearchResults, setProductSearchResults] = useState<any[]>([]);
   const [showProductSearch, setShowProductSearch] = useState(false);
@@ -271,9 +267,8 @@ export default function ProformaInvoicesPage() {
     setItems([{ productName: "", hsnCode: "", bottleType: "", capacity: "", weight: "", quantity: 1, unit: "Pcs", rate: 0, discountPercent: 0, discount: 0, gstPercent: 0, amount: 0 }]);
     setEditMode(false);
     setCustomerMasterId(null);
-    setShowSaveCustomer(false);
     setExistingCustomer(null);
-    setLastFetchedGstData(null);
+    setGstinNotFound(false);
     setProductSearchQuery("");
     setProductSearchResults([]);
     setShowProductSearch(false);
@@ -331,11 +326,6 @@ export default function ProformaInvoicesPage() {
     setActiveProductIdx(-1);
   };
 
-  const handleGstBlur = () => {
-    // Blur only validates format — Customer Master is checked via useEffect.
-    // User clicks "Verify GST" to call the real API.
-  };
-
   const selectContact = (contact: any) => {
     setCustomerName(contact.name);
     setCompanyName(contact.companyName || "");
@@ -390,47 +380,6 @@ export default function ProformaInvoicesPage() {
     setGstStatus(data.registrationStatus || data.status || "");
   };
 
-  const handleGstFetch = async () => {
-    const gstin = gstNumber.toUpperCase().trim();
-    const gstinRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
-    if (!gstinRegex.test(gstin)) {
-      toast({ title: "Invalid GSTIN", description: "Please enter a valid 15-character GST number (e.g. 24AAJFE2064P1Z6)", variant: "destructive" });
-      return;
-    }
-
-    const cached = gstCache.get(gstin);
-    if (cached) {
-      applyGstDetails(cached);
-      setLastFetchedGstData(cached);
-      setShowSaveCustomer(true);
-      toast({ title: "✓ Customer Loaded", description: `Loaded details for ${cached.legalName || cached.tradeName || gstin}` });
-      return;
-    }
-
-    setGstLoading(true);
-    try {
-      const res = await fetch("/api/proforma-invoices/gst-lookup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ gstNumber: gstin }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || "GST lookup failed");
-      }
-      const data = await res.json();
-      gstCache.set(gstin, data);
-      applyGstDetails(data);
-      setLastFetchedGstData(data);
-      setShowSaveCustomer(true);
-      toast({ title: "✓ GST Verified", description: `Loaded details for ${data.legalName || data.tradeName || gstin}` });
-    } catch (err: any) {
-      toast({ title: "Unable to verify GST", description: "Please enter customer manually or try again later.", variant: "destructive" });
-    } finally {
-      setGstLoading(false);
-    }
-  };
-
   const checkExistingCustomer = async (gstin: string) => {
     if (!gstin || gstin.length < 15) return;
     try {
@@ -443,8 +392,10 @@ export default function ProformaInvoicesPage() {
         const customer = await res.json();
         setExistingCustomer(customer);
         applyExistingCustomer(customer);
+        setGstinNotFound(false);
       } else {
         setExistingCustomer(null);
+        setGstinNotFound(true);
       }
     } catch {
       setExistingCustomer(null);
@@ -510,7 +461,7 @@ export default function ProformaInvoicesPage() {
       const customer = await res.json();
       setCustomerMasterId(customer.id);
       setExistingCustomer(customer);
-      setShowSaveCustomer(false);
+      setGstinNotFound(false);
       toast({ title: "✓ Customer Saved Successfully", description: `${customer.companyName} saved to Customer Master` });
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to save customer", variant: "destructive" });
@@ -519,16 +470,9 @@ export default function ProformaInvoicesPage() {
     }
   };
 
-  const handleRefreshGst = async () => {
-    const gstin = gstNumber.toUpperCase().trim();
-    gstCache.delete(gstin);
-    await handleGstFetch();
-  };
-
   const handleUseExistingCustomer = () => {
     if (existingCustomer) {
       applyExistingCustomer(existingCustomer);
-      setShowSaveCustomer(false);
     }
   };
 
@@ -556,7 +500,6 @@ export default function ProformaInvoicesPage() {
       });
       if (res.ok) {
         toast({ title: "✓ Customer Updated", description: "Customer Master record updated" });
-        setShowSaveCustomer(false);
       }
     } catch {
       toast({ title: "Error", description: "Failed to update customer", variant: "destructive" });
@@ -1087,19 +1030,14 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
                 <div className="flex gap-2">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                    <Input value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} placeholder="Enter GSTIN (e.g. 24AAJFE2064P1Z6)" className="pl-9" onBlur={handleGstBlur} onKeyDown={(e) => { if (e.key === "Enter") handleGstFetch(); }} />
+                    <Input value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} placeholder="Enter GSTIN (e.g. 24AAJFE2064P1Z6)" className="pl-9" />
                   </div>
-                  <Button type="button" variant="secondary" size="sm" onClick={handleGstFetch} disabled={gstLoading || !gstNumber.trim()} className="shrink-0 gap-1.5">
-                    {gstLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                    {gstLoading ? "Verifying..." : "Verify GST"}
-                  </Button>
-                  {customerMasterId && (
-                    <Button type="button" variant="outline" size="sm" onClick={handleRefreshGst} className="shrink-0 gap-1.5">
-                      <RefreshCw className="h-4 w-4" />
-                      Refresh GST
-                    </Button>
-                  )}
                 </div>
+                {gstinNotFound && (
+                  <div className="mt-2 text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                    No customer found with this GSTIN. Please enter customer details manually.
+                  </div>
+                )}
               </div>
             ) : (
               <>
@@ -1132,7 +1070,7 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
             </div>
 
             {/* Customer Master actions */}
-            {showSaveCustomer && !customerMasterId && !existingCustomer && (
+            {!customerMasterId && !existingCustomer && gstNumber.trim().length >= 15 && companyName.trim() && (
               <div className="sm:col-span-2">
                 <Button onClick={handleSaveCustomer} disabled={savingCustomer} className="w-full gap-2">
                   {savingCustomer ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
