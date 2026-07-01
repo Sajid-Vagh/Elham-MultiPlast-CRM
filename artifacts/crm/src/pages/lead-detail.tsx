@@ -578,34 +578,34 @@ export default function LeadDetail() {
               <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Quick Actions</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-1.5">
-                <Button size="sm" variant="outline" className="h-8 text-xs justify-start" onClick={() => setCommentDialogOpen(true)}>
-                  <MessageSquare className="h-3 w-3 mr-1.5" /> Edit Comments
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setCommentDialogOpen(true)}>
+                  <MessageSquare className="h-3.5 w-3.5 shrink-0" /> Edit Comments
                 </Button>
-                <Button size="sm" variant="outline" className="h-8 text-xs justify-start" onClick={() => { setActDealId(deal?.id?.toString() || ""); setSchedFuOpen(true); }}>
-                  <Calendar className="h-3 w-3 mr-1.5" /> Schedule Follow-up
+                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => { setActDealId(deal?.id?.toString() || ""); setSchedFuOpen(true); }}>
+                  <Calendar className="h-3.5 w-3.5 shrink-0" /> Schedule Follow-up
                 </Button>
-                <Button size="sm" variant="outline" className="h-8 text-xs justify-start" onClick={() => setShowMoveCategory(true)}>
-                  <FolderTree className="h-3 w-3 mr-1.5" /> Move Category
+                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setShowMoveCategory(true)}>
+                  <FolderTree className="h-3.5 w-3.5 shrink-0" /> Move Category
                 </Button>
-                <Button size="sm" variant="outline" className="h-8 text-xs justify-start" onClick={() => setDealDialogOpen(true)}>
-                  <Plus className="h-3 w-3 mr-1.5" /> Create Deal
+                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setDealDialogOpen(true)}>
+                  <Plus className="h-3.5 w-3.5 shrink-0" /> Create Deal
                 </Button>
-                <Button size="sm" variant="outline" className="h-8 text-xs justify-start" onClick={() => window.location.href = `/proforma-invoices`}>
-                  <FileText className="h-3 w-3 mr-1.5" /> Proforma Invoice
+                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => window.location.href = `/proforma-invoices`}>
+                  <FileText className="h-3.5 w-3.5 shrink-0" /> Proforma Invoice
                 </Button>
-                <Button size="sm" variant="outline" className="h-8 text-xs justify-start" onClick={() => setUploadDocOpen(true)}>
-                  <Paperclip className="h-3 w-3 mr-1.5" /> Upload Document
+                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setUploadDocOpen(true)}>
+                  <Paperclip className="h-3.5 w-3.5 shrink-0" /> Upload Document
                 </Button>
-                <Button size="sm" variant="outline" className="h-8 text-xs justify-start" onClick={() => window.open(`tel:${contact.mobile}`)}>
-                  <Phone className="h-3 w-3 mr-1.5" /> Call Customer
+                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => window.open(`tel:${contact.mobile}`)}>
+                  <Phone className="h-3.5 w-3.5 shrink-0" /> Call Customer
                 </Button>
-                <Button size="sm" variant="outline" className="h-8 text-xs justify-start" onClick={() => copyToClipboard(contact.mobile)}>
-                  <Copy className="h-3 w-3 mr-1.5" /> Copy Mobile
+                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => copyToClipboard(contact.mobile)}>
+                  <Copy className="h-3.5 w-3.5 shrink-0" /> Copy Mobile
                 </Button>
-                <Link href={`/leads/${contactId}/edit`} className="col-span-2">
-                  <Button size="sm" variant="default" className="w-full h-8 text-xs">
-                    <Pencil className="h-3 w-3 mr-1.5" /> Edit Lead
+                <Link href={`/leads/${contactId}/edit`} className="sm:col-span-2">
+                  <Button size="sm" variant="default" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3">
+                    <Pencil className="h-3.5 w-3.5 shrink-0" /> Edit Lead
                   </Button>
                 </Link>
               </div>
