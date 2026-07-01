@@ -170,6 +170,8 @@ class DefaultGstProvider implements GstProvider {
       throw new Error("Invalid response from GST lookup service.");
     }
 
+    console.log("[GST Provider] Raw API response for", gstin, ":", JSON.stringify(data, null, 2));
+
     const resolvedAddress = data.address || data.partyAddress || data.businessAddress || data.addr || "";
     const parsed = parseGstAddress(resolvedAddress);
 

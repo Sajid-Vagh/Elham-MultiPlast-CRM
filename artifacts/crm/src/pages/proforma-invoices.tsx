@@ -349,25 +349,46 @@ export default function ProformaInvoicesPage() {
   };
 
   const applyGstDetails = (data: any) => {
-    if (data.legalName) setCustomerName(data.legalName);
-    if (!data.legalName && data.tradeName) setCustomerName(data.tradeName);
-    if (data.tradeName) setTradeName(data.tradeName);
-    if (data.addressLine1) setAddressLine1(data.addressLine1);
-    if (data.addressLine2) setAddressLine2(data.addressLine2);
-    if (data.addressLine3) setAddressLine3(data.addressLine3);
-    if (data.address && !data.addressLine1) {
+    console.log("[GST Lookup] Full API response:", JSON.stringify(data, null, 2));
+
+    // Clear ALL customer fields first to remove stale/placeholder values
+    setCustomerName("");
+    setCompanyName("");
+    setTradeName("");
+    setAddressLine1("");
+    setAddressLine2("");
+    setAddressLine3("");
+    setCity("");
+    setDistrict("");
+    setState("");
+    setPincode("");
+    setGstNumber("");
+    setGstStatus("");
+
+    // Then overwrite unconditionally from API data
+    const name = data.legalName || data.tradeName || "";
+    setCustomerName(name);
+    setCompanyName(name);
+    setTradeName(data.tradeName || "");
+
+    if (data.addressLine1 || data.addressLine2 || data.addressLine3) {
+      setAddressLine1(data.addressLine1 || "");
+      setAddressLine2(data.addressLine2 || "");
+      setAddressLine3(data.addressLine3 || "");
+    } else if (data.address) {
       const lines = data.address.split(",").map((l: string) => l.trim()).filter(Boolean);
       setAddressLine1(lines[0] || "");
       setAddressLine2(lines.length > 2 ? lines.slice(1, -1).join(", ") : lines.length === 2 ? lines[1] : "");
       setAddressLine3(lines.length > 2 ? lines[lines.length - 1] || "" : "");
     }
-    if (data.city) setCity(data.city);
-    if (data.district) setDistrict(data.district);
-    if (data.state) setState(data.state);
-    if (data.pincode) setPincode(data.pincode);
-    if (data.gstin) setGstNumber(data.gstin);
-    if (data.businessConstitution) setCustomerType(data.businessConstitution === "Unregistered" ? "Unregistered" : "GST");
-    if (data.registrationStatus || data.status) setGstStatus(data.registrationStatus || data.status || "");
+
+    setCity(data.city || "");
+    setDistrict(data.district || "");
+    setState(data.state || "");
+    setPincode(data.pincode || "");
+    setGstNumber(data.gstin || "");
+    setCustomerType(data.businessConstitution === "Unregistered" ? "Unregistered" : "GST");
+    setGstStatus(data.registrationStatus || data.status || "");
   };
 
   const handleGstFetch = async () => {

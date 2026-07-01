@@ -529,6 +529,7 @@ router.post("/proforma-invoices/gst-lookup", async (req, res) => {
 
     const provider = getGstProvider();
     const details = await provider.lookup(gstin);
+    req.log.info({ gstin, details }, "GST lookup result");
     res.json(details);
   } catch (err: any) {
     if (err.message?.includes("not configured")) {
