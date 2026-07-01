@@ -3,7 +3,7 @@ import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHi
 import { eq, desc, and, SQL, sql, like, gte, lte, inArray, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { amountToWords } from "../lib/amount-to-words";
-// GST provider integration point reserved for future use
+import { getGstProvider, clearGstCache } from "../lib/gst-provider";
 import * as XLSX from "xlsx";
 
 const router: IRouter = Router();
@@ -309,6 +309,32 @@ async function enrichInvoice(invoice: typeof proformaInvoicesTable.$inferSelect)
     deal,
   };
 }
+
+// ── GST Lookup via real provider ────────────────────
+router.post("/proforma-invoices/gst-lookup", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const { gstin } = req.body;
+    if (!gstin || typeof gstin !== "string" || gstin.trim().length < 15) {
+      res.status(400).json({ error: "Invalid GSTIN" });
+      return;
+    }
+
+    const provider = getGstProvider();
+    const details = await provider.lookup(gstin.trim().toUpperCase());
+    res.json(details);
+  } catch (err: any) {
+    req.log.error({ err }, "GST lookup error");
+    res.status(502).json({ error: err.message || "GST lookup failed" });
+  }
+});
+
+router.post("/proforma-invoices/gst-clear-cache", (_req, res) => {
+  clearGstCache();
+  res.json({ ok: true });
+});
 
 router.get("/proforma-invoices", async (req, res) => {
   try {
