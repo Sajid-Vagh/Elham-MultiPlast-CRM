@@ -197,13 +197,6 @@ let provider: GstProvider | null = null;
 
 export function getGstProvider(): GstProvider {
   if (!provider) {
-    const providerName = process.env.GST_PROVIDER || "api";
-    if (providerName === "mock") {
-      throw new Error(
-        "GST provider is not configured. Set GST_PROVIDER, GST_API_URL, and GST_API_KEY environment variables. " +
-        "Supported providers include ClearTax (cleartax), Masters India (mastersindia), AppyFlow (appyflow), GSTZen (gstzen), or any custom API."
-      );
-    }
     provider = new ApiGstProvider();
   }
   return provider;
