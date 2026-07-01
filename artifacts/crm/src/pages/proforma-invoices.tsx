@@ -1006,6 +1006,7 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
 
   if (mode === "create") {
     return (
+      <>
       <div className="p-6 max-w-5xl mx-auto space-y-6">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={() => { setMode("list"); resetForm(); }}>
@@ -1315,6 +1316,7 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
         </div>
       </div>
       {deleteDialogEl}
+    </>
     );
   }
 
@@ -1541,6 +1543,7 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
   }
 
   return (
+    <>
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -1641,5 +1644,6 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
       )}
     </div>
     {deleteDialogEl}
+    </>
   );
 }
