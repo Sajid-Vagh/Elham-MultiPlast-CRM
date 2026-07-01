@@ -1,5 +1,22 @@
 import dotenv from "dotenv";
-dotenv.config();
+import path from "node:path";
+import fs from "node:fs";
+
+function loadEnv(): void {
+  if (process.env.GST_PROVIDER) return;
+  let dir = process.cwd();
+  for (let i = 0; i < 10; i++) {
+    const envPath = path.join(dir, ".env");
+    if (fs.existsSync(envPath)) {
+      dotenv.config({ path: envPath });
+      return;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+}
+loadEnv();
 
 export interface GstDetails {
   legalName: string;
