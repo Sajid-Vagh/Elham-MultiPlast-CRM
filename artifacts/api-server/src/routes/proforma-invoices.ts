@@ -513,6 +513,159 @@ router.post("/proforma-invoices", async (req, res) => {
   }
 });
 
+// --- Report endpoints (must be before :id to avoid capture as param) ---
+
+router.get("/proforma-invoices/report/summary", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const { dateFrom, dateTo, ownerId, status } = req.query as Record<string, string | undefined>;
+    const conditions: SQL[] = [eq(proformaInvoicesTable.isDeleted, false)];
+
+    if (user.role === "sales") conditions.push(eq(proformaInvoicesTable.createdBy, user.id));
+    if (status) conditions.push(eq(proformaInvoicesTable.status, status));
+    if (ownerId) conditions.push(eq(proformaInvoicesTable.salesOwnerId, Number(ownerId)));
+    if (dateFrom) conditions.push(gte(proformaInvoicesTable.createdAt, new Date(dateFrom)));
+    if (dateTo) conditions.push(lte(proformaInvoicesTable.createdAt, new Date(dateTo + "T23:59:59")));
+
+    const invoices = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(and(...conditions));
+
+    const totalInvoices = invoices.length;
+    const totalAmount = invoices.reduce((s, inv) => s + Number(inv.grandTotal || 0), 0);
+    const statusCounts = INVOICE_STATUSES.map(st => ({
+      status: st,
+      count: invoices.filter(inv => inv.status === st).length,
+      amount: invoices.filter(inv => inv.status === st).reduce((s, inv) => s + Number(inv.grandTotal || 0), 0),
+    }));
+
+    const byCustomer: Record<string, { count: number; amount: number }> = {};
+    for (const inv of invoices) {
+      const key = inv.customerName;
+      if (!byCustomer[key]) byCustomer[key] = { count: 0, amount: 0 };
+      byCustomer[key].count++;
+      byCustomer[key].amount += Number(inv.grandTotal || 0);
+    }
+    const customerStats = Object.entries(byCustomer)
+      .map(([customer, stats]) => ({ customer, ...stats }))
+      .sort((a, b) => b.amount - a.amount);
+
+    const byOwner: Record<string, { count: number; amount: number }> = {};
+    const users = await db.select().from(usersTable);
+    const userMap = new Map(users.map(u => [u.id, u.name]));
+    for (const inv of invoices) {
+      const owner = inv.salesOwnerId ? userMap.get(inv.salesOwnerId) || "Unknown" : "Unassigned";
+      if (!byOwner[owner]) byOwner[owner] = { count: 0, amount: 0 };
+      byOwner[owner].count++;
+      byOwner[owner].amount += Number(inv.grandTotal || 0);
+    }
+    const ownerStats = Object.entries(byOwner)
+      .map(([owner, stats]) => ({ owner, ...stats }))
+      .sort((a, b) => b.amount - a.amount);
+
+    const byMonth: Record<string, { count: number; amount: number }> = {};
+    for (const inv of invoices) {
+      const d = new Date(inv.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      if (!byMonth[key]) byMonth[key] = { count: 0, amount: 0 };
+      byMonth[key].count++;
+      byMonth[key].amount += Number(inv.grandTotal || 0);
+    }
+    const monthlyStats = Object.entries(byMonth)
+      .map(([month, stats]) => ({ month, ...stats }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    res.json({
+      totalInvoices,
+      totalAmount,
+      statusCounts,
+      byCustomer: customerStats.slice(0, 20),
+      byOwner: ownerStats,
+      byMonth: monthlyStats,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Proforma report summary error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/proforma-invoices/report/export", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const { dateFrom, dateTo, ownerId, status } = req.query as Record<string, string | undefined>;
+    const conditions: SQL[] = [eq(proformaInvoicesTable.isDeleted, false)];
+
+    if (user.role === "sales") conditions.push(eq(proformaInvoicesTable.createdBy, user.id));
+    if (status) conditions.push(eq(proformaInvoicesTable.status, status));
+    if (ownerId) conditions.push(eq(proformaInvoicesTable.salesOwnerId, Number(ownerId)));
+    if (dateFrom) conditions.push(gte(proformaInvoicesTable.createdAt, new Date(dateFrom)));
+    if (dateTo) conditions.push(lte(proformaInvoicesTable.createdAt, new Date(dateTo + "T23:59:59")));
+
+    const invoices = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(and(...conditions))
+      .orderBy(desc(proformaInvoicesTable.createdAt));
+
+    const fmt = (req.query.format as string) || "xlsx";
+
+    const users = await db.select().from(usersTable);
+    const userMap = new Map(users.map(u => [u.id, u.name]));
+
+    const finalRows = invoices.map(inv => ({
+      "Invoice #": inv.invoiceNumber,
+      "Date": inv.createdAt ? new Date(inv.createdAt).toLocaleDateString("en-IN") : "",
+      "Customer": inv.customerName,
+      "Company": inv.companyName || "",
+      "Mobile": inv.mobile || "",
+      "GSTIN": inv.gstNumber || "",
+      "Taxable": Number(inv.taxableAmount || 0).toFixed(2),
+      "CGST": Number(inv.cgst || 0).toFixed(2),
+      "SGST": Number(inv.sgst || 0).toFixed(2),
+      "IGST": Number(inv.igst || 0).toFixed(2),
+      "Freight": Number(inv.freight || 0).toFixed(2),
+      "Grand Total": Number(inv.grandTotal || 0).toFixed(2),
+      "Status": inv.status || "Draft",
+      "Created By": userMap.get(inv.createdBy) || "",
+    }));
+
+    if (fmt === "csv") {
+      const headers = Object.keys(finalRows[0] || {});
+      const csv = [
+        headers.join(","),
+        ...finalRows.map(row =>
+          headers.map(h => {
+            const val = (row as any)[h];
+            const str = val == null ? "" : String(val);
+            return str.includes(",") || str.includes('"') || str.includes("\n")
+              ? `"${str.replace(/"/g, '""')}"`
+              : str;
+          }).join(",")
+        ),
+      ].join("\n");
+      res.setHeader("Content-Type", "text/csv;charset=utf-8");
+      res.setHeader("Content-Disposition", "attachment; filename=proforma-report.csv");
+      res.send(csv);
+    } else {
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(finalRows);
+      XLSX.utils.book_append_sheet(wb, ws, "Proformas");
+      const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", "attachment; filename=proforma-report.xlsx");
+      res.send(buf);
+    }
+  } catch (err) {
+    req.log.error({ err }, "Proforma report export error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.get("/proforma-invoices/:id", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
@@ -892,157 +1045,6 @@ router.get("/proforma-invoices/:id/pdf", async (req, res) => {
     }
   } catch (err) {
     req.log.error({ err }, "Get proforma invoice PDF error");
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-router.get("/proforma-invoices/report/summary", async (req, res) => {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
-    const { dateFrom, dateTo, ownerId, status } = req.query as Record<string, string | undefined>;
-    const conditions: SQL[] = [eq(proformaInvoicesTable.isDeleted, false)];
-
-    if (user.role === "sales") conditions.push(eq(proformaInvoicesTable.createdBy, user.id));
-    if (status) conditions.push(eq(proformaInvoicesTable.status, status));
-    if (ownerId) conditions.push(eq(proformaInvoicesTable.salesOwnerId, Number(ownerId)));
-    if (dateFrom) conditions.push(gte(proformaInvoicesTable.createdAt, new Date(dateFrom)));
-    if (dateTo) conditions.push(lte(proformaInvoicesTable.createdAt, new Date(dateTo + "T23:59:59")));
-
-    const invoices = await db
-      .select()
-      .from(proformaInvoicesTable)
-      .where(and(...conditions));
-
-    const totalInvoices = invoices.length;
-    const totalAmount = invoices.reduce((s, inv) => s + Number(inv.grandTotal || 0), 0);
-    const statusCounts = INVOICE_STATUSES.map(st => ({
-      status: st,
-      count: invoices.filter(inv => inv.status === st).length,
-      amount: invoices.filter(inv => inv.status === st).reduce((s, inv) => s + Number(inv.grandTotal || 0), 0),
-    }));
-
-    const byCustomer: Record<string, { count: number; amount: number }> = {};
-    for (const inv of invoices) {
-      const key = inv.customerName;
-      if (!byCustomer[key]) byCustomer[key] = { count: 0, amount: 0 };
-      byCustomer[key].count++;
-      byCustomer[key].amount += Number(inv.grandTotal || 0);
-    }
-    const customerStats = Object.entries(byCustomer)
-      .map(([customer, stats]) => ({ customer, ...stats }))
-      .sort((a, b) => b.amount - a.amount);
-
-    const byOwner: Record<string, { count: number; amount: number }> = {};
-    const users = await db.select().from(usersTable);
-    const userMap = new Map(users.map(u => [u.id, u.name]));
-    for (const inv of invoices) {
-      const owner = inv.salesOwnerId ? userMap.get(inv.salesOwnerId) || "Unknown" : "Unassigned";
-      if (!byOwner[owner]) byOwner[owner] = { count: 0, amount: 0 };
-      byOwner[owner].count++;
-      byOwner[owner].amount += Number(inv.grandTotal || 0);
-    }
-    const ownerStats = Object.entries(byOwner)
-      .map(([owner, stats]) => ({ owner, ...stats }))
-      .sort((a, b) => b.amount - a.amount);
-
-    const byMonth: Record<string, { count: number; amount: number }> = {};
-    for (const inv of invoices) {
-      const d = new Date(inv.createdAt);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      if (!byMonth[key]) byMonth[key] = { count: 0, amount: 0 };
-      byMonth[key].count++;
-      byMonth[key].amount += Number(inv.grandTotal || 0);
-    }
-    const monthlyStats = Object.entries(byMonth)
-      .map(([month, stats]) => ({ month, ...stats }))
-      .sort((a, b) => a.month.localeCompare(b.month));
-
-    res.json({
-      totalInvoices,
-      totalAmount,
-      statusCounts,
-      byCustomer: customerStats.slice(0, 20),
-      byOwner: ownerStats,
-      byMonth: monthlyStats,
-    });
-  } catch (err) {
-    req.log.error({ err }, "Proforma report summary error");
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-router.get("/proforma-invoices/report/export", async (req, res) => {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
-    const { dateFrom, dateTo, ownerId, status } = req.query as Record<string, string | undefined>;
-    const conditions: SQL[] = [eq(proformaInvoicesTable.isDeleted, false)];
-
-    if (user.role === "sales") conditions.push(eq(proformaInvoicesTable.createdBy, user.id));
-    if (status) conditions.push(eq(proformaInvoicesTable.status, status));
-    if (ownerId) conditions.push(eq(proformaInvoicesTable.salesOwnerId, Number(ownerId)));
-    if (dateFrom) conditions.push(gte(proformaInvoicesTable.createdAt, new Date(dateFrom)));
-    if (dateTo) conditions.push(lte(proformaInvoicesTable.createdAt, new Date(dateTo + "T23:59:59")));
-
-    const invoices = await db
-      .select()
-      .from(proformaInvoicesTable)
-      .where(and(...conditions))
-      .orderBy(desc(proformaInvoicesTable.createdAt));
-
-    const fmt = (req.query.format as string) || "xlsx";
-
-    const users = await db.select().from(usersTable);
-    const userMap = new Map(users.map(u => [u.id, u.name]));
-
-    const finalRows = invoices.map(inv => ({
-      "Invoice #": inv.invoiceNumber,
-      "Date": inv.createdAt ? new Date(inv.createdAt).toLocaleDateString("en-IN") : "",
-      "Customer": inv.customerName,
-      "Company": inv.companyName || "",
-      "Mobile": inv.mobile || "",
-      "GSTIN": inv.gstNumber || "",
-      "Taxable": Number(inv.taxableAmount || 0).toFixed(2),
-      "CGST": Number(inv.cgst || 0).toFixed(2),
-      "SGST": Number(inv.sgst || 0).toFixed(2),
-      "IGST": Number(inv.igst || 0).toFixed(2),
-      "Freight": Number(inv.freight || 0).toFixed(2),
-      "Grand Total": Number(inv.grandTotal || 0).toFixed(2),
-      "Status": inv.status || "Draft",
-      "Created By": userMap.get(inv.createdBy) || "",
-    }));
-
-    if (fmt === "csv") {
-      const headers = Object.keys(finalRows[0] || {});
-      const csv = [
-        headers.join(","),
-        ...finalRows.map(row =>
-          headers.map(h => {
-            const val = (row as any)[h];
-            const str = val == null ? "" : String(val);
-            return str.includes(",") || str.includes('"') || str.includes("\n")
-              ? `"${str.replace(/"/g, '""')}"`
-              : str;
-          }).join(",")
-        ),
-      ].join("\n");
-      res.setHeader("Content-Type", "text/csv;charset=utf-8");
-      res.setHeader("Content-Disposition", "attachment; filename=proforma-report.csv");
-      res.send(csv);
-    } else {
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.json_to_sheet(finalRows);
-      XLSX.utils.book_append_sheet(wb, ws, "Proformas");
-      const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
-      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-      res.setHeader("Content-Disposition", "attachment; filename=proforma-report.xlsx");
-      res.send(buf);
-    }
-  } catch (err) {
-    req.log.error({ err }, "Proforma report export error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

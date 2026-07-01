@@ -118,6 +118,8 @@ router.post("/contacts", async (req, res) => {
 
 router.get("/contacts/duplicates", async (req, res) => {
   try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
     const contacts = await db.select().from(contactsTable);
     const users = await db.select().from(usersTable);
     const userMap = new Map(users.map(u => {

@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 
 import { Layout } from "@/components/layout";
+import { ErrorBoundary } from "@/components/error-boundary";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import Leads from "@/pages/leads";
@@ -29,7 +30,7 @@ const queryClient = new QueryClient({
 });
 
 function ProtectedLayout({ children }: { children: React.ReactNode }) {
-  return <Layout>{children}</Layout>;
+  return <ErrorBoundary><Layout>{children}</Layout></ErrorBoundary>;
 }
 
 function Router() {

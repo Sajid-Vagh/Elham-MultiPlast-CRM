@@ -14,6 +14,8 @@ function safeUser(u: typeof usersTable.$inferSelect) {
 
 router.get("/users", async (req, res) => {
   try {
+    const me = await getUserFromRequest(req);
+    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
     const users = await db.select().from(usersTable).orderBy(usersTable.name);
     res.json(users.map(safeUser));
   } catch (err) {
@@ -49,6 +51,8 @@ router.post("/users", async (req, res) => {
 });
 
 router.get("/users/:id", async (req, res) => {
+  const me = await getUserFromRequest(req);
+  if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
   const parsed = GetUserParams.safeParse({ id: Number(req.params.id) });
   if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
   try {

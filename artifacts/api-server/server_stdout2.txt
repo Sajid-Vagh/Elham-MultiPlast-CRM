@@ -1,0 +1,38 @@
+AUTH ROUTE LOADED
+[12:34:10.474] [32mINFO[39m (17400): [36mConnecting to database...[39m
+[12:34:11.549] [32mINFO[39m (17400): [36mDatabase connected[39m
+[12:34:11.775] [32mINFO[39m (17400): [36mUsers already exist, skipping seed[39m
+[12:34:11.785] [32mINFO[39m (17400): [36mServer listening[39m
+    [35mport[39m: 8080
+[12:44:54.813] [32mINFO[39m (17400): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 1,
+      "method": "GET",
+      "url": "/api/health"
+    }
+    [35mres[39m: {
+      "statusCode": 404
+    }
+    [35mresponseTime[39m: 31
+AUTH HEADER: undefined
+AUTH RESULT: missing or malformed header
+[12:44:55.099] [32mINFO[39m (17400): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 2,
+      "method": "GET",
+      "url": "/api/contacts"
+    }
+    [35mres[39m: {
+      "statusCode": 401
+    }
+    [35mresponseTime[39m: 10
+[12:46:02.301] [32mINFO[39m (17400): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 3,
+      "method": "GET",
+      "url": "/api/healthz"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 9

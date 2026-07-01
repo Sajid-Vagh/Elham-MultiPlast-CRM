@@ -69,6 +69,8 @@ router.get("/deals", async (req, res) => {
 });
 
 router.post("/deals", async (req, res) => {
+  const user = await getUserFromRequest(req);
+  if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
   const parsed = CreateDealBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid input", details: parsed.error });
