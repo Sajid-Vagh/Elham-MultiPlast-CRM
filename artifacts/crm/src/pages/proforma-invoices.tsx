@@ -332,11 +332,8 @@ export default function ProformaInvoicesPage() {
   };
 
   const handleGstBlur = () => {
-    const gstin = gstNumber.toUpperCase().trim();
-    const gstinRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
-    if (gstinRegex.test(gstin)) {
-      handleGstFetch();
-    }
+    // Blur only validates format — Customer Master is checked via useEffect.
+    // User clicks "Verify GST" to call the real API.
   };
 
   const selectContact = (contact: any) => {
@@ -406,7 +403,7 @@ export default function ProformaInvoicesPage() {
       applyGstDetails(cached);
       setLastFetchedGstData(cached);
       setShowSaveCustomer(true);
-      toast({ title: "✓ GST Details Loaded Successfully", description: `Loaded details for ${cached.legalName || cached.tradeName || gstin}` });
+      toast({ title: "✓ Customer Loaded", description: `Loaded details for ${cached.legalName || cached.tradeName || gstin}` });
       return;
     }
 
@@ -426,9 +423,9 @@ export default function ProformaInvoicesPage() {
       applyGstDetails(data);
       setLastFetchedGstData(data);
       setShowSaveCustomer(true);
-      toast({ title: "✓ GST Details Loaded Successfully", description: `Loaded details for ${data.legalName || data.tradeName || gstin}` });
+      toast({ title: "✓ GST Verified", description: `Loaded details for ${data.legalName || data.tradeName || gstin}` });
     } catch (err: any) {
-      toast({ title: "GST Lookup Failed", description: err.message || "Unable to fetch GST details", variant: "destructive" });
+      toast({ title: "Unable to verify GST", description: "Please enter customer manually or try again later.", variant: "destructive" });
     } finally {
       setGstLoading(false);
     }
@@ -1094,7 +1091,7 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
                   </div>
                   <Button type="button" variant="secondary" size="sm" onClick={handleGstFetch} disabled={gstLoading || !gstNumber.trim()} className="shrink-0 gap-1.5">
                     {gstLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                    {gstLoading ? "Fetching..." : "Fetch Details"}
+                    {gstLoading ? "Verifying..." : "Verify GST"}
                   </Button>
                   {customerMasterId && (
                     <Button type="button" variant="outline" size="sm" onClick={handleRefreshGst} className="shrink-0 gap-1.5">
