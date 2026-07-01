@@ -3,6 +3,7 @@ import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHi
 import { eq, desc, and, SQL, sql, like, gte, lte, inArray, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { amountToWords } from "../lib/amount-to-words";
+import axios from "axios";
 import * as XLSX from "xlsx";
 
 const router: IRouter = Router();
@@ -309,109 +310,71 @@ async function enrichInvoice(invoice: typeof proformaInvoicesTable.$inferSelect)
   };
 }
 
-// ── Normalize any free-public / DB response into frontend flat format ──
-function normalizeGstResponse(src: any, gstin: string) {
-  const cd = src.company_details || src;
-  const pradr = cd.pradr || cd;
-  const name = cd.legalName || cd.legal_name || cd.businessName || cd.tradeName || cd.trade_name || src.companyName || "";
-  const lines = [
-    pradr.addr1 || pradr.addressLine1 || pradr.address_line1 || pradr.building_name || pradr.buildingNumber || pradr.building_number || "",
-    pradr.addr2 || pradr.addressLine2 || pradr.address_line2 || pradr.street || pradr.locality || pradr.loc || "",
-    pradr.addr3 || pradr.addressLine3 || pradr.address_line3 || pradr.landmark || "",
-  ];
-  return {
-    success: true,
-    legalName: name,
-    tradeName: cd.tradeName || cd.trade_name || name,
-    address: pradr.addr || src.address || `${lines.filter(Boolean).join(", ")}`,
-    addressLine1: lines[0],
-    addressLine2: lines[1],
-    addressLine3: lines[2],
-    city: pradr.city || pradr.cityName || pradr.city_name || src.city || "",
-    district: pradr.district || pradr.districtName || pradr.district_name || "",
-    state: (src.stateInfo?.name || src.state_info?.name || pradr.state || src.state || "").replace(/^\d+\s*-\s*/, ""),
-    stateCode: src.stateInfo?.code || src.state_info?.code || (src.state || "").match(/^(\d+)/)?.[1] || pradr.stateCode || "",
-    pincode: pradr.pincode || pradr.pinc || pradr.pinCode || pradr.pin_code || src.pincode || "",
-    gstin,
-    status: cd.companyStatus || cd.company_status || cd.status || src.status || "Active",
-    businessConstitution: cd.gstType || cd.gst_type || cd.businessConstitution || cd.business_constitution || "",
-    registrationStatus: cd.companyStatus || cd.company_status || cd.registrationStatus || cd.registration_status || "Active",
-  };
+// ── Lightweight HTML extraction from public registry ──
+async function extractLiveGstLightweight(gstin: string) {
+  const cleanGstin = gstin.toUpperCase().trim();
+
+  const response = await axios.get(`https://app.gstzen.in/p/gstin-validator/${cleanGstin}/`, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
+    },
+    timeout: 8000,
+  });
+
+  const html = response.data;
+
+  const nameMatch = html.match(/(?:Legal Name|Trade Name).*?<td[^>]*>([\s\S]*?)<\/td>/i);
+  const addressMatch = html.match(/(?:Principal Place of Business|Address).*?<td[^>]*>([\s\S]*?)<\/td>/i);
+
+  if (nameMatch && nameMatch[1]) {
+    const companyName = nameMatch[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+    const address = addressMatch
+      ? addressMatch[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim()
+      : "";
+
+    return { companyName, address };
+  }
+
+  throw new Error("Details could not be parsed from HTML");
 }
 
-// ── GST Lookup via free public extraction + local DB fallback ──
+// ── GST Lookup via free lightweight extraction + local DB fallback ──
 router.post("/proforma-invoices/gst-lookup", async (req, res) => {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const { gstin } = req.body;
 
-    const { gstin } = req.body;
-    if (!gstin || typeof gstin !== "string" || gstin.trim().length < 15) {
-      return res.status(400).json({ success: false, error: "Invalid GSTIN" });
-    }
-
-    const cleanGstin = gstin.trim().toUpperCase();
-
-    // ── Tier 1: Free public extraction (no API key required) ──
-    const freeEndpoints = [
-      "https://gstnumber.in/api/check-gstin",
-      "https://gstseva.in/api/gstin",
-    ];
-    for (const url of freeEndpoints) {
-      try {
-        const publicRes = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ gstin: cleanGstin }),
-          signal: AbortSignal.timeout(6000),
-        });
-        if (publicRes.ok) {
-          const raw: any = await publicRes.json();
-          const biz = raw.data || raw;
-          if (biz.legalName || biz.legal_name || biz.tradeName || biz.trade_name || biz.companyName) {
-            req.log.info({ source: url, gstin: cleanGstin }, "GST lookup via free public endpoint");
-            return res.json(normalizeGstResponse(biz, cleanGstin));
-          }
-        }
-      } catch {
-        // try next endpoint
-      }
-    }
-
-    // ── Tier 2: Local database fallback ──
-    try {
-      const [customer] = await db
-        .select()
-        .from(customerMasterTable)
-        .where(eq(customerMasterTable.gstin, cleanGstin))
-        .limit(1);
-      if (customer) {
-        return res.json(normalizeGstResponse({
-          legalName: customer.companyName || "",
-          tradeName: customer.tradeName || "",
-          address: [customer.addressLine1, customer.addressLine2, customer.addressLine3].filter(Boolean).join(", "),
-          addressLine1: customer.addressLine1 || "",
-          addressLine2: customer.addressLine2 || "",
-          addressLine3: customer.addressLine3 || "",
-          city: customer.city || "",
-          district: customer.district || "",
-          state: customer.state || "",
-          pincode: customer.pincode || "",
-          status: customer.gstStatus || "Active",
-          businessConstitution: customer.customerType || "",
-          registrationStatus: customer.gstStatus || "Active",
-        }, cleanGstin));
-      }
-    } catch (dbErr) {
-      req.log.error({ err: dbErr }, "GST DB fallback error");
-    }
-
-    // ── All tiers exhausted — never fabricate ──
-    return res.status(404).json({ success: false, error: "Could not extract live details for this GSTIN. Please enter details manually." });
-  } catch (err: any) {
-    req.log.error({ err }, "GST lookup error");
-    return res.status(502).json({ success: false, error: err.message || "GST lookup failed" });
+  if (!gstin || gstin.trim().length !== 15) {
+    return res.json({ success: false, error: "Valid 15-character GSTIN required." });
   }
+
+  const cleanGstin = gstin.trim().toUpperCase();
+
+  // Tier 1: Lightweight HTML extraction
+  try {
+    const data = await extractLiveGstLightweight(cleanGstin);
+    return res.json({ success: true, ...data });
+  } catch (err: any) {
+    req.log.warn({ err, gstin: cleanGstin }, "Live extraction failed, trying DB fallback");
+  }
+
+  // Tier 2: Local database fallback
+  try {
+    const [customer] = await db
+      .select()
+      .from(customerMasterTable)
+      .where(eq(customerMasterTable.gstin, cleanGstin))
+      .limit(1);
+    if (customer) {
+      return res.json({
+        success: true,
+        companyName: customer.companyName || "",
+        address: [customer.addressLine1, customer.addressLine2, customer.addressLine3].filter(Boolean).join(", "),
+      });
+    }
+  } catch (dbErr) {
+    req.log.error({ err: dbErr }, "GST DB fallback error");
+  }
+
+  return res.json({ success: false, error: "Could not extract live details for this GSTIN. Please enter details manually." });
 });
 
 router.post("/proforma-invoices/gst-clear-cache", (_req, res) => {

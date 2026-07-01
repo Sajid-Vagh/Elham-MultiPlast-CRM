@@ -355,11 +355,11 @@ export default function ProformaInvoicesPage() {
     setGstNumber("");
     setGstStatus("");
 
-    // Then overwrite unconditionally from API data
-    const name = data.legalName || data.tradeName || "";
+    // Handle both legacy format (legalName) and new format (companyName)
+    const name = data.legalName || data.tradeName || data.companyName || "";
     setCustomerName(name);
     setCompanyName(name);
-    setTradeName(data.tradeName || "");
+    setTradeName(data.tradeName || name);
 
     if (data.addressLine1 || data.addressLine2 || data.addressLine3) {
       setAddressLine1(data.addressLine1 || "");
@@ -394,13 +394,12 @@ export default function ProformaInvoicesPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ gstin }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "GST lookup failed" }));
-        throw new Error(err.error || "GST lookup failed");
-      }
       const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.error || "GST lookup failed");
+      }
       applyGstDetails(data);
-      toast({ title: "✅ GST Details Fetched", description: `Found: ${data.legalName || data.tradeName || gstin}` });
+      toast({ title: "✅ GST Details Fetched", description: `Found: ${data.companyName || data.legalName || data.tradeName || gstin}` });
     } catch (err: any) {
       toast({ title: "GST Lookup Failed", description: err.message || "Could not fetch GST details", variant: "destructive" });
     } finally {
