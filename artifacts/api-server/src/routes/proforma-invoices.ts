@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, usersTable, contactsTable, dealsTable, INVOICE_STATUSES } from "@workspace/db";
+import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, usersTable, contactsTable, dealsTable, customerMasterTable, INVOICE_STATUSES } from "@workspace/db";
 import { eq, desc, and, SQL, sql, like, gte, lte, inArray, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { amountToWords } from "../lib/amount-to-words";
@@ -416,7 +416,7 @@ router.post("/proforma-invoices", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { customerName, companyName, contactId, dealId, address, addressLine1, addressLine2, addressLine3, city, state, pincode, gstNumber, mobile, taxableAmount, freight, cgst, sgst, igst, cgstPercent, sgstPercent, igstPercent, grandTotal, amountInWords, status, notes, items, customerType, idProofType, idProofNumber, invoiceNumber, terms, companyGstin, companyAddress, companyEmail, bankDetails, disclaimer } = req.body;
+    const { customerName, companyName, tradeName, contactId, dealId, address, addressLine1, addressLine2, addressLine3, city, district, state, pincode, gstNumber, gstStatus, mobile, taxableAmount, freight, cgst, sgst, igst, cgstPercent, sgstPercent, igstPercent, grandTotal, amountInWords, status, notes, items, customerType, idProofType, idProofNumber, invoiceNumber, terms, companyGstin, companyAddress, companyEmail, bankDetails, disclaimer, customerMasterId } = req.body;
 
     if (!customerName || !items?.length) {
       res.status(400).json({ error: "Customer name and at least one item required" });
@@ -449,18 +449,22 @@ router.post("/proforma-invoices", async (req, res) => {
         invoiceNumber: finalInvoiceNumber,
         customerName,
         companyName: companyName || null,
+        tradeName: tradeName || null,
         contactId: resolvedContactId,
         dealId: dealId || null,
         salesOwnerId: resolvedSalesOwnerId,
+        customerMasterId: customerMasterId || null,
         address: address || null,
         addressLine1: addressLine1 || null,
         addressLine2: addressLine2 || null,
         addressLine3: addressLine3 || null,
         city: city || null,
+        district: district || null,
         state: state || null,
         pincode: pincode || null,
         customerType: customerType || "GST",
         gstNumber: gstNumber || null,
+        gstStatus: gstStatus || null,
         idProofType: idProofType || null,
         idProofNumber: idProofNumber || null,
         mobile: mobile || null,
@@ -766,21 +770,25 @@ async function updateInvoiceHandler(req: any, res: any) {
       }
     }
 
-    const { customerName, companyName, contactId, dealId, address, addressLine1, addressLine2, addressLine3, city, state, pincode, gstNumber, mobile, taxableAmount, freight, cgst, sgst, igst, cgstPercent, sgstPercent, igstPercent, grandTotal, amountInWords, notes, items, customerType, idProofType, idProofNumber, invoiceNumber, terms, companyGstin, companyAddress, companyEmail, bankDetails, disclaimer } = req.body;
+    const { customerName, companyName, tradeName, contactId, dealId, address, addressLine1, addressLine2, addressLine3, city, district, state, pincode, gstNumber, gstStatus, mobile, taxableAmount, freight, cgst, sgst, igst, cgstPercent, sgstPercent, igstPercent, grandTotal, amountInWords, notes, items, customerType, idProofType, idProofNumber, invoiceNumber, terms, companyGstin, companyAddress, companyEmail, bankDetails, disclaimer, customerMasterId } = req.body;
 
     const updateData: any = {};
     if (customerName !== undefined) updateData.customerName = customerName;
     if (companyName !== undefined) updateData.companyName = companyName;
+    if (tradeName !== undefined) updateData.tradeName = tradeName;
     if (contactId !== undefined) updateData.contactId = contactId;
     if (dealId !== undefined) updateData.dealId = dealId;
+    if (customerMasterId !== undefined) updateData.customerMasterId = customerMasterId;
     if (address !== undefined) updateData.address = address;
     if (addressLine1 !== undefined) updateData.addressLine1 = addressLine1;
     if (addressLine2 !== undefined) updateData.addressLine2 = addressLine2;
     if (addressLine3 !== undefined) updateData.addressLine3 = addressLine3;
     if (city !== undefined) updateData.city = city;
+    if (district !== undefined) updateData.district = district;
     if (state !== undefined) updateData.state = state;
     if (pincode !== undefined) updateData.pincode = pincode;
     if (gstNumber !== undefined) updateData.gstNumber = gstNumber;
+    if (gstStatus !== undefined) updateData.gstStatus = gstStatus;
     if (customerType !== undefined) updateData.customerType = customerType;
     if (idProofType !== undefined) updateData.idProofType = idProofType;
     if (idProofNumber !== undefined) updateData.idProofNumber = idProofNumber;

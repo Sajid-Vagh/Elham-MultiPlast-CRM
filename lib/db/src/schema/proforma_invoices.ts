@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import { usersTable } from "./users";
 import { contactsTable } from "./contacts";
 import { dealsTable } from "./deals";
+import { customerMasterTable } from "./customer_master";
 
 export const INVOICE_STATUSES = ["Draft", "Sent", "Viewed", "Approved", "Rejected", "Expired", "Converted to Order"] as const;
 export type InvoiceStatus = typeof INVOICE_STATUSES[number];
@@ -13,6 +14,7 @@ export const proformaInvoicesTable = pgTable("proforma_invoices", {
   invoiceNumber: text("invoice_number").notNull().unique(),
   customerName: text("customer_name").notNull(),
   companyName: text("company_name"),
+  tradeName: text("trade_name"),
   contactId: integer("contact_id").references(() => contactsTable.id, { onDelete: "set null" }),
   dealId: integer("deal_id").references(() => dealsTable.id, { onDelete: "set null" }),
   salesOwnerId: integer("sales_owner_id").references(() => usersTable.id, { onDelete: "set null" }),
@@ -23,8 +25,11 @@ export const proformaInvoicesTable = pgTable("proforma_invoices", {
   city: text("city"),
   state: text("state"),
   pincode: text("pincode"),
+  district: text("district"),
+  customerMasterId: integer("customer_master_id").references(() => customerMasterTable.id, { onDelete: "set null" }),
   customerType: text("customer_type").notNull().default("GST"),
   gstNumber: text("gst_number"),
+  gstStatus: text("gst_status"),
   idProofType: text("id_proof_type"),
   idProofNumber: text("id_proof_number"),
   mobile: text("mobile"),

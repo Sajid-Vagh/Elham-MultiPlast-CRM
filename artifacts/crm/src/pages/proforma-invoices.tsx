@@ -125,6 +125,14 @@ export default function ProformaInvoicesPage() {
   const [contactSearchResults, setContactSearchResults] = useState<any[]>([]);
   const [showContactSearch, setShowContactSearch] = useState(false);
   const [gstLoading, setGstLoading] = useState(false);
+  const [district, setDistrict] = useState("");
+  const [tradeName, setTradeName] = useState("");
+  const [gstStatus, setGstStatus] = useState("");
+  const [customerMasterId, setCustomerMasterId] = useState<number | null>(null);
+  const [showSaveCustomer, setShowSaveCustomer] = useState(false);
+  const [savingCustomer, setSavingCustomer] = useState(false);
+  const [existingCustomer, setExistingCustomer] = useState<any>(null);
+  const [lastFetchedGstData, setLastFetchedGstData] = useState<any>(null);
 
   const [statusFilter, setStatusFilter] = useState("all");
   const [statusDialog, setStatusDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
@@ -233,15 +241,18 @@ export default function ProformaInvoicesPage() {
   const resetForm = () => {
     setCustomerName("");
     setCompanyName("");
+    setTradeName("");
     setAddressLine1("");
     setAddressLine2("");
     setAddressLine3("");
     setCity("");
+    setDistrict("");
     setState("");
     setPincode("");
     setAddress("");
     setCustomerType("GST");
     setGstNumber("");
+    setGstStatus("");
     setIdProofType("");
     setIdProofNumber("");
     setMobile("");
@@ -253,6 +264,10 @@ export default function ProformaInvoicesPage() {
     setNotes("");
     setItems([{ productName: "", hsnCode: "", bottleType: "", capacity: "", weight: "", quantity: 1, unit: "Pcs", rate: 0, discountPercent: 0, discount: 0, gstPercent: 0, amount: 0 }]);
     setEditMode(false);
+    setCustomerMasterId(null);
+    setShowSaveCustomer(false);
+    setExistingCustomer(null);
+    setLastFetchedGstData(null);
   };
 
   useEffect(() => {
@@ -290,16 +305,23 @@ export default function ProformaInvoicesPage() {
   const applyGstDetails = (data: any) => {
     if (data.legalName) setCustomerName(data.legalName);
     if (!data.legalName && data.tradeName) setCustomerName(data.tradeName);
-    if (data.address) {
+    if (data.tradeName) setTradeName(data.tradeName);
+    if (data.addressLine1) setAddressLine1(data.addressLine1);
+    if (data.addressLine2) setAddressLine2(data.addressLine2);
+    if (data.addressLine3) setAddressLine3(data.addressLine3);
+    if (data.address && !data.addressLine1) {
       const lines = data.address.split(",").map((l: string) => l.trim()).filter(Boolean);
       setAddressLine1(lines[0] || "");
       setAddressLine2(lines.length > 2 ? lines.slice(1, -1).join(", ") : lines.length === 2 ? lines[1] : "");
       setAddressLine3(lines.length > 2 ? lines[lines.length - 1] || "" : "");
     }
     if (data.city) setCity(data.city);
+    if (data.district) setDistrict(data.district);
     if (data.state) setState(data.state);
     if (data.pincode) setPincode(data.pincode);
     if (data.gstin) setGstNumber(data.gstin);
+    if (data.businessConstitution) setCustomerType(data.businessConstitution === "Unregistered" ? "Unregistered" : "GST");
+    if (data.registrationStatus || data.status) setGstStatus(data.registrationStatus || data.status || "");
   };
 
   const handleGstFetch = async () => {
@@ -313,7 +335,9 @@ export default function ProformaInvoicesPage() {
     const cached = gstCache.get(gstin);
     if (cached) {
       applyGstDetails(cached);
-      toast({ title: "GST Details Found", description: `Loaded cached details for ${cached.legalName || cached.tradeName || gstin}` });
+      setLastFetchedGstData(cached);
+      setShowSaveCustomer(true);
+      toast({ title: "✓ GST Details Loaded Successfully", description: `Loaded details for ${cached.legalName || cached.tradeName || gstin}` });
       return;
     }
 
@@ -331,13 +355,159 @@ export default function ProformaInvoicesPage() {
       const data = await res.json();
       gstCache.set(gstin, data);
       applyGstDetails(data);
-      toast({ title: "GST Details Fetched", description: `Loaded details for ${data.legalName || data.tradeName || gstin}` });
+      setLastFetchedGstData(data);
+      setShowSaveCustomer(true);
+      toast({ title: "✓ GST Details Loaded Successfully", description: `Loaded details for ${data.legalName || data.tradeName || gstin}` });
     } catch (err: any) {
       toast({ title: "GST Lookup Failed", description: err.message || "Unable to fetch GST details", variant: "destructive" });
     } finally {
       setGstLoading(false);
     }
   };
+
+  const checkExistingCustomer = async (gstin: string) => {
+    if (!gstin || gstin.length < 15) return;
+    try {
+      const res = await fetch("/api/customer-master/lookup-by-gstin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ gstin }),
+      });
+      if (res.ok) {
+        const customer = await res.json();
+        setExistingCustomer(customer);
+        applyExistingCustomer(customer);
+      } else {
+        setExistingCustomer(null);
+      }
+    } catch {
+      setExistingCustomer(null);
+    }
+  };
+
+  const applyExistingCustomer = (customer: any) => {
+    if (customer.companyName) setCustomerName(customer.companyName);
+    if (customer.tradeName) setTradeName(customer.tradeName);
+    if (customer.addressLine1) setAddressLine1(customer.addressLine1);
+    if (customer.addressLine2) setAddressLine2(customer.addressLine2);
+    if (customer.addressLine3) setAddressLine3(customer.addressLine3);
+    if (customer.city) setCity(customer.city);
+    if (customer.district) setDistrict(customer.district);
+    if (customer.state) setState(customer.state);
+    if (customer.pincode) setPincode(customer.pincode);
+    if (customer.mobile) setMobile(customer.mobile);
+    if (customer.gstin) setGstNumber(customer.gstin);
+    if (customer.customerType) setCustomerType(customer.customerType === "Unregistered" ? "Unregistered" : "GST");
+    if (customer.gstStatus) setGstStatus(customer.gstStatus);
+    setCustomerMasterId(customer.id);
+  };
+
+  const handleSaveCustomer = async () => {
+    const gstin = gstNumber.toUpperCase().trim();
+    if (!gstin || !companyName) {
+      toast({ title: "Error", description: "Company name and GSTIN are required to save customer", variant: "destructive" });
+      return;
+    }
+    setSavingCustomer(true);
+    try {
+      const res = await fetch("/api/customer-master", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          companyName: customerName,
+          tradeName: tradeName || null,
+          gstin,
+          addressLine1: addressLine1 || null,
+          addressLine2: addressLine2 || null,
+          addressLine3: addressLine3 || null,
+          city: city || null,
+          district: district || null,
+          state: state || null,
+          pincode: pincode || null,
+          mobile: mobile || null,
+          customerType,
+          gstStatus: gstStatus || "Active",
+        }),
+      });
+      if (res.status === 409) {
+        const err = await res.json();
+        toast({ title: "Customer Already Exists", description: "This GSTIN is already saved in Customer Master", variant: "default" });
+        setExistingCustomer(err.existing);
+        setCustomerMasterId(err.existing.id);
+        applyExistingCustomer(err.existing);
+        return;
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to save customer");
+      }
+      const customer = await res.json();
+      setCustomerMasterId(customer.id);
+      setExistingCustomer(customer);
+      setShowSaveCustomer(false);
+      toast({ title: "✓ Customer Saved Successfully", description: `${customer.companyName} saved to Customer Master` });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to save customer", variant: "destructive" });
+    } finally {
+      setSavingCustomer(false);
+    }
+  };
+
+  const handleRefreshGst = async () => {
+    const gstin = gstNumber.toUpperCase().trim();
+    gstCache.delete(gstin);
+    await handleGstFetch();
+  };
+
+  const handleUseExistingCustomer = () => {
+    if (existingCustomer) {
+      applyExistingCustomer(existingCustomer);
+      setShowSaveCustomer(false);
+    }
+  };
+
+  const handleUpdateExistingCustomer = async () => {
+    if (!existingCustomer) return;
+    setSavingCustomer(true);
+    try {
+      const res = await fetch(`/api/customer-master/${existingCustomer.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          companyName: customerName,
+          tradeName: tradeName || null,
+          addressLine1: addressLine1 || null,
+          addressLine2: addressLine2 || null,
+          addressLine3: addressLine3 || null,
+          city: city || null,
+          district: district || null,
+          state: state || null,
+          pincode: pincode || null,
+          mobile: mobile || null,
+          customerType,
+          gstStatus: gstStatus || "Active",
+        }),
+      });
+      if (res.ok) {
+        toast({ title: "✓ Customer Updated", description: "Customer Master record updated" });
+        setShowSaveCustomer(false);
+      }
+    } catch {
+      toast({ title: "Error", description: "Failed to update customer", variant: "destructive" });
+    } finally {
+      setSavingCustomer(false);
+    }
+  };
+
+  // Auto-check for existing customer when GSTIN changes
+  useEffect(() => {
+    if (gstNumber.length >= 15) {
+      const timer = setTimeout(() => checkExistingCustomer(gstNumber.toUpperCase().trim()), 500);
+      return () => clearTimeout(timer);
+    } else {
+      setExistingCustomer(null);
+    }
+  }, [gstNumber]);
 
   const handleSave = async (status: string) => {
     if (!customerName) {
@@ -353,15 +523,18 @@ export default function ProformaInvoicesPage() {
       const body: any = {
         customerName,
         companyName: companyName || null,
+        tradeName: tradeName || null,
         addressLine1: addressLine1 || null,
         addressLine2: addressLine2 || null,
         addressLine3: addressLine3 || null,
         city: city || null,
+        district: district || null,
         state: state || null,
         pincode: pincode || null,
         address: address || null,
         customerType,
         gstNumber: gstNumber || null,
+        gstStatus: gstStatus || null,
         idProofType: customerType === "Unregistered" ? (idProofType || null) : null,
         idProofNumber: customerType === "Unregistered" ? (idProofNumber || null) : null,
         mobile: mobile || null,
@@ -396,6 +569,7 @@ export default function ProformaInvoicesPage() {
           };
         }),
       };
+      if (customerMasterId) body.customerMasterId = customerMasterId;
       if (invoiceNumber) body.invoiceNumber = invoiceNumber;
 
       let res: Response;
@@ -767,20 +941,28 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
               <Input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="PI-2026-XXXX" />
             </div>
             <div className="sm:col-span-2">
+              <Label>Trade Name</Label>
+              <Input value={tradeName} onChange={(e) => setTradeName(e.target.value)} placeholder="Trade Name / Brand Name" />
+            </div>
+            <div className="sm:col-span-2">
               <Label>Address Line 1</Label>
-              <Input value={addressLine1} onChange={(e) => setAddressLine1(e.target.value)} placeholder="House / Building / Street" />
+              <Input value={addressLine1} onChange={(e) => setAddressLine1(e.target.value)} placeholder="Building / Floor / Flat Number" />
             </div>
             <div className="sm:col-span-2">
               <Label>Address Line 2</Label>
-              <Input value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)} placeholder="Area / Locality" />
+              <Input value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)} placeholder="Road / Street / Landmark" />
             </div>
             <div className="sm:col-span-2">
               <Label>Address Line 3</Label>
-              <Input value={addressLine3} onChange={(e) => setAddressLine3(e.target.value)} placeholder="Landmark / Additional info" />
+              <Input value={addressLine3} onChange={(e) => setAddressLine3(e.target.value)} placeholder="Locality / Sub Locality" />
             </div>
             <div>
               <Label>City</Label>
               <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" />
+            </div>
+            <div>
+              <Label>District</Label>
+              <Input value={district} onChange={(e) => setDistrict(e.target.value)} placeholder="District" />
             </div>
             <div>
               <Label>State</Label>
@@ -800,6 +982,10 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label>GST Status</Label>
+              <Input value={gstStatus} onChange={(e) => setGstStatus(e.target.value)} placeholder="Active / Cancelled / Suspended" />
+            </div>
             {customerType === "GST" ? (
               <div className="sm:col-span-2">
                 <Label>GSTIN / UIN</Label>
@@ -812,6 +998,12 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
                     {gstLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                     {gstLoading ? "Fetching..." : "Fetch Details"}
                   </Button>
+                  {customerMasterId && (
+                    <Button type="button" variant="outline" size="sm" onClick={handleRefreshGst} className="shrink-0 gap-1.5">
+                      <RefreshCw className="h-4 w-4" />
+                      Refresh GST
+                    </Button>
+                  )}
                 </div>
               </div>
             ) : (
@@ -843,6 +1035,40 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
               <Label>Notes</Label>
               <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Internal notes" />
             </div>
+
+            {/* Customer Master actions */}
+            {showSaveCustomer && !customerMasterId && !existingCustomer && (
+              <div className="sm:col-span-2">
+                <Button onClick={handleSaveCustomer} disabled={savingCustomer} className="w-full gap-2">
+                  {savingCustomer ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {savingCustomer ? "Saving..." : "Save Customer"}
+                </Button>
+              </div>
+            )}
+
+            {existingCustomer && !customerMasterId && (
+              <div className="sm:col-span-2">
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
+                  <p className="text-sm font-medium text-amber-800 mb-2">Customer already exists with this GSTIN</p>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={handleUseExistingCustomer}>
+                      Use Existing
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleUpdateExistingCustomer} disabled={savingCustomer}>
+                      {savingCustomer ? "Updating..." : "Update Existing"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {customerMasterId && existingCustomer && (
+              <div className="sm:col-span-2">
+                <div className="p-2 bg-green-50 border border-green-200 rounded-md flex items-center gap-2 text-sm text-green-800">
+                  <span>✓ Customer Master: {existingCustomer.companyName}</span>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -1053,13 +1279,17 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
             <CardHeader><CardTitle className="text-sm">Party Details</CardTitle></CardHeader>
             <CardContent className="text-sm space-y-1">
               <p><span className="text-muted-foreground">Name:</span> {inv.customerName}</p>
+              {inv.companyName && <p><span className="text-muted-foreground">Company:</span> {inv.companyName}</p>}
+              {inv.tradeName && <p><span className="text-muted-foreground">Trade Name:</span> {inv.tradeName}</p>}
               {inv.addressLine1 && <p><span className="text-muted-foreground">Addr 1:</span> {inv.addressLine1}</p>}
               {inv.addressLine2 && <p><span className="text-muted-foreground">Addr 2:</span> {inv.addressLine2}</p>}
               {inv.addressLine3 && <p><span className="text-muted-foreground">Addr 3:</span> {inv.addressLine3}</p>}
               {inv.city && <p><span className="text-muted-foreground">City:</span> {inv.city}</p>}
+              {inv.district && <p><span className="text-muted-foreground">District:</span> {inv.district}</p>}
               {inv.state && <p><span className="text-muted-foreground">State:</span> {inv.state}</p>}
               {inv.pincode && <p><span className="text-muted-foreground">Pincode:</span> {inv.pincode}</p>}
               <p><span className="text-muted-foreground">Type:</span> {inv.customerType || "GST"}</p>
+              {inv.gstStatus && <p><span className="text-muted-foreground">GST Status:</span> {inv.gstStatus}</p>}
               {inv.customerType === "Unregistered" ? (
                 <><p><span className="text-muted-foreground">ID Proof:</span> {inv.idProofType || ""} - {inv.idProofNumber || ""}</p></>
               ) : (
