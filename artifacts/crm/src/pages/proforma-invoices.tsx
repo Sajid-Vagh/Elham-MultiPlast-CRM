@@ -996,8 +996,9 @@ export default function ProformaInvoicesPage() {
 <style>
 @page{size:A4 portrait;margin:0;}
 *{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:297mm;}
 body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;margin:0;padding:5mm;}
-.invoice{width:100%;border:1.5px solid #000;overflow-wrap:break-word;}
+.invoice{width:100%;min-height:100%;border:1.5px solid #000;overflow-wrap:break-word;display:flex;flex-direction:column;}
 .header{text-align:center;border-bottom:1.5px solid #000;padding:6pt 8pt 5pt 8pt;}
 .gstin-top{text-align:left;font-size:7.5pt;margin-bottom:3pt;}
 .invoice-title{font-size:13pt;font-weight:bold;margin:2pt 0 3pt 0;text-decoration:underline;}
@@ -1015,7 +1016,7 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;marg
 .order-value{font-size:9pt;margin-bottom:4pt;}
 .date-value{font-size:9pt;}
 .order-text{font-size:8.5pt;font-style:italic;text-align:center;padding:4pt 0;border-bottom:1.5px solid #000;}
-table.items{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.5pt;}
+table.items{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.5pt;flex:1;}
 table.items th{background:#f0f0f0;border:1px solid #000;padding:4pt 4pt;text-align:center;font-weight:bold;font-size:8pt;height:22pt;overflow-wrap:break-word;}
 table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wrap:break-word;word-break:break-word;}
 .summary-table{width:100%;border-collapse:collapse;border-top:1.5px solid #000;}
@@ -1041,7 +1042,7 @@ table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wr
 .sign-right{width:50%;text-align:right;}
 .sign-right .for-company{font-weight:bold;font-size:9pt;}
 .sign-right .authorised{font-size:8pt;margin-top:2pt;}
-@media print{@page{margin:0;}body{padding:5mm;}.invoice{page-break-after:avoid;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+@media print{@page{margin:0;}html,body{height:297mm;}body{padding:5mm;}.invoice{page-break-after:avoid;min-height:100%;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
 </style></head><body>
 <div class="invoice">
 <div class="header">
