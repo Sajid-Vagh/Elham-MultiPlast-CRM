@@ -994,10 +994,10 @@ export default function ProformaInvoicesPage() {
 <html>
 <head><meta charset="UTF-8"><title>Proforma Invoice - ${inv.invoiceNumber}</title>
 <style>
-@page{size:A4 portrait;margin:0;}
+@page{size:A4 portrait;margin:5mm;}
 *{margin:0;padding:0;box-sizing:border-box;}
-body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.2;margin:10mm 14mm;}
-.invoice{width:100%;border:1.5px solid #000;}
+body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.2;margin:0;padding:10mm 8mm;}
+.invoice{width:100%;max-width:100%;border:1.5px solid #000;overflow-wrap:break-word;}
 .header{text-align:center;border-bottom:1.5px solid #000;padding:6pt 8pt 5pt 8pt;}
 .gstin-top{text-align:left;font-size:7.5pt;margin-bottom:3pt;}
 .invoice-title{font-size:13pt;font-weight:bold;margin:2pt 0 3pt 0;text-decoration:underline;}
@@ -1015,15 +1015,15 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.2;margi
 .order-value{font-size:9pt;margin-bottom:4pt;}
 .date-value{font-size:9pt;}
 .order-text{font-size:8.5pt;font-style:italic;text-align:center;padding:4pt 0;border-bottom:1.5px solid #000;}
-table.items{width:100%;border-collapse:collapse;font-size:8.5pt;}
-table.items th{background:#f0f0f0;border:1px solid #000;padding:4pt 4pt;text-align:center;font-weight:bold;font-size:8pt;height:22pt;}
-table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;}
+table.items{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.5pt;}
+table.items th{background:#f0f0f0;border:1px solid #000;padding:4pt 4pt;text-align:center;font-weight:bold;font-size:8pt;height:22pt;overflow-wrap:break-word;}
+table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wrap:break-word;word-break:break-word;}
 .summary-table{width:100%;border-collapse:collapse;border-top:1.5px solid #000;}
 .summary-table td{border:0;padding:2pt 6pt;font-size:8.5pt;}
 .summary-table .total-row td{border-top:1.5px solid #000;font-weight:bold;font-size:9.5pt;padding:3pt 6pt;}
-.tax-summary{width:100%;border-collapse:collapse;margin-top:4pt;font-size:8pt;}
-.tax-summary th{background:#f0f0f0;border:1px solid #000;padding:3pt 4pt;text-align:center;font-weight:bold;font-size:7.5pt;height:18pt;}
-.tax-summary td{border:1px solid #000;padding:2pt 4pt;text-align:center;font-size:8pt;}
+.tax-summary{width:100%;table-layout:fixed;border-collapse:collapse;margin-top:4pt;font-size:8pt;}
+.tax-summary th{background:#f0f0f0;border:1px solid #000;padding:3pt 4pt;text-align:center;font-weight:bold;font-size:7.5pt;height:18pt;overflow-wrap:break-word;}
+.tax-summary td{border:1px solid #000;padding:2pt 4pt;text-align:center;font-size:8pt;overflow-wrap:break-word;}
 .amount-words{padding:5pt 8pt;font-size:8.5pt;border-top:1.5px solid #000;}
 .amount-words strong{font-size:9pt;}
 .footer-section{width:100%;border-top:1.5px solid #000;}
@@ -1041,7 +1041,7 @@ table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;}
 .sign-right{width:50%;text-align:right;}
 .sign-right .for-company{font-weight:bold;font-size:9pt;}
 .sign-right .authorised{font-size:8pt;margin-top:2pt;}
-@media print{@page{margin:0;}body{margin:10mm 14mm;padding:0;}.invoice{page-break-after:avoid;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+@media print{@page{margin:5mm;}body{padding:10mm 8mm;}.invoice{page-break-after:avoid;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
 </style></head><body>
 <div class="invoice">
 <div class="header">
@@ -1618,8 +1618,8 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">IG
           <Card>
             <CardHeader><CardTitle className="text-sm">Party Details</CardTitle></CardHeader>
             <CardContent className="text-sm space-y-1">
-              <p><span className="text-muted-foreground">Name:</span> {inv.customerName}</p>
               {inv.companyName && <p><span className="text-muted-foreground">Company:</span> {inv.companyName}</p>}
+              <p><span className="text-muted-foreground">Name:</span> {inv.customerName}</p>
               {inv.tradeName && <p><span className="text-muted-foreground">Trade Name:</span> {inv.tradeName}</p>}
               {inv.addressLine1 && <p><span className="text-muted-foreground">Addr 1:</span> {inv.addressLine1}</p>}
               {inv.addressLine2 && <p><span className="text-muted-foreground">Addr 2:</span> {inv.addressLine2}</p>}
