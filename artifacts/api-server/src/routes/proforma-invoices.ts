@@ -20,7 +20,7 @@ const COMPANY_DEFAULTS = {
   pan: "",
   phone: "",
   website: "",
-  defaultTerms: ["Freight Charges Additional", "100% Advance Payment"],
+  defaultTerms: ["FREIGHT CHARGES WILL BE ADDITIONAL", "PAYMENT TERMS:", "100% UPFRONT AT TIME OF CONFIRMATION"],
   disclaimer: "Products supplied are generic industrial packaging developed independently by Elham Multiplast LLP for functional applications. Any branding, labeling, or market usage by the buyer shall be at the buyer's sole responsibility.",
 };
 
@@ -66,13 +66,13 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
     .map(
       (item: any, i: number) => `
     <tr>
-      <td style="text-align:center">${i + 1}</td>
-      <td>${item.productName}${item.bottleType ? ` (${item.bottleType})` : ""}${item.capacity ? ` ${item.capacity}` : ""}${item.weight ? ` ${item.weight}` : ""}</td>
-      <td style="text-align:center">${item.hsnCode || "-"}</td>
-      <td style="text-align:center">${item.quantity}</td>
-      <td style="text-align:center">${item.unit}</td>
-      <td style="text-align:right">${Number(item.rate).toFixed(2)}</td>
-      <td style="text-align:right">${Number(item.amount).toFixed(2)}</td>
+      <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${i + 1}</td>
+      <td style="text-align:left;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;word-break:break-word;white-space:normal;">${item.productName}${item.bottleType ? ` (${item.bottleType})` : ""}${item.capacity ? ` ${item.capacity}` : ""}${item.weight ? ` ${item.weight}` : ""}</td>
+      <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.hsnCode || "-"}</td>
+      <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.quantity}</td>
+      <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.unit}</td>
+      <td style="text-align:right;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${Number(item.rate).toFixed(2)}</td>
+      <td style="text-align:right;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${Number(item.amount).toFixed(2)}</td>
     </tr>`
     )
     .join("\n");
@@ -81,7 +81,7 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
 
   const totalTax = cgstAmount + sgstAmount + igstAmount;
 
-  const terms = (invoice.terms || COMPANY_DEFAULTS.defaultTerms).map((t: string) => `<li>${t}</li>`).join("\n");
+  const terms = (invoice.terms || COMPANY_DEFAULTS.defaultTerms).join("<br>");
   const bankDetails = invoice.bankDetails || COMPANY_DEFAULTS;
 
   return `<!DOCTYPE html>
@@ -89,67 +89,77 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
 <head>
 <meta charset="UTF-8">
 <title>Proforma Invoice - ${invoice.invoiceNumber}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-@page{size:A4 portrait;margin:10mm 14mm;}
+@page{size:A4 portrait;margin:0;}
 *{margin:0;padding:0;box-sizing:border-box;}
-body{font-family:'Inter','Source Sans 3',Arial,sans-serif;font-size:9pt;color:#000;line-height:1.3;}
-.invoice{width:190mm;min-height:267mm;margin:0 auto;border:1.5px solid #000;padding:0;position:relative;}
-.header{text-align:center;padding:8pt 10pt 4pt 10pt;border-bottom:1.5px solid #000;}
-.gstin-top{text-align:left;font-size:8pt;margin-bottom:2pt;}
-.company-name{font-size:18pt;font-weight:bold;letter-spacing:0.5pt;margin:2pt 0;}
-.company-address{font-size:8pt;line-height:1.5;color:#222;}
-.company-email{font-size:8pt;margin-top:2pt;}
-.invoice-title{font-size:14pt;font-weight:bold;margin:4pt 0;text-decoration:underline;}
-.party-section{display:flex;border-bottom:1px solid #000;}
-.party-left{width:58%;padding:6pt 8pt;border-right:1px solid #000;}
-.party-right{width:42%;padding:6pt 8pt;text-align:right;}
-.party-label{font-weight:bold;font-size:9pt;margin-bottom:4pt;}
-.party-name{font-weight:bold;font-size:10pt;}
-.party-address{font-size:8.5pt;line-height:1.5;margin-top:2pt;}
-.order-text{font-size:8.5pt;font-style:italic;margin:4pt 0;padding:3pt 0;border-bottom:1px solid #000;text-align:center;}
+body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.2;margin:10mm 14mm;}
+.invoice{width:100%;border:1.5px solid #000;}
+/* ── Header ── */
+.header{text-align:center;border-bottom:1.5px solid #000;padding:6pt 8pt 5pt 8pt;}
+.gstin-top{text-align:left;font-size:7.5pt;margin-bottom:3pt;}
+.invoice-title{font-size:13pt;font-weight:bold;margin:2pt 0 3pt 0;text-decoration:underline;}
+.company-name{font-size:16pt;font-weight:bold;letter-spacing:0.3pt;margin:0 0 2pt 0;}
+.header-address{font-size:7.5pt;line-height:1.4;color:#000;margin-bottom:1pt;}
+.header-email{font-size:7.5pt;margin-top:1pt;}
+/* ── Party Section ── */
+.party-section{display:flex;border-bottom:1.5px solid #000;}
+.party-left{width:60%;padding:5pt 8pt;border-right:1.5px solid #000;}
+.party-right{width:40%;padding:5pt 8pt;text-align:right;}
+.party-label{font-weight:bold;font-size:9pt;margin-bottom:3pt;}
+.party-name{font-weight:bold;font-size:9.5pt;}
+.party-address{font-size:8.5pt;line-height:1.4;margin-top:2pt;}
+.party-gstin{font-size:8.5pt;margin-top:3pt;}
+.order-label{font-weight:bold;font-size:9pt;margin-bottom:3pt;}
+.order-value{font-size:9pt;margin-bottom:4pt;}
+.date-value{font-size:9pt;}
+/* ── Order Text ── */
+.order-text{font-size:8.5pt;font-style:italic;text-align:center;padding:4pt 0;border-bottom:1.5px solid #000;}
+/* ── Items Table ── */
 table.items{width:100%;border-collapse:collapse;font-size:8.5pt;}
-table.items th{background:#f0f0f0;border:1px solid #000;padding:4pt 5pt;text-align:center;font-weight:bold;font-size:8pt;}
-table.items td{border:1px solid #000;padding:3pt 5pt;}
-.summary-table{width:100%;border-collapse:collapse;margin-top:0;border-top:1px solid #000;}
-.summary-table td{border:0;padding:2pt 6pt;}
-.summary-table .total-row{border-top:1.5px solid #000;font-weight:bold;font-size:10pt;}
-.tax-summary{margin-top:6pt;width:100%;border-collapse:collapse;font-size:8pt;}
-.tax-summary th{background:#f0f0f0;border:1px solid #000;padding:3pt 4pt;text-align:center;font-weight:bold;font-size:7.5pt;}
-.tax-summary td{border:1px solid #000;padding:2pt 4pt;text-align:center;}
-.amount-words{margin:6pt 8pt;font-size:8.5pt;}
+table.items th{background:#f0f0f0;border:1px solid #000;padding:4pt 4pt;text-align:center;font-weight:bold;font-size:8pt;height:22pt;}
+table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;}
+/* ── Summary Table ── */
+.summary-table{width:100%;border-collapse:collapse;border-top:1.5px solid #000;}
+.summary-table td{border:0;padding:2pt 6pt;font-size:8.5pt;}
+.summary-table .total-row td{border-top:1.5px solid #000;font-weight:bold;font-size:9.5pt;padding:3pt 6pt;}
+/* ── Tax Table ── */
+.tax-summary{width:100%;border-collapse:collapse;margin-top:4pt;font-size:8pt;}
+.tax-summary th{background:#f0f0f0;border:1px solid #000;padding:3pt 4pt;text-align:center;font-weight:bold;font-size:7.5pt;height:18pt;}
+.tax-summary td{border:1px solid #000;padding:2pt 4pt;text-align:center;font-size:8pt;}
+/* ── Amount in Words ── */
+.amount-words{padding:5pt 8pt;font-size:8.5pt;border-top:1.5px solid #000;}
 .amount-words strong{font-size:9pt;}
-.footer-section{width:100%;margin:4pt 0;padding:0 8pt;}
+/* ── Footer Section ── */
+.footer-section{width:100%;border-top:1.5px solid #000;}
 .footer-section table{width:100%;border-collapse:collapse;}
-.footer-section td{vertical-align:top;padding:3pt 6pt;width:50%;border:0;}
-.disclaimer{border-top:1px solid #000;padding:4pt 8pt;font-size:7.5pt;text-align:justify;line-height:1.4;}
-.disclaimer strong{font-size:8pt;}
-.bank-details{font-size:8pt;line-height:1.6;}
+.footer-section td{vertical-align:top;padding:5pt 8pt;width:50%;border:0;}
+.bank-details{font-size:8pt;line-height:1.5;}
 .bank-details strong{font-size:8.5pt;}
 .terms{font-size:8pt;line-height:1.5;}
 .terms strong{font-size:8.5pt;}
-.terms ul{margin:2pt 0 0 14pt;padding:0;}
-.terms li{margin-bottom:1pt;}
-.signature-section{display:flex;margin:8pt 8pt 4pt 8pt;font-size:8.5pt;}
+.terms div{margin-top:2pt;}
+/* ── Disclaimer ── */
+.disclaimer{border-top:1.5px solid #000;padding:4pt 8pt;font-size:7.5pt;text-align:center;line-height:1.4;}
+.disclaimer strong{font-size:8pt;}
+/* ── Signature ── */
+.signature-section{display:flex;border-top:1.5px solid #000;padding:6pt 8pt 4pt 8pt;font-size:8.5pt;}
 .sign-left{width:50%;}
-.sign-right{width:50%;text-align:right;font-weight:bold;}
-hr{border:none;border-top:1px solid #000;margin:2pt 0;}
-@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}.invoice{page-break-after:avoid;}}
+.sign-right{width:50%;text-align:right;}
+.sign-right .for-company{font-weight:bold;font-size:9pt;}
+.sign-right .authorised{font-size:8pt;margin-top:2pt;}
+/* ── Print ── */
+@media print{@page{margin:0;}body{margin:10mm 14mm;padding:0;}.invoice{page-break-after:avoid;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
 </style>
 </head>
 <body>
 <div class="invoice">
 
 <div class="header">
-<div class="gstin-top">GSTIN : ${invoice.companyGstin || COMPANY_DEFAULTS.gstin}</div>
-<div class="company-name">${invoice.companyName || COMPANY_DEFAULTS.name}</div>
-<div class="company-address">
-${(invoice.companyAddress || COMPANY_DEFAULTS.address).replace(/\n/g, "<br>")}
-</div>
-<div class="company-email">${invoice.companyEmail || COMPANY_DEFAULTS.email}</div>
+<div class="gstin-top"><strong>GSTIN :</strong> ${COMPANY_DEFAULTS.gstin}</div>
 <div class="invoice-title">PROFORMA INVOICE</div>
+<div class="company-name">${COMPANY_DEFAULTS.name}</div>
+<div class="header-address">${COMPANY_DEFAULTS.address.replace(/\n/g, "<br>")}</div>
+<div class="header-email">${COMPANY_DEFAULTS.email}</div>
 </div>
 
 <div class="party-section">
@@ -159,16 +169,20 @@ ${(invoice.companyAddress || COMPANY_DEFAULTS.address).replace(/\n/g, "<br>")}
 <div class="party-address">
 ${partyAddressLines.length > 0 ? partyAddressLines.join("<br>") + "<br>" : ""}
 ${cityStatePincode ? cityStatePincode + "<br>" : ""}
-${invoice.address ? invoice.address + "<br>" : ""}
+${invoice.address ? invoice.address.replace(/\n/g, "<br>") + "<br>" : ""}
 </div>
 ${invoice.customerType === "Unregistered"
-  ? `<div style="font-size:8.5pt;margin-top:2pt;">ID Proof : ${invoice.idProofType || ""} - ${invoice.idProofNumber || ""}</div>`
-  : `<div style="font-size:8.5pt;margin-top:2pt;">GSTIN / UIN : ${invoice.gstNumber || ""}</div>`
+  ? `<div class="party-gstin">ID Proof : ${invoice.idProofType || ""} - ${invoice.idProofNumber || ""}</div>`
+  : invoice.gstNumber
+    ? `<div class="party-gstin">GSTIN / UIN : ${invoice.gstNumber}</div>`
+    : ""
 }
 </div>
 <div class="party-right">
-<div style="font-weight:bold;font-size:9pt;">Order No : ${invoice.invoiceNumber}</div>
-<div style="margin-top:4pt;font-size:8.5pt;">Date : ${dateStr}</div>
+<div class="order-label">Order No :</div>
+<div class="order-value">${invoice.invoiceNumber}</div>
+<div class="order-label">Date :</div>
+<div class="date-value">${dateStr}</div>
 </div>
 </div>
 
@@ -178,9 +192,9 @@ ${invoice.customerType === "Unregistered"
 <thead>
 <tr>
 <th style="width:5%">S.N.</th>
-<th style="width:32%">Description of Goods</th>
-<th style="width:11%">HSN Code</th>
-<th style="width:8%">Qty</th>
+<th style="width:30%">Description of Goods</th>
+<th style="width:12%">HSN/SAC Code</th>
+<th style="width:9%">Qty</th>
 <th style="width:8%">Unit</th>
 <th style="width:10%">Price</th>
 <th style="width:12%">Amount</th>
@@ -192,11 +206,11 @@ ${productRows}
 </table>
 
 <table class="summary-table">
-${freight > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">Freight Charges</td><td style="text-align:right;padding:3pt 6pt">${freight.toFixed(2)}</td></tr>` : ""}
-${cgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">CGST @ ${cgstPct}%</td><td style="text-align:right;padding:3pt 6pt">${cgstAmount.toFixed(2)}</td></tr>` : ""}
-${sgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">SGST @ ${sgstPct}%</td><td style="text-align:right;padding:3pt 6pt">${sgstAmount.toFixed(2)}</td></tr>` : ""}
-${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IGST @ ${igstPct}%</td><td style="text-align:right;padding:3pt 6pt">${igstAmount.toFixed(2)}</td></tr>` : ""}
-<tr class="total-row"><td colspan="5" style="text-align:right;padding:3pt 6pt">Grand Total</td><td style="text-align:right;padding:3pt 6pt">${grandTotal.toFixed(2)}</td></tr>
+${freight > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">Freight Charges</td><td style="text-align:right;padding:3pt 8pt">${freight.toFixed(2)}</td></tr>` : ""}
+${cgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">CGST @ ${cgstPct}%</td><td style="text-align:right;padding:3pt 8pt">${cgstAmount.toFixed(2)}</td></tr>` : ""}
+${sgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">SGST @ ${sgstPct}%</td><td style="text-align:right;padding:3pt 8pt">${sgstAmount.toFixed(2)}</td></tr>` : ""}
+${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">IGST @ ${igstPct}%</td><td style="text-align:right;padding:3pt 8pt">${igstAmount.toFixed(2)}</td></tr>` : ""}
+<tr class="total-row"><td colspan="5" style="text-align:right;padding:3pt 8pt">Grand Total</td><td style="text-align:right;padding:3pt 8pt">${grandTotal.toFixed(2)}</td></tr>
 </table>
 
 <table class="tax-summary">
@@ -224,7 +238,7 @@ ${isInterstate
 <div class="footer-section">
 <table>
 <tr>
-<td style="width:50%;border:0;padding:3pt 6pt;">
+<td style="border-right:1.5px solid #000;">
 <div class="bank-details">
 <strong>Bank Details</strong><br>
 ${bankDetails.bankName || "ICICI BANK, HIMATNAGAR"}<br>
@@ -232,12 +246,10 @@ A/C NO: ${bankDetails.accountNo || "045205014806"}<br>
 IFSC: ${bankDetails.ifsc || "ICIC0000452"}
 </div>
 </td>
-<td style="width:50%;border:0;padding:3pt 6pt;">
+<td>
 <div class="terms">
 <strong>Terms &amp; Conditions</strong>
-<ul>
-${terms}
-</ul>
+<div>${terms}</div>
 </div>
 </td>
 </tr>
@@ -249,8 +261,11 @@ ${terms}
 </div>
 
 <div class="signature-section">
-<div class="sign-left">Receiver's Signature</div>
-<div class="sign-right">For ${invoice.companyName || COMPANY_DEFAULTS.name}</div>
+<div class="sign-left">Receiver Signature</div>
+<div class="sign-right">
+<div class="for-company">for ${COMPANY_DEFAULTS.name}</div>
+<div class="authorised">Authorised Signatory</div>
+</div>
 </div>
 
 </div>
