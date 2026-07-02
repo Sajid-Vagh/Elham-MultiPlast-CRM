@@ -1016,9 +1016,9 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;marg
 .order-value{font-size:9pt;margin-bottom:4pt;}
 .date-value{font-size:9pt;}
 .order-text{font-size:8.5pt;font-style:italic;text-align:center;padding:4pt 0;border-bottom:1.5px solid #000;}
-table.items{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.5pt;flex:1;}
+table.items{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.5pt;}
 table.items th{background:#f0f0f0;border:1px solid #000;padding:4pt 4pt;text-align:center;font-weight:bold;font-size:8pt;height:22pt;overflow-wrap:break-word;}
-table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wrap:break-word;word-break:break-word;}
+table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wrap:break-word;word-break:break-word;page-break-inside:avoid;}
 .summary-table{width:100%;border-collapse:collapse;border-top:1.5px solid #000;}
 .summary-table td{border:0;padding:2pt 6pt;font-size:8.5pt;}
 .summary-table .total-row td{border-top:1.5px solid #000;font-weight:bold;font-size:9.5pt;padding:3pt 6pt;}
@@ -1027,7 +1027,7 @@ table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wr
 .tax-summary td{border:1px solid #000;padding:2pt 4pt;text-align:center;font-size:8pt;overflow-wrap:break-word;}
 .amount-words{padding:5pt 8pt;font-size:8.5pt;border-top:1.5px solid #000;}
 .amount-words strong{font-size:9pt;}
-.footer-section{width:100%;border-top:1.5px solid #000;}
+.footer-section{width:100%;border-top:1.5px solid #000;margin-top:auto;}
 .footer-section table{width:100%;border-collapse:collapse;}
 .footer-section td{vertical-align:top;padding:5pt 8pt;width:50%;border:0;}
 .bank-details{font-size:8pt;line-height:1.5;}
