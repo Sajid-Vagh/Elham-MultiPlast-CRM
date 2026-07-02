@@ -994,10 +994,10 @@ export default function ProformaInvoicesPage() {
 <html>
 <head><meta charset="UTF-8"><title>Proforma Invoice - ${inv.invoiceNumber}</title>
 <style>
-@page{size:A4 portrait;margin:5mm;}
+@page{size:A4 portrait;margin:0;}
 *{margin:0;padding:0;box-sizing:border-box;}
-body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.2;margin:0;padding:10mm 8mm;}
-.invoice{width:100%;max-width:100%;border:1.5px solid #000;overflow-wrap:break-word;}
+body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;margin:0;padding:12mm;}
+.invoice{width:100%;border:1.5px solid #000;overflow-wrap:break-word;}
 .header{text-align:center;border-bottom:1.5px solid #000;padding:6pt 8pt 5pt 8pt;}
 .gstin-top{text-align:left;font-size:7.5pt;margin-bottom:3pt;}
 .invoice-title{font-size:13pt;font-weight:bold;margin:2pt 0 3pt 0;text-decoration:underline;}
@@ -1041,7 +1041,7 @@ table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wr
 .sign-right{width:50%;text-align:right;}
 .sign-right .for-company{font-weight:bold;font-size:9pt;}
 .sign-right .authorised{font-size:8pt;margin-top:2pt;}
-@media print{@page{margin:5mm;}body{padding:10mm 8mm;}.invoice{page-break-after:avoid;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+@media print{@page{margin:0;}body{padding:12mm;}.invoice{page-break-after:avoid;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
 </style></head><body>
 <div class="invoice">
 <div class="header">
@@ -1054,6 +1054,7 @@ table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wr
 <div class="party-section">
 <div class="party-left">
 <div class="party-label">Party Details :</div>
+${inv.companyName || inv.tradeName ? `<div class="party-name">${inv.companyName || inv.tradeName}</div>` : ""}
 <div class="party-name">${inv.customerName}</div>
 <div class="party-address">
 ${partyAddr.length > 0 ? partyAddr.join("<br>") + "<br>" : ""}
