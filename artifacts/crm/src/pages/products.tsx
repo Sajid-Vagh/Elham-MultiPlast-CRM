@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 type Product = { id: number; name: string; category?: string | null; pricePerUnit?: number | null; productCode: string; bottleWeight?: string | null; bottleColour?: string | null; capColour?: string | null };
 
 function ProductForm({ initial, onSave, onCancel, loading, codeError }: { initial?: Partial<Product>; onSave: (d: any) => void; onCancel: () => void; loading: boolean; codeError?: string | null }) {
-  const [form, setForm] = useState({ name: initial?.name || "", category: initial?.category || "", pricePerUnit: initial?.pricePerUnit?.toString() || "", productCode: initial?.productCode || "", bottleWeight: initial?.bottleWeight || "", bottleColour: initial?.bottleColour || "", capColour: initial?.capColour || "" });
+  const [form, setForm] = useState({ name: initial?.name || "", category: initial?.category || "", productCode: initial?.productCode || "", bottleWeight: initial?.bottleWeight || "", bottleColour: initial?.bottleColour || "", capColour: initial?.capColour || "" });
   const f = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, [k]: e.target.value }));
   return (
     <div className="grid grid-cols-2 gap-3 pt-2">
@@ -20,12 +20,11 @@ function ProductForm({ initial, onSave, onCancel, loading, codeError }: { initia
       <div><Label>Product Code *</Label><Input value={form.productCode} onChange={f("productCode")} /></div>
       {codeError && <div className="col-span-2 text-sm text-destructive">{codeError}</div>}
       <div><Label>Category</Label><Input value={form.category} onChange={f("category")} /></div>
-      <div><Label>Price/Unit (₹)</Label><Input type="number" value={form.pricePerUnit} onChange={f("pricePerUnit")} /></div>
       <div><Label>Bottle Weight</Label><Input value={form.bottleWeight} onChange={f("bottleWeight")} /></div>
       <div><Label>Bottle Colour</Label><Input value={form.bottleColour} onChange={f("bottleColour")} /></div>
       <div><Label>Cap Colour</Label><Input value={form.capColour} onChange={f("capColour")} /></div>
       <div className="col-span-2 flex gap-2 pt-2">
-        <Button disabled={loading || !form.name || !form.productCode} onClick={() => onSave({ ...form, pricePerUnit: form.pricePerUnit ? Number(form.pricePerUnit) : null, category: form.category || null, bottleWeight: form.bottleWeight || null, bottleColour: form.bottleColour || null, capColour: form.capColour || null })}>
+        <Button disabled={loading || !form.name || !form.productCode} onClick={() => onSave({ ...form, category: form.category || null, bottleWeight: form.bottleWeight || null, bottleColour: form.bottleColour || null, capColour: form.capColour || null })}>
           {loading ? "Saving..." : "Save"}
         </Button>
         <Button variant="outline" onClick={onCancel}>Cancel</Button>
