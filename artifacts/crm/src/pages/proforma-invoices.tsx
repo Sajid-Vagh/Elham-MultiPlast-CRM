@@ -974,6 +974,10 @@ export default function ProformaInvoicesPage() {
     const freight = Number(inv.freight || 0);
     const baseAmt = taxable + freight;
     const grandTotal = Number(inv.grandTotal || 0);
+    const itemsArr = inv.items || [];
+    const totalQty = itemsArr.reduce((s: number, it: any) => s + Number(it.quantity || 0), 0);
+    const qtyUnits = [...new Set(itemsArr.map((it: any) => it.unit).filter(Boolean))];
+    const qtyDisplay = qtyUnits.length === 1 ? `${totalQty.toFixed(3)} ${qtyUnits[0]}` : "";
     const totalTax = cgstAmt + sgstAmt + igstAmt;
     const isInterstate = igstPct > 0;
 
@@ -1086,7 +1090,7 @@ ${freight > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">Fr
 ${cgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">CGST @ ${cgstPct}%</td><td style="text-align:right;padding:3pt 8pt">${cgstAmt.toFixed(2)}</td></tr>` : ""}
 ${sgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">SGST @ ${sgstPct}%</td><td style="text-align:right;padding:3pt 8pt">${sgstAmt.toFixed(2)}</td></tr>` : ""}
 ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">IGST @ ${igstPct}%</td><td style="text-align:right;padding:3pt 8pt">${igstAmt.toFixed(2)}</td></tr>` : ""}
-<tr class="total-row"><td colspan="5" style="text-align:right;padding:3pt 8pt">Grand Total</td><td style="text-align:right;padding:3pt 8pt">${grandTotal.toFixed(2)}</td></tr>
+<tr class="total-row"><td colspan="4" style="text-align:right;padding:3pt 8pt">Grand Total</td><td style="text-align:right;padding:3pt 8pt">${qtyDisplay}</td><td style="text-align:right;padding:3pt 8pt">${grandTotal.toFixed(2)}</td></tr>
 </table>
 <table class="tax-summary">
 <thead><tr><th>Tax Rate</th><th>Taxable Amount</th><th>CGST Amount</th><th>SGST Amount</th><th>Total Tax</th></tr></thead>

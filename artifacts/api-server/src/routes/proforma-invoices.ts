@@ -77,6 +77,10 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
     )
     .join("\n");
 
+  const totalQty = items.reduce((sum: number, item: any) => sum + Number(item.quantity || 0), 0);
+  const qtyUnits = [...new Set(items.map((item: any) => item.unit).filter(Boolean))];
+  const qtyDisplay = qtyUnits.length === 1 ? `${totalQty.toFixed(3)} ${qtyUnits[0]}` : "";
+
   const dateStr = new Date(invoice.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" });
 
   const totalTax = cgstAmount + sgstAmount + igstAmount;
@@ -212,7 +216,7 @@ ${freight > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">Fr
 ${cgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">CGST @ ${cgstPct}%</td><td style="text-align:right;padding:3pt 8pt">${cgstAmount.toFixed(2)}</td></tr>` : ""}
 ${sgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">SGST @ ${sgstPct}%</td><td style="text-align:right;padding:3pt 8pt">${sgstAmount.toFixed(2)}</td></tr>` : ""}
 ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">IGST @ ${igstPct}%</td><td style="text-align:right;padding:3pt 8pt">${igstAmount.toFixed(2)}</td></tr>` : ""}
-<tr class="total-row"><td colspan="5" style="text-align:right;padding:3pt 8pt">Grand Total</td><td style="text-align:right;padding:3pt 8pt">${grandTotal.toFixed(2)}</td></tr>
+<tr class="total-row"><td colspan="4" style="text-align:right;padding:3pt 8pt">Grand Total</td><td style="text-align:right;padding:3pt 8pt">${qtyDisplay}</td><td style="text-align:right;padding:3pt 8pt">${grandTotal.toFixed(2)}</td></tr>
 </table>
 
 <table class="tax-summary">
