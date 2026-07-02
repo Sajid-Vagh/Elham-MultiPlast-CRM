@@ -996,7 +996,7 @@ export default function ProformaInvoicesPage() {
 <style>
 @page{size:A4 portrait;margin:0;}
 *{margin:0;padding:0;box-sizing:border-box;}
-body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;margin:0;padding:12mm;}
+body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;margin:0;padding:5mm;}
 .invoice{width:100%;border:1.5px solid #000;overflow-wrap:break-word;}
 .header{text-align:center;border-bottom:1.5px solid #000;padding:6pt 8pt 5pt 8pt;}
 .gstin-top{text-align:left;font-size:7.5pt;margin-bottom:3pt;}
@@ -1041,7 +1041,7 @@ table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wr
 .sign-right{width:50%;text-align:right;}
 .sign-right .for-company{font-weight:bold;font-size:9pt;}
 .sign-right .authorised{font-size:8pt;margin-top:2pt;}
-@media print{@page{margin:0;}body{padding:12mm;}.invoice{page-break-after:avoid;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+@media print{@page{margin:0;}body{padding:5mm;}.invoice{page-break-after:avoid;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
 </style></head><body>
 <div class="invoice">
 <div class="header">
