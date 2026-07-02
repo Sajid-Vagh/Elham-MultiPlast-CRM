@@ -11,3 +11,4 @@ export * from "./proforma_invoices";
 export * from "./sessions";
 export * from "./documents";
 export * from "./customer_master";
+export * from "./gst_verification_log";

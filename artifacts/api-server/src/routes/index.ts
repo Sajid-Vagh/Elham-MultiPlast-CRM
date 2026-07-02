@@ -14,6 +14,7 @@ import customerMasterRouter from "./customer-master";
 import notificationsRouter from "./notifications";
 import dashboardRouter from "./dashboard";
 import documentsRouter from "./documents";
+import gstRouter from "./gst";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use(customerMasterRouter);
 router.use(notificationsRouter);
 router.use(dashboardRouter);
 router.use(documentsRouter);
+router.use(gstRouter);
 
 export default router;

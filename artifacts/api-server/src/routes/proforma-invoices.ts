@@ -430,7 +430,8 @@ router.post("/proforma-invoices/gst-lookup", async (req, res) => {
   const gstVerifyKey = process.env.GSTVERIFY_API_KEY;
   if (gstVerifyKey) {
     try {
-      const gvRes = await axios.get(`https://gstverify.co.in/api/v1/verify/${cleanGstin}`, {
+      const gstBaseUrl = (process.env.GSTVERIFY_BASE_URL || "https://gstverify.co.in/api").replace(/\/+$/, "");
+      const gvRes = await axios.get(`${gstBaseUrl}/v1/verify/${cleanGstin}`, {
         headers: { "X-API-Key": gstVerifyKey, Accept: "application/json" },
         timeout: 8000,
       });

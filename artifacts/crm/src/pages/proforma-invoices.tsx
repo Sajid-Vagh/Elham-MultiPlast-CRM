@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation } from "wouter";
 import { useGetMe } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import {
   Plus, Download, Printer, Share2, Mail, Eye, FileText, Save, ArrowLeft, Trash2, Search,
-  ChevronLeft, ChevronRight, Send, Loader2,
+  ChevronLeft, ChevronRight, Send, Loader2, CheckCircle2, RefreshCw, Building2, Calendar, Clock,
+  Shield, Store, MapPin, Verified,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -132,6 +133,12 @@ export default function ProformaInvoicesPage() {
   const [gstinNotFound, setGstinNotFound] = useState(false);
   const [gstLoading, setGstLoading] = useState(false);
   const [gstError, setGstError] = useState("");
+  const [gstVerifying, setGstVerifying] = useState(false);
+  const [gstVerified, setGstVerified] = useState(false);
+  const [lastVerifiedAt, setLastVerifiedAt] = useState("");
+  const [gstVerificationResult, setGstVerificationResult] = useState<any>(null);
+  const [showBusinessDetails, setShowBusinessDetails] = useState(false);
+  const [gstCached, setGstCached] = useState(false);
   const [productSearchQuery, setProductSearchQuery] = useState("");
   const [productSearchResults, setProductSearchResults] = useState<any[]>([]);
   const [showProductSearch, setShowProductSearch] = useState(false);
@@ -271,6 +278,12 @@ export default function ProformaInvoicesPage() {
     setCustomerMasterId(null);
     setExistingCustomer(null);
     setGstinNotFound(false);
+    setGstVerified(false);
+    setGstVerifying(false);
+    setLastVerifiedAt("");
+    setGstVerificationResult(null);
+    setShowBusinessDetails(false);
+    setGstCached(false);
     setProductSearchQuery("");
     setProductSearchResults([]);
     setShowProductSearch(false);
@@ -339,10 +352,55 @@ export default function ProformaInvoicesPage() {
     setContactSearchQuery("");
   };
 
-  const applyGstDetails = (data: any) => {
-    console.log("[GST Lookup] Full API response:", JSON.stringify(data, null, 2));
+  const parseAddressString = (addr: string) => {
+    const parts = addr.split(",").map((s: string) => s.trim()).filter(Boolean);
+    const result: { addressLine1: string; addressLine2: string; addressLine3: string; city: string; district: string; state: string; pincode: string } = {
+      addressLine1: "", addressLine2: "", addressLine3: "",
+      city: "", district: "", state: "", pincode: "",
+    };
+    if (parts.length === 0) return result;
 
-    // Clear ALL customer fields first to remove stale/placeholder values
+    let remaining = [...parts];
+
+    const pincodeMatch = remaining[remaining.length - 1]?.match(/\b(\d{6})\b/);
+    if (pincodeMatch) {
+      result.pincode = pincodeMatch[1];
+      remaining[remaining.length - 1] = remaining[remaining.length - 1].replace(/\s*-?\s*\d{6}\s*$/, "").trim();
+      if (!remaining[remaining.length - 1]) remaining.pop();
+    }
+
+    const stateKeywords = [
+      "andhra pradesh", "arunachal pradesh", "assam", "bihar", "chhattisgarh", "goa", "gujarat",
+      "haryana", "himachal pradesh", "jharkhand", "karnataka", "kerala", "madhya pradesh",
+      "maharashtra", "manipur", "meghalaya", "mizoram", "nagaland", "odisha", "punjab",
+      "rajasthan", "sikkim", "tamil nadu", "telangana", "tripura", "uttar pradesh",
+      "uttarakhand", "west bengal", "delhi", "chandigarh", "puducherry",
+    ];
+    const lastPart = remaining[remaining.length - 1]?.toLowerCase() || "";
+    const matchedState = stateKeywords.find((s) => lastPart.includes(s));
+    if (matchedState) {
+      result.state = remaining.pop() || "";
+    }
+
+    if (remaining.length >= 2) {
+      result.city = remaining[remaining.length - 1] || "";
+      result.district = remaining[remaining.length - 2] || "";
+      remaining = remaining.slice(0, -2);
+    } else if (remaining.length === 1) {
+      result.city = remaining[0];
+      remaining = [];
+    }
+
+    result.addressLine1 = remaining[0] || "";
+    result.addressLine2 = remaining.length > 1 ? remaining.slice(1).join(", ") : "";
+    result.addressLine3 = "";
+
+    return result;
+  };
+
+  const applyGstDetails = (data: any) => {
+    console.log("[GST Apply] Data:", JSON.stringify(data, null, 2));
+
     setCustomerName("");
     setCompanyName("");
     setTradeName("");
@@ -356,7 +414,6 @@ export default function ProformaInvoicesPage() {
     setGstNumber("");
     setGstStatus("");
 
-    // Handle both legacy format (legalName) and new format (companyName)
     const name = data.legalName || data.tradeName || data.companyName || "";
     setCustomerName(name);
     setCompanyName(name);
@@ -366,17 +423,32 @@ export default function ProformaInvoicesPage() {
       setAddressLine1(data.addressLine1 || "");
       setAddressLine2(data.addressLine2 || "");
       setAddressLine3(data.addressLine3 || "");
+      setCity(data.city || "");
+      setDistrict(data.district || "");
+      setState(data.state || "");
+      setPincode(data.pincode || "");
     } else if (data.address) {
-      const lines = data.address.split(",").map((l: string) => l.trim()).filter(Boolean);
-      setAddressLine1(lines[0] || "");
-      setAddressLine2(lines.length > 2 ? lines.slice(1, -1).join(", ") : lines.length === 2 ? lines[1] : "");
-      setAddressLine3(lines.length > 2 ? lines[lines.length - 1] || "" : "");
+      const parsed = parseAddressString(data.address);
+      setAddressLine1(parsed.addressLine1);
+      setAddressLine2(parsed.addressLine2);
+      setAddressLine3(parsed.addressLine3);
+      setCity(parsed.city);
+      setDistrict(parsed.district);
+      setState(parsed.state);
+      setPincode(parsed.pincode);
     }
 
-    setCity(data.city || "");
-    setDistrict(data.district || "");
-    setState(data.state || "");
-    setPincode(data.pincode || "");
+    if (!data.city && !data.district && !data.state && !data.pincode && !data.address) {
+    } else if ((!data.addressLine1 && !data.addressLine2 && !data.addressLine3) && !data.address) {
+    }
+
+    if (data.city && !data.addressLine1 && !data.addressLine2 && !data.addressLine3) {
+      setCity(data.city);
+      if (data.district) setDistrict(data.district);
+      if (data.state) setState(data.state);
+      if (data.pincode) setPincode(data.pincode);
+    }
+
     setGstNumber(data.gstin || "");
     setCustomerType(data.businessConstitution === "Unregistered" ? "Unregistered" : "GST");
     setGstStatus(data.registrationStatus || data.status || "");
@@ -441,6 +513,77 @@ export default function ProformaInvoicesPage() {
     if (customer.customerType) setCustomerType(customer.customerType === "Unregistered" ? "Unregistered" : "GST");
     if (customer.gstStatus) setGstStatus(customer.gstStatus);
     setCustomerMasterId(customer.id);
+  };
+
+  const verifyGst = async (gstin: string) => {
+    const cleaned = gstin.toUpperCase().trim();
+    if (cleaned.length !== 15) {
+      toast({ title: "Invalid GSTIN", description: "GSTIN must be exactly 15 characters", variant: "destructive" });
+      return;
+    }
+    setGstVerifying(true);
+    setGstError("");
+    try {
+      const res = await fetch("/api/gst/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ gstin: cleaned }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setGstVerified(true);
+        setLastVerifiedAt(data.verifiedAt);
+        setGstVerificationResult(data);
+        setGstCached(!!data.cached);
+        setShowBusinessDetails(true);
+        applyGstDetails(data);
+        toast({
+          title: data.cached ? "✓ GST Details Loaded (Cached)" : "✓ GST Verified Successfully",
+          description: `${data.legalName || data.tradeName || cleaned}`,
+        });
+      } else {
+        setGstVerified(false);
+        setGstError(data.error || "GST verification failed");
+        toast({ title: "Verification Failed", description: data.error || "Could not verify GSTIN", variant: "destructive" });
+      }
+    } catch {
+      setGstError("Network error. Please try again.");
+      toast({ title: "Network Error", description: "Could not reach server. Please try again.", variant: "destructive" });
+    } finally {
+      setGstVerifying(false);
+    }
+  };
+
+  const refreshGst = async () => {
+    const gstin = gstNumber.toUpperCase().trim();
+    if (gstin.length !== 15) return;
+    setGstVerifying(true);
+    setGstError("");
+    try {
+      const res = await fetch("/api/gst/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ gstin }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setGstVerified(true);
+        setLastVerifiedAt(data.verifiedAt);
+        setGstVerificationResult(data);
+        setGstCached(false);
+        setShowBusinessDetails(true);
+        applyGstDetails(data);
+        toast({ title: "✓ GST Refreshed", description: `${data.legalName || data.tradeName || gstin}` });
+      } else {
+        setGstError(data.error || "GST refresh failed");
+        toast({ title: "Refresh Failed", description: data.error || "Could not refresh GST details", variant: "destructive" });
+      }
+    } catch {
+      setGstError("Network error. Please try again.");
+      toast({ title: "Network Error", description: "Could not reach server.", variant: "destructive" });
+    } finally {
+      setGstVerifying(false);
+    }
   };
 
   const handleSaveCustomer = async () => {
@@ -532,19 +675,31 @@ export default function ProformaInvoicesPage() {
     }
   };
 
+  const gstVerifyingRef = useRef(gstVerifying);
+  gstVerifyingRef.current = gstVerifying;
+
   // Auto-fetch GST details when GSTIN changes (like cleartax)
   useEffect(() => {
     if (gstNumber.length >= 15) {
       setGstError("");
       const timer = setTimeout(() => {
-        checkExistingCustomer(gstNumber.toUpperCase().trim());
+        if (!gstVerifyingRef.current) {
+          checkExistingCustomer(gstNumber.toUpperCase().trim());
+        }
       }, 500);
       return () => clearTimeout(timer);
-    } else {
-      setExistingCustomer(null);
-      setGstinNotFound(false);
-      setGstError("");
     }
+    setExistingCustomer(null);
+    setGstinNotFound(false);
+    setGstError("");
+    if (gstNumber.length === 0) {
+      setGstVerified(false);
+      setLastVerifiedAt("");
+      setGstVerificationResult(null);
+      setShowBusinessDetails(false);
+      setGstCached(false);
+    }
+    return;
   }, [gstNumber]);
 
   const handleSave = async (status: string) => {
@@ -1055,19 +1210,84 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
             </div>
             {customerType === "GST" ? (
               <div className="sm:col-span-2">
-                <Label>GSTIN / UIN</Label>
-                <div className="relative">
-                  {gstLoading ? (
-                    <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />
-                  ) : (
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                  )}
-                  <Input value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} placeholder="Enter GSTIN (e.g. 24AAJFE2064P1Z6)" className="pl-9" />
+                <Label>GST Number *</Label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    {gstLoading || gstVerifying ? (
+                      <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />
+                    ) : gstVerified ? (
+                      <CheckCircle2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-green-600" />
+                    ) : (
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                    )}
+                    <Input
+                      value={gstNumber}
+                      onChange={(e) => { setGstNumber(e.target.value); setGstVerified(false); setGstVerificationResult(null); setShowBusinessDetails(false); }}
+                      placeholder="Enter GSTIN (e.g. 24AAJFE2064P1Z6)"
+                      className="pl-9"
+                      disabled={gstVerifying}
+                    />
+                  </div>
+                  <Button
+                    onClick={() => verifyGst(gstNumber)}
+                    disabled={gstVerifying || gstNumber.trim().length !== 15}
+                    className="bg-orange-600 hover:bg-orange-700 text-white gap-2 shrink-0"
+                  >
+                    {gstVerifying ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Shield className="h-4 w-4" />
+                    )}
+                    {gstVerifying ? "Verifying..." : "Verify GST"}
+                  </Button>
                 </div>
-                {gstLoading && (
-                  <div className="mt-2 text-sm text-blue-600">Fetching GST details...</div>
+
+                {gstVerified && (
+                  <div className="mt-2 space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2">
+                      <Verified className="h-4 w-4 text-green-600" />
+                      <span className="font-medium">GST Verified</span>
+                      {gstCached && (
+                        <span className="text-xs text-green-500 ml-1">(Cached)</span>
+                      )}
+                      <span className="text-xs text-green-500 ml-auto">
+                        <Clock className="h-3 w-3 inline mr-1" />
+                        {new Date(lastVerifiedAt).toLocaleString("en-IN")}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
+                      {gstVerificationResult?.legalName && (
+                        <div><span className="text-muted-foreground">Legal Name:</span> <span className="font-medium">{gstVerificationResult.legalName}</span></div>
+                      )}
+                      {gstVerificationResult?.tradeName && (
+                        <div><span className="text-muted-foreground">Trade Name:</span> <span>{gstVerificationResult.tradeName}</span></div>
+                      )}
+                      {gstVerificationResult?.status && (
+                        <div><span className="text-muted-foreground">GST Status:</span> <span>{gstVerificationResult.status}</span></div>
+                      )}
+                      {gstVerificationResult?.taxpayerType && (
+                        <div><span className="text-muted-foreground">Taxpayer Type:</span> <span>{gstVerificationResult.taxpayerType}</span></div>
+                      )}
+                      {gstVerificationResult?.constitution && (
+                        <div><span className="text-muted-foreground">Constitution:</span> <span>{gstVerificationResult.constitution}</span></div>
+                      )}
+                      {gstVerificationResult?.registrationDate && (
+                        <div><span className="text-muted-foreground">Registration Date:</span> <span>{new Date(gstVerificationResult.registrationDate).toLocaleDateString("en-IN")}</span></div>
+                      )}
+                      {gstVerificationResult?.lastUpdated && (
+                        <div><span className="text-muted-foreground">Last Updated:</span> <span>{new Date(gstVerificationResult.lastUpdated).toLocaleDateString("en-IN")}</span></div>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={refreshGst} disabled={gstVerifying} className="gap-1 text-xs">
+                        <RefreshCw className={`h-3 w-3 ${gstVerifying ? "animate-spin" : ""}`} />
+                        Refresh GST
+                      </Button>
+                    </div>
+                  </div>
                 )}
-                {gstError && (
+
+                {gstError && !gstVerified && (
                   <div className="mt-2 text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
                     {gstError}
                   </div>
@@ -1138,6 +1358,72 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 6pt">IG
             )}
           </CardContent>
         </Card>
+
+        {showBusinessDetails && gstVerificationResult && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Building2 className="h-4 w-4 text-orange-600" />
+                Business Details
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="bg-gray-50 border rounded-lg p-3">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                    <Shield className="h-3 w-3" />
+                    GST Status
+                  </div>
+                  <div className="font-medium text-sm">{gstVerificationResult.status || "N/A"}</div>
+                </div>
+                <div className="bg-gray-50 border rounded-lg p-3">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                    <Store className="h-3 w-3" />
+                    Taxpayer Type
+                  </div>
+                  <div className="font-medium text-sm">{gstVerificationResult.taxpayerType || gstVerificationResult.businessConstitution || "N/A"}</div>
+                </div>
+                <div className="bg-gray-50 border rounded-lg p-3">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                    <Building2 className="h-3 w-3" />
+                    Constitution
+                  </div>
+                  <div className="font-medium text-sm">{gstVerificationResult.constitution || gstVerificationResult.businessConstitution || "N/A"}</div>
+                </div>
+                <div className="bg-gray-50 border rounded-lg p-3">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                    <Calendar className="h-3 w-3" />
+                    Registration Date
+                  </div>
+                  <div className="font-medium text-sm">
+                    {gstVerificationResult.registrationDate
+                      ? (() => {
+                          const d = new Date(gstVerificationResult.registrationDate);
+                          return isNaN(d.getTime()) ? gstVerificationResult.registrationDate : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+                        })()
+                      : "N/A"}
+                  </div>
+                </div>
+                <div className="bg-gray-50 border rounded-lg p-3">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                    <Store className="h-3 w-3" />
+                    Nature of Business
+                  </div>
+                  <div className="font-medium text-sm">{gstVerificationResult.natureOfBusiness || "N/A"}</div>
+                </div>
+                <div className="bg-gray-50 border rounded-lg p-3">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                    <MapPin className="h-3 w-3" />
+                    Principal Place of Business
+                  </div>
+                  <div className="font-medium text-sm leading-tight">
+                    {[gstVerificationResult.addressLine1, gstVerificationResult.addressLine2, gstVerificationResult.addressLine3, gstVerificationResult.city, gstVerificationResult.state, gstVerificationResult.pincode].filter(Boolean).join(", ") || gstVerificationResult.principalPlaceOfBusiness || gstVerificationResult.address || "N/A"}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
