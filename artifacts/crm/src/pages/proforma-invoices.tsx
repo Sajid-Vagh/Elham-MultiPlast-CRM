@@ -79,6 +79,16 @@ export default function ProformaInvoicesPage() {
   const { data: me } = useGetMe();
   const token = localStorage.getItem("crm_token");
 
+  const preventSpinHandlers = {
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") e.preventDefault();
+    },
+    onWheel: (e: React.WheelEvent) => {
+      e.preventDefault();
+      (e.currentTarget as HTMLElement).blur();
+    },
+  };
+
   const [tab, setTab] = useState("all");
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1006,10 +1016,108 @@ export default function ProformaInvoicesPage() {
 
     const dateStr = new Date(inv.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" });
 
-    const termsArr = (inv.terms || ["FREIGHT CHARGES WILL BE ADDITIONAL", "PAYMENT TERMS:", "100% UPFRONT AT TIME OF CONFIRMATION"]);
-    const termsHtml = termsArr.join("<br>");
-
     const defaultTerms = ["FREIGHT CHARGES WILL BE ADDITIONAL", "PAYMENT TERMS:", "100% UPFRONT AT TIME OF CONFIRMATION"];
+
+    const HEADER_PT = 215;
+    const ROW_PT = 21;
+    const FOOTER_PT = 315;
+    const PAGE_PT = 790;
+
+    const perPageNoFooter = Math.floor((PAGE_PT - HEADER_PT) / ROW_PT);
+    const perPageWithFooter = Math.max(1, Math.floor((PAGE_PT - HEADER_PT - FOOTER_PT) / ROW_PT));
+
+    const pageBoundaries: { start: number; end: number; last: boolean }[] = [];
+    let cursor = 0;
+    while (cursor < itemsArr.length) {
+      const remaining = itemsArr.length - cursor;
+      const canFitWithFooter = remaining <= perPageWithFooter;
+      const take = canFitWithFooter ? remaining : perPageNoFooter;
+      pageBoundaries.push({ start: cursor, end: cursor + take, last: canFitWithFooter });
+      cursor += take;
+    }
+
+    function headerHtml(): string {
+      return `
+    <div class="header">
+      <div class="gstin-top"><strong>GSTIN :</strong> 24AAJFE2064P1Z6</div>
+      <div class="invoice-title">PROFORMA INVOICE</div>
+      <div class="company-name">ELHAM MULTIPLAST LLP</div>
+      <div class="header-address">PLOT NO. 1429-1430, NR. FORTUNE PETROL PUMP,<br>OPP. KHIJADIYA TALAV, ILOL, HIMATNAGAR,<br>SABARKANTHA, GUJARAT - 383220</div>
+      <div class="header-email">elhammultiplast@gmail.com</div>
+    </div>
+    <div class="party-section">
+      <div class="party-left">
+        <div class="party-label">Party Details :</div>
+        ${inv.companyName || inv.tradeName ? `<div class="party-name">${inv.companyName || inv.tradeName}</div>` : ""}
+        <div class="party-name">${inv.customerName}</div>
+        <div class="party-address">
+          ${partyAddr.length > 0 ? partyAddr.join("<br>") + "<br>" : ""}
+          ${cityStatePin ? cityStatePin + "<br>" : ""}
+          ${inv.address ? inv.address.replace(/\n/g, "<br>") + "<br>" : ""}
+        </div>
+        ${inv.customerType === "Unregistered"
+          ? `<div class="party-gstin">ID Proof : ${inv.idProofType || ""} - ${inv.idProofNumber || ""}</div>`
+          : inv.gstNumber
+            ? `<div class="party-gstin">GSTIN / UIN : ${inv.gstNumber}</div>`
+            : ""
+        }
+      </div>
+      <div class="party-right">
+        <div class="order-label">Order No :</div>
+        <div class="order-value">${inv.invoiceNumber}</div>
+        <div class="order-label">Date :</div>
+        <div class="date-value">${dateStr}</div>
+      </div>
+    </div>
+    <div class="order-text">We are pleased to receive the order for the following items</div>`;
+    }
+
+    function tableHeaderHtml(): string {
+      return `<table class="items">
+    <thead><tr><th style="width:5%">S.N.</th><th style="width:30%">Description of Goods</th><th style="width:12%">HSN/SAC Code</th><th style="width:9%">Qty</th><th style="width:8%">Unit</th><th style="width:10%">Price</th><th style="width:12%">Amount</th></tr></thead>
+    <tbody>`;
+    }
+
+    function footerHtml(): string {
+      return `</tbody></table>
+    <table class="summary-table">
+      ${`<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">Product Total</td><td style="text-align:right;padding:3pt 8pt">${taxable.toFixed(2)}</td></tr>`}
+      ${freight > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">Freight Charges</td><td style="text-align:right;padding:3pt 8pt">${freight.toFixed(2)}</td></tr>` : ""}
+      ${cgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">CGST @ ${cgstPct}%</td><td style="text-align:right;padding:3pt 8pt">${cgstAmt.toFixed(2)}</td></tr>` : ""}
+      ${sgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">SGST @ ${sgstPct}%</td><td style="text-align:right;padding:3pt 8pt">${sgstAmt.toFixed(2)}</td></tr>` : ""}
+      ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">IGST @ ${igstPct}%</td><td style="text-align:right;padding:3pt 8pt">${igstAmt.toFixed(2)}</td></tr>` : ""}
+      <tr class="total-row"><td colspan="4" style="text-align:right;padding:3pt 8pt">Grand Total</td><td style="text-align:right;padding:3pt 8pt">${qtyDisplay}</td><td style="text-align:right;padding:3pt 8pt">${grandTotal.toFixed(2)}</td></tr>
+    </table>
+    <table class="tax-summary">
+      <thead><tr><th>Tax Rate</th><th>Taxable Amount</th><th>CGST Amount</th><th>SGST Amount</th><th>Total Tax</th></tr></thead>
+      <tbody>${isInterstate ? `<tr><td>IGST @ ${igstPct}%</td><td>${baseAmt.toFixed(2)}</td><td>0.00</td><td>0.00</td><td>${igstAmt.toFixed(2)}</td></tr>` : `<tr><td>CGST @ ${cgstPct}% + SGST @ ${sgstPct}%</td><td>${baseAmt.toFixed(2)}</td><td>${cgstAmt.toFixed(2)}</td><td>${sgstAmt.toFixed(2)}</td><td>${totalTax.toFixed(2)}</td></tr>`}</tbody>
+    </table>
+    <div class="amount-words"><strong>Amount in Words :</strong> ${inv.amountInWords || ""}</div>
+    <div class="footer-section"><table><tr>
+    <td style="border-right:1.5px solid #000;"><div class="bank-details"><strong>Bank Details</strong><br>ICICI BANK, HIMATNAGAR<br>A/C NO: 045205014806<br>IFSC: ICIC0000452</div></td>
+    <td><div class="terms"><strong>Terms &amp; Conditions</strong><div>${(inv.terms || defaultTerms).join("<br>")}</div></div></td>
+    </tr></table></div>
+    <div class="disclaimer"><strong>DISCLAIMER : </strong>Products supplied are generic industrial packaging developed independently by Elham Multiplast LLP for functional applications. Any branding, labeling, or market usage by the buyer shall be at the buyer's sole responsibility.</div>
+    <div class="signature-section"><div class="sign-left">Receiver Signature</div><div class="sign-right"><div class="for-company">for ELHAM MULTIPLAST LLP</div><div class="authorised">Authorised Signatory</div></div></div>`;
+    }
+
+    const pagesHtml = pageBoundaries.map((b, pi) => {
+      const pageItems = itemsArr.slice(b.start, b.end);
+      const rows = pageItems.map((item: any, ri: number) =>
+        `<tr><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${b.start + ri + 1}</td><td style="text-align:left;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;word-break:break-word;white-space:normal;">${item.productName}${item.bottleType ? ` (${item.bottleType})` : ""}${item.capacity ? ` ${item.capacity}` : ""}${item.weight ? ` ${item.weight}` : ""}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.hsnCode || "-"}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.quantity}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.unit}</td><td style="text-align:right;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${Number(item.rate).toFixed(2)}</td><td style="text-align:right;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${Number(item.amount).toFixed(2)}</td></tr>`
+      ).join("\n");
+
+      const pageStyle = pi < pageBoundaries.length - 1
+        ? `page-break-after:always;min-height:100%;`
+        : `min-height:100%;`;
+
+      return `<div class="page" style="${pageStyle}">
+      ${headerHtml()}
+      ${tableHeaderHtml()}
+      ${rows}
+      ${b.last ? footerHtml() : `</tbody></table>`}
+    </div>`;
+    }).join("\n");
 
     return `<!DOCTYPE html>
 <html>
@@ -1019,7 +1127,7 @@ export default function ProformaInvoicesPage() {
 *{margin:0;padding:0;box-sizing:border-box;}
 html,body{height:297mm;}
 body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;margin:0;padding:5mm;}
-.invoice{width:100%;min-height:100%;border:1.5px solid #000;overflow-wrap:break-word;display:flex;flex-direction:column;}
+.page{width:100%;border:1.5px solid #000;overflow-wrap:break-word;display:flex;flex-direction:column;}
 .header{text-align:center;border-bottom:1.5px solid #000;padding:6pt 8pt 5pt 8pt;}
 .gstin-top{text-align:left;font-size:7.5pt;margin-bottom:3pt;}
 .invoice-title{font-size:13pt;font-weight:bold;margin:2pt 0 3pt 0;text-decoration:underline;}
@@ -1039,7 +1147,7 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;marg
 .order-text{font-size:8.5pt;font-style:italic;text-align:center;padding:4pt 0;border-bottom:1.5px solid #000;}
 table.items{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.5pt;}
 table.items th{background:#f0f0f0;border:1px solid #000;padding:4pt 4pt;text-align:center;font-weight:bold;font-size:8pt;height:22pt;overflow-wrap:break-word;}
-table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wrap:break-word;word-break:break-word;page-break-inside:avoid;}
+table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wrap:break-word;word-break:break-word;}
 .summary-table{width:100%;border-collapse:collapse;border-top:1.5px solid #000;}
 .summary-table td{border:0;padding:2pt 6pt;font-size:8.5pt;}
 .summary-table .total-row td{border-top:1.5px solid #000;font-weight:bold;font-size:9.5pt;padding:3pt 6pt;}
@@ -1063,71 +1171,10 @@ table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wr
 .sign-right{width:50%;text-align:right;}
 .sign-right .for-company{font-weight:bold;font-size:9pt;}
 .sign-right .authorised{font-size:8pt;margin-top:2pt;}
-.print-header{background:white;z-index:1000;}
-.print-body{width:100%;}
-@media print{@page{margin:0;}html,body{height:297mm;}body{padding:5mm;}.invoice{page-break-after:avoid;min-height:100%;}.print-header{position:fixed;top:5mm;left:5mm;right:5mm;width:calc(100%-10mm);}.print-body{padding-top:285px;display:block;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
 </style></head><body>
-<div class="invoice">
-<div class="print-header">
-<div class="header">
-<div class="gstin-top"><strong>GSTIN :</strong> 24AAJFE2064P1Z6</div>
-<div class="invoice-title">PROFORMA INVOICE</div>
-<div class="company-name">ELHAM MULTIPLAST LLP</div>
-<div class="header-address">PLOT NO. 1429-1430, NR. FORTUNE PETROL PUMP,<br>OPP. KHIJADIYA TALAV, ILOL, HIMATNAGAR,<br>SABARKANTHA, GUJARAT - 383220</div>
-<div class="header-email">elhammultiplast@gmail.com</div>
-</div>
-<div class="party-section">
-<div class="party-left">
-<div class="party-label">Party Details :</div>
-${inv.companyName || inv.tradeName ? `<div class="party-name">${inv.companyName || inv.tradeName}</div>` : ""}
-<div class="party-name">${inv.customerName}</div>
-<div class="party-address">
-${partyAddr.length > 0 ? partyAddr.join("<br>") + "<br>" : ""}
-${cityStatePin ? cityStatePin + "<br>" : ""}
-${inv.address ? inv.address.replace(/\n/g, "<br>") + "<br>" : ""}
-</div>
-${inv.customerType === "Unregistered"
-  ? `<div class="party-gstin">ID Proof : ${inv.idProofType || ""} - ${inv.idProofNumber || ""}</div>`
-  : inv.gstNumber
-    ? `<div class="party-gstin">GSTIN / UIN : ${inv.gstNumber}</div>`
-    : ""
-}
-</div>
-<div class="party-right">
-<div class="order-label">Order No :</div>
-<div class="order-value">${inv.invoiceNumber}</div>
-<div class="order-label">Date :</div>
-<div class="date-value">${dateStr}</div>
-</div>
-</div>
-<div class="order-text">We are pleased to receive the order for the following items</div>
-</div>
-<div class="print-body">
-<table class="items">
-<thead><tr><th style="width:5%">S.N.</th><th style="width:30%">Description of Goods</th><th style="width:12%">HSN/SAC Code</th><th style="width:9%">Qty</th><th style="width:8%">Unit</th><th style="width:10%">Price</th><th style="width:12%">Amount</th></tr></thead>
-<tbody>${(inv.items || []).map((item: any, i: number) => `<tr><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${i+1}</td><td style="text-align:left;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;word-break:break-word;white-space:normal;">${item.productName}${item.bottleType ? ` (${item.bottleType})` : ""}${item.capacity ? ` ${item.capacity}` : ""}${item.weight ? ` ${item.weight}` : ""}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.hsnCode || "-"}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.quantity}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.unit}</td><td style="text-align:right;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${Number(item.rate).toFixed(2)}</td><td style="text-align:right;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${Number(item.amount).toFixed(2)}</td></tr>`).join("\n")}</tbody>
-</table>
-<table class="summary-table">
-${`<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">Product Total</td><td style="text-align:right;padding:3pt 8pt">${taxable.toFixed(2)}</td></tr>`}
-${freight > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">Freight Charges</td><td style="text-align:right;padding:3pt 8pt">${freight.toFixed(2)}</td></tr>` : ""}
-${cgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">CGST @ ${cgstPct}%</td><td style="text-align:right;padding:3pt 8pt">${cgstAmt.toFixed(2)}</td></tr>` : ""}
-${sgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">SGST @ ${sgstPct}%</td><td style="text-align:right;padding:3pt 8pt">${sgstAmt.toFixed(2)}</td></tr>` : ""}
-${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">IGST @ ${igstPct}%</td><td style="text-align:right;padding:3pt 8pt">${igstAmt.toFixed(2)}</td></tr>` : ""}
-<tr class="total-row"><td colspan="4" style="text-align:right;padding:3pt 8pt">Grand Total</td><td style="text-align:right;padding:3pt 8pt">${qtyDisplay}</td><td style="text-align:right;padding:3pt 8pt">${grandTotal.toFixed(2)}</td></tr>
-</table>
-<table class="tax-summary">
-<thead><tr><th>Tax Rate</th><th>Taxable Amount</th><th>CGST Amount</th><th>SGST Amount</th><th>Total Tax</th></tr></thead>
-<tbody>${isInterstate ? `<tr><td>IGST @ ${igstPct}%</td><td>${baseAmt.toFixed(2)}</td><td>0.00</td><td>0.00</td><td>${igstAmt.toFixed(2)}</td></tr>` : `<tr><td>CGST @ ${cgstPct}% + SGST @ ${sgstPct}%</td><td>${baseAmt.toFixed(2)}</td><td>${cgstAmt.toFixed(2)}</td><td>${sgstAmt.toFixed(2)}</td><td>${totalTax.toFixed(2)}</td></tr>`}</tbody>
-</table>
-<div class="amount-words"><strong>Amount in Words :</strong> ${inv.amountInWords || ""}</div>
-<div class="footer-section"><table><tr>
-<td style="border-right:1.5px solid #000;"><div class="bank-details"><strong>Bank Details</strong><br>ICICI BANK, HIMATNAGAR<br>A/C NO: 045205014806<br>IFSC: ICIC0000452</div></td>
-<td><div class="terms"><strong>Terms &amp; Conditions</strong><div>${(inv.terms || defaultTerms).join("<br>")}</div></div></td>
-</tr></table></div>
-<div class="disclaimer"><strong>DISCLAIMER : </strong>Products supplied are generic industrial packaging developed independently by Elham Multiplast LLP for functional applications. Any branding, labeling, or market usage by the buyer shall be at the buyer's sole responsibility.</div>
-<div class="signature-section"><div class="sign-left">Receiver Signature</div><div class="sign-right"><div class="for-company">for ELHAM MULTIPLAST LLP</div><div class="authorised">Authorised Signatory</div></div></div>
-</div>
-</div></body></html>`;
+${pagesHtml}
+</body></html>`;
   };
 
   const deleteDialogEl = (
@@ -1502,7 +1549,7 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">IG
                         <Input value={item.hsnCode} onChange={(e) => updateItem(idx, "hsnCode", e.target.value)} placeholder="HSN" className="h-8 w-full" />
                       </TableCell>
                       <TableCell>
-                        <Input type="number" value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} min={0} className="h-8 text-center w-full" />
+                        <Input type="number" value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} min={0} className="h-8 text-center w-full" {...preventSpinHandlers} />
                       </TableCell>
                       <TableCell>
                         <Select value={item.unit} onValueChange={(v) => updateItem(idx, "unit", v)}>
@@ -1515,10 +1562,10 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">IG
                         </Select>
                       </TableCell>
                       <TableCell>
-                        <Input type="number" value={item.rate} onChange={(e) => updateItem(idx, "rate", Number(e.target.value))} min={0} className="h-8 text-right w-full" />
+                        <Input type="number" value={item.rate} onChange={(e) => updateItem(idx, "rate", Number(e.target.value))} min={0} className="h-8 text-right w-full" {...preventSpinHandlers} />
                       </TableCell>
                       <TableCell>
-                        <Input type="number" value={item.gstPercent} onChange={(e) => updateItem(idx, "gstPercent", Number(e.target.value))} min={0} max={100} className="h-8 text-center w-full" />
+                        <Input type="number" value={item.gstPercent} onChange={(e) => updateItem(idx, "gstPercent", Number(e.target.value))} min={0} max={100} className="h-8 text-center w-full" {...preventSpinHandlers} />
                       </TableCell>
                       <TableCell className="text-right font-medium text-sm">
                         {calcAmount(item).toFixed(2)}
@@ -1556,19 +1603,19 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">IG
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <Label>Freight Charges (₹)</Label>
-                <Input type="number" value={freight} onChange={(e) => setFreight(Number(e.target.value))} min={0} />
+                <Input type="number" value={freight} onChange={(e) => setFreight(Number(e.target.value))} min={0} {...preventSpinHandlers} />
               </div>
               <div>
                 <Label>CGST (%)</Label>
-                <Input type="number" value={cgstPct} onChange={(e) => setCgstPct(Number(e.target.value))} min={0} max={100} step={0.01} />
+                <Input type="number" value={cgstPct} onChange={(e) => setCgstPct(Number(e.target.value))} min={0} max={100} step={0.01} {...preventSpinHandlers} />
               </div>
               <div>
                 <Label>SGST (%)</Label>
-                <Input type="number" value={sgstPct} onChange={(e) => setSgstPct(Number(e.target.value))} min={0} max={100} step={0.01} />
+                <Input type="number" value={sgstPct} onChange={(e) => setSgstPct(Number(e.target.value))} min={0} max={100} step={0.01} {...preventSpinHandlers} />
               </div>
               <div>
                 <Label>IGST (%)</Label>
-                <Input type="number" value={igstPct} onChange={(e) => setIgstPct(Number(e.target.value))} min={0} max={100} step={0.01} />
+                <Input type="number" value={igstPct} onChange={(e) => setIgstPct(Number(e.target.value))} min={0} max={100} step={0.01} {...preventSpinHandlers} />
               </div>
             </div>
             <div className="mt-4 p-4 bg-muted/30 rounded-lg space-y-1 text-sm">
