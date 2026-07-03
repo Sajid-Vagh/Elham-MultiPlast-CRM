@@ -1452,19 +1452,29 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">IG
             </Button>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
               <Table>
+                <colgroup>
+                  <col className="w-8" />
+                  <col />
+                  <col className="w-[88px]" />
+                  <col className="w-[72px]" />
+                  <col className="w-[72px]" />
+                  <col className="w-[88px]" />
+                  <col className="w-[72px]" />
+                  <col className="w-[88px]" />
+                  <col className="w-[72px]" />
+                </colgroup>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-8">#</TableHead>
                     <TableHead>Product Name</TableHead>
-                    <TableHead>HSN</TableHead>
-                    <TableHead className="w-16">Qty</TableHead>
-                    <TableHead className="w-16">Unit</TableHead>
-                    <TableHead className="w-20">Rate (₹)</TableHead>
-                    <TableHead className="w-16">GST %</TableHead>
-                    <TableHead className="w-20">Amount (₹)</TableHead>
-                    <TableHead className="w-16"></TableHead>
+                    <TableHead className="w-[88px]">HSN</TableHead>
+                    <TableHead className="w-[72px]">Qty</TableHead>
+                    <TableHead className="w-[72px]">Unit</TableHead>
+                    <TableHead className="w-[88px]">Rate (₹)</TableHead>
+                    <TableHead className="w-[72px]">GST %</TableHead>
+                    <TableHead className="w-[88px]">Amount (₹)</TableHead>
+                    <TableHead className="w-[72px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1472,11 +1482,11 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">IG
                     <TableRow key={idx}>
                       <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
                         <TableCell className="relative">
-                          <Input value={item.productName} onChange={(e) => { updateItem(idx, "productName", e.target.value); setProductSearchQuery(e.target.value); setActiveProductIdx(idx); }} placeholder="Type product name" className="h-8 min-w-28" onFocus={() => setActiveProductIdx(idx)} onBlur={() => setTimeout(() => setShowProductSearch(false), 200)} />
+                          <Input value={item.productName} onChange={(e) => { updateItem(idx, "productName", e.target.value); setProductSearchQuery(e.target.value); setActiveProductIdx(idx); }} placeholder="Type product name" className="h-8 w-full" onFocus={() => setActiveProductIdx(idx)} onBlur={() => setTimeout(() => setShowProductSearch(false), 200)} />
                           {showProductSearch && activeProductIdx === idx && productSearchResults.length > 0 && (
                             <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-md shadow-lg mt-1 max-h-48 overflow-y-auto">
                               {productSearchResults.map((p: any) => (
-                                <div key={p.id} className="px-3 py-2 hover:bg-muted cursor-pointer text-sm" onMouseDown={() => selectProduct(idx, p)}>
+                                <div key={p.id} className="px-3 py-2 hover:bg-muted cursor-pointer text-sm" onMouseDown={(e) => { e.preventDefault(); selectProduct(idx, p); }}>
                                   <div className="font-medium">{p.name}</div>
                                   <div className="text-xs text-muted-foreground">{p.productCode}{p.pricePerUnit ? ` · ₹${Number(p.pricePerUnit).toFixed(2)}` : ""}</div>
                                 </div>
@@ -1485,14 +1495,14 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">IG
                           )}
                         </TableCell>
                       <TableCell>
-                        <Input value={item.hsnCode} onChange={(e) => updateItem(idx, "hsnCode", e.target.value)} placeholder="HSN" className="h-8 w-20" />
+                        <Input value={item.hsnCode} onChange={(e) => updateItem(idx, "hsnCode", e.target.value)} placeholder="HSN" className="h-8 w-full" />
                       </TableCell>
                       <TableCell>
-                        <Input type="number" value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} min={0} className="h-8 text-center w-16" />
+                        <Input type="number" value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} min={0} className="h-8 text-center w-full" />
                       </TableCell>
                       <TableCell>
                         <Select value={item.unit} onValueChange={(v) => updateItem(idx, "unit", v)}>
-                          <SelectTrigger className="h-8 w-16"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className="h-8 w-full"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             {["Pcs", "Kg", "Gms", "Ltr", "Mtr", "Box", "Pack", "Nos"].map((u) => (
                               <SelectItem key={u} value={u}>{u}</SelectItem>
@@ -1501,10 +1511,10 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">IG
                         </Select>
                       </TableCell>
                       <TableCell>
-                        <Input type="number" value={item.rate} onChange={(e) => updateItem(idx, "rate", Number(e.target.value))} min={0} className="h-8 text-right w-20" />
+                        <Input type="number" value={item.rate} onChange={(e) => updateItem(idx, "rate", Number(e.target.value))} min={0} className="h-8 text-right w-full" />
                       </TableCell>
                       <TableCell>
-                        <Input type="number" value={item.gstPercent} onChange={(e) => updateItem(idx, "gstPercent", Number(e.target.value))} min={0} max={100} className="h-8 text-center w-16" />
+                        <Input type="number" value={item.gstPercent} onChange={(e) => updateItem(idx, "gstPercent", Number(e.target.value))} min={0} max={100} className="h-8 text-center w-full" />
                       </TableCell>
                       <TableCell className="text-right font-medium text-sm">
                         {calcAmount(item).toFixed(2)}
@@ -1523,7 +1533,6 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">IG
                   ))}
                 </TableBody>
               </Table>
-            </div>
           </CardContent>
         </Card>
 
