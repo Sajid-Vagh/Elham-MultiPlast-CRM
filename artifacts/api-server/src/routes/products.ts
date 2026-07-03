@@ -56,7 +56,7 @@ router.post("/products", async (req, res) => {
       res.status(409).json({ error: DUPLICATE_MSG });
       return;
     }
-    const insertData = { ...parsed.data, pricePerUnit: parsed.data.pricePerUnit?.toString() ?? null } as any;
+    const insertData = { ...parsed.data, pricePerUnit: (parsed.data as any).pricePerUnit?.toString() ?? null, defaultGst: (parsed.data as any).defaultGst?.toString() ?? null } as any;
     const [product] = await db.insert(productsTable).values(insertData).returning();
     res.status(201).json(product);
   } catch (err: any) {
@@ -103,7 +103,10 @@ router.patch("/products/:id", async (req, res) => {
     }
     const updateData = { ...parsed.data } as any;
     if ("pricePerUnit" in parsed.data) {
-      updateData.pricePerUnit = parsed.data.pricePerUnit?.toString() ?? null;
+      updateData.pricePerUnit = (parsed.data as any).pricePerUnit?.toString() ?? null;
+    }
+    if ("defaultGst" in parsed.data) {
+      updateData.defaultGst = (parsed.data as any).defaultGst?.toString() ?? null;
     }
     const [product] = await db.update(productsTable).set(updateData).where(eq(productsTable.id, params.data.id)).returning();
     if (!product) { res.status(404).json({ error: "Not found" }); return; }

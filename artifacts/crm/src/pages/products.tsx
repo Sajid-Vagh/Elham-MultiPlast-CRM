@@ -9,22 +9,46 @@ import { Label } from "@/components/ui/label";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-type Product = { id: number; name: string; category?: string | null; pricePerUnit?: number | null; productCode: string; bottleWeight?: string | null; bottleColour?: string | null; capColour?: string | null };
+type Product = { id: number; name: string; category?: string | null; pricePerUnit?: number | null; productCode: string; bottleWeight?: string | null; bottleColour?: string | null; capColour?: string | null; materialType?: string | null; hsnCode?: string | null; defaultUnit?: string | null; defaultGst?: number | null };
 
 function ProductForm({ initial, onSave, onCancel, loading, codeError }: { initial?: Partial<Product>; onSave: (d: any) => void; onCancel: () => void; loading: boolean; codeError?: string | null }) {
-  const [form, setForm] = useState({ name: initial?.name || "", category: initial?.category || "", productCode: initial?.productCode || "", bottleWeight: initial?.bottleWeight || "", bottleColour: initial?.bottleColour || "", capColour: initial?.capColour || "" });
-  const f = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, [k]: e.target.value }));
+  const [form, setForm] = useState({ name: initial?.name || "", category: initial?.category || "", productCode: initial?.productCode || "", bottleWeight: initial?.bottleWeight || "", bottleColour: initial?.bottleColour || "", capColour: initial?.capColour || "", materialType: initial?.materialType || "", hsnCode: initial?.hsnCode || "", defaultUnit: initial?.defaultUnit || "", defaultGst: initial?.defaultGst?.toString() || "" });
+  const f = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm(p => ({ ...p, [k]: e.target.value }));
   return (
     <div className="grid grid-cols-2 gap-3 pt-2">
       <div><Label>Name *</Label><Input value={form.name} onChange={f("name")} /></div>
       <div><Label>Product Code *</Label><Input value={form.productCode} onChange={f("productCode")} /></div>
       {codeError && <div className="col-span-2 text-sm text-destructive">{codeError}</div>}
       <div><Label>Category</Label><Input value={form.category} onChange={f("category")} /></div>
+      <div><Label>Material Type</Label>
+        <select value={form.materialType} onChange={f("materialType")} className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors">
+          <option value="">None</option>
+          <option value="PET">PET</option>
+          <option value="HDPE">HDPE</option>
+          <option value="PP">PP</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div><Label>HSN Code</Label><Input value={form.hsnCode} onChange={f("hsnCode")} /></div>
+      <div><Label>Default Unit</Label>
+        <select value={form.defaultUnit} onChange={f("defaultUnit")} className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors">
+          <option value="">None</option>
+          <option value="Pcs">Pcs</option>
+          <option value="Kg">Kg</option>
+          <option value="Gms">Gms</option>
+          <option value="Ltr">Ltr</option>
+          <option value="Mtr">Mtr</option>
+          <option value="Box">Box</option>
+          <option value="Pack">Pack</option>
+          <option value="Nos">Nos</option>
+        </select>
+      </div>
+      <div><Label>Default GST %</Label><Input type="number" value={form.defaultGst} onChange={f("defaultGst")} min={0} max={100} /></div>
       <div><Label>Bottle Weight</Label><Input value={form.bottleWeight} onChange={f("bottleWeight")} /></div>
       <div><Label>Bottle Colour</Label><Input value={form.bottleColour} onChange={f("bottleColour")} /></div>
       <div><Label>Cap Colour</Label><Input value={form.capColour} onChange={f("capColour")} /></div>
       <div className="col-span-2 flex gap-2 pt-2">
-        <Button disabled={loading || !form.name || !form.productCode} onClick={() => onSave({ ...form, category: form.category || null, bottleWeight: form.bottleWeight || null, bottleColour: form.bottleColour || null, capColour: form.capColour || null })}>
+        <Button disabled={loading || !form.name || !form.productCode} onClick={() => onSave({ ...form, category: form.category || null, bottleWeight: form.bottleWeight || null, bottleColour: form.bottleColour || null, capColour: form.capColour || null, materialType: form.materialType || null, hsnCode: form.hsnCode || null, defaultUnit: form.defaultUnit || null, defaultGst: form.defaultGst ? Number(form.defaultGst) : null })}>
           {loading ? "Saving..." : "Save"}
         </Button>
         <Button variant="outline" onClick={onCancel}>Cancel</Button>
@@ -102,7 +126,10 @@ export default function Products() {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Code</TableHead>
-              <TableHead>Category</TableHead>
+              <TableHead>Material</TableHead>
+              <TableHead>HSN</TableHead>
+              <TableHead>Unit</TableHead>
+              <TableHead>GST%</TableHead>
               <TableHead>Price/Unit</TableHead>
               <TableHead>Bottle</TableHead>
               <TableHead>Cap</TableHead>
@@ -111,15 +138,18 @@ export default function Products() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : products?.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No products yet.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No products yet.</TableCell></TableRow>
             ) : (
               products?.map(p => (
                 <TableRow key={p.id}>
                   <TableCell className="font-medium">{p.name}</TableCell>
                   <TableCell className="text-muted-foreground font-mono text-sm">{p.productCode}</TableCell>
-                  <TableCell>{p.category || "-"}</TableCell>
+                  <TableCell>{p.materialType || "-"}</TableCell>
+                  <TableCell className="font-mono text-xs">{p.hsnCode || "-"}</TableCell>
+                  <TableCell>{p.defaultUnit || "-"}</TableCell>
+                  <TableCell>{p.defaultGst != null ? `${p.defaultGst}%` : "-"}</TableCell>
                   <TableCell>{p.pricePerUnit ? `₹${Number(p.pricePerUnit).toLocaleString()}` : "-"}</TableCell>
                   <TableCell>{[p.bottleWeight, p.bottleColour].filter(Boolean).join(" · ") || "-"}</TableCell>
                   <TableCell>{p.capColour || "-"}</TableCell>

@@ -324,8 +324,18 @@ export default function ProformaInvoicesPage() {
     return () => clearTimeout(timer);
   }, [productSearchQuery, token]);
 
+  const MATERIAL_HSN: Record<string, string> = {
+    PET: "39233090",
+    HDPE: "39239090",
+    PP: "39269099",
+  };
+
   const selectProduct = (idx: number, product: any) => {
     updateItem(idx, "productName", product.name);
+    const hsn = product.hsnCode || (product.materialType ? MATERIAL_HSN[product.materialType] : "") || "";
+    if (hsn) updateItem(idx, "hsnCode", hsn);
+    if (product.defaultUnit) updateItem(idx, "unit", product.defaultUnit);
+    if (product.defaultGst != null) updateItem(idx, "gstPercent", Number(product.defaultGst));
     if (product.pricePerUnit) updateItem(idx, "rate", Number(product.pricePerUnit));
     setShowProductSearch(false);
     setProductSearchQuery("");

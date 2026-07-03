@@ -11,6 +11,10 @@ export const productsTable = pgTable("products", {
   bottleWeight: text("bottle_weight"),
   bottleColour: text("bottle_colour"),
   capColour: text("cap_colour"),
+  materialType: text("material_type"),
+  hsnCode: text("hsn_code"),
+  defaultUnit: text("default_unit"),
+  defaultGst: numeric("default_gst", { precision: 5, scale: 2 }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

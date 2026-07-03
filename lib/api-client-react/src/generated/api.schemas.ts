@@ -277,6 +277,14 @@ export interface Product {
   bottleColour?: string | null;
   /** @nullable */
   capColour?: string | null;
+  /** @nullable */
+  materialType?: string | null;
+  /** @nullable */
+  hsnCode?: string | null;
+  /** @nullable */
+  defaultUnit?: string | null;
+  /** @nullable */
+  defaultGst?: number | null;
   createdAt?: string;
 }
 
@@ -293,6 +301,14 @@ export interface ProductInput {
   bottleColour?: string | null;
   /** @nullable */
   capColour?: string | null;
+  /** @nullable */
+  materialType?: string | null;
+  /** @nullable */
+  hsnCode?: string | null;
+  /** @nullable */
+  defaultUnit?: string | null;
+  /** @nullable */
+  defaultGst?: number | null;
 }
 
 export interface ProductUpdate {
@@ -308,6 +324,14 @@ export interface ProductUpdate {
   bottleColour?: string | null;
   /** @nullable */
   capColour?: string | null;
+  /** @nullable */
+  materialType?: string | null;
+  /** @nullable */
+  hsnCode?: string | null;
+  /** @nullable */
+  defaultUnit?: string | null;
+  /** @nullable */
+  defaultGst?: number | null;
 }
 
 export type DealStage = typeof DealStage[keyof typeof DealStage];
