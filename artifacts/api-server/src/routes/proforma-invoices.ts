@@ -212,6 +212,7 @@ ${productRows}
 </table>
 
 <table class="summary-table">
+${`<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">Product Total</td><td style="text-align:right;padding:3pt 8pt">${taxableAmount.toFixed(2)}</td></tr>`}
 ${freight > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">Freight Charges</td><td style="text-align:right;padding:3pt 8pt">${freight.toFixed(2)}</td></tr>` : ""}
 ${cgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">CGST @ ${cgstPct}%</td><td style="text-align:right;padding:3pt 8pt">${cgstAmount.toFixed(2)}</td></tr>` : ""}
 ${sgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">SGST @ ${sgstPct}%</td><td style="text-align:right;padding:3pt 8pt">${sgstAmount.toFixed(2)}</td></tr>` : ""}
