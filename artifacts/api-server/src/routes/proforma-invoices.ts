@@ -152,13 +152,17 @@ table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wr
 .sign-right{width:50%;text-align:right;}
 .sign-right .for-company{font-weight:bold;font-size:9pt;}
 .sign-right .authorised{font-size:8pt;margin-top:2pt;}
+/* ── Repeating Print Header ── */
+.print-header{background:white;z-index:1000;}
+.print-body{width:100%;}
 /* ── Print ── */
-@media print{@page{margin:0;}html,body{height:297mm;}body{padding:5mm;}.invoice{page-break-after:avoid;min-height:100%;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+@media print{@page{margin:0;}html,body{height:297mm;}body{padding:5mm;}.invoice{page-break-after:avoid;min-height:100%;}.print-header{position:fixed;top:5mm;left:5mm;right:5mm;width:calc(100%-10mm);}.print-body{padding-top:285px;display:block;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
 </style>
 </head>
 <body>
 <div class="invoice">
 
+<div class="print-header">
 <div class="header">
 <div class="gstin-top"><strong>GSTIN :</strong> ${COMPANY_DEFAULTS.gstin}</div>
 <div class="invoice-title">PROFORMA INVOICE</div>
@@ -193,6 +197,9 @@ ${invoice.customerType === "Unregistered"
 </div>
 
 <div class="order-text">We are pleased to receive the order for the following items</div>
+</div>
+
+<div class="print-body">
 
 <table class="items">
 <thead>
@@ -275,6 +282,7 @@ IFSC: ${bankDetails.ifsc || "ICIC0000452"}
 </div>
 </div>
 
+</div>
 </div>
 </body>
 </html>`;

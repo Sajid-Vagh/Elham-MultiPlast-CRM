@@ -1046,9 +1046,12 @@ table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wr
 .sign-right{width:50%;text-align:right;}
 .sign-right .for-company{font-weight:bold;font-size:9pt;}
 .sign-right .authorised{font-size:8pt;margin-top:2pt;}
-@media print{@page{margin:0;}html,body{height:297mm;}body{padding:5mm;}.invoice{page-break-after:avoid;min-height:100%;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+.print-header{background:white;z-index:1000;}
+.print-body{width:100%;}
+@media print{@page{margin:0;}html,body{height:297mm;}body{padding:5mm;}.invoice{page-break-after:avoid;min-height:100%;}.print-header{position:fixed;top:5mm;left:5mm;right:5mm;width:calc(100%-10mm);}.print-body{padding-top:285px;display:block;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
 </style></head><body>
 <div class="invoice">
+<div class="print-header">
 <div class="header">
 <div class="gstin-top"><strong>GSTIN :</strong> 24AAJFE2064P1Z6</div>
 <div class="invoice-title">PROFORMA INVOICE</div>
@@ -1081,6 +1084,8 @@ ${inv.customerType === "Unregistered"
 </div>
 </div>
 <div class="order-text">We are pleased to receive the order for the following items</div>
+</div>
+<div class="print-body">
 <table class="items">
 <thead><tr><th style="width:5%">S.N.</th><th style="width:30%">Description of Goods</th><th style="width:12%">HSN/SAC Code</th><th style="width:9%">Qty</th><th style="width:8%">Unit</th><th style="width:10%">Price</th><th style="width:12%">Amount</th></tr></thead>
 <tbody>${(inv.items || []).map((item: any, i: number) => `<tr><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${i+1}</td><td style="text-align:left;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;word-break:break-word;white-space:normal;">${item.productName}${item.bottleType ? ` (${item.bottleType})` : ""}${item.capacity ? ` ${item.capacity}` : ""}${item.weight ? ` ${item.weight}` : ""}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.hsnCode || "-"}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.quantity}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.unit}</td><td style="text-align:right;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${Number(item.rate).toFixed(2)}</td><td style="text-align:right;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${Number(item.amount).toFixed(2)}</td></tr>`).join("\n")}</tbody>
@@ -1104,6 +1109,7 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">IG
 </tr></table></div>
 <div class="disclaimer"><strong>DISCLAIMER : </strong>Products supplied are generic industrial packaging developed independently by Elham Multiplast LLP for functional applications. Any branding, labeling, or market usage by the buyer shall be at the buyer's sole responsibility.</div>
 <div class="signature-section"><div class="sign-left">Receiver Signature</div><div class="sign-right"><div class="for-company">for ELHAM MULTIPLAST LLP</div><div class="authorised">Authorised Signatory</div></div></div>
+</div>
 </div></body></html>`;
   };
 
