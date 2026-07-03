@@ -138,6 +138,7 @@ export default function ProformaInvoicesPage() {
   const [productSearchResults, setProductSearchResults] = useState<any[]>([]);
   const [showProductSearch, setShowProductSearch] = useState(false);
   const [activeProductIdx, setActiveProductIdx] = useState(-1);
+  const [productSearchPos, setProductSearchPos] = useState({ top: 0, left: 0, width: 0 });
 
   const [statusFilter, setStatusFilter] = useState("all");
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
@@ -279,6 +280,7 @@ export default function ProformaInvoicesPage() {
     setProductSearchResults([]);
     setShowProductSearch(false);
     setActiveProductIdx(-1);
+    setProductSearchPos({ top: 0, left: 0, width: 0 });
   };
 
   useEffect(() => {
@@ -331,15 +333,20 @@ export default function ProformaInvoicesPage() {
   };
 
   const selectProduct = (idx: number, product: any) => {
-    updateItem(idx, "productName", product.name);
-    const hsn = product.hsnCode || (product.materialType ? MATERIAL_HSN[product.materialType] : "") || "";
-    if (hsn) updateItem(idx, "hsnCode", hsn);
-    if (product.defaultUnit) updateItem(idx, "unit", product.defaultUnit);
-    if (product.defaultGst != null) updateItem(idx, "gstPercent", Number(product.defaultGst));
-    if (product.pricePerUnit) updateItem(idx, "rate", Number(product.pricePerUnit));
+    setItems(prev => prev.map((item, i) => {
+      if (i !== idx) return item;
+      const next = { ...item, productName: product.name };
+      const hsn = product.hsnCode || (product.materialType ? MATERIAL_HSN[product.materialType] : "") || "";
+      if (hsn) next.hsnCode = hsn;
+      if (product.defaultUnit) next.unit = product.defaultUnit;
+      if (product.defaultGst != null) next.gstPercent = Number(product.defaultGst);
+      if (product.pricePerUnit) next.rate = Number(product.pricePerUnit);
+      return recalcItem(next);
+    }));
     setShowProductSearch(false);
     setProductSearchQuery("");
     setActiveProductIdx(-1);
+    setProductSearchPos({ top: 0, left: 0, width: 0 });
   };
 
   const selectContact = (contact: any) => {
@@ -1482,17 +1489,14 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">IG
                     <TableRow key={idx}>
                       <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
                         <TableCell className="relative">
-                          <Input value={item.productName} onChange={(e) => { updateItem(idx, "productName", e.target.value); setProductSearchQuery(e.target.value); setActiveProductIdx(idx); }} placeholder="Type product name" className="h-8 w-full" onFocus={() => setActiveProductIdx(idx)} onBlur={() => setTimeout(() => setShowProductSearch(false), 200)} />
-                          {showProductSearch && activeProductIdx === idx && productSearchResults.length > 0 && (
-                            <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-md shadow-lg mt-1 max-h-48 overflow-y-auto">
-                              {productSearchResults.map((p: any) => (
-                                <div key={p.id} className="px-3 py-2 hover:bg-muted cursor-pointer text-sm" onMouseDown={(e) => { e.preventDefault(); selectProduct(idx, p); }}>
-                                  <div className="font-medium">{p.name}</div>
-                                  <div className="text-xs text-muted-foreground">{p.productCode}{p.pricePerUnit ? ` · ₹${Number(p.pricePerUnit).toFixed(2)}` : ""}</div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                          <Input
+                            value={item.productName}
+                            onChange={(e) => { updateItem(idx, "productName", e.target.value); setProductSearchQuery(e.target.value); setActiveProductIdx(idx); const r = e.currentTarget.getBoundingClientRect(); setProductSearchPos({ top: r.bottom, left: r.left, width: r.width }); }}
+                            placeholder="Type product name"
+                            className="h-8 w-full"
+                            onFocus={(e) => { setActiveProductIdx(idx); const r = e.currentTarget.getBoundingClientRect(); setProductSearchPos({ top: r.bottom, left: r.left, width: r.width }); }}
+                            onBlur={() => setTimeout(() => setShowProductSearch(false), 200)}
+                          />
                         </TableCell>
                       <TableCell>
                         <Input value={item.hsnCode} onChange={(e) => updateItem(idx, "hsnCode", e.target.value)} placeholder="HSN" className="h-8 w-full" />
@@ -1533,6 +1537,16 @@ ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">IG
                   ))}
                 </TableBody>
               </Table>
+          {showProductSearch && productSearchResults.length > 0 && activeProductIdx >= 0 && productSearchPos.width > 0 && (
+            <div style={{ position: 'fixed', top: productSearchPos.top, left: productSearchPos.left, width: productSearchPos.width }} className="z-[9999] bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
+              {productSearchResults.map((p: any) => (
+                <div key={p.id} className="px-3 py-2 hover:bg-muted cursor-pointer text-sm" onMouseDown={(e) => { e.preventDefault(); selectProduct(activeProductIdx, p); }}>
+                  <div className="font-medium">{p.name}</div>
+                  <div className="text-xs text-muted-foreground">{p.productCode}{p.pricePerUnit ? ` · ₹${Number(p.pricePerUnit).toFixed(2)}` : ""}</div>
+                </div>
+              ))}
+            </div>
+          )}
           </CardContent>
         </Card>
 
