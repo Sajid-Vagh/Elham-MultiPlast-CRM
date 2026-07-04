@@ -117,9 +117,10 @@ export function DocumentManager({ contactId, dealId, proformaInvoiceId, compact 
         setDeleteDoc(null);
         fetchDocuments();
       } else {
-        toast({ title: "Delete failed", variant: "destructive" });
+        const err = await res.json().catch(() => ({ error: "Delete failed" }));
+        toast({ title: "Delete failed", description: err.error, variant: "destructive" });
       }
-    } catch { toast({ title: "Delete failed", variant: "destructive" }); }
+    } catch (e: any) { toast({ title: "Delete failed", description: e?.message, variant: "destructive" }); }
   };
 
   const handleReplace = async () => {
@@ -142,13 +143,14 @@ export function DocumentManager({ contactId, dealId, proformaInvoiceId, compact 
           setReplaceDoc(null);
           fetchDocuments();
         } else {
-          toast({ title: "Replace failed", variant: "destructive" });
+          const err = await res.json().catch(() => ({ error: "Replace failed" }));
+          toast({ title: "Replace failed", description: err.error, variant: "destructive" });
         }
-      } catch { toast({ title: "Replace failed", variant: "destructive" }); }
+      } catch (e: any) { toast({ title: "Replace failed", description: e?.message, variant: "destructive" }); }
     };
     input.click();
   };
-
+  
   const handleDownload = async (doc: Document) => {
     try {
       const res = await fetch(`/api/documents/${doc.id}/download`, {

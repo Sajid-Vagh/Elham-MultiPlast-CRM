@@ -101,14 +101,17 @@ export function DocumentUploadDialog({ open, onOpenChange, contactId, dealId, pr
     setUploading(false);
 
     if (uploaded.length > 0) {
-      toast({ title: `${uploaded.length} file(s) uploaded successfully` });
+      const failedFile = files.find(f => f.error);
+      const msg = failedFile ? ` (${failedFile.error})` : "";
+      toast({ title: `${uploaded.length} file(s) uploaded successfully${msg}` });
       setFiles([]);
       setDocumentType("Other");
       setCategory("Customer Documents");
       onSuccess?.();
       if (!hasError) onOpenChange(false);
     } else {
-      toast({ title: "Upload failed", variant: "destructive" });
+      const firstErr = files.find(f => f.error);
+      toast({ title: "Upload failed", description: firstErr?.error || "Unknown error", variant: "destructive" });
     }
   };
 

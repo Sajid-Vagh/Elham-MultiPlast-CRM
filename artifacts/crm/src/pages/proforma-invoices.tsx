@@ -78,6 +78,11 @@ export default function ProformaInvoicesPage() {
   const { toast } = useToast();
   const { data: me } = useGetMe();
   const token = localStorage.getItem("crm_token");
+  const urlContactId = (() => {
+    if (typeof window === "undefined") return null;
+    const p = new URLSearchParams(window.location.search).get("contactId");
+    return p ? Number(p) : null;
+  })();
 
   const preventSpinHandlers = {
     onKeyDown: (e: React.KeyboardEvent) => {
@@ -139,6 +144,10 @@ export default function ProformaInvoicesPage() {
   const [gstLoading, setGstLoading] = useState(false);
   const [gstError, setGstError] = useState("");
   const [gstVerifying, setGstVerifying] = useState(false);
+  const [leadLinkQuery, setLeadLinkQuery] = useState("");
+  const [leadLinkResults, setLeadLinkResults] = useState<any[]>([]);
+  const [showLeadLink, setShowLeadLink] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<any>(null);
   const [gstVerified, setGstVerified] = useState(false);
   const [lastVerifiedAt, setLastVerifiedAt] = useState("");
   const [gstVerificationResult, setGstVerificationResult] = useState<any>(null);
@@ -291,6 +300,10 @@ export default function ProformaInvoicesPage() {
     setShowProductSearch(false);
     setActiveProductIdx(-1);
     setProductSearchPos({ top: 0, left: 0, width: 0 });
+    setSelectedLead(null);
+    setLeadLinkQuery("");
+    setLeadLinkResults([]);
+    setShowLeadLink(false);
   };
 
   useEffect(() => {
@@ -313,6 +326,28 @@ export default function ProformaInvoicesPage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [contactSearchQuery, token]);
+
+  // Lead link search autocomplete
+  useEffect(() => {
+    if (!leadLinkQuery || leadLinkQuery.length < 2) {
+      setLeadLinkResults([]);
+      setShowLeadLink(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/contacts?search=${encodeURIComponent(leadLinkQuery)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const json = await res.json();
+          setLeadLinkResults(ensureArray(json).slice(0, 10));
+          setShowLeadLink(true);
+        }
+      } catch { }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [leadLinkQuery, token]);
 
   // Product search autocomplete
   useEffect(() => {
@@ -368,6 +403,16 @@ export default function ProformaInvoicesPage() {
     setAddress(contact.address || "");
     setShowContactSearch(false);
     setContactSearchQuery("");
+  };
+
+  const selectLeadLink = (contact: any) => {
+    setSelectedLead(contact);
+    setShowLeadLink(false);
+    setLeadLinkQuery("");
+  };
+
+  const clearLeadLink = () => {
+    setSelectedLead(null);
   };
 
   const parseAddressString = (addr: string) => {
@@ -432,10 +477,12 @@ export default function ProformaInvoicesPage() {
     setGstNumber("");
     setGstStatus("");
 
-    const name = data.legalName || data.tradeName || data.companyName || "";
-    setCustomerName(name);
-    setCompanyName(name);
-    setTradeName(data.tradeName || name);
+    // tradeName -> Company Name (first line), legalName -> Party Name (second line)
+    const partyName = data.legalName || "";
+    const companyNameVal = data.tradeName || "";
+    setCustomerName(partyName);
+    setCompanyName(companyNameVal);
+    setTradeName(data.tradeName || "");
 
     if (data.addressLine1 || data.addressLine2 || data.addressLine3) {
       setAddressLine1(data.addressLine1 || "");
@@ -629,6 +676,7 @@ export default function ProformaInvoicesPage() {
           mobile: mobile || null,
           customerType,
           gstStatus: gstStatus || "Active",
+          linkedContactId: selectedLead?.id || urlContactId,
         }),
       });
       if (res.status === 409) {
@@ -772,6 +820,8 @@ export default function ProformaInvoicesPage() {
         })),
       };
       if (customerMasterId) body.customerMasterId = customerMasterId;
+      if (selectedLead?.id) body.contactId = selectedLead.id;
+      else if (urlContactId) body.contactId = urlContactId;
       if (invoiceNumber) body.invoiceNumber = invoiceNumber;
 
       let res: Response;
@@ -818,6 +868,7 @@ export default function ProformaInvoicesPage() {
               mobile: mobile || null,
               customerType,
               gstStatus: gstStatus || "Active",
+              linkedContactId: selectedLead?.id || urlContactId,
             }),
           });
         } catch { /* silent fail - auto-save is best-effort */ }
@@ -1048,8 +1099,14 @@ export default function ProformaInvoicesPage() {
     <div class="party-section">
       <div class="party-left">
         <div class="party-label">Party Details :</div>
-        ${inv.companyName || inv.tradeName ? `<div class="party-name">${inv.companyName || inv.tradeName}</div>` : ""}
-        <div class="party-name">${inv.customerName}</div>
+        ${(() => {
+          const firstLine = inv.tradeName || inv.companyName;
+          const secondLine = inv.customerName;
+          if (firstLine && firstLine !== secondLine) {
+            return `<div class="party-name">${firstLine}</div><div class="party-name">${secondLine}</div>`;
+          }
+          return `<div class="party-name">${secondLine}</div>`;
+        })()}
         <div class="party-address">
           ${partyAddr.length > 0 ? partyAddr.join("<br>") + "<br>" : ""}
           ${cityStatePin ? cityStatePin + "<br>" : ""}
@@ -1421,6 +1478,34 @@ ${pagesHtml}
               <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Internal notes" />
             </div>
 
+            <div className="sm:col-span-2">
+              <Label>Link to Lead (optional)</Label>
+              {selectedLead ? (
+                <div className="flex items-center justify-between p-2 border rounded-md bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{selectedLead.name}</span>
+                    <span className="text-xs text-muted-foreground">{selectedLead.companyName || ""}{selectedLead.companyName && selectedLead.mobile ? " · " : ""}{selectedLead.mobile || ""}</span>
+                  </div>
+                  <button onClick={clearLeadLink} className="text-xs text-muted-foreground hover:text-destructive underline" type="button">Clear</button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Input value={leadLinkQuery} onChange={(e) => setLeadLinkQuery(e.target.value)} placeholder="Search lead by name, company, or mobile..." onFocus={() => { if (leadLinkResults.length > 0) setShowLeadLink(true); }} onBlur={() => setTimeout(() => setShowLeadLink(false), 200)} />
+                  {showLeadLink && leadLinkResults.length > 0 && (
+                    <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-md shadow-lg mt-1 max-h-48 overflow-y-auto">
+                      {leadLinkResults.map((c: any) => (
+                        <div key={c.id} className="px-3 py-2 hover:bg-muted cursor-pointer text-sm" onMouseDown={() => selectLeadLink(c)}>
+                          <div className="font-medium">{c.name}</div>
+                          <div className="text-xs text-muted-foreground">{c.companyName || ""}{c.companyName && c.mobile ? " · " : ""}{c.mobile || ""}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {urlContactId && !selectedLead && <p className="text-xs text-muted-foreground mt-1">Will link to lead from detail page. Search above to override.</p>}
+                </div>
+              )}
+            </div>
+
             {/* Customer Master actions */}
             {!customerMasterId && !existingCustomer && gstNumber.trim().length >= 15 && companyName.trim() && (
               <div className="sm:col-span-2">
@@ -1719,6 +1804,14 @@ ${pagesHtml}
             })));
             setEditMode(true);
             setMode("create");
+            if (inv.contactId) {
+              fetch(`/api/contacts/${inv.contactId}`, {
+                headers: { Authorization: `Bearer ${token}` },
+              })
+                .then(r => r.ok ? r.json() : null)
+                .then(c => { if (c) setSelectedLead(c); })
+                .catch(() => {});
+            }
           }}>
             <FileText className="h-4 w-4 mr-1" /> Edit
           </Button>
@@ -1754,6 +1847,9 @@ ${pagesHtml}
                 inv.gstNumber && <p><span className="text-muted-foreground">GSTIN/UIN:</span> {inv.gstNumber}</p>
               )}
               {inv.mobile && <p><span className="text-muted-foreground">Mobile:</span> {inv.mobile}</p>}
+              {inv.contactId && (
+                <p><span className="text-muted-foreground">Linked Lead:</span> <a href={`/leads/${inv.contactId}`} className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">Lead #{inv.contactId} →</a></p>
+              )}
             </CardContent>
           </Card>
           <Card>

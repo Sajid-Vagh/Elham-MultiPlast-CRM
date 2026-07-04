@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import { logger } from "./lib/logger";
 import { closeDb, waitForDb, db, usersTable, sessionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import fs from "node:fs";
+import path from "node:path";
 
 const rawPort = process.env["PORT"];
 
@@ -69,6 +71,18 @@ async function main() {
     await seedUsers();
   } catch (err) {
     logger.error({ err }, "Failed to seed users");
+  }
+
+  // Ensure uploads directory exists at startup for local file storage
+  const uploadsDir = path.resolve(process.cwd(), "uploads");
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    logger.info({ dir: uploadsDir }, "Created uploads directory");
+  }
+  const docsDir = path.join(uploadsDir, "documents");
+  if (!fs.existsSync(docsDir)) {
+    fs.mkdirSync(docsDir, { recursive: true });
+    logger.info({ dir: docsDir }, "Created documents subdirectory");
   }
 
   const server = app.listen(port, (err) => {

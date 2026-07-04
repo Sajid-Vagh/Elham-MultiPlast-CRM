@@ -80,8 +80,10 @@ router.post("/documents/upload", upload.single("file"), async (req: Request, res
 
     res.json(doc);
   } catch (err) {
+    console.error("[Document Upload Error]", err);
     req.log.error({ err }, "Document upload error");
-    res.status(500).json({ error: "Internal server error" });
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(500).json({ error: message });
   }
 });
 
@@ -141,8 +143,10 @@ router.post("/documents/upload-multiple", upload.array("files", 20), async (req:
 
     res.json(results);
   } catch (err) {
+    console.error("[Document Multiple Upload Error]", err);
     req.log.error({ err }, "Multiple upload error");
-    res.status(500).json({ error: "Internal server error" });
+    const message = err instanceof Error ? err.message : "Internal server error";
+    res.status(500).json({ error: message });
   }
 });
 

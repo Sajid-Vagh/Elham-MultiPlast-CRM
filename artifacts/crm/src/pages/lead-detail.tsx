@@ -545,10 +545,10 @@ export default function LeadDetail() {
                 <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
                   <FileText className="h-3.5 w-3.5" /> Proforma Invoices
                 </CardTitle>
-                <Link href={`/proforma-invoices`}>
+                <Link href={`/proforma-invoices?contactId=${contactId}`}>
                   <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={(e) => {
                     e.preventDefault();
-                    window.location.href = `/proforma-invoices`;
+                    window.location.href = `/proforma-invoices?contactId=${contactId}`;
                   }}>View All</Button>
                 </Link>
               </div>
@@ -591,7 +591,7 @@ export default function LeadDetail() {
                 <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setDealDialogOpen(true)}>
                   <Plus className="h-3.5 w-3.5 shrink-0" /> Create Deal
                 </Button>
-                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => window.location.href = `/proforma-invoices`}>
+                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => window.location.href = `/proforma-invoices?contactId=${contactId}`}>
                   <FileText className="h-3.5 w-3.5 shrink-0" /> Proforma Invoice
                 </Button>
                 <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setUploadDocOpen(true)}>
@@ -1001,32 +1001,32 @@ export default function LeadDetail() {
 }
 
 function ProformaInvoiceList({ contactId }: { contactId: number }) {
-  const [proformas, setProformas] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const token = typeof window !== "undefined" ? localStorage.getItem("crm_token") : null;
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(`/api/proforma-invoices/all?customer=${encodeURIComponent("")}&search=`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const all: any[] = await res.json();
-          setProformas(all.filter(p => p.contactId === contactId).slice(0, 5));
-        }
-      } catch { } finally {
-        setLoading(false);
-      }
-    })();
-  }, [contactId, token]);
+  const { data: proformas, isLoading } = useQuery({
+    queryKey: ["contact-proforma-invoices", contactId],
+    queryFn: async () => {
+      const res = await fetch(`/api/proforma-invoices/all?contactId=${contactId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return [];
+      return res.json() as Promise<Array<{
+        id: number; invoiceNumber: string; customerName: string;
+        grandTotal: string; status: string; createdAt: string;
+      }>>;
+    },
+    enabled: !!contactId,
+    staleTime: 10_000,
+  });
 
-  if (loading) return <p className="text-xs text-muted-foreground">Loading...</p>;
-  if (proformas.length === 0) return <p className="text-xs text-muted-foreground">No proforma invoices yet.</p>;
+  const displayList = (proformas || []).slice(0, 5);
+
+  if (isLoading) return <p className="text-xs text-muted-foreground">Loading...</p>;
+  if (displayList.length === 0) return <p className="text-xs text-muted-foreground">No proforma invoices yet.</p>;
 
   return (
     <div className="space-y-1.5">
-      {proformas.map((p: any) => (
+      {displayList.map((p) => (
         <Link key={p.id} href={`/proforma-invoices`} className="block">
           <div className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 transition-colors cursor-pointer text-xs">
             <div>
@@ -1042,7 +1042,7 @@ function ProformaInvoiceList({ contactId }: { contactId: number }) {
           </div>
         </Link>
       ))}
-      {proformas.length >= 5 && (
+      {proformas && proformas.length > 5 && (
         <Link href="/proforma-invoices">
           <p className="text-xs text-blue-600 text-center mt-1 hover:underline cursor-pointer">View all proformas →</p>
         </Link>

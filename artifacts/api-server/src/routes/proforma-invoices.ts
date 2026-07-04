@@ -103,8 +103,14 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
     <div class="party-section">
       <div class="party-left">
         <div class="party-label">Party Details :</div>
-        ${invoice.companyName || invoice.tradeName ? `<div class="party-name">${invoice.companyName || invoice.tradeName}</div>` : ""}
-        <div class="party-name">${invoice.customerName}</div>
+        ${(() => {
+          const firstLine = invoice.tradeName || invoice.companyName;
+          const secondLine = invoice.customerName;
+          if (firstLine && firstLine !== secondLine) {
+            return `<div class="party-name">${firstLine}</div><div class="party-name">${secondLine}</div>`;
+          }
+          return `<div class="party-name">${secondLine}</div>`;
+        })()}
         <div class="party-address">
           ${partyAddressLines.length > 0 ? partyAddressLines.join("<br>") + "<br>" : ""}
           ${cityStatePincode ? cityStatePincode + "<br>" : ""}
@@ -625,7 +631,7 @@ router.get("/proforma-invoices/all", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { status, search, dateFrom, dateTo, ownerId, customer } = req.query as Record<string, string | undefined>;
+    const { status, search, dateFrom, dateTo, ownerId, customer, contactId } = req.query as Record<string, string | undefined>;
     const conditions: SQL[] = [eq(proformaInvoicesTable.isDeleted, false)];
 
     if (user.role === "sales") {
@@ -634,6 +640,15 @@ router.get("/proforma-invoices/all", async (req, res) => {
 
     if (status && status !== "all") conditions.push(eq(proformaInvoicesTable.status, status));
     if (ownerId) conditions.push(eq(proformaInvoicesTable.salesOwnerId, Number(ownerId)));
+    if (contactId) {
+      conditions.push(sql`(
+        ${proformaInvoicesTable.contactId} = ${Number(contactId)} OR
+        ${proformaInvoicesTable.customerMasterId} IN (
+          SELECT ${customerMasterTable.id} FROM ${customerMasterTable}
+          WHERE ${customerMasterTable.linkedContactId} = ${Number(contactId)}
+        )
+      )`);
+    }
     if (customer) conditions.push(sql`LOWER(${proformaInvoicesTable.customerName}) LIKE ${`%${customer.toLowerCase()}%`}`);
     if (search) {
       conditions.push(sql`(
