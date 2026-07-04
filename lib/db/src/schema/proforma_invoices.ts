@@ -32,7 +32,7 @@ export const proformaInvoicesTable = pgTable("proforma_invoices", {
   gstStatus: text("gst_status"),
   idProofType: text("id_proof_type"),
   idProofNumber: text("id_proof_number"),
-  mobile: text("mobile").notNull(),
+  mobile: text("mobile").notNull().default(""),
   taxableAmount: numeric("taxable_amount", { precision: 14, scale: 2 }).notNull().default("0"),
   freight: numeric("freight", { precision: 14, scale: 2 }).notNull().default("0"),
   cgst: numeric("cgst", { precision: 14, scale: 2 }).notNull().default("0"),
