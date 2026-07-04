@@ -178,12 +178,6 @@ export interface Contact {
   lastCallDate?: string | null;
   /** @nullable */
   nextCallDate?: string | null;
-  /** @nullable */
-  customerComments?: string | null;
-  /** @nullable */
-  commentUpdatedAt?: string | null;
-  /** @nullable */
-  commentUpdatedBy?: number | null;
   createdAt: string;
 }
 
@@ -252,8 +246,6 @@ export interface ContactUpdate {
   /** @nullable */
   state?: string | null;
   /** @nullable */
-  customerComments?: string | null;
-  /** @nullable */
   category?: string | null;
 }
 
@@ -277,14 +269,6 @@ export interface Product {
   bottleColour?: string | null;
   /** @nullable */
   capColour?: string | null;
-  /** @nullable */
-  materialType?: string | null;
-  /** @nullable */
-  hsnCode?: string | null;
-  /** @nullable */
-  defaultUnit?: string | null;
-  /** @nullable */
-  defaultGst?: number | null;
   createdAt?: string;
 }
 
@@ -301,14 +285,6 @@ export interface ProductInput {
   bottleColour?: string | null;
   /** @nullable */
   capColour?: string | null;
-  /** @nullable */
-  materialType?: string | null;
-  /** @nullable */
-  hsnCode?: string | null;
-  /** @nullable */
-  defaultUnit?: string | null;
-  /** @nullable */
-  defaultGst?: number | null;
 }
 
 export interface ProductUpdate {
@@ -324,14 +300,6 @@ export interface ProductUpdate {
   bottleColour?: string | null;
   /** @nullable */
   capColour?: string | null;
-  /** @nullable */
-  materialType?: string | null;
-  /** @nullable */
-  hsnCode?: string | null;
-  /** @nullable */
-  defaultUnit?: string | null;
-  /** @nullable */
-  defaultGst?: number | null;
 }
 
 export type DealStage = typeof DealStage[keyof typeof DealStage];
@@ -476,7 +444,14 @@ export const ActivityType = {
 /**
  * @nullable
  */
-export type ActivityFollowUpType = string | null;
+export type ActivityFollowUpType = typeof ActivityFollowUpType[keyof typeof ActivityFollowUpType] | null;
+
+
+export const ActivityFollowUpType = {
+  Call: 'Call',
+  WhatsApp: 'WhatsApp',
+  Email: 'Email',
+} as const;
 
 export interface Activity {
   id: number;
@@ -491,15 +466,9 @@ export interface Activity {
   /** @nullable */
   followUpTime?: string | null;
   /** @nullable */
-  followUpType?: string | null;
+  followUpType?: ActivityFollowUpType;
   /** @nullable */
   callStatus?: string | null;
-  /** @nullable */
-  priority?: string | null;
-  /** @nullable */
-  reminder?: string | null;
-  /** @nullable */
-  assignedTo?: number | null;
   /** @nullable */
   createdBy?: number | null;
   user?: User;
@@ -538,12 +507,6 @@ export interface ActivityInput {
   followUpType?: string | null;
   /** @nullable */
   callStatus?: string | null;
-  /** @nullable */
-  priority?: string | null;
-  /** @nullable */
-  reminder?: string | null;
-  /** @nullable */
-  assignedTo?: number | null;
 }
 
 export type ActivityUpdateType = typeof ActivityUpdateType[keyof typeof ActivityUpdateType];
@@ -570,12 +533,6 @@ export interface ActivityUpdate {
   followUpType?: string | null;
   /** @nullable */
   callStatus?: string | null;
-  /** @nullable */
-  priority?: string | null;
-  /** @nullable */
-  reminder?: string | null;
-  /** @nullable */
-  assignedTo?: number | null;
   /** @nullable */
   contactId?: number | null;
 }
@@ -692,6 +649,19 @@ export interface BulkDeleteResult {
   deleted: number;
 }
 
+export interface ProformaInvoice {
+  id?: number;
+  contactId?: number | null;
+  customerName?: string;
+  companyName?: string | null;
+  invoiceNumber?: string;
+  grandTotal?: string;
+  status?: string;
+  createdAt?: string;
+}
+
+export type ProformaInvoiceList = ProformaInvoice[];
+
 export type ListContactsParams = {
 salesOwnerId?: number;
 city?: string;
@@ -702,6 +672,10 @@ search?: string;
  * If true, return only contacts whose nextCallDate is today or earlier
  */
 followUpDue?: boolean;
+};
+
+export type SearchContactByMobileParams = {
+mobile: string;
 };
 
 export type ListDealsParams = {

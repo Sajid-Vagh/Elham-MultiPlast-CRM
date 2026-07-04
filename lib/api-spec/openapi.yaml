@@ -304,6 +304,46 @@ paths:
                 items:
                   $ref: "#/components/schemas/DuplicateGroup"
 
+  /contacts/search/mobile:
+    get:
+      operationId: searchContactByMobile
+      tags: [contacts]
+      summary: Search contact by mobile number
+      parameters:
+        - name: mobile
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Contact found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+        "404":
+          description: No contact found with that mobile
+
+  /contacts/{id}/proforma-invoices:
+    get:
+      operationId: listContactProformaInvoices
+      tags: [contacts]
+      summary: List proforma invoices linked to a contact
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Proforma invoices list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProformaInvoiceList"
+
   /products:
     get:
       operationId: listProducts
@@ -1468,3 +1508,31 @@ components:
       properties:
         deleted:
           type: integer
+
+    ProformaInvoice:
+      type: object
+      properties:
+        id:
+          type: integer
+        contactId:
+          type: integer
+          nullable: true
+        customerName:
+          type: string
+        companyName:
+          type: string
+          nullable: true
+        invoiceNumber:
+          type: string
+        grandTotal:
+          type: string
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    ProformaInvoiceList:
+      type: array
+      items:
+        $ref: "#/components/schemas/ProformaInvoice"

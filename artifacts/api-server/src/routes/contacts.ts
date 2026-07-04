@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, usersTable, activitiesTable, dealsTable, notificationsTable, commentHistoryTable, categoryHistoryTable, documentsTable } from "@workspace/db";
+import { db, contactsTable, usersTable, activitiesTable, dealsTable, notificationsTable, commentHistoryTable, categoryHistoryTable, documentsTable, proformaInvoicesTable, proformaInvoiceItemsTable } from "@workspace/db";
 import { eq, or, and, ilike, lte, isNotNull, isNull, inArray, SQL, desc } from "drizzle-orm";
 import { CreateContactBody, UpdateContactBody, GetContactParams, UpdateContactParams, DeleteContactParams, ListContactsQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
@@ -666,6 +666,90 @@ router.get("/contacts/:id/notifications", async (req, res) => {
     res.json(notifications);
   } catch (err) {
     req.log.error({ err }, "Get notification history error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /contacts/search/mobile — search contact by mobile number
+router.get("/contacts/search/mobile", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const { mobile } = req.query as Record<string, string | undefined>;
+    if (!mobile) {
+      res.status(400).json({ error: "Mobile number is required" });
+      return;
+    }
+
+    const [contact] = await db
+      .select()
+      .from(contactsTable)
+      .where(eq(contactsTable.mobile, mobile))
+      .limit(1);
+
+    if (!contact) {
+      res.status(404).json({ error: "No contact found with that mobile number" });
+      return;
+    }
+
+    const result = await withOwner(contact);
+    res.json(result);
+  } catch (err) {
+    req.log.error({ err }, "Search contact by mobile error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /contacts/:id/proforma-invoices — list proforma invoices linked to a contact
+router.get("/contacts/:id/proforma-invoices", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const id = Number(req.params.id);
+    if (!id) { res.status(400).json({ error: "Invalid contact ID" }); return; }
+
+    const invoices = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(and(
+        eq(proformaInvoicesTable.contactId, id),
+        eq(proformaInvoicesTable.isDeleted, false),
+      ))
+      .orderBy(desc(proformaInvoicesTable.createdAt));
+
+    const enriched = await Promise.all(invoices.map(async (inv) => {
+      const items = await db
+        .select()
+        .from(proformaInvoiceItemsTable)
+        .where(eq(proformaInvoiceItemsTable.invoiceId, inv.id));
+      return {
+        ...inv,
+        taxableAmount: Number(inv.taxableAmount),
+        freight: Number(inv.freight),
+        cgst: Number(inv.cgst),
+        sgst: Number(inv.sgst),
+        igst: Number(inv.igst),
+        cgstPercent: Number(inv.cgstPercent || 0),
+        sgstPercent: Number(inv.sgstPercent || 0),
+        igstPercent: Number(inv.igstPercent || 0),
+        grandTotal: Number(inv.grandTotal),
+        items: items.map((i) => ({
+          ...i,
+          quantity: Number(i.quantity),
+          rate: Number(i.rate),
+          discount: Number(i.discount || 0),
+          discountPercent: Number(i.discountPercent || 0),
+          gstPercent: Number(i.gstPercent || 0),
+          amount: Number(i.amount),
+        })),
+      };
+    }));
+
+    res.json(enriched);
+  } catch (err) {
+    req.log.error({ err }, "List contact proforma invoices error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

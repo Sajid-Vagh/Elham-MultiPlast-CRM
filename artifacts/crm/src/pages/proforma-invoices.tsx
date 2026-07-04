@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation } from "wouter";
-import { useGetMe } from "@workspace/api-client-react";
+import { useGetMe, searchContactByMobile } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -148,6 +148,11 @@ export default function ProformaInvoicesPage() {
   const [leadLinkResults, setLeadLinkResults] = useState<any[]>([]);
   const [showLeadLink, setShowLeadLink] = useState(false);
   const [selectedLead, setSelectedLead] = useState<any>(null);
+  const [mobileSearchValue, setMobileSearchValue] = useState("");
+  const [mobileSearching, setMobileSearching] = useState(false);
+  const [mobileSearchResult, setMobileSearchResult] = useState<any>(null);
+  const [mobileSearchError, setMobileSearchError] = useState("");
+  const [mobileError, setMobileError] = useState("");
   const [gstVerified, setGstVerified] = useState(false);
   const [lastVerifiedAt, setLastVerifiedAt] = useState("");
   const [gstVerificationResult, setGstVerificationResult] = useState<any>(null);
@@ -304,6 +309,10 @@ export default function ProformaInvoicesPage() {
     setLeadLinkQuery("");
     setLeadLinkResults([]);
     setShowLeadLink(false);
+    setMobileSearchValue("");
+    setMobileSearchResult(null);
+    setMobileSearching(false);
+    setMobileSearchError("");
   };
 
   useEffect(() => {
@@ -370,6 +379,63 @@ export default function ProformaInvoicesPage() {
     }, 200);
     return () => clearTimeout(timer);
   }, [productSearchQuery, token]);
+
+  // Debounced mobile number search to auto-link lead (separate search field)
+  useEffect(() => {
+    const m = mobileSearchValue.replace(/\s/g, "");
+    if (m.length < 10) {
+      setMobileSearchResult(null);
+      setMobileSearchError("");
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setMobileSearching(true);
+      setMobileSearchError("");
+      try {
+        const contact = await searchContactByMobile({ mobile: m });
+        setMobileSearchResult(contact);
+        setMobileSearchError("");
+      } catch (err: any) {
+        if (err?.status === 404) {
+          setMobileSearchResult(null);
+          setMobileSearchError("No lead found with this mobile number");
+        } else {
+          setMobileSearchResult(null);
+          setMobileSearchError(err?.message || "Search failed");
+        }
+      } finally {
+        setMobileSearching(false);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [mobileSearchValue]);
+
+  // Auto-link lead when the mobile field changes (create & edit)
+  useEffect(() => {
+    const m = mobile.replace(/\s/g, "");
+    if (m.length < 10) {
+      setSelectedLead(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const contact = await searchContactByMobile({ mobile: m });
+        setSelectedLead({ id: contact.id, name: contact.name, companyName: contact.companyName, mobile: contact.mobile });
+      } catch {
+        setSelectedLead(null);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [mobile]);
+
+  const applyMobileSearchResult = (contact: any) => {
+    setCustomerName(contact.name || "");
+    setCompanyName(contact.companyName || "");
+    setMobile(contact.mobile || "");
+    setSelectedLead({ id: contact.id, name: contact.name, companyName: contact.companyName, mobile: contact.mobile });
+    setMobileSearchResult(null);
+    setMobileSearchError("");
+  };
 
   const MATERIAL_HSN: Record<string, string> = {
     PET: "39233090",
@@ -769,14 +835,22 @@ export default function ProformaInvoicesPage() {
   }, [gstNumber]);
 
   const handleSave = async (status: string) => {
+    let hasError = false;
     if (!customerName) {
       toast({ title: "Error", description: "Customer name is required", variant: "destructive" });
-      return;
+      hasError = true;
+    }
+    if (!mobile.trim()) {
+      setMobileError("Mobile number is required");
+      hasError = true;
+    } else {
+      setMobileError("");
     }
     if (items.some((i) => !i.productName)) {
       toast({ title: "Error", description: "All items must have a product name", variant: "destructive" });
-      return;
+      hasError = true;
     }
+    if (hasError) return;
     setSaving(true);
     try {
       const body: any = {
@@ -905,6 +979,20 @@ export default function ProformaInvoicesPage() {
     }
   };
 
+  const getPdfFileName = (invoice: any) => {
+    const company =
+      invoice.companyName?.trim() ||
+      invoice.tradeName?.trim() ||
+      invoice.legalName?.trim() ||
+      invoice.contact?.companyName?.trim() ||
+      invoice.contact?.tradeName?.trim() ||
+      "";
+    const name = invoice.gstNumber?.trim()
+      ? (company || invoice.customerName?.trim() || "")
+      : (invoice.customerName?.trim() || "");
+    return `PROFORMA_${name.toUpperCase()}.PDF`;
+  };
+
   const handleDownloadPdf = async (invoice: any) => {
     try {
       const res = await fetch(`/api/proforma-invoices/${invoice.id}/pdf`, {
@@ -921,7 +1009,7 @@ export default function ProformaInvoicesPage() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `Proforma_${invoice.invoiceNumber}.pdf`;
+        a.download = getPdfFileName(invoice);
         a.click();
         URL.revokeObjectURL(url);
       } else {
@@ -943,7 +1031,7 @@ export default function ProformaInvoicesPage() {
       const w = window.open("", "_blank");
       if (w) {
         w.document.write(html);
-        w.document.title = `Proforma_${invoice.invoiceNumber}`;
+        w.document.title = getPdfFileName(invoice).replace(".PDF", "");
         w.document.close();
         w.focus();
         setTimeout(() => w.print(), 500);
@@ -1294,10 +1382,49 @@ ${pagesHtml}
           <h1 className="text-2xl font-bold">{editMode ? `Edit Invoice - ${selectedInvoice?.invoiceNumber || ""}` : "New Proforma Invoice"}</h1>
         </div>
 
-        <Card>
-          <CardHeader><CardTitle>Party Details</CardTitle></CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="sm:col-span-2">
+          <Card>
+            <CardHeader><CardTitle>Party Details</CardTitle></CardHeader>
+            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <Label>Search by Mobile (auto-link lead)</Label>
+                <div className="relative">
+                  <Input
+                    value={mobileSearchValue}
+                    onChange={(e) => setMobileSearchValue(e.target.value)}
+                    placeholder="Enter 10-digit mobile number to find & link lead"
+                  />
+                  {mobileSearching && (
+                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                  )}
+                  {mobileSearchResult && (
+                    <div className="mt-2 flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded-md">
+                      <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium text-green-800">{mobileSearchResult.name}</span>
+                        <span className="text-xs text-green-600 ml-2">{mobileSearchResult.companyName || ""}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => applyMobileSearchResult(mobileSearchResult)}
+                        className="text-xs text-blue-600 hover:underline shrink-0"
+                      >
+                        Apply & Link
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setMobileSearchValue(""); setMobileSearchResult(null); setMobileSearchError(""); }}
+                        className="text-xs text-muted-foreground hover:text-destructive shrink-0"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
+                  {mobileSearchError && !mobileSearchResult && (
+                    <p className="mt-1 text-xs text-amber-600">{mobileSearchError}</p>
+                  )}
+                </div>
+              </div>
+              <div className="sm:col-span-2">
               <Label>Party Name *</Label>
               <div className="relative">
                 <Input value={customerName} onChange={(e) => { setCustomerName(e.target.value); setContactSearchQuery(e.target.value); }} placeholder="Enter party name (type to search contacts)" onFocus={() => { if (contactSearchResults.length > 0) setShowContactSearch(true); }} onBlur={() => setTimeout(() => setShowContactSearch(false), 200)} />
@@ -1470,8 +1597,9 @@ ${pagesHtml}
               </>
             )}
             <div>
-              <Label>Mobile Number</Label>
-              <Input value={mobile} onChange={(e) => setMobile(e.target.value)} placeholder="Mobile number" />
+              <Label>Mobile Number <span className="text-destructive">*</span></Label>
+              <Input value={mobile} onChange={(e) => { setMobile(e.target.value); setMobileError(""); }} placeholder="Mobile number" className={mobileError ? "border-destructive" : ""} />
+              {mobileError && <p className="text-xs text-destructive mt-1">{mobileError}</p>}
             </div>
             <div>
               <Label>Notes</Label>

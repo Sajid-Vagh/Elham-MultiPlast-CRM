@@ -56,7 +56,9 @@ import type {
   ProductInput,
   ProductStat,
   ProductUpdate,
+  ProformaInvoiceList,
   ReportSummary,
+  SearchContactByMobileParams,
   User,
   UserInput,
   UserUpdate
@@ -1204,6 +1206,167 @@ export function useListDuplicateContacts<TData = Awaited<ReturnType<typeof listD
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListDuplicateContactsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSearchContactByMobileUrl = (params: SearchContactByMobileParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `https://elham-multiplast-crm.onrender.com/api/contacts/search/mobile?${stringifiedParams}` : `https://elham-multiplast-crm.onrender.com/api/contacts/search/mobile`
+}
+
+/**
+ * @summary Search contact by mobile number
+ */
+export const searchContactByMobile = async (params: SearchContactByMobileParams, options?: RequestInit): Promise<Contact> => {
+
+  return customFetch<Contact>(getSearchContactByMobileUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchContactByMobileQueryKey = (params?: SearchContactByMobileParams,) => {
+    return [
+    `https://elham-multiplast-crm.onrender.com/api/contacts/search/mobile`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchContactByMobileQueryOptions = <TData = Awaited<ReturnType<typeof searchContactByMobile>>, TError = ErrorType<void>>(params: SearchContactByMobileParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchContactByMobile>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchContactByMobileQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchContactByMobile>>> = ({ signal }) => searchContactByMobile(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchContactByMobile>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchContactByMobileQueryResult = NonNullable<Awaited<ReturnType<typeof searchContactByMobile>>>
+export type SearchContactByMobileQueryError = ErrorType<void>
+
+
+/**
+ * @summary Search contact by mobile number
+ */
+
+export function useSearchContactByMobile<TData = Awaited<ReturnType<typeof searchContactByMobile>>, TError = ErrorType<void>>(
+ params: SearchContactByMobileParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchContactByMobile>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchContactByMobileQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListContactProformaInvoicesUrl = (id: number,) => {
+
+
+
+
+  return `https://elham-multiplast-crm.onrender.com/api/contacts/${id}/proforma-invoices`
+}
+
+/**
+ * @summary List proforma invoices linked to a contact
+ */
+export const listContactProformaInvoices = async (id: number, options?: RequestInit): Promise<ProformaInvoiceList> => {
+
+  return customFetch<ProformaInvoiceList>(getListContactProformaInvoicesUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListContactProformaInvoicesQueryKey = (id: number,) => {
+    return [
+    `https://elham-multiplast-crm.onrender.com/api/contacts/${id}/proforma-invoices`
+    ] as const;
+    }
+
+
+export const getListContactProformaInvoicesQueryOptions = <TData = Awaited<ReturnType<typeof listContactProformaInvoices>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listContactProformaInvoices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListContactProformaInvoicesQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listContactProformaInvoices>>> = ({ signal }) => listContactProformaInvoices(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listContactProformaInvoices>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListContactProformaInvoicesQueryResult = NonNullable<Awaited<ReturnType<typeof listContactProformaInvoices>>>
+export type ListContactProformaInvoicesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List proforma invoices linked to a contact
+ */
+
+export function useListContactProformaInvoices<TData = Awaited<ReturnType<typeof listContactProformaInvoices>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listContactProformaInvoices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListContactProformaInvoicesQueryOptions(id,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

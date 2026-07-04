@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import {
   useGetContact, useListDeals, useListActivities, useCreateDeal, useCreateActivity,
-  useUpdateContact, useDeleteContact, useListUsers,
+  useUpdateContact, useDeleteContact, useListUsers, useListContactProformaInvoices, getListContactProformaInvoicesQueryKey,
   getListDealsQueryKey, getListActivitiesQueryKey, getGetContactQueryKey, getListContactsQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
@@ -1001,22 +1001,8 @@ export default function LeadDetail() {
 }
 
 function ProformaInvoiceList({ contactId }: { contactId: number }) {
-  const token = typeof window !== "undefined" ? localStorage.getItem("crm_token") : null;
-
-  const { data: proformas, isLoading } = useQuery({
-    queryKey: ["contact-proforma-invoices", contactId],
-    queryFn: async () => {
-      const res = await fetch(`/api/proforma-invoices/all?contactId=${contactId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return [];
-      return res.json() as Promise<Array<{
-        id: number; invoiceNumber: string; customerName: string;
-        grandTotal: string; status: string; createdAt: string;
-      }>>;
-    },
-    enabled: !!contactId,
-    staleTime: 10_000,
+  const { data: proformas, isLoading } = useListContactProformaInvoices(contactId, {
+    query: { queryKey: getListContactProformaInvoicesQueryKey(contactId), enabled: !!contactId, staleTime: 10_000 },
   });
 
   const displayList = (proformas || []).slice(0, 5);

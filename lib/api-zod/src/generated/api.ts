@@ -181,9 +181,6 @@ export const ListContactsResponseItem = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
-  "customerComments": zod.string().nullish(),
-  "commentUpdatedAt": zod.string().nullish(),
-  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 })
 export const ListContactsResponse = zod.array(ListContactsResponseItem)
@@ -238,9 +235,6 @@ export const CreateContactResponse = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
-  "customerComments": zod.string().nullish(),
-  "commentUpdatedAt": zod.string().nullish(),
-  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 })
 
@@ -276,9 +270,6 @@ export const GetContactResponse = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
-  "customerComments": zod.string().nullish(),
-  "commentUpdatedAt": zod.string().nullish(),
-  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 })
 
@@ -305,7 +296,6 @@ export const UpdateContactBody = zod.object({
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
   "state": zod.string().nullish(),
-  "customerComments": zod.string().nullish(),
   "category": zod.string().nullish()
 })
 
@@ -336,9 +326,6 @@ export const UpdateContactResponse = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
-  "customerComments": zod.string().nullish(),
-  "commentUpdatedAt": zod.string().nullish(),
-  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 })
 
@@ -395,13 +382,68 @@ export const ListDuplicateContactsResponseItem = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
-  "customerComments": zod.string().nullish(),
-  "commentUpdatedAt": zod.string().nullish(),
-  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 }))
 })
 export const ListDuplicateContactsResponse = zod.array(ListDuplicateContactsResponseItem)
+
+
+/**
+ * @summary Search contact by mobile number
+ */
+export const SearchContactByMobileQueryParams = zod.object({
+  "mobile": zod.coerce.string()
+})
+
+export const SearchContactByMobileResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "mobile": zod.string(),
+  "email": zod.string().nullish(),
+  "companyName": zod.string().nullish(),
+  "salesOwnerId": zod.number(),
+  "salesOwner": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "username": zod.string(),
+  "role": zod.enum(['admin', 'sales']),
+  "colorCode": zod.string(),
+  "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "createdAt": zod.string().optional()
+}).optional(),
+  "otherPhone": zod.string().nullish(),
+  "otherEmail": zod.string().nullish(),
+  "leadSource": zod.union([zod.literal('IndiaMart'),zod.literal('TradeIndia'),zod.literal('Social Media'),zod.literal('Organic'),zod.literal('Email'),zod.literal('Other'),zod.literal(null)]).nullish(),
+  "city": zod.string().nullish(),
+  "address": zod.string().nullish(),
+  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal(null)]).nullish(),
+  "industry": zod.union([zod.literal('Liquid Detergent'),zod.literal('Lubricant'),zod.literal('Agro Chemical & Pesticide'),zod.literal('Edible Oil'),zod.literal('Veterinary'),zod.literal('Other'),zod.literal(null)]).nullish(),
+  "tags": zod.union([zod.literal('Interested'),zod.literal('Category B'),zod.literal('Category C'),zod.literal(null)]).nullish(),
+  "inquiryDate": zod.string().nullish(),
+  "lastCallDate": zod.string().nullish(),
+  "nextCallDate": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary List proforma invoices linked to a contact
+ */
+export const ListContactProformaInvoicesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListContactProformaInvoicesResponseItem = zod.object({
+  "id": zod.number().optional(),
+  "contactId": zod.number().nullish(),
+  "customerName": zod.string().optional(),
+  "companyName": zod.string().nullish(),
+  "invoiceNumber": zod.string().optional(),
+  "grandTotal": zod.string().optional(),
+  "status": zod.string().optional(),
+  "createdAt": zod.coerce.date().optional()
+})
+export const ListContactProformaInvoicesResponse = zod.array(ListContactProformaInvoicesResponseItem)
 
 
 /**
@@ -416,10 +458,6 @@ export const ListProductsResponseItem = zod.object({
   "bottleWeight": zod.string().nullish(),
   "bottleColour": zod.string().nullish(),
   "capColour": zod.string().nullish(),
-  "materialType": zod.string().nullish(),
-  "hsnCode": zod.string().nullish(),
-  "defaultUnit": zod.string().nullish(),
-  "defaultGst": zod.number().nullish(),
   "createdAt": zod.string().optional()
 })
 export const ListProductsResponse = zod.array(ListProductsResponseItem)
@@ -435,11 +473,7 @@ export const CreateProductBody = zod.object({
   "productCode": zod.string(),
   "bottleWeight": zod.string().nullish(),
   "bottleColour": zod.string().nullish(),
-  "capColour": zod.string().nullish(),
-  "materialType": zod.string().nullish(),
-  "hsnCode": zod.string().nullish(),
-  "defaultUnit": zod.string().nullish(),
-  "defaultGst": zod.number().nullish()
+  "capColour": zod.string().nullish()
 })
 
 export const CreateProductResponse = zod.object({
@@ -451,10 +485,6 @@ export const CreateProductResponse = zod.object({
   "bottleWeight": zod.string().nullish(),
   "bottleColour": zod.string().nullish(),
   "capColour": zod.string().nullish(),
-  "materialType": zod.string().nullish(),
-  "hsnCode": zod.string().nullish(),
-  "defaultUnit": zod.string().nullish(),
-  "defaultGst": zod.number().nullish(),
   "createdAt": zod.string().optional()
 })
 
@@ -472,10 +502,6 @@ export const GetProductResponse = zod.object({
   "bottleWeight": zod.string().nullish(),
   "bottleColour": zod.string().nullish(),
   "capColour": zod.string().nullish(),
-  "materialType": zod.string().nullish(),
-  "hsnCode": zod.string().nullish(),
-  "defaultUnit": zod.string().nullish(),
-  "defaultGst": zod.number().nullish(),
   "createdAt": zod.string().optional()
 })
 
@@ -491,11 +517,7 @@ export const UpdateProductBody = zod.object({
   "productCode": zod.string().optional(),
   "bottleWeight": zod.string().nullish(),
   "bottleColour": zod.string().nullish(),
-  "capColour": zod.string().nullish(),
-  "materialType": zod.string().nullish(),
-  "hsnCode": zod.string().nullish(),
-  "defaultUnit": zod.string().nullish(),
-  "defaultGst": zod.number().nullish()
+  "capColour": zod.string().nullish()
 })
 
 export const UpdateProductResponse = zod.object({
@@ -507,10 +529,6 @@ export const UpdateProductResponse = zod.object({
   "bottleWeight": zod.string().nullish(),
   "bottleColour": zod.string().nullish(),
   "capColour": zod.string().nullish(),
-  "materialType": zod.string().nullish(),
-  "hsnCode": zod.string().nullish(),
-  "defaultUnit": zod.string().nullish(),
-  "defaultGst": zod.number().nullish(),
   "createdAt": zod.string().optional()
 })
 
@@ -562,9 +580,6 @@ export const ListDealsResponseItem = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
-  "customerComments": zod.string().nullish(),
-  "commentUpdatedAt": zod.string().nullish(),
-  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 }).optional(),
   "title": zod.string().nullish(),
@@ -633,9 +648,6 @@ export const CreateDealResponse = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
-  "customerComments": zod.string().nullish(),
-  "commentUpdatedAt": zod.string().nullish(),
-  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 }).optional(),
   "title": zod.string().nullish(),
@@ -693,9 +705,6 @@ export const GetDealResponse = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
-  "customerComments": zod.string().nullish(),
-  "commentUpdatedAt": zod.string().nullish(),
-  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 }).optional(),
   "title": zod.string().nullish(),
@@ -763,9 +772,6 @@ export const UpdateDealResponse = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
-  "customerComments": zod.string().nullish(),
-  "commentUpdatedAt": zod.string().nullish(),
-  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 }).optional(),
   "title": zod.string().nullish(),
@@ -877,11 +883,8 @@ export const ListActivitiesResponseItem = zod.object({
   "notes": zod.string().nullish(),
   "followUpDate": zod.string().nullish(),
   "followUpTime": zod.string().nullish(),
-  "followUpType": zod.string().nullish(),
+  "followUpType": zod.union([zod.literal('Call'),zod.literal('WhatsApp'),zod.literal('Email'),zod.literal(null)]).nullish(),
   "callStatus": zod.string().nullish(),
-  "priority": zod.string().nullish(),
-  "reminder": zod.string().nullish(),
-  "assignedTo": zod.number().nullish(),
   "createdBy": zod.number().nullish(),
   "user": zod.object({
   "id": zod.number(),
@@ -911,10 +914,7 @@ export const CreateActivityBody = zod.object({
   "followUpDate": zod.string().nullish(),
   "followUpTime": zod.string().nullish(),
   "followUpType": zod.string().nullish(),
-  "callStatus": zod.string().nullish(),
-  "priority": zod.enum(['High', 'Medium', 'Low']).nullish(),
-  "reminder": zod.string().nullish(),
-  "assignedTo": zod.number().nullish()
+  "callStatus": zod.string().nullish()
 })
 
 export const CreateActivityResponse = zod.object({
@@ -925,11 +925,8 @@ export const CreateActivityResponse = zod.object({
   "notes": zod.string().nullish(),
   "followUpDate": zod.string().nullish(),
   "followUpTime": zod.string().nullish(),
-  "followUpType": zod.string().nullish(),
+  "followUpType": zod.union([zod.literal('Call'),zod.literal('WhatsApp'),zod.literal('Email'),zod.literal(null)]).nullish(),
   "callStatus": zod.string().nullish(),
-  "priority": zod.string().nullish(),
-  "reminder": zod.string().nullish(),
-  "assignedTo": zod.number().nullish(),
   "createdBy": zod.number().nullish(),
   "user": zod.object({
   "id": zod.number(),
@@ -958,9 +955,6 @@ export const UpdateActivityBody = zod.object({
   "followUpTime": zod.string().nullish(),
   "followUpType": zod.string().nullish(),
   "callStatus": zod.string().nullish(),
-  "priority": zod.enum(['High', 'Medium', 'Low']).nullish(),
-  "reminder": zod.string().nullish(),
-  "assignedTo": zod.number().nullish(),
   "contactId": zod.number().nullish()
 })
 
@@ -972,11 +966,8 @@ export const UpdateActivityResponse = zod.object({
   "notes": zod.string().nullish(),
   "followUpDate": zod.string().nullish(),
   "followUpTime": zod.string().nullish(),
-  "followUpType": zod.string().nullish(),
+  "followUpType": zod.union([zod.literal('Call'),zod.literal('WhatsApp'),zod.literal('Email'),zod.literal(null)]).nullish(),
   "callStatus": zod.string().nullish(),
-  "priority": zod.string().nullish(),
-  "reminder": zod.string().nullish(),
-  "assignedTo": zod.number().nullish(),
   "createdBy": zod.number().nullish(),
   "user": zod.object({
   "id": zod.number(),
@@ -1127,8 +1118,7 @@ export const ImportExcelBody = zod.object({
   "nextCallDate": zod.string().nullish(),
   "industry": zod.string().nullish(),
   "unit": zod.string().nullish(),
-  "notes": zod.string().nullish(),
-  "comments": zod.string().nullish()
+  "notes": zod.string().nullish()
 })),
   "defaultSalesOwnerId": zod.number().nullish()
 })
@@ -1182,9 +1172,6 @@ export const ImportIndiaMartResponse = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
-  "customerComments": zod.string().nullish(),
-  "commentUpdatedAt": zod.string().nullish(),
-  "commentUpdatedBy": zod.number().nullish(),
   "createdAt": zod.string()
 })
 

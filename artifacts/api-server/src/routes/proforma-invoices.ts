@@ -686,6 +686,10 @@ router.post("/proforma-invoices", async (req, res) => {
       res.status(400).json({ error: "Customer name and at least one item required" });
       return;
     }
+    if (!mobile?.trim()) {
+      res.status(400).json({ error: "Mobile number is required" });
+      return;
+    }
 
     let finalInvoiceNumber = invoiceNumber;
     if (finalInvoiceNumber) {
@@ -988,6 +992,11 @@ async function updateInvoiceHandler(req: any, res: any) {
     }
 
     const { customerName, companyName, tradeName, contactId, dealId, address, addressLine1, addressLine2, addressLine3, city, district, state, pincode, gstNumber, gstStatus, mobile, taxableAmount, freight, cgst, sgst, igst, cgstPercent, sgstPercent, igstPercent, grandTotal, amountInWords, notes, items, customerType, idProofType, idProofNumber, invoiceNumber, terms, companyGstin, companyAddress, companyEmail, bankDetails, disclaimer, customerMasterId } = req.body;
+
+    if (mobile !== undefined && !mobile.trim()) {
+      res.status(400).json({ error: "Mobile number is required" });
+      return;
+    }
 
     const updateData: any = {};
     if (customerName !== undefined) updateData.customerName = customerName;

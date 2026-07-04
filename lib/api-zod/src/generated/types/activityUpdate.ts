@@ -20,11 +20,5 @@ export interface ActivityUpdate {
   /** @nullable */
   callStatus?: string | null;
   /** @nullable */
-  priority?: string | null;
-  /** @nullable */
-  reminder?: string | null;
-  /** @nullable */
-  assignedTo?: number | null;
-  /** @nullable */
   contactId?: number | null;
 }
