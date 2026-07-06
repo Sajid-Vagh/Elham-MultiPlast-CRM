@@ -1,5 +1,5 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
@@ -22,6 +22,9 @@ import Duplicates from "@/pages/duplicates";
 import Settings from "@/pages/settings";
 import CategoriesPage from "@/pages/categories";
 import ProformaInvoices from "@/pages/proforma-invoices";
+import ProductionDashboard from "@/pages/production-dashboard";
+import ProductionOrders from "@/pages/production-orders";
+import ProductionOrderDetail from "@/pages/production-order-detail";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,6 +36,29 @@ function ProtectedLayout({ children }: { children: React.ReactNode }) {
   return <ErrorBoundary><Layout>{children}</Layout></ErrorBoundary>;
 }
 
+function RoleGuard({ allowedRoles, children }: { allowedRoles: string[]; children: React.ReactNode }) {
+  const [, setLocation] = useLocation();
+  const { data: user, isLoading } = useQuery({
+    queryKey: ["get-me"],
+    enabled: false,
+  });
+
+  if (isLoading) return null;
+
+  const role = (user as any)?.role ?? localStorage.getItem("crm_user_role");
+
+  if (!allowedRoles.includes(role)) {
+    if (role === "production_manager") {
+      setLocation("/production/dashboard");
+    } else {
+      setLocation("/dashboard");
+    }
+    return null;
+  }
+
+  return <>{children}</>;
+}
+
 function Router() {
   return (
     <Switch>
@@ -40,55 +66,106 @@ function Router() {
       <Route path="/">
         {() => {
           if (typeof window !== "undefined") {
-            window.location.replace(localStorage.getItem("crm_token") ? "/dashboard" : "/login");
+            const token = localStorage.getItem("crm_token");
+            const role = localStorage.getItem("crm_user_role");
+            if (token) {
+              window.location.replace(role === "production_manager" ? "/production/dashboard" : "/dashboard");
+            } else {
+              window.location.replace("/login");
+            }
           }
           return null;
         }}
       </Route>
       <Route path="/dashboard">
-        <ProtectedLayout><Dashboard /></ProtectedLayout>
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin", "sales"]}><Dashboard /></RoleGuard>
+        </ProtectedLayout>
       </Route>
       <Route path="/leads/new">
-        <ProtectedLayout><LeadsNew /></ProtectedLayout>
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin", "sales"]}><LeadsNew /></RoleGuard>
+        </ProtectedLayout>
       </Route>
       <Route path="/leads/:id/edit">
-        {(params) => <ProtectedLayout><LeadsEdit /></ProtectedLayout>}
+        {(params) => <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin", "sales"]}><LeadsEdit /></RoleGuard>
+        </ProtectedLayout>}
       </Route>
       <Route path="/leads/:id">
-        {(params) => <ProtectedLayout><LeadDetail /></ProtectedLayout>}
+        {(params) => <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin", "sales"]}><LeadDetail /></RoleGuard>
+        </ProtectedLayout>}
       </Route>
       <Route path="/leads">
-        <ProtectedLayout><Leads /></ProtectedLayout>
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin", "sales"]}><Leads /></RoleGuard>
+        </ProtectedLayout>
       </Route>
       <Route path="/deals/:id">
-        {(params) => <ProtectedLayout><DealDetail /></ProtectedLayout>}
+        {(params) => <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin", "sales"]}><DealDetail /></RoleGuard>
+        </ProtectedLayout>}
       </Route>
       <Route path="/deals">
-        <ProtectedLayout><Deals /></ProtectedLayout>
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin", "sales"]}><Deals /></RoleGuard>
+        </ProtectedLayout>
       </Route>
       <Route path="/follow-ups">
-        <ProtectedLayout><FollowUps /></ProtectedLayout>
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin", "sales"]}><FollowUps /></RoleGuard>
+        </ProtectedLayout>
       </Route>
       <Route path="/products">
-        <ProtectedLayout><Products /></ProtectedLayout>
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin", "sales"]}><Products /></RoleGuard>
+        </ProtectedLayout>
       </Route>
       <Route path="/categories">
-        <ProtectedLayout><CategoriesPage /></ProtectedLayout>
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin", "sales"]}><CategoriesPage /></RoleGuard>
+        </ProtectedLayout>
       </Route>
       <Route path="/proforma-invoices">
-        <ProtectedLayout><ProformaInvoices /></ProtectedLayout>
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin", "sales"]}><ProformaInvoices /></RoleGuard>
+        </ProtectedLayout>
       </Route>
       <Route path="/reports">
-        <ProtectedLayout><Reports /></ProtectedLayout>
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin", "sales"]}><Reports /></RoleGuard>
+        </ProtectedLayout>
       </Route>
       <Route path="/import">
-        <ProtectedLayout><ImportPage /></ProtectedLayout>
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin", "sales"]}><ImportPage /></RoleGuard>
+        </ProtectedLayout>
       </Route>
       <Route path="/duplicates">
-        <ProtectedLayout><Duplicates /></ProtectedLayout>
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin", "sales"]}><Duplicates /></RoleGuard>
+        </ProtectedLayout>
       </Route>
       <Route path="/settings">
-        <ProtectedLayout><Settings /></ProtectedLayout>
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin"]}><Settings /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+      <Route path="/production/dashboard">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={["production_manager", "admin"]}><ProductionDashboard /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+      <Route path="/production/orders/:id">
+        {(params) => <ProtectedLayout>
+          <RoleGuard allowedRoles={["production_manager", "admin"]}><ProductionOrderDetail /></RoleGuard>
+        </ProtectedLayout>}
+      </Route>
+      <Route path="/production/orders">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={["production_manager", "admin"]}><ProductionOrders /></RoleGuard>
+        </ProtectedLayout>
       </Route>
       <Route component={NotFound} />
     </Switch>

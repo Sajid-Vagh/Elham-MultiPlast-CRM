@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { useGetMe, searchContactByMobile } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,7 @@ import {
   Shield, Store, MapPin, Verified,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { ProductionProgressSection } from "@/components/production-progress";
 
 const STATUS_COLORS: Record<string, string> = {
   "Draft": "bg-gray-100 text-gray-700",
@@ -32,6 +34,19 @@ const STATUS_COLORS: Record<string, string> = {
   "Rejected": "bg-red-100 text-red-700",
   "Expired": "bg-yellow-100 text-yellow-700",
   "Converted to Order": "bg-purple-100 text-purple-700",
+};
+
+const PROD_STATUS_COLORS: Record<string, string> = {
+  "Pending": "bg-gray-100 text-gray-700",
+  "Material Ready": "bg-blue-100 text-blue-700",
+  "Production Started": "bg-orange-100 text-orange-700",
+  "In Process": "bg-purple-100 text-purple-700",
+  "Quality Check": "bg-yellow-100 text-yellow-700",
+  "Packing": "bg-cyan-100 text-cyan-700",
+  "Ready For Dispatch": "bg-green-100 text-green-700",
+  "Completed": "bg-emerald-100 text-emerald-700",
+  "On Hold": "bg-red-100 text-red-700",
+  "Cancelled": "bg-red-100 text-red-700",
 };
 
 const INVOICE_STATUSES = ["Draft", "Sent", "Viewed", "Approved", "Rejected", "Expired", "Converted to Order"];
@@ -2027,6 +2042,10 @@ ${pagesHtml}
           </CardContent>
         </Card>
 
+        {inv.status === "Converted to Order" && (
+          <ProductionProgressSection invoiceId={inv.id} />
+        )}
+
         <div className="flex gap-3 flex-wrap">
           <Button onClick={() => handlePreviewPdf(inv)} variant="outline">
             <Eye className="h-4 w-4 mr-1" /> Preview
@@ -2152,6 +2171,7 @@ ${pagesHtml}
                 <TableHead>Company</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Production</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead className="w-32">Actions</TableHead>
               </TableRow>
@@ -2159,12 +2179,14 @@ ${pagesHtml}
             <TableBody>
               {paginatedInvoices.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                     No invoices found
                   </TableCell>
                 </TableRow>
               ) : (
-                paginatedInvoices.map((inv: any) => (
+                paginatedInvoices.map((inv: any) => {
+                  const prod = inv.productionOrder;
+                  return (
                   <TableRow key={inv.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleViewInvoice(inv)}>
                     <TableCell className="font-medium">{inv.invoiceNumber}</TableCell>
                     <TableCell>{inv.customerName}</TableCell>
@@ -2172,6 +2194,13 @@ ${pagesHtml}
                     <TableCell className="font-medium">₹{Number(inv.grandTotal).toLocaleString()}</TableCell>
                     <TableCell>
                       <Badge className={`text-xs ${STATUS_COLORS[inv.status] || ""}`}>{inv.status}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {prod ? (
+                        <Badge className={`text-xs ${PROD_STATUS_COLORS[prod.status] || ""}`}>{prod.status}</Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
                     </TableCell>
                     <TableCell>{new Date(inv.createdAt).toLocaleDateString("en-IN")}</TableCell>
                     <TableCell>
@@ -2188,7 +2217,8 @@ ${pagesHtml}
                       </div>
                     </TableCell>
                   </TableRow>
-                ))
+                  );
+                })
               )}
             </TableBody>
           </Table>

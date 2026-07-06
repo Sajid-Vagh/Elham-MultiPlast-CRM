@@ -10,6 +10,7 @@ const users = [
   { name: "Priya", username: "priya", password: "elham2024", role: "sales", colorCode: "#3b82f6", unit: "Himatnagar", canViewAllReports: false, canAssignLeads: false },
   { name: "Deepak", username: "deepak", password: "elham2024", role: "sales", colorCode: "#8b5cf6", unit: "Surat", canViewAllReports: false, canAssignLeads: false },
   { name: "Kavita", username: "kavita", password: "elham2024", role: "sales", colorCode: "#ec4899", unit: "Rajkot", canViewAllReports: false, canAssignLeads: false },
+  { name: "Production Manager", username: "production", password: "elham2024", role: "production_manager", colorCode: "#7c3aed", unit: "All", canViewAllReports: false, canAssignLeads: false },
 ];
 
 for (const u of users) {

@@ -15,6 +15,7 @@ import notificationsRouter from "./notifications";
 import dashboardRouter from "./dashboard";
 import documentsRouter from "./documents";
 import gstRouter from "./gst";
+import productionRouter from "./production";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(notificationsRouter);
 router.use(dashboardRouter);
 router.use(documentsRouter);
 router.use(gstRouter);
+router.use(productionRouter);
 
 export default router;

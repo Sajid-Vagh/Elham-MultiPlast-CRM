@@ -98,8 +98,39 @@ Deliver a working Proforma Invoice module with Customer Master, real GST auto-fi
 - Soft-delete for all users.
 - PDF layout reverted to original design.
 
+## Production Module
+
+### Goal
+Add a Production Module with role-based access (Sales, Production Manager, Admin) inside the same CRM. Auto-create Production Orders when Sales Orders are confirmed. Read-only Production view for Sales users. Dynamic sidebar based on role.
+
+### Done
+- DB schema: `production_orders`, `production_timeline`, `production_notes` tables in `lib/db/src/schema/production_orders.ts`
+- Migration `017_add_production_orders.sql` — creates 3 tables + indexes
+- Role `production_manager` added to `UserRole`, `UserInputRole`, `UserUpdateRole` types
+- Backend `production.ts` routes:
+  - `GET /production/dashboard` — KPI cards (pending, material ready, in production, QC, packing, ready for dispatch, completed today, delayed)
+  - `GET /production/orders` — list with search, status filter, priority filter, pagination
+  - `GET /production/orders/:id` — single order detail with invoice, items, timeline, notes
+  - `GET /production/by-invoice/:invoiceId` — lookup by proforma invoice (used by Sales read-only view)
+  - `PATCH /production/orders/:id/status` — update status with timeline record + notification
+  - `POST /production/orders/:id/notes` — add internal production note
+- Auto-create Production Order in `proforma-invoices.ts` when status → "Converted to Order"
+- Notification sent to Sales user on Production status change via `createNotification` (type: `production_status`)
+- Frontend pages:
+  - `production-dashboard.tsx` — 8 KPI cards linking to filtered order list
+  - `production-orders.tsx` — full list with search, status/priority filters, pagination
+  - `production-order-detail.tsx` — order details, product table, timeline, notes, status update dialog, note dialog
+- `production-progress.tsx` — read-only Production Progress card for Sales users in proforma invoice detail
+- `App.tsx` — `RoleGuard` component redirects users based on role; production routes guarded
+- `layout.tsx` — dynamic sidebar: Sales shows only Sales nav, Production shows only Production nav, Admin shows both
+- `login.tsx` — stores `crm_user_role` in localStorage, redirects to correct dashboard based on role
+- `settings.tsx` — role dropdown includes Production Manager option
+- `seed.ts` — includes `production` user with role `production_manager`
+- Backend 403 enforcement: all `/api/production/*` endpoints return 403 for non-production/non-admin users
+
 ### In Progress
-- (none)
+- Run migration `017_add_production_orders.sql` against Supabase database
+- Deploy and test Production module end-to-end
 
 ### Blocked
 - (none)
@@ -121,3 +152,21 @@ Deliver a working Proforma Invoice module with Customer Master, real GST auto-fi
 - `lib/db/src/schema/proforma_invoices.ts`: proforma_invoices table (with customerMasterId, deletedAt/by).
 - `lib/db/migrations/013_add_customer_master.sql`, `014_add_deleted_at_by.sql`.
 - `.env`: `GSTVERIFY_API_KEY` (primary), `GST_API_URL` + `GST_API_KEY` (fallback).
+
+## Production Module Relevant Files
+- `lib/db/src/schema/production_orders.ts`: production_orders, production_timeline, production_notes table schemas
+- `lib/db/migrations/017_add_production_orders.sql`: migration to create production tables
+- `artifacts/api-server/src/routes/production.ts`: all production API endpoints (dashboard, orders, status, notes)
+- `artifacts/api-server/src/routes/proforma-invoices.ts`: auto-create production order on "Converted to Order"
+- `lib/api-zod/src/generated/types/userRole.ts`, `userInputRole.ts`, `userUpdateRole.ts`: role types updated
+- `lib/api-zod/src/generated/api.ts`: updated role enums in Zod schemas
+- `lib/api-client-react/src/generated/api.schemas.ts`: updated UserRole const
+- `artifacts/crm/src/pages/production-dashboard.tsx`: Production Dashboard with 8 KPI cards
+- `artifacts/crm/src/pages/production-orders.tsx`: Production Orders list with filters
+- `artifacts/crm/src/pages/production-order-detail.tsx`: Production Order detail with timeline, notes, status update
+- `artifacts/crm/src/components/production-progress.tsx`: read-only Production Progress for Sales users
+- `artifacts/crm/src/App.tsx`: RoleGuard component, production routes
+- `artifacts/crm/src/components/layout.tsx`: dynamic role-based sidebar
+- `artifacts/crm/src/pages/login.tsx`: login redirect based on role
+- `artifacts/crm/src/pages/settings.tsx`: role dropdown includes Production Manager
+- `artifacts/api-server/src/seed.ts`: includes production user

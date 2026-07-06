@@ -24,8 +24,9 @@ export default function Login() {
     login.mutate({ data: { username, password } }, {
       onSuccess: (data) => {
         localStorage.setItem("crm_token", data.token);
+        localStorage.setItem("crm_user_role", data.user.role);
         queryClient.setQueryData(getGetMeQueryKey(), data.user);
-        setLocation("/dashboard");
+        setLocation(data.user.role === "production_manager" ? "/production/dashboard" : "/dashboard");
       },
       onError: (err) => {
         toast({

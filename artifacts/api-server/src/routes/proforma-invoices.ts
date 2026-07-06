@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, usersTable, contactsTable, dealsTable, customerMasterTable, INVOICE_STATUSES } from "@workspace/db";
+import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable, usersTable, contactsTable, dealsTable, customerMasterTable, INVOICE_STATUSES } from "@workspace/db";
 import { eq, desc, and, SQL, sql, like, gte, lte, inArray, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { amountToWords } from "../lib/amount-to-words";
@@ -361,6 +361,30 @@ async function enrichInvoice(invoice: typeof proformaInvoicesTable.$inferSelect)
     if (d) deal = d;
   }
 
+  let productionOrder = null;
+  const [po] = await db
+    .select()
+    .from(productionOrdersTable)
+    .where(eq(productionOrdersTable.proformaInvoiceId, invoice.id));
+  if (po) {
+    let assignedManager = null;
+    if (po.assignedProductionManagerId) {
+      const [m] = await db.select().from(usersTable).where(eq(usersTable.id, po.assignedProductionManagerId));
+      if (m) {
+        const { passwordHash: _, ...safe } = m;
+        assignedManager = safe;
+      }
+    }
+    productionOrder = {
+      id: po.id,
+      status: po.status,
+      priority: po.priority,
+      expectedDispatchDate: po.expectedDispatchDate,
+      assignedProductionManager: assignedManager,
+      updatedAt: po.updatedAt,
+    };
+  }
+
   return {
     ...invoice,
     taxableAmount: Number(invoice.taxableAmount),
@@ -384,6 +408,7 @@ async function enrichInvoice(invoice: typeof proformaInvoicesTable.$inferSelect)
     createdByUser,
     contact,
     deal,
+    productionOrder,
   };
 }
 
@@ -966,6 +991,70 @@ router.get("/proforma-invoices/:id", async (req, res) => {
   }
 });
 
+router.get("/proforma-invoices/:id/production-progress", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const [invoice] = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(and(eq(proformaInvoicesTable.id, id), eq(proformaInvoicesTable.isDeleted, false)));
+
+    if (!invoice) { res.status(404).json({ error: "Not found" }); return; }
+
+    if (user.role === "sales" && invoice.createdBy !== user.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const [po] = await db
+      .select()
+      .from(productionOrdersTable)
+      .where(eq(productionOrdersTable.proformaInvoiceId, id));
+
+    if (!po) { res.json(null); return; }
+
+    let assignedManager = null;
+    if (po.assignedProductionManagerId) {
+      const [m] = await db.select().from(usersTable).where(eq(usersTable.id, po.assignedProductionManagerId));
+      if (m) {
+        const { passwordHash: _, ...safe } = m;
+        assignedManager = safe;
+      }
+    }
+
+    const timeline = await db
+      .select({
+        id: productionTimelineTable.id,
+        status: productionTimelineTable.status,
+        notes: productionTimelineTable.notes,
+        createdAt: productionTimelineTable.createdAt,
+        createdByName: usersTable.name,
+      })
+      .from(productionTimelineTable)
+      .leftJoin(usersTable, eq(usersTable.id, productionTimelineTable.createdBy))
+      .where(eq(productionTimelineTable.productionOrderId, po.id))
+      .orderBy(desc(productionTimelineTable.createdAt));
+
+    res.json({
+      id: po.id,
+      status: po.status,
+      priority: po.priority,
+      expectedDispatchDate: po.expectedDispatchDate,
+      assignedProductionManager: assignedManager,
+      updatedAt: po.updatedAt,
+      timeline,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Get production progress error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 async function updateInvoiceHandler(req: any, res: any) {
   try {
     const user = await getUserFromRequest(req);
@@ -1128,6 +1217,40 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
       changedBy: user.id,
       notes: notes || null,
     });
+
+    // Auto-create Production Order when status changes to "Converted to Order"
+    if (status === "Converted to Order" && prevStatus !== "Converted to Order") {
+      const [existing] = await db
+        .select()
+        .from(productionOrdersTable)
+        .where(eq(productionOrdersTable.proformaInvoiceId, id))
+        .limit(1);
+
+      if (!existing) {
+        await db.insert(productionOrdersTable).values({
+          proformaInvoiceId: id,
+          status: "Pending",
+          priority: "Medium",
+          updatedBy: user.id,
+        });
+
+        // Record initial timeline entry
+        const [newOrder] = await db
+          .select()
+          .from(productionOrdersTable)
+          .where(eq(productionOrdersTable.proformaInvoiceId, id))
+          .limit(1);
+
+        if (newOrder) {
+          await db.insert(productionTimelineTable).values({
+            productionOrderId: newOrder.id,
+            status: "Pending",
+            notes: "Order received from Sales",
+            createdBy: user.id,
+          });
+        }
+      }
+    }
 
     const [updated] = await db
       .select()

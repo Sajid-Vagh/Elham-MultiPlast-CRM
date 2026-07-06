@@ -6,7 +6,8 @@ import { useNotificationStream } from "@/lib/use-notification-stream";
 import { NotificationPopup } from "./notification-popup";
 import {
   LayoutDashboard, Users, Briefcase,
-  Package, BarChart, Download, Copy, Settings, LogOut, Bell, X, Clock, Phone, FolderTree, FileText, CheckCheck
+  Package, BarChart, Download, Copy, Settings, LogOut, Bell, X, Clock, Phone, FolderTree, FileText, CheckCheck,
+  Factory, ClipboardList, UserCircle
 } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -127,6 +128,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   }, [isLoading, user, setLocation]);
 
   useEffect(() => {
+    if (user) {
+      localStorage.setItem("crm_user_role", user.role);
+    }
+  }, [user]);
+
+  useEffect(() => {
     if (!bellOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
       if (
@@ -188,7 +195,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
   if (!user) return null;
 
-  const navItems = [
+  const isProductionOnly = user.role === "production_manager";
+  const isAdmin = user.role === "admin";
+
+  const salesNavItems = [
     { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", color: "#a78bfa" },
     { icon: Users, label: "Leads", href: "/leads", color: "#60a5fa" },
     { icon: Briefcase, label: "Deals", href: "/deals", color: "#34d399" },
@@ -201,6 +211,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { icon: Copy, label: "Duplicates", href: "/duplicates", color: "#f87171" },
     { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
   ];
+
+  const productionNavItems = [
+    { icon: Factory, label: "Production Dashboard", href: "/production/dashboard", color: "#7c3aed" },
+    { icon: ClipboardList, label: "Production Orders", href: "/production/orders", color: "#7c3aed" },
+  ];
+
+  let navItems: typeof salesNavItems;
+  if (isProductionOnly) {
+    navItems = productionNavItems;
+  } else if (isAdmin) {
+    navItems = [...salesNavItems, ...productionNavItems];
+  } else {
+    navItems = salesNavItems;
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -273,7 +297,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
             <div className="flex-1 overflow-hidden">
               <p className="text-sm font-semibold truncate text-[hsl(245_30%_20%)]">{user.name}</p>
-              <p className="text-xs truncate text-[hsl(248_16%_55%)]">{user.unit || user.role}</p>
+              <p className="text-xs truncate text-[hsl(248_16%_55%)]">{user.unit || (user.role === "production_manager" ? "Production" : user.role)}</p>
             </div>
           </div>
           <Button
@@ -284,6 +308,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               logout.mutate(undefined, {
                 onSuccess: () => {
                   localStorage.removeItem("crm_token");
+                  localStorage.removeItem("crm_user_role");
                   sessionStorage.removeItem("crm_notif_since");
                   setLocation("/login");
                 }

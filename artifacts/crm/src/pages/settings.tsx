@@ -49,6 +49,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit }: { initial?: Pa
             <SelectContent>
               <SelectItem value="admin">Admin (CEO)</SelectItem>
               <SelectItem value="sales">Sales</SelectItem>
+              <SelectItem value="production_manager">Production Manager</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -123,7 +124,16 @@ export default function Settings() {
   const handleCreate = (data: any) => {
     createUser.mutate({ data }, {
       onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() }); toast({ title: "Team member added" }); setCreateOpen(false); },
-      onError: (e: any) => toast({ title: e?.data?.error || "Error", variant: "destructive" }),
+      onError: (e: any) => {
+        const d = e?.data;
+        const details = d?.details;
+        let msg = d?.error || "Error";
+        if (details?.fieldErrors) {
+          const fieldMsgs = Object.entries(details.fieldErrors).map(([k, v]) => `${k}: ${(v as string[]).join(", ")}`).join("; ");
+          if (fieldMsgs) msg += ` — ${fieldMsgs}`;
+        }
+        toast({ title: msg, variant: "destructive" });
+      },
     });
   };
 

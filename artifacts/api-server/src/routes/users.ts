@@ -32,7 +32,9 @@ router.post("/users", async (req, res) => {
   }
   const parsed = CreateUserBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: "Invalid input", details: parsed.error });
+    const { fieldErrors, formErrors } = parsed.error.flatten();
+    const details = { fieldErrors, formErrors };
+    res.status(400).json({ error: "Invalid input", details });
     return;
   }
   const { password, ...rest } = parsed.data;
