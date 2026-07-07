@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { onActivityChange } from "@/lib/query-invalidation";
 import { Calendar as CalendarIcon, Clock, Phone, MessageSquare, Video, Users, Bell, AlertTriangle, Mail, MapPin } from "lucide-react";
 
 interface ScheduleFollowUpDialogProps {
@@ -114,12 +115,7 @@ export function ScheduleFollowUpDialog({ open, onOpenChange, contactId, dealId }
       },
     }, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ contactId }) });
-        queryClient.invalidateQueries({ queryKey: ["upcoming-followup", contactId] });
-        queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
-        queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey() });
-        queryClient.invalidateQueries({ queryKey: ["category-counts"] });
-        queryClient.invalidateQueries({ queryKey: ["follow-up-activities"] });
+        onActivityChange(queryClient, contactId);
         toast({ title: "Follow-up scheduled successfully" });
         resetForm();
         onOpenChange(false);

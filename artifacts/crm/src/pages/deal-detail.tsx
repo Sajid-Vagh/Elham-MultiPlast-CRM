@@ -4,41 +4,24 @@ import {
   useGetDeal, useUpdateDeal, useDeleteDeal, useListDealProducts, useAddDealProduct, useRemoveDealProduct,
   useListActivities, useCreateActivity, useUpdateActivity, useDeleteActivity, useListProducts, useListUsers,
   useGetMe,
-  getGetDealQueryKey, getListDealProductsQueryKey, getListActivitiesQueryKey
+  getGetDealQueryKey,   getListDealProductsQueryKey, getListActivitiesQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { onDealChange, onActivityChange, onContactChange } from "@/lib/query-invalidation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Plus, Trash2, FolderTree, Pencil, Check, X } from "lucide-react";
+import { MarkLostDialog } from "@/components/mark-lost-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { CategoryBadge } from "@/components/category-badge";
 import { MoveCategoryDialog } from "@/components/move-category-dialog";
-
-const STAGES = ["New", "CL Sent", "Price Given", "Samples Sent", "Samples Received", "PI Sent", "Won", "Lost"];
-const STAGE_PROBS: Record<string, number> = { "New": 10, "CL Sent": 40, "Price Given": 50, "Samples Sent": 60, "Samples Received": 60, "PI Sent": 90, "Won": 100, "Lost": 0 };
-const STAGE_COLORS: Record<string, string> = {
-  "New": "bg-slate-100 text-slate-700", "CL Sent": "bg-blue-100 text-blue-700",
-  "Price Given": "bg-yellow-100 text-yellow-700", "Samples Sent": "bg-orange-100 text-orange-700",
-  "Samples Received": "bg-purple-100 text-purple-700", "PI Sent": "bg-indigo-100 text-indigo-700",
-  "Won": "bg-green-100 text-green-700", "Lost": "bg-red-100 text-red-700",
-};
-
-const LOST_REASONS = [
-  "Price Too High",
-  "Transportation / Logistics Issue",
-  "Wants Local / Nearby Supplier",
-  "Design Issue",
-  "Timeline Issue",
-  "Low Quantity",
-  "No Requirement Now",
-  "Other",
-];
+import { DEAL_STAGES, STAGE_PROBS, STAGE_BADGE_COLORS } from "@/lib/deal-stages";
 
 const ACT_STYLE: Record<string, { bg: string; fg: string; icon: string }> = {
   "Call":     { bg: "#dcfce7", fg: "#15803d", icon: "\u{1F4DE}" },
@@ -94,6 +77,12 @@ export default function DealDetail() {
   const [actFollowType, setActFollowType] = useState("Call");
   const [actDialogOpen, setActDialogOpen] = useState(false);
 
+  const [fuDialogOpen, setFuDialogOpen] = useState(false);
+  const [fuNotes, setFuNotes] = useState("");
+  const [fuDate, setFuDate] = useState("");
+  const [fuTime, setFuTime] = useState("");
+  const [fuType, setFuType] = useState("Call");
+
   const [editActivity, setEditActivity] = useState<any>(null);
   const [editActType, setEditActType] = useState("Call");
   const [editActNotes, setEditActNotes] = useState("");
@@ -105,12 +94,13 @@ export default function DealDetail() {
   const [deleteActId, setDeleteActId] = useState<number | null>(null);
 
   const [pendingStage, setPendingStage] = useState<string | null>(null);
-  const [lostReason, setLostReason] = useState("");
-  const [lostCategory, setLostCategory] = useState<string>("");
+  const [wonAmount, setWonAmount] = useState("");
   const [wonConfirmOpen, setWonConfirmOpen] = useState(false);
-  const [lostReasonOpen, setLostReasonOpen] = useState(false);
+  const [lostOpen, setLostOpen] = useState(false);
+  const [lostSubmitting, setLostSubmitting] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [showMoveCategory, setShowMoveCategory] = useState(false);
+  const [wonSubmitting, setWonSubmitting] = useState(false);
 
   const deleteDeal = useDeleteDeal();
 
@@ -141,27 +131,51 @@ export default function DealDetail() {
 
   const handleStageSelect = (newStage: string) => {
     if (newStage === deal.stage) return;
-    if (newStage === "Won") { setPendingStage("Won"); setWonConfirmOpen(true); return; }
-    if (newStage === "Lost") { setPendingStage("Lost"); setLostReason(""); setLostCategory(""); setLostReasonOpen(true); return; }
+    if (newStage === "Won") { setPendingStage("Won"); setWonAmount(deal.totalValue ? String(deal.totalValue) : ""); setWonConfirmOpen(true); return; }
+    if (newStage === "Lost") { setPendingStage("Lost"); setLostOpen(true); return; }
     doStageUpdate(newStage, null, null);
   };
 
   const doStageUpdate = (stage: string, reason: string | null, category: string | null) => {
     const data: any = { stage: stage as any, lostReason: reason };
     if (category) data.lostCategory = category;
+    if (stage === "Won" && wonAmount) {
+      data.wonAmount = Number(wonAmount);
+    }
+    setWonSubmitting(true);
     updateDeal.mutate({ id: dealId, data }, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) });
+        setWonSubmitting(false);
+        onDealChange(queryClient, dealId, contact?.id);
         toast({ title: `Deal moved to ${stage}` });
-        setWonConfirmOpen(false); setLostReasonOpen(false); setPendingStage(null); setLostReason(""); setLostCategory("");
+        setWonConfirmOpen(false); setLostOpen(false); setPendingStage(null); setWonAmount("");
       },
-      onError: () => toast({ title: "Error updating stage", variant: "destructive" }),
+      onError: (err: any) => {
+        setWonSubmitting(false);
+        console.error("Stage update error:", err);
+        toast({ title: "Error updating stage", description: err?.data?.error || err?.message || "An error occurred", variant: "destructive" });
+      },
+    });
+  };
+
+  const handleLostSave = ({ lostReason, lostCategory }: { lostReason: string; lostCategory?: string }) => {
+    setLostSubmitting(true);
+    updateDeal.mutate({ id: dealId, data: { stage: "Lost" as any, lostReason, ...(lostCategory ? { lostCategory } : {}) } }, {
+      onSuccess: () => {
+        setLostSubmitting(false); setLostOpen(false); setPendingStage(null);
+        onDealChange(queryClient, dealId, contact?.id);
+        toast({ title: "Deal marked as Lost" });
+      },
+      onError: (err: any) => {
+        setLostSubmitting(false);
+        toast({ title: "Error", description: err?.data?.error || err?.message || "Failed", variant: "destructive" });
+      },
     });
   };
 
   const handleValueUpdate = (val: string) => {
     updateDeal.mutate({ id: dealId, data: { totalValue: val ? Number(val) : null } }, {
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) }),
+      onSuccess: () => onDealChange(queryClient, dealId, contact?.id),
     });
   };
 
@@ -169,7 +183,7 @@ export default function DealDetail() {
     if (!prodId) return;
     addProduct.mutate({ id: dealId, data: { productId: Number(prodId), quantity: Number(prodQty), unitPrice: prodPrice ? Number(prodPrice) : null } }, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListDealProductsQueryKey(dealId) });
+        onDealChange(queryClient, dealId, contact?.id);
         toast({ title: "Product added" });
         setProdDialogOpen(false); setProdId(""); setProdQty("1"); setProdPrice("");
       },
@@ -179,7 +193,7 @@ export default function DealDetail() {
 
   const handleRemoveProduct = (dpId: number) => {
     removeProduct.mutate({ id: dealId, productId: dpId }, {
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListDealProductsQueryKey(dealId) }); toast({ title: "Product removed" }); },
+      onSuccess: () => { onDealChange(queryClient, dealId, contact?.id); toast({ title: "Product removed" }); },
     });
   };
 
@@ -195,8 +209,7 @@ export default function DealDetail() {
     if (Object.keys(payload).length === 0) { setEditDialogOpen(false); return; }
     updateActivity.mutate({ id: editActivity.id, data: payload }, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ dealId }) });
-        queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) });
+        onActivityChange(queryClient, dealId, contact?.id);
         toast({ title: "Activity updated" });
         setEditDialogOpen(false);
         setEditActivity(null);
@@ -209,7 +222,7 @@ export default function DealDetail() {
     if (!deleteActId) return;
     deleteActivity.mutate(deleteActId, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ dealId }) });
+        onActivityChange(queryClient, dealId, contact?.id);
         toast({ title: "Activity deleted" });
         setDeleteActId(null);
       },
@@ -220,7 +233,7 @@ export default function DealDetail() {
   const handleCompleteActivity = (act: any) => {
     updateActivity.mutate({ id: act.id, data: { callStatus: "Completed" } }, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ dealId }) });
+        onActivityChange(queryClient, dealId, contact?.id);
         toast({ title: "Activity marked as completed" });
       },
       onError: () => toast({ title: "Error completing activity", variant: "destructive" }),
@@ -244,21 +257,31 @@ export default function DealDetail() {
     return currentUser.id === act.createdBy;
   };
 
+  const handleFollowUpSave = () => {
+    if (!fuNotes.trim()) { toast({ title: "Validation Error", description: "Follow-up notes are required", variant: "destructive" }); return; }
+    if (!fuDate) { toast({ title: "Validation Error", description: "Follow-up date is required", variant: "destructive" }); return; }
+    createActivity.mutate(
+      { data: { dealId, type: "FollowUp" as any, notes: fuNotes.trim(), followUpDate: fuDate, followUpTime: fuTime || null, followUpType: fuType } },
+      {
+        onSuccess: () => {
+          onActivityChange(queryClient, dealId, contact?.id);
+          toast({ title: "Follow-up scheduled" });
+          setFuDialogOpen(false); setFuNotes(""); setFuDate(""); setFuTime(""); setFuType("Call");
+        },
+        onError: () => toast({ title: "Error", variant: "destructive" }),
+      },
+    );
+  };
+
   const handleLogActivity = () => {
-    const payload = { dealId, type: actType as any, notes: actNotes || null, followUpDate: actFollowUp || null, followUpTime: actFollowUpTime || null, followUpType: actFollowType || null };
-    console.log("[DEBUG] handleLogActivity payload:", JSON.stringify(payload));
+    const payload = { dealId, type: actType as any, notes: actNotes || null, followUpDate: actFollowUp || null, followUpTime: actFollowUpTime || null };
     createActivity.mutate({ data: payload }, {
-      onSuccess: (result) => {
-        console.log("[DEBUG] handleLogActivity success:", JSON.stringify({ id: result?.id, type: result?.type, followUpDate: result?.followUpDate, createdBy: result?.createdBy }));
-        console.log("[DEBUG] Invalidating queryKey:", JSON.stringify(getListActivitiesQueryKey({ dealId })));
-        queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ dealId }) });
-        queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) });
-        queryClient.invalidateQueries({ queryKey: ["/api/activities"] });
+      onSuccess: () => {
+        onActivityChange(queryClient, dealId, contact?.id);
         toast({ title: "Activity logged" });
         setActDialogOpen(false); setActNotes(""); setActFollowUp(""); setActFollowUpTime("");
       },
-      onError: (e) => {
-        console.log("[DEBUG] handleLogActivity error:", e);
+      onError: () => {
         toast({ title: "Error", variant: "destructive" });
       },
     });
@@ -279,9 +302,11 @@ export default function DealDetail() {
     <div className="p-8 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
         <Link href="/deals"><Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-1" /> Back</Button></Link>
-        <Button variant="outline" size="sm" onClick={() => setShowMoveCategory(true)}>
-          <FolderTree className="h-4 w-4 mr-1" /> Move
-        </Button>
+        {contact && contact.category !== "My Client" && (
+          <Button variant="outline" size="sm" onClick={() => setShowMoveCategory(true)}>
+            <FolderTree className="h-4 w-4 mr-1" /> Move
+          </Button>
+        )}
         <Button
           variant="outline" size="sm"
           className="text-destructive border-destructive/40 hover:bg-destructive/10"
@@ -294,7 +319,7 @@ export default function DealDetail() {
             {owner && <div className="w-4 h-4 rounded-full shadow-sm" style={{ backgroundColor: owner.colorCode }} />}
             <h1 className="text-2xl font-bold">{deal.title || `Deal #${deal.id}`}</h1>
             <CategoryBadge category={contact?.category} />
-            <span className={`text-sm px-2.5 py-1 rounded-full font-medium ${STAGE_COLORS[deal.stage] || "bg-gray-100"}`}>{deal.stage}</span>
+            <span className={`text-sm px-2.5 py-1 rounded-full font-medium ${STAGE_BADGE_COLORS[deal.stage] || "bg-gray-100"}`}>{deal.stage}</span>
           </div>
           {contact && <p className="text-muted-foreground text-sm">{contact.name}{contact.companyName ? ` — ${contact.companyName}` : ""}</p>}
         </div>
@@ -309,7 +334,7 @@ export default function DealDetail() {
                 <Label className="text-xs text-muted-foreground mb-1 block">Change Stage</Label>
                 <Select value={deal.stage} onValueChange={handleStageSelect}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{STAGES.map(s => <SelectItem key={s} value={s}>{s} ({STAGE_PROBS[s]}%)</SelectItem>)}</SelectContent>
+                  <SelectContent>{DEAL_STAGES.map(s => <SelectItem key={s} value={s}>{s} ({STAGE_PROBS[s]}%)</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               {deal.lostReason && (
@@ -389,6 +414,9 @@ export default function DealDetail() {
                   </span>
                 )}
               </div>
+              <Button size="sm" variant="outline" onClick={() => { setFuNotes(""); setFuDate(""); setFuTime(""); setFuType("Call"); setFuDialogOpen(true); }}>
+                <Plus className="h-4 w-4 mr-1" /> Follow-up
+              </Button>
               <Dialog open={actDialogOpen} onOpenChange={setActDialogOpen}>
                 <DialogTrigger asChild>
                   <Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" /> Log Activity</Button>
@@ -399,18 +427,12 @@ export default function DealDetail() {
                     <div><Label>Type</Label>
                       <Select value={actType} onValueChange={setActType}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>{["Call","WhatsApp","Email","Note","FollowUp","Meeting"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                        <SelectContent>{["WhatsApp","Call","Email"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
                     <div><Label>Notes</Label><Textarea value={actNotes} onChange={e => setActNotes(e.target.value)} placeholder="Notes from this interaction..." /></div>
                     <div><Label>Next Follow-up Date</Label><Input type="date" value={actFollowUp} onChange={e => setActFollowUp(e.target.value)} /></div>
                     {actFollowUp && <div><Label>Follow-up Time</Label><Input type="time" value={actFollowUpTime} onChange={e => setActFollowUpTime(e.target.value)} /></div>}
-                    <div><Label>Follow-up Type</Label>
-                      <Select value={actFollowType} onValueChange={setActFollowType}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>{["Call","WhatsApp","Email"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
                     <Button onClick={handleLogActivity} disabled={createActivity.isPending} className="w-full">Log</Button>
                   </div>
                 </DialogContent>
@@ -518,7 +540,7 @@ export default function DealDetail() {
             <AlertDialogAction onClick={() => {
               deleteDeal.mutate({ id: dealId }, {
                 onSuccess: () => {
-                  queryClient.invalidateQueries();
+                  onDealChange(queryClient, dealId, contact?.id);
                   toast({ title: "Deal deleted" });
                   setLocation("/deals");
                 },
@@ -534,7 +556,7 @@ export default function DealDetail() {
         onOpenChange={setShowMoveCategory}
         contactIds={contact ? [contact.id] : []}
         currentCategory={contact?.category}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) })}
+        onSuccess={() => onDealChange(queryClient, dealId, contact?.id)}
       />
 
       {/* Edit Activity Dialog */}
@@ -592,70 +614,70 @@ export default function DealDetail() {
             <AlertDialogDescription>
               You are marking <strong>{deal.title || `Deal #${deal.id}`}</strong>
               {contact ? ` with ${contact.name}` : ""} as <strong>Won</strong>.
-              {deal.totalValue ? ` Deal value: ₹${Number(deal.totalValue).toLocaleString()}.` : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="px-1 py-2">
+            <Label>Deal Amount (₹) *</Label>
+            <Input
+              type="number"
+              value={wonAmount}
+              onChange={e => setWonAmount(e.target.value)}
+              placeholder="Enter deal value"
+              className="mt-1"
+            />
+          </div>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingStage(null)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction className="bg-green-600 text-white hover:bg-green-700" onClick={() => doStageUpdate("Won", null, null)}>
-              Yes, Mark as Won
-            </AlertDialogAction>
+            <AlertDialogCancel onClick={() => setPendingStage(null)} disabled={wonSubmitting}>Cancel</AlertDialogCancel>
+            <Button
+              className="bg-green-600 text-white hover:bg-green-700"
+              disabled={!wonAmount || Number(wonAmount) <= 0 || wonSubmitting}
+              onClick={() => doStageUpdate("Won", null, null)}
+            >
+              {wonSubmitting ? "Saving..." : "Yes, Mark as Won"}
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Lost reason + category */}
-      <AlertDialog open={lostReasonOpen} onOpenChange={setLostReasonOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-red-700">Mark as Lost</AlertDialogTitle>
-            <AlertDialogDescription>Select the reason and categorize the lost enquiry for future follow-up.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-4 px-1 py-2">
+      <MarkLostDialog
+        open={lostOpen}
+        onOpenChange={setLostOpen}
+        onSave={handleLostSave}
+        saving={lostSubmitting}
+        hideCategory={contact?.category === "My Client"}
+      />
+
+      {/* Regular Follow-up Dialog */}
+      <Dialog open={fuDialogOpen} onOpenChange={setFuDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Regular Follow-up</DialogTitle><DialogDescription>Schedule a follow-up for this deal.</DialogDescription></DialogHeader>
+          <div className="space-y-4 pt-2">
             <div>
-              <label className="text-sm font-medium mb-1.5 block">Lost Reason</label>
-              <Select value={lostReason} onValueChange={setLostReason}>
-                <SelectTrigger><SelectValue placeholder="Select reason" /></SelectTrigger>
-                <SelectContent>{LOST_REASONS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+              <Label>Follow-up Notes <span className="text-destructive">*</span></Label>
+              <Textarea className="mt-1" placeholder="e.g. Waiting for client reply, Client asked to call next week..." value={fuNotes} onChange={e => setFuNotes(e.target.value)} />
+            </div>
+            <div>
+              <Label>Next Follow-up Date <span className="text-destructive">*</span></Label>
+              <Input type="date" className="mt-1" value={fuDate} onChange={e => setFuDate(e.target.value)} />
+            </div>
+            <div>
+              <Label>Follow-up Time</Label>
+              <Input type="time" className="mt-1" value={fuTime} onChange={e => setFuTime(e.target.value)} />
+            </div>
+            <div>
+              <Label>Type</Label>
+              <Select value={fuType} onValueChange={setFuType}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>{["Call", "WhatsApp", "Email"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div>
-              <label className="text-sm font-medium mb-1.5 block">Lead Potential (Category)</label>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { value: "A", label: "High Potential", sub: "Category A", color: "#60a5fa" },
-                  { value: "B", label: "Medium Potential", sub: "Category B", color: "#f59e0b" },
-                  { value: "C", label: "No/Low Potential", sub: "Category C", color: "#a78bfa" },
-                ].map(opt => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    className={`p-3 rounded-lg border-2 text-left transition-all ${
-                      lostCategory === opt.value
-                        ? "border-blue-500 bg-blue-50"
-                        : "border-gray-200 hover:border-gray-300"
-                    }`}
-                    onClick={() => setLostCategory(opt.value)}
-                  >
-                    <div className="text-xs font-semibold">{opt.label}</div>
-                    <div className="text-xs mt-0.5" style={{ color: opt.color }}>{opt.sub}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingStage(null)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={!lostReason || !lostCategory}
-              onClick={() => { if (lostReason && lostCategory) doStageUpdate("Lost", lostReason, lostCategory); }}
-            >
-              Confirm Lost
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFuDialogOpen(false)} disabled={createActivity.isPending}>Cancel</Button>
+            <Button onClick={handleFollowUpSave} disabled={createActivity.isPending || !fuNotes.trim() || !fuDate}>Schedule</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

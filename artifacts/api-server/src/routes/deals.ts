@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable, activitiesTable } from "@workspace/db";
+import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable, activitiesTable, DEAL_STAGES, STAGE_PROBS } from "@workspace/db";
 import { eq, and, SQL } from "drizzle-orm";
 import {
   CreateDealBody, UpdateDealBody, GetDealParams, UpdateDealParams, DeleteDealParams,
@@ -52,6 +52,16 @@ router.get("/deals", async (req, res) => {
     if (isPipelineView) {
       const regularFollowUpIds = new Set(contacts.filter(c => c.category === "Regular Follow up").map(c => c.id));
       resultDeals = deals.filter(d => regularFollowUpIds.has(d.contactId));
+
+      // Auto-hide Won/Lost deals completed > 24h ago, unless showHiddenCompleted is set
+      if (params.success && params.data.autoHideCompleted === "true" && params.data.showHiddenCompleted !== "true") {
+        const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        resultDeals = resultDeals.filter(d => {
+          if (d.stage !== "Won" && d.stage !== "Lost") return true;
+          if (!d.completedAt) return true;
+          return new Date(d.completedAt) >= cutoff;
+        });
+      }
     }
 
     if (params.success && params.data.unit) {
@@ -76,11 +86,7 @@ router.post("/deals", async (req, res) => {
     res.status(400).json({ error: "Invalid input", details: parsed.error });
     return;
   }
-  const stageProbabilities: Record<string, number> = {
-    "New": 10, "CL Sent": 40, "Price Given": 50, "Samples Sent": 60,
-    "Samples Received": 60, "PI Sent": 90, "Won": 100, "Lost": 0
-  };
-  const probability = parsed.data.probability ?? stageProbabilities[parsed.data.stage] ?? 10;
+  const probability = parsed.data.probability ?? STAGE_PROBS[parsed.data.stage] ?? 10;
   try {
     // Auto-set contact category to Regular Follow up when creating a deal
     const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, parsed.data.contactId));
@@ -119,13 +125,9 @@ router.patch("/deals/:id", async (req, res) => {
   if (!params.success) { res.status(400).json({ error: "Invalid id" }); return; }
   const parsed = UpdateDealBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Invalid input" }); return; }
-  const stageProbabilities: Record<string, number> = {
-    "New": 10, "CL Sent": 40, "Price Given": 50, "Samples Sent": 60,
-    "Samples Received": 60, "PI Sent": 90, "Won": 100, "Lost": 0
-  };
   const updateData: any = { ...parsed.data };
   if (parsed.data.stage && !parsed.data.probability) {
-    updateData.probability = stageProbabilities[parsed.data.stage] ?? 10;
+    updateData.probability = STAGE_PROBS[parsed.data.stage] ?? 10;
   }
   try {
     const user = await getUserFromRequest(req);
@@ -138,6 +140,30 @@ router.patch("/deals/:id", async (req, res) => {
     }
     if (user.role === "sales") {
       delete updateData.salesOwnerId;
+    }
+
+    // Validate Won: wonAmount is mandatory and must be > 0
+    if (updateData.stage === "Won") {
+      const value = updateData.wonAmount ?? oldDeal.wonAmount;
+      if (value == null || Number(value) <= 0) {
+        res.status(400).json({ error: "Won Amount is required and must be greater than 0 before marking as Won." });
+        return;
+      }
+    }
+    // Validate Lost: lostReason is mandatory
+    if (updateData.stage === "Lost") {
+      const reason = parsed.data.lostReason;
+      if (!reason) {
+        res.status(400).json({ error: "Lost reason is required before marking as Lost." });
+        return;
+      }
+    }
+
+    // Set completedAt when stage transitions to Won or Lost; clear when moving away
+    if (updateData.stage === "Won" || updateData.stage === "Lost") {
+      updateData.completedAt = new Date();
+    } else if (updateData.stage && oldDeal.stage !== updateData.stage && (oldDeal.stage === "Won" || oldDeal.stage === "Lost")) {
+      updateData.completedAt = null;
     }
 
     const [deal] = await db.update(dealsTable).set(updateData).where(eq(dealsTable.id, params.data.id)).returning();
@@ -173,9 +199,13 @@ router.patch("/deals/:id", async (req, res) => {
     }
 
     // Auto-set contact category when deal is Lost (with lostCategory)
+    // EXCEPTION: Existing My Client customers ALWAYS stay in My Clients
     if (deal.stage === "Lost" && parsed.data.lostCategory) {
       const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
-      if (contact) {
+      // Check if this customer has EVER been a client (convertedToClient, any Won deal, or currently in My Clients)
+      const [anyWonDeal] = await db.select({ id: dealsTable.id }).from(dealsTable).where(and(eq(dealsTable.contactId, deal.contactId), eq(dealsTable.stage, "Won"))).limit(1);
+      const hasEverBeenClient = contact?.category === "My Client" || !!anyWonDeal || oldDeal.convertedToClient;
+      if (contact && !hasEverBeenClient) {
         const prevCategory = contact.category;
         const categoryMap: Record<string, string> = {
           A: "Category A",

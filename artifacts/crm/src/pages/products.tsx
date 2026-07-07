@@ -8,12 +8,28 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { onProductChange } from "@/lib/query-invalidation";
 
 type Product = { id: number; name: string; category?: string | null; pricePerUnit?: number | null; productCode: string; bottleWeight?: string | null; bottleColour?: string | null; capColour?: string | null; materialType?: string | null; hsnCode?: string | null; defaultUnit?: string | null; defaultGst?: number | null };
+
+const HSN_BY_MATERIAL: Record<string, string> = {
+  PET: "39239090",
+  HDPE: "39233090",
+};
 
 function ProductForm({ initial, onSave, onCancel, loading, codeError }: { initial?: Partial<Product>; onSave: (d: any) => void; onCancel: () => void; loading: boolean; codeError?: string | null }) {
   const [form, setForm] = useState({ name: initial?.name || "", category: initial?.category || "", productCode: initial?.productCode || "", bottleWeight: initial?.bottleWeight || "", bottleColour: initial?.bottleColour || "", capColour: initial?.capColour || "", materialType: initial?.materialType || "", hsnCode: initial?.hsnCode || "", defaultUnit: initial?.defaultUnit || "", defaultGst: initial?.defaultGst?.toString() || "" });
   const f = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm(p => ({ ...p, [k]: e.target.value }));
+  const handleMaterialChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const mat = e.target.value;
+    const autoHsn = HSN_BY_MATERIAL[mat];
+    setForm(p => ({ ...p, materialType: mat, hsnCode: autoHsn || p.hsnCode }));
+  };
+  const HSN_OPTIONS = [
+    { value: "", label: "None" },
+    { value: "39239090", label: "PET → 39239090" },
+    { value: "39233090", label: "HDPE → 39233090" },
+  ];
   return (
     <div className="grid grid-cols-2 gap-3 pt-2">
       <div><Label>Name *</Label><Input value={form.name} onChange={f("name")} /></div>
@@ -21,7 +37,7 @@ function ProductForm({ initial, onSave, onCancel, loading, codeError }: { initia
       {codeError && <div className="col-span-2 text-sm text-destructive">{codeError}</div>}
       <div><Label>Category</Label><Input value={form.category} onChange={f("category")} /></div>
       <div><Label>Material Type</Label>
-        <select value={form.materialType} onChange={f("materialType")} className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors">
+        <select value={form.materialType} onChange={handleMaterialChange} className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors">
           <option value="">None</option>
           <option value="PET">PET</option>
           <option value="HDPE">HDPE</option>
@@ -29,7 +45,11 @@ function ProductForm({ initial, onSave, onCancel, loading, codeError }: { initia
           <option value="Other">Other</option>
         </select>
       </div>
-      <div><Label>HSN Code</Label><Input value={form.hsnCode} onChange={f("hsnCode")} /></div>
+      <div><Label>HSN Code</Label>
+        <select value={form.hsnCode} onChange={f("hsnCode")} className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors">
+          {HSN_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </div>
       <div><Label>Default Unit</Label>
         <select value={form.defaultUnit} onChange={f("defaultUnit")} className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors">
           <option value="">None</option>
@@ -79,7 +99,7 @@ export default function Products() {
     }
     setCreateCodeError(null);
     createProduct.mutate({ data }, {
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() }); toast({ title: "Product created" }); setCreateOpen(false); setCreateCodeError(null); },
+      onSuccess: () => { onProductChange(queryClient); toast({ title: "Product created" }); setCreateOpen(false); setCreateCodeError(null); },
       onError: (e: any) => toast({ title: e?.data?.error || "Error", variant: "destructive" }),
     });
   }, [products, createProduct, queryClient, toast]);
@@ -92,7 +112,7 @@ export default function Products() {
     }
     setEditCodeError(null);
     updateProduct.mutate({ id: editProduct.id, data }, {
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() }); toast({ title: "Updated" }); setEditProduct(null); setEditCodeError(null); },
+      onSuccess: () => { onProductChange(queryClient); toast({ title: "Updated" }); setEditProduct(null); setEditCodeError(null); },
       onError: (e: any) => toast({ title: e?.data?.error || "Error", variant: "destructive" }),
     });
   }, [editProduct, products, updateProduct, queryClient, toast]);
@@ -100,7 +120,7 @@ export default function Products() {
   const handleDelete = (id: number) => {
     if (!confirm("Delete this product?")) return;
     deleteProduct.mutate({ id }, {
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() }); toast({ title: "Deleted" }); },
+      onSuccess: () => { onProductChange(queryClient); toast({ title: "Deleted" }); },
       onError: () => toast({ title: "Error", variant: "destructive" }),
     });
   };

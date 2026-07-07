@@ -3,7 +3,7 @@ import { useParams, useLocation, Link } from "wouter";
 import {
   useGetContact, useListDeals, useListActivities, useCreateDeal, useCreateActivity,
   useUpdateContact, useDeleteContact, useListUsers, useListContactProformaInvoices, getListContactProformaInvoicesQueryKey,
-  getListDealsQueryKey, getListActivitiesQueryKey, getGetContactQueryKey, getListContactsQueryKey
+  getGetContactQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -13,9 +13,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Phone, Mail, MapPin, Tag, Plus, Trash2, FolderTree, RefreshCw, Star, MessageSquare, Pencil, Clock, Calendar, ChevronRight, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, History, User, Building, Globe, Hash, ListOrdered, FileText, AlertCircle } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, Tag, Plus, Trash2, FolderTree, RefreshCw, Star, MessageSquare, Pencil, Clock, Calendar, ChevronRight, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, Globe, Hash, ListOrdered, FileText, AlertCircle, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { MarkLostDialog } from "@/components/mark-lost-dialog";
 import { Label } from "@/components/ui/label";
 import { DialogFooter } from "@/components/ui/dialog";
 import { CategoryBadge } from "@/components/category-badge";
@@ -24,13 +25,8 @@ import { DocumentManager } from "@/components/document-manager";
 import { DocumentUploadDialog } from "@/components/document-upload-dialog";
 import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
 import { ScheduleFollowUpDialog } from "@/components/schedule-follow-up-dialog";
-
-const STAGE_COLORS: Record<string, string> = {
-  "New": "bg-slate-100 text-slate-700", "CL Sent": "bg-blue-100 text-blue-700",
-  "Price Given": "bg-yellow-100 text-yellow-700", "Samples Sent": "bg-orange-100 text-orange-700",
-  "Samples Received": "bg-purple-100 text-purple-700", "PI Sent": "bg-indigo-100 text-indigo-700",
-  "Won": "bg-green-100 text-green-700", "Lost": "bg-red-100 text-red-700",
-};
+import { STAGE_BADGE_COLORS } from "@/lib/deal-stages";
+import { onContactChange, onDealChange, onActivityChange } from "@/lib/query-invalidation";
 
 const TIMELINE_ICONS: Record<string, { bg: string; icon: string }> = {
   "lead_created":    { bg: "#dbeafe", icon: "🆕" },
@@ -190,6 +186,10 @@ export default function LeadDetail() {
   const [editField, setEditField] = useState("");
   const [editValue, setEditValue] = useState("");
 
+  // Mark Lost dialog
+  const [lostOpen, setLostOpen] = useState(false);
+  const [lostSubmitting, setLostSubmitting] = useState(false);
+
   // Schedule follow-up dialog
   const [schedFuOpen, setSchedFuOpen] = useState(false);
 
@@ -207,15 +207,44 @@ export default function LeadDetail() {
     else { setActFromDate(""); setActToDate(""); }
   };
 
-  const filteredActivities = useMemo(() => {
-    if (!activities) return [];
-    let list = [...activities].reverse();
-    if (actFromDate) list = list.filter(a => a.createdAt.slice(0, 10) >= actFromDate);
-    if (actToDate)   list = list.filter(a => a.createdAt.slice(0, 10) <= actToDate);
-    return list;
-  }, [activities, actFromDate, actToDate]);
+  const mergedTimeline = useMemo(() => {
+    const items: Array<{
+      key: string; type: string; icon: string; bg: string; description: string;
+      createdAt: string; userName: string | null; notes: string | null;
+      activityId?: number; callStatus?: string | null; followUpDate?: string | null; isEdited?: boolean | null; dealStage?: string;
+    }> = [];
 
-  const followUpActivities = useMemo(() => (activities || []).filter(a => a.type === "FollowUp").reverse(), [activities]);
+    if (activities) {
+      for (const act of activities) {
+        const st = ACT_STYLE[act.type] || { bg: "#f3f4f6", icon: "•", fg: "#333" };
+        items.push({
+          key: `act-${act.id}`, type: act.type, icon: st.icon, bg: st.bg,
+          description: act.type === "FollowUp" ? "Follow-up Scheduled" : `${act.type} Logged`,
+          createdAt: act.createdAt, userName: act.user?.name || null,
+          notes: act.notes || (act as any).notesDisplay || null,
+          activityId: act.id, callStatus: act.callStatus, followUpDate: act.followUpDate, isEdited: act.isEdited,
+        });
+      }
+    }
+    if (timeline) {
+      for (const ev of timeline) {
+        if (["follow_up","call","whatsapp","email","note","activity"].includes(ev.type)) continue;
+        const ts = TIMELINE_ICONS[ev.type] || { bg: "#f3f4f6", icon: "•" };
+        items.push({
+          key: `tl-${items.length}`, type: ev.type, icon: ts.icon, bg: ts.bg,
+          description: ev.description, createdAt: ev.createdAt, userName: ev.user?.name || null,
+          notes: ev.notes || null, dealStage: ev.dealStage,
+        });
+      }
+    }
+    // Filter by date range
+    let filtered = items;
+    if (actFromDate) filtered = filtered.filter(i => i.createdAt.slice(0, 10) >= actFromDate);
+    if (actToDate) filtered = filtered.filter(i => i.createdAt.slice(0, 10) <= actToDate);
+    // Sort newest first
+    filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return filtered;
+  }, [activities, timeline, actFromDate, actToDate]);
 
   if (isLoading) return <div className="p-8">Loading...</div>;
   if (!contact) return <div className="p-8">Contact not found.</div>;
@@ -227,8 +256,7 @@ export default function LeadDetail() {
     if (!newDealStage) return;
     createDeal.mutate({ data: { contactId, stage: newDealStage as any, title: newDealTitle || null, salesOwnerId: contact.salesOwnerId } }, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListDealsQueryKey({ contactId }) });
-        queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
+        onDealChange(queryClient, undefined, contactId);
         toast({ title: "Deal created" });
         setDealDialogOpen(false); setNewDealTitle("");
       },
@@ -238,17 +266,14 @@ export default function LeadDetail() {
 
   const handleCreateActivity = () => {
     if (!actDealId) { toast({ title: "Select a deal", variant: "destructive" }); return; }
-    const payload = { dealId: Number(actDealId), contactId, type: actType as any, notes: actNotes || null, followUpDate: actFollowUp || null, followUpTime: actFollowUpTime || null, followUpType: actFollowType || null };
+    const payload = { dealId: Number(actDealId), contactId, type: actType as any, notes: actNotes || null, followUpDate: actFollowUp || null, followUpTime: actFollowUpTime || null };
     createActivity.mutate({ data: payload }, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ contactId }) });
-        queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey() });
-        queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
-        queryClient.invalidateQueries({ queryKey: ["upcoming-followup", contactId] });
+        onActivityChange(queryClient, Number(actDealId), contactId);
         toast({ title: "Activity logged" });
         setActDialogOpen(false); setActNotes(""); setActFollowUp(""); setActFollowUpTime("");
       },
-      onError: (e) => {
+      onError: () => {
         toast({ title: "Error logging activity", variant: "destructive" });
       },
     });
@@ -257,9 +282,7 @@ export default function LeadDetail() {
   const handleDelete = () => {
     deleteContact.mutate({ id: contactId }, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: ["category-counts"] });
-        queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
+        onContactChange(queryClient, contactId);
         toast({ title: `"${contact.name}" deleted` });
         setLocation("/leads");
       },
@@ -270,10 +293,7 @@ export default function LeadDetail() {
   const handleInlineEdit = (field: string, value: string) => {
     updateContact.mutate({ id: contactId, data: { [field]: value || null } as any }, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
-        queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
-        queryClient.invalidateQueries({ queryKey: ["category-history", contactId] });
-        queryClient.invalidateQueries({ queryKey: ["category-counts"] });
+        onContactChange(queryClient, contactId);
         toast({ title: `${field} updated` });
         setEditDialogOpen(false);
       },
@@ -287,10 +307,28 @@ export default function LeadDetail() {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
       body: JSON.stringify({ callStatus: "Completed" }),
     }).then(() => {
-      queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ contactId }) });
-      queryClient.invalidateQueries({ queryKey: ["upcoming-followup", contactId] });
-      queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
+      onActivityChange(queryClient, undefined, contactId);
       toast({ title: "Follow-up completed" });
+    });
+  };
+
+  const handleMarkLost = ({ lostReason, lostCategory }: { lostReason: string; lostCategory?: string }) => {
+    setLostSubmitting(true);
+    fetch(`/api/contacts/${contactId}/mark-lost`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
+      body: JSON.stringify({ lostReason, ...(lostCategory ? { lostCategory } : {}) }),
+    }).then(async (res) => {
+      setLostSubmitting(false);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Error", description: err.error || "Failed to mark as Lost", variant: "destructive" });
+        return;
+      }
+      setLostOpen(false);
+      onContactChange(queryClient, contactId);
+      onDealChange(queryClient, undefined, contactId);
+      toast({ title: "Inquiry marked as Lost" });
     });
   };
 
@@ -328,13 +366,13 @@ export default function LeadDetail() {
               <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1 flex-wrap">
                 {contact.companyName && <span className="flex items-center gap-1"><Building className="h-3 w-3" />{contact.companyName}</span>}
                 <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{contact.mobile}</span>
-                {deal && <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${STAGE_COLORS[deal.stage] || "bg-gray-100"}`}>{deal.stage}</span>}
+                {deal && <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${STAGE_BADGE_COLORS[deal.stage] || "bg-gray-100"}`}>{deal.stage}</span>}
                 {upcomingFollowUp && <span className="flex items-center gap-1 text-primary"><Calendar className="h-3 w-3" />{upcomingFollowUp.followUpDate}</span>}
                 {(contact as any).customerSince && <span>Customer since {(contact as any).customerSince}</span>}
               </div>
             </div>
             <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setShowMoveCategory(true)}><FolderTree className="h-3 w-3 mr-1" /> Move</Button>
+              {contact.category !== "My Client" && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setShowMoveCategory(true)}><FolderTree className="h-3 w-3 mr-1" /> Move</Button>}
               <Link href={`/leads/${contactId}/edit`}><Button size="sm" variant="outline" className="h-7 text-xs">Edit</Button></Link>
               <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/40 hover:bg-destructive/10" onClick={() => setDeleteOpen(true)}><Trash2 className="h-3 w-3 mr-1" />Delete</Button>
             </div>
@@ -499,7 +537,7 @@ export default function LeadDetail() {
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground text-xs">Stage</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STAGE_COLORS[deal.stage] || "bg-gray-100"}`}>{deal.stage}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STAGE_BADGE_COLORS[deal.stage] || "bg-gray-100"}`}>{deal.stage}</span>
                   </div>
                   {deal.totalValue != null && (
                     <div className="flex items-center justify-between">
@@ -585,9 +623,11 @@ export default function LeadDetail() {
                 <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => { setActDealId(deal?.id?.toString() || ""); setSchedFuOpen(true); }}>
                   <Calendar className="h-3.5 w-3.5 shrink-0" /> Schedule Follow-up
                 </Button>
-                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setShowMoveCategory(true)}>
-                  <FolderTree className="h-3.5 w-3.5 shrink-0" /> Move Category
-                </Button>
+                {contact.category !== "My Client" && (
+                  <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setShowMoveCategory(true)}>
+                    <FolderTree className="h-3.5 w-3.5 shrink-0" /> Move Category
+                  </Button>
+                )}
                 <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setDealDialogOpen(true)}>
                   <Plus className="h-3.5 w-3.5 shrink-0" /> Create Deal
                 </Button>
@@ -603,6 +643,9 @@ export default function LeadDetail() {
                 <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => copyToClipboard(contact.mobile)}>
                   <Copy className="h-3.5 w-3.5 shrink-0" /> Copy Mobile
                 </Button>
+                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3 text-red-600 border-red-200 hover:bg-red-50" onClick={() => setLostOpen(true)}>
+                  <XCircle className="h-3.5 w-3.5 shrink-0" /> Mark Lost
+                </Button>
                 <Link href={`/leads/${contactId}/edit`} className="sm:col-span-2">
                   <Button size="sm" variant="default" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3">
                     <Pencil className="h-3.5 w-3.5 shrink-0" /> Edit Lead
@@ -611,62 +654,86 @@ export default function LeadDetail() {
               </div>
             </CardContent>
           </Card>
+
+          <MarkLostDialog
+            open={lostOpen}
+            onOpenChange={setLostOpen}
+            onSave={handleMarkLost}
+            saving={lostSubmitting}
+            hideCategory={contact?.category === "My Client" || deals?.some(d => d.stage === "Won")}
+          />
         </div>
 
         {/* ========== RIGHT CONTENT ========== */}
         <div className="lg:col-span-2 space-y-4">
-          {/* Section 4: Complete Follow-up History */}
+          {/* Merged Activity Timeline (replaces Follow-up History + Activity Timeline + Activity Log) */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                <History className="h-3.5 w-3.5" /> Complete Follow-up History
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {followUpActivities.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-4">No follow-up history.</p>
-              ) : (
-                <div className="space-y-2 max-h-80 overflow-y-auto">
-                  {followUpActivities.slice(0, 20).map((act) => (
-                    <div key={act.id} className="flex items-start gap-2 p-2 border rounded text-sm">
-                      <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ backgroundColor: "#ffedd5" }}>🔔</div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs text-muted-foreground">{new Date(act.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</span>
-                          <Badge variant="outline" className={`text-[10px] ${act.callStatus === "Completed" ? "border-green-300 text-green-700" : act.callStatus === "Cancelled" ? "border-red-300 text-red-700" : "border-orange-300 text-orange-700"}`}>{act.callStatus || "Pending"}</Badge>
-                          {act.followUpDate && <span className="text-[10px] text-primary">Due: {act.followUpDate}</span>}
-                        </div>
-                        {act.notes && <p className="text-xs text-muted-foreground mt-0.5 whitespace-pre-wrap line-clamp-2">{act.notes}</p>}
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <ListOrdered className="h-3.5 w-3.5" /> Activity Timeline
+                </CardTitle>
+                <Dialog open={actDialogOpen} onOpenChange={setActDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" /> Log Activity</Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader><DialogTitle>Log Activity</DialogTitle></DialogHeader>
+                    <div className="space-y-4 pt-2">
+                      <div><Label>Deal</Label>
+                        <Select value={actDealId} onValueChange={setActDealId}>
+                          <SelectTrigger><SelectValue placeholder="Select deal" /></SelectTrigger>
+                          <SelectContent>{deals?.map(d => <SelectItem key={d.id} value={d.id.toString()}>{d.title || `Deal #${d.id}`}</SelectItem>)}</SelectContent>
+                        </Select>
                       </div>
+                      <div><Label>Type</Label>
+                        <Select value={actType} onValueChange={setActType}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>{["WhatsApp","Call","Email"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                      <div><Label>Notes</Label><Textarea value={actNotes} onChange={e => setActNotes(e.target.value)} placeholder="Discussion notes..." /></div>
+                      <div><Label>Follow-up Date</Label><Input type="date" value={actFollowUp} onChange={e => setActFollowUp(e.target.value)} /></div>
+                      {actFollowUp && <div><Label>Follow-up Time</Label><Input type="time" value={actFollowUpTime} onChange={e => setActFollowUpTime(e.target.value)} /></div>}
+                      <Button onClick={handleCreateActivity} disabled={createActivity.isPending} className="w-full">Log</Button>
                     </div>
-                  ))}
-                  {followUpActivities.length > 20 && <p className="text-xs text-center text-muted-foreground">+{followUpActivities.length - 20} more</p>}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Section 6: Activity Timeline */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                <ListOrdered className="h-3.5 w-3.5" /> Activity Timeline
-              </CardTitle>
+                  </DialogContent>
+                </Dialog>
+              </div>
             </CardHeader>
             <CardContent>
-              {!timeline || timeline.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-4">No timeline events yet.</p>
+              {/* Quick date filter */}
+              <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                {QUICK_BTNS.map(b => (
+                  <button key={b.key} className={`date-quick-btn ${actQuick === b.key ? "active" : ""}`} onClick={() => applyQuick(b.key)}>
+                    {b.label}
+                  </button>
+                ))}
+                <span className="text-muted-foreground text-xs ml-1">|</span>
+                <Input type="date" value={actFromDate} onChange={e => { setActFromDate(e.target.value); setActQuick("custom"); }} className="h-7 w-36 text-xs" />
+                <span className="text-xs text-muted-foreground">–</span>
+                <Input type="date" value={actToDate} onChange={e => { setActToDate(e.target.value); setActQuick("custom"); }} className="h-7 w-36 text-xs" />
+                {actQuick !== "all" && (
+                  <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full ml-1">
+                    {mergedTimeline.length} shown
+                  </span>
+                )}
+              </div>
+
+              {mergedTimeline.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-6 border rounded-lg bg-card">
+                  {actQuick !== "all" ? "No events in this period." : "No timeline events yet."}
+                </p>
               ) : (
                 <div className="relative pl-6 space-y-0">
-                  {timeline.slice(0, 30).map((event, idx) => {
-                    const tStyle = TIMELINE_ICONS[event.type] || { bg: "#f3f4f6", icon: "•" };
-                    const isLast = idx === Math.min(timeline.length, 30) - 1;
+                  {mergedTimeline.map((event, idx) => {
+                    const isLast = idx === mergedTimeline.length - 1;
                     return (
-                      <div key={idx} className="relative pb-4">
+                      <div key={event.key} className="relative pb-4">
                         {!isLast && <div className="absolute left-[11px] top-5 bottom-0 w-0.5 bg-border" />}
                         <div className="flex items-start gap-3">
-                          <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs z-10 ring-2 ring-background" style={{ backgroundColor: tStyle.bg }}>
-                            {tStyle.icon}
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs z-10 ring-2 ring-background" style={{ backgroundColor: event.bg }}>
+                            {event.icon}
                           </div>
                           <div className="flex-1 min-w-0 pt-0.5">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -674,16 +741,21 @@ export default function LeadDetail() {
                               <span className="text-[10px] text-muted-foreground">
                                 {new Date(event.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                               </span>
+                              {event.type === "FollowUp" && event.callStatus && (
+                                <Badge variant="outline" className={`text-[10px] ${event.callStatus === "Completed" ? "border-green-300 text-green-700" : event.callStatus === "Cancelled" ? "border-red-300 text-red-700" : "border-orange-300 text-orange-700"}`}>
+                                  {event.callStatus}
+                                </Badge>
+                              )}
                             </div>
-                            {event.user && <p className="text-[10px] text-muted-foreground">by {event.user.name}</p>}
+                            {event.userName && <p className="text-[10px] text-muted-foreground">by {event.userName}</p>}
                             {event.notes && <p className="text-xs text-muted-foreground mt-0.5 whitespace-pre-wrap line-clamp-2">{event.notes}</p>}
                             {event.dealStage && <Badge variant="outline" className="text-[10px] mt-0.5">{event.dealStage}</Badge>}
+                            {event.followUpDate && <p className="text-[10px] text-primary mt-0.5">Follow-up: {event.followUpDate}</p>}
                           </div>
                         </div>
                       </div>
                     );
                   })}
-                  {timeline.length > 30 && <p className="text-xs text-center text-muted-foreground">+{timeline.length - 30} more events</p>}
                 </div>
               )}
             </CardContent>
@@ -756,7 +828,7 @@ export default function LeadDetail() {
                     </div>
                     <div className="flex items-center gap-3">
                       {d.totalValue && <span className="text-sm font-medium">₹{Number(d.totalValue).toLocaleString()}</span>}
-                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${STAGE_COLORS[d.stage] || "bg-gray-100"}`}>{d.stage}</span>
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${STAGE_BADGE_COLORS[d.stage] || "bg-gray-100"}`}>{d.stage}</span>
                     </div>
                   </div>
                 </Link>
@@ -799,91 +871,6 @@ export default function LeadDetail() {
             </CardContent>
           </Card>
 
-          {/* Existing Activity Log */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <h2 className="font-semibold text-sm">Activity Log</h2>
-                {actQuick !== "all" && (
-                  <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                    {filteredActivities.length} shown
-                  </span>
-                )}
-              </div>
-              <Dialog open={actDialogOpen} onOpenChange={setActDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" /> Log Activity</Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader><DialogTitle>Log Activity</DialogTitle></DialogHeader>
-                  <div className="space-y-4 pt-2">
-                    <div><Label>Deal</Label>
-                      <Select value={actDealId} onValueChange={setActDealId}>
-                        <SelectTrigger><SelectValue placeholder="Select deal" /></SelectTrigger>
-                        <SelectContent>{deals?.map(d => <SelectItem key={d.id} value={d.id.toString()}>{d.title || `Deal #${d.id}`}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                    <div><Label>Type</Label>
-                      <Select value={actType} onValueChange={setActType}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>{["Call","WhatsApp","Email","Note","FollowUp"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                    <div><Label>Notes</Label><Textarea value={actNotes} onChange={e => setActNotes(e.target.value)} placeholder="Discussion notes..." /></div>
-                    <div><Label>Follow-up Date</Label><Input type="date" value={actFollowUp} onChange={e => setActFollowUp(e.target.value)} /></div>
-                    {actFollowUp && <div><Label>Follow-up Time</Label><Input type="time" value={actFollowUpTime} onChange={e => setActFollowUpTime(e.target.value)} /></div>}
-                    <div><Label>Follow-up Type</Label>
-                      <Select value={actFollowType} onValueChange={setActFollowType}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>{["Call","WhatsApp","Email"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                    <Button onClick={handleCreateActivity} disabled={createActivity.isPending} className="w-full">Log</Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </div>
-
-            {/* Quick date filter */}
-            <div className="flex flex-wrap items-center gap-1.5 mb-3">
-              {QUICK_BTNS.map(b => (
-                <button key={b.key} className={`date-quick-btn ${actQuick === b.key ? "active" : ""}`} onClick={() => applyQuick(b.key)}>
-                  {b.label}
-                </button>
-              ))}
-              <span className="text-muted-foreground text-xs ml-1">|</span>
-              <Input type="date" value={actFromDate} onChange={e => { setActFromDate(e.target.value); setActQuick("custom"); }} className="h-7 w-36 text-xs" />
-              <span className="text-xs text-muted-foreground">–</span>
-              <Input type="date" value={actToDate} onChange={e => { setActToDate(e.target.value); setActQuick("custom"); }} className="h-7 w-36 text-xs" />
-            </div>
-
-            <div className="space-y-2">
-              {filteredActivities.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-6 border rounded-lg bg-card">
-                  {actQuick !== "all" ? "No activities in this period." : "No activities yet."}
-                </p>
-              )}
-              {filteredActivities.map(act => {
-                const style = ACT_STYLE[act.type] || { bg: "#f3f4f6", fg: "#374151", icon: "•" };
-                return (
-                  <div key={act.id} className="flex gap-3 p-3 border rounded-lg bg-card text-sm">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-base" style={{ backgroundColor: style.bg }}>
-                      {style.icon}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: style.bg, color: style.fg }}>{act.type}</span>
-                        <span className="text-xs text-muted-foreground">{new Date(act.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
-                      </div>
-                      {(act as any).notesDisplay && <p className="text-muted-foreground mt-1.5 whitespace-pre-wrap">{(act as any).notesDisplay}</p>}
-                      {!(act as any).notesDisplay && act.notes && <p className="text-muted-foreground mt-1.5">{act.notes}</p>}
-                      {act.followUpDate && <p className="text-xs text-primary mt-1">Follow-up: {act.followUpDate} via {act.followUpType}</p>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
         </div>
       </div>
 
@@ -934,11 +921,7 @@ export default function LeadDetail() {
             <Button onClick={() => {
               updateContact.mutate({ id: contactId, data: { customerComments: editComment || null } as any }, {
                 onSuccess: () => {
-                  queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
-                  queryClient.invalidateQueries({ queryKey: ["comment-history", contactId] });
-                  queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
-                  queryClient.invalidateQueries({ queryKey: ["category-counts"] });
-                  queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
+                  onContactChange(queryClient, contactId);
                   toast({ title: "Customer comments updated" });
                   setCommentDialogOpen(false);
                 },
@@ -980,9 +963,7 @@ export default function LeadDetail() {
         contactIds={[contactId]}
         currentCategory={(contact as any).category}
         onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
-          queryClient.invalidateQueries({ queryKey: ["category-history", contactId] });
-          queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
+          onContactChange(queryClient, contactId);
         }}
       />
 
@@ -992,8 +973,7 @@ export default function LeadDetail() {
         onOpenChange={setUploadDocOpen}
         contactId={contactId}
         onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
-          queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
+          onContactChange(queryClient, contactId);
         }}
       />
     </div>

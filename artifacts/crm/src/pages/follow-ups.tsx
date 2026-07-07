@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { useUpdateActivity, useGetMe, getListActivitiesQueryKey, getListDealsQueryKey } from "@workspace/api-client-react";
+import { useUpdateActivity, useGetMe, useListUsers } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Calendar, ArrowLeft, Phone, PhoneOff, X, Clock, Search, Eye, Pencil, History, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { onActivityChange } from "@/lib/query-invalidation";
 import { CategoryBadge } from "@/components/category-badge";
 
 const PAGE_SIZE = 15;
@@ -79,6 +80,7 @@ export default function FollowUps() {
   const [dateFilter, setDateFilter] = useState("");
   const [showToday, setShowToday] = useState(false);
   const [unitFilter, setUnitFilter] = useState<string | undefined>();
+  const [ownerFilter, setOwnerFilter] = useState<string | undefined>();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -86,6 +88,7 @@ export default function FollowUps() {
   const [page, setPage] = useState(1);
   const { toast } = useToast();
   const { data: me } = useGetMe();
+  const { data: users } = useListUsers();
   const isAdmin = me?.role === "admin";
   const [, setLocation] = useLocation();
 
@@ -102,8 +105,8 @@ export default function FollowUps() {
     followUpType?: string | null; priority?: string | null;
     dealId: number; contactId?: number | null;
     user?: { id: number; name: string } | null;
-    deal?: { id: number; contactId?: number; contact?: { id?: number; name?: string; mobile?: string; companyName?: string; unit?: string; category?: string; customerComments?: string | null; salesOwner?: { name: string } | null } | null } | null;
-    contact?: { id?: number; name?: string; mobile?: string; companyName?: string; unit?: string; category?: string; customerComments?: string | null; salesOwner?: { name: string } | null } | null;
+    deal?: { id: number; contactId?: number; contact?: { id?: number; name?: string; mobile?: string; companyName?: string; unit?: string; category?: string; customerComments?: string | null; salesOwnerId?: number | null; salesOwner?: { name: string } | null } | null } | null;
+    contact?: { id?: number; name?: string; mobile?: string; companyName?: string; unit?: string; category?: string; customerComments?: string | null; salesOwnerId?: number | null; salesOwner?: { name: string } | null } | null;
   };
 
   const { data: activities, isLoading, refetch } = useQuery<FollowUpActivity[]>({
@@ -171,9 +174,7 @@ export default function FollowUps() {
         onSuccess: () => {
           toast({ title: "Follow-up updated" });
           refetch();
-          queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey() });
-          queryClient.invalidateQueries({ queryKey: ["follow-up-activities"] });
-          queryClient.invalidateQueries({ queryKey: getListDealsQueryKey() });
+          onActivityChange(queryClient);
           setEditDialogOpen(false);
         },
         onError: () => {
@@ -191,9 +192,7 @@ export default function FollowUps() {
         onSuccess: () => {
           toast({ title: `Call marked as ${newStatus}` });
           refetch();
-          queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey() });
-          queryClient.invalidateQueries({ queryKey: ["follow-up-activities"] });
-          queryClient.invalidateQueries({ queryKey: getListDealsQueryKey() });
+          onActivityChange(queryClient);
         },
         onError: () => {
           toast({ title: "Failed to update status", variant: "destructive" });
@@ -212,6 +211,14 @@ export default function FollowUps() {
       list = list.filter(a => {
         const contactUnit = a.contact?.unit || a.deal?.contact?.unit;
         return contactUnit === unitFilter;
+      });
+    }
+
+    // Owner filter (admin only)
+    if (isAdmin && ownerFilter) {
+      list = list.filter(a => {
+        const ownerId = a.contact?.salesOwnerId || a.deal?.contact?.salesOwnerId;
+        return ownerId === Number(ownerFilter);
       });
     }
 
@@ -284,7 +291,7 @@ export default function FollowUps() {
     });
 
     return list;
-  }, [activities, unitFilter, searchQuery, statusFilter, typeFilter, sortBy]);
+  }, [activities, unitFilter, ownerFilter, isAdmin, searchQuery, statusFilter, typeFilter, sortBy]);
 
   // Pagination
   const totalPages = Math.ceil(filteredActivities.length / PAGE_SIZE);
@@ -358,6 +365,17 @@ export default function FollowUps() {
                   <SelectItem value="Surat">Surat</SelectItem>
                 </SelectContent>
               </Select>
+              {isAdmin && (
+                <Select value={ownerFilter || "all"} onValueChange={v => { setOwnerFilter(v === "all" ? undefined : v); setPage(1); }}>
+                  <SelectTrigger className="w-[140px] h-9">
+                    <SelectValue placeholder="Sales Person" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sales Persons</SelectItem>
+                    {users?.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
               <Select value={sortBy} onValueChange={setSortBy}>
                 <SelectTrigger className="w-[150px] h-9">
                   <SelectValue />

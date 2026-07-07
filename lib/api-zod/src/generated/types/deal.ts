@@ -21,6 +21,8 @@ export interface Deal {
   /** @nullable */
   totalValue?: number | null;
   /** @nullable */
+  wonAmount?: number | null;
+  /** @nullable */
   lostReason?: DealLostReason;
   /** @nullable */
   notes?: string | null;

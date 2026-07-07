@@ -159,7 +159,7 @@ export default function CategoriesPage() {
 
     const baseHeaders = [
       "Name", "Company", "Mobile", "City", "Unit", "Category", "Assigned To",
-      "Deal Stage", "Last Follow-up", "Next Follow-up",
+      "Deal Stage", "Lost Reason", "Last Follow-up", "Next Follow-up",
       "Latest Comment", "Sales Notes", "Last Updated", "Created Date",
       "Priority", "Lead Source", "Interested Products"
     ];
@@ -211,11 +211,15 @@ export default function CategoriesPage() {
       ];
       const interestedProducts = allProductNames.join(", ");
 
+      const lostReason = (() => {
+        const lostDeal = deals.find((d: any) => d.stage === "Lost");
+        return lostDeal?.lostReason || "";
+      })();
       const row = [
         c.name, c.companyName || "", c.mobile, c.city || "", c.unit || "",
         c.category || "",
         c.salesOwner?.name || "", deals.map((d: any) => d.stage).join(", ") || "",
-        fmtDate(c.lastCallDate), fmtDate(c.nextCallDate),
+        lostReason, fmtDate(c.lastCallDate), fmtDate(c.nextCallDate),
         latestComment, salesNotes, lastUpdated, createdDate,
         priority, leadSource, interestedProducts
       ];
@@ -382,6 +386,7 @@ export default function CategoriesPage() {
                     <TableHead>Assigned To</TableHead>
                     <TableHead>Category</TableHead>
                     <TableHead>Deal Stage</TableHead>
+                    <TableHead>Lost Reason</TableHead>
                     <TableHead>Last Follow-up</TableHead>
                     <TableHead>Next Follow-up</TableHead>
                   </TableRow>
@@ -412,6 +417,14 @@ export default function CategoriesPage() {
                         <TableCell>
                           {c.deals?.length > 0
                             ? c.deals.map((d: any) => d.stage).join(", ")
+                            : "-"}
+                        </TableCell>
+                        <TableCell>
+                          {c.deals?.length > 0
+                            ? (() => {
+                                const lostDeal = c.deals.find((d: any) => d.stage === "Lost");
+                                return lostDeal?.lostReason || "-";
+                              })()
                             : "-"}
                         </TableCell>
                         <TableCell>{c.lastCallDate ? new Date(c.lastCallDate).toLocaleDateString() : "-"}</TableCell>

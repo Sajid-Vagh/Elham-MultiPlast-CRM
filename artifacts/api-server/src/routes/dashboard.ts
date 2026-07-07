@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, dealsTable, usersTable, activitiesTable, CATEGORIES } from "@workspace/db";
+import { db, contactsTable, dealsTable, usersTable, activitiesTable, CATEGORIES, DEAL_STAGES } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 
@@ -34,7 +34,7 @@ router.get("/dashboard/kpi", async (req, res) => {
     const wonDeals = allDeals.filter(d => d.stage === "Won").length;
     const lostDeals = allDeals.filter(d => d.stage === "Lost").length;
     const activeDeals = allDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").length;
-    const totalWonValue = allDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.totalValue ?? 0), 0);
+    const totalWonValue = allDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? d.totalValue ?? 0), 0);
 
     const categoryCounts = CATEGORIES.map(category => ({
       category,
@@ -113,7 +113,7 @@ router.get("/dashboard/sales-performance", async (req, res) => {
       const wonDeals = userDeals.filter(d => d.stage === "Won").length;
       const lostDeals = userDeals.filter(d => d.stage === "Lost").length;
       const activeDeals = userDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").length;
-      const totalWonValue = userDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.totalValue ?? 0), 0);
+      const totalWonValue = userDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? d.totalValue ?? 0), 0);
       const myClients = userContacts.filter(c => c.category === "My Client").length;
       const conversionRate = totalContacts > 0 ? Math.round((myClients / totalContacts) * 100) : 0;
 
@@ -164,9 +164,7 @@ router.get("/dashboard/charts", async (req, res) => {
       value: allContacts.filter(c => c.category === category).length,
     }));
 
-    const dealStageDistribution = [
-      "New", "CL Sent", "Price Given", "Samples Sent", "Samples Received", "PI Sent", "Won", "Lost"
-    ].map(stage => ({
+    const dealStageDistribution = DEAL_STAGES.map(stage => ({
       stage,
       count: allDeals.filter(d => d.stage === stage).length,
     }));

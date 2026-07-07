@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, activitiesTable } from "@workspace/db";
+import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, activitiesTable, DEAL_STAGES, STAGE_PROBS } from "@workspace/db";
 import { eq, and, gte, lte, SQL, count, sum } from "drizzle-orm";
 import { GetPipelineReportQueryParams, GetReportByOwnerQueryParams, GetReportByProductQueryParams, GetReportByCityQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
@@ -34,7 +34,7 @@ router.get("/reports/summary", async (req, res) => {
     const wonDeals = deals.filter(d => d.stage === "Won").length;
     const lostDeals = deals.filter(d => d.stage === "Lost").length;
     const activeDeals = deals.filter(d => d.stage !== "Won" && d.stage !== "Lost").length;
-    const totalWonValue = deals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.totalValue ?? 0), 0);
+    const totalWonValue = deals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? d.totalValue ?? 0), 0);
     const newLeadsThisMonth = contacts.filter(c => c.createdAt >= new Date(monthStart)).length;
 
     // Upcoming follow-ups: Regular Follow up category + pending + followUpDate >= today
@@ -89,15 +89,13 @@ router.get("/reports/pipeline", async (req, res) => {
       }
     }
 
-    const stages = ["New", "CL Sent", "Price Given", "Samples Sent", "Samples Received", "PI Sent", "Won", "Lost"];
-    const probs: Record<string, number> = { "New": 10, "CL Sent": 40, "Price Given": 50, "Samples Sent": 60, "Samples Received": 60, "PI Sent": 90, "Won": 100, "Lost": 0 };
-    const result = stages.map(stage => {
+    const result = DEAL_STAGES.map(stage => {
       const stageDeals = deals.filter(d => d.stage === stage);
       return {
         stage,
         count: stageDeals.length,
         totalValue: stageDeals.reduce((s, d) => s + Number(d.totalValue ?? 0), 0),
-        probability: probs[stage] ?? 0,
+        probability: STAGE_PROBS[stage] ?? 0,
       };
     });
     res.json(result);
@@ -144,7 +142,7 @@ router.get("/reports/by-owner", async (req, res) => {
         wonDeals: userDeals.filter(d => d.stage === "Won").length,
         lostDeals: userDeals.filter(d => d.stage === "Lost").length,
         activeDeals: userDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").length,
-        totalWonValue: userDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.totalValue ?? 0), 0),
+        totalWonValue: userDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? d.totalValue ?? 0), 0),
       };
     });
     res.json(result);
@@ -280,7 +278,7 @@ router.get("/reports/by-city", async (req, res) => {
       s.totalDeals++;
       if (deal.stage === "Won") {
         s.wonDeals++;
-        s.totalWonValue += Number(deal.totalValue ?? 0);
+        s.totalWonValue += Number(deal.wonAmount ?? deal.totalValue ?? 0);
       }
       if (deal.stage === "Lost") {
         s.lostDeals++;

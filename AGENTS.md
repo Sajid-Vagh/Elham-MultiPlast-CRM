@@ -17,18 +17,17 @@
 ### Done
 - Phase 1: notification dedup, badge/popup behavior, lead filter counts, upcoming follow-ups (Regular Follow up + Pending), deal pipeline filter (Regular Follow up only), auto-assignment for sales, role permissions, notes history as JSON array with audit trail, query invalidation fixes across `follow-ups.tsx`, `leads.tsx`, `lead-detail.tsx`, `leads-new.tsx`, `import.tsx`, dashboard uses React Query for category counts.
 - Phase 2: upcoming filter only `callStatus === "Pending"`; `notesToDisplay` returns latest-first; status dropdown (Pending/Completed/Cancelled/No Response) in edit dialog; notes history shown in edit dialog; status badges for all statuses; `pendingCount`, `todayActivities`, `followUpCount` all filter by Pending only; notification dismissal for Cancelled/No Response.
+- Phase 3 Task 1: Merged Activity Timeline — Section 4 (Complete Follow-up History), Section 6 (Activity Timeline), and Section 14 (Activity Log) combined into one modern `Activity Timeline` card in `lead-detail.tsx`. Uses merged data from both activities (for action types) and timeline endpoint (for system events), sorted chronologically with date filter. Log Activity dialog moved inside the merged card header.
 - Phase 3: Customer Comments feature — DB schema, migration, API zod schemas, TypeScript interfaces, backend contacts.ts with comment history tracking, frontend display in lead-detail.tsx, leads.tsx, follow-ups.tsx, deals.tsx. Import Excel comments mapping.
-- Phase 4: Customer 360° Profile — `lead-detail.tsx` rewritten with all 10 sections:
+- Phase 4: Customer 360° Profile — `lead-detail.tsx` rewritten with all 10 sections (now 8 sections after merge):
   1. Customer Information (inline editable via dialogs)
   2. Customer Comments (existing, enhanced)
   3. Upcoming Follow-up (fetch + Complete/Call quick actions)
-  4. Complete Follow-up History (chronological list, newest first)
+  4. Activity Timeline (merged from Follow-up History + Timeline + Activity Log)
   5. Deal Information (show/create deal inline)
-  6. Activity Timeline (combined timeline from activities, category changes, comment updates, deal events)
-  7. Category History (from `category_history` table, with user + timestamp)
-  8. Notification History (from notifications table, related to contact)
-  9. Attachments (future-ready placeholder)
-  10. Quick Actions (Edit Comments, Schedule Follow-up, Move Category, Create Deal, Call, Copy Mobile, Edit Lead)
+  6. Category History (from `category_history` table, with user + timestamp)
+  7. Notification History (from notifications table, related to contact)
+  8. Quick Actions (Edit Comments, Schedule Follow-up, Move Category, Create Deal, Call, Copy Mobile, Edit Lead)
 - Phase 4: Summary Card (sticky header with name, company, mobile, category, deal stage, next follow-up, customer since + Back/Move/Edit/Delete buttons)
 - Phase 4: Category history tracking — automatic insert into `category_history` whenever category changes in PATCH /contacts/:id
 - Phase 4: New backend endpoints:
@@ -37,6 +36,7 @@
   - `GET /contacts/:id/notifications` — notification history for the contact
 - Phase 4: Migration `009_add_category_history.sql` (run against Supabase database)
 - Phase 4: Live synchronization via React Query invalidation — after any update, all related sections automatically refresh
+- Phase 4: Attachments section removed (future-ready placeholder no longer needed)
 
 ### In Progress
 - (none)
@@ -51,19 +51,65 @@
 - Follow-up completion handled via direct fetch PATCH to `/api/activities/:id` to avoid coupling with existing activity update flows.
 - Summary Card uses `sticky top-0 z-10` to stay visible while scrolling.
 - Pre-existing Drizzle ORM type errors in `deals.ts`, `categories.ts`, `contacts.ts` (insert overload matching) not introduced by Phase 4.
+- Merged timeline deduplicates activity events: uses `activities` list (with full activity data) as primary source, skips matching events from timeline endpoint to avoid duplicates.
 
 ## Next Steps
-- Test in dev mode with real data.
-- Verify category changes appear in Category History section.
-- Verify timeline shows all event types correctly.
-- Test follow-up Complete button removes from Upcoming section.
-- Confirm all 10 sections render correctly on mobile.
+- Phase 3 Task 2: Dashboard KPI validation — review Conversion vs Conversion Client metrics, fix duplicates, ensure all KPIs are clickable.
+- Phase 3 Task 3: UI Polish — better spacing, cleaner cards, consistent typography, responsive/mobile layout.
 
 ## Relevant Files
 - `lib/db/src/schema/category_history.ts`: category_history table schema (pre-existing)
 - `lib/db/migrations/009_add_category_history.sql`: migration to create category_history table in DB
 - `artifacts/api-server/src/routes/contacts.ts`: category history tracking, GET endpoints for category-history, timeline, notifications
 - `artifacts/crm/src/pages/lead-detail.tsx`: Customer 360° Profile with all 10 sections + summary card + quick actions
+
+---
+
+# Shared Lead Form + Unit Dropdown + Won Amount Flow
+
+## Goal
+- Reuse a single Lead Form component for both Create Lead and Edit Lead, remove Contact Dates / Additional Contact / state / category from the form, fix the 500 error on Edit Lead, fix the Unit dropdown to only show Himatnagar / Surat / Rajkot / Not Sure, and implement a mandatory Won Amount popup with confirmation before moving a deal to WON.
+
+## Constraints & Preferences
+- Edit Lead and New Lead must share the same form component; any field added/removed from New Lead automatically reflects in Edit Lead.
+- Do not maintain two different forms.
+- The Unit dropdown must contain only: Himatnagar, Surat, Rajkot, Not Sure (remove Unit 1, Unit 2, Unit 3).
+- Unit list should come from a shared constants file, not hardcoded in forms.
+- "Additional Contact", "Contact Dates", "Last Call Date", "Next Call Date" belong to Follow-up/Activity, not Lead editing.
+- Category belongs to "Move Category" dialog, not the edit form.
+- Won Amount popup must appear automatically when deal status changes to WON (drag & drop or manual).
+- Before WON, a confirmation dialog must appear; "No" restores original stage.
+- Won Amount must be mandatory (> 0) and used in Dashboard Won Value / Revenue Reports / Analytics.
+- Deal must move to "My Client" category only after successful save with valid wonAmount.
+- Do not affect Production or Dispatch modules.
+- Do not modify generated files when possible; when necessary, keep changes minimal.
+- No 500 Internal Server Error, no console errors, no TypeScript errors.
+
+## Progress
+### Done
+- Created shared `LeadForm` component at `artifacts/crm/src/components/lead-form.tsx` (Basic Information + Location & Classification only; no Contact Dates, no Additional Contact, no state, no category).
+- Refactored `leads-new.tsx` to use `LeadForm` (75 lines vs 395).
+- Refactored `leads-edit.tsx` to use `LeadForm` with `initialData` from `useGetContact` (92 lines vs 355).
+- Fixed root cause of 500 error: `category` column is `notNull()` with default; edit form was sending `category: null`. Removing `category` from the shared form eliminates this.
+- Fixed duplicate `state`/`category` identifiers in `api-client-react/src/generated/api.schemas.ts` `ContactUpdate` interface.
+- Created shared constant `artifacts/crm/src/lib/units.ts` with `UNITS = ["Himatnagar", "Surat", "Rajkot", "Not Sure"]`.
+- Updated `lead-form.tsx` to import `UNITS` from shared constant.
+- Updated `ContactUnit` const in `api.schemas.ts` to remove Unit 1/2/3.
+- Added "Not Sure" to `ContactUnit` in `api-zod/src/generated/types/contactUnit.ts`.
+- Added `wonAmount` column to `dealsTable` in `lib/db/src/schema/deals.ts` (numeric, nullable).
+- Created migration `lib/db/migrations/018_add_won_amount.sql`.
+- Added `wonAmount` to `CreateDealBody`, `UpdateDealBody`, `CreateDealResponse`, `GetDealResponse`, `UpdateDealResponse` Zod schemas in `api-zod`.
+- Added `wonAmount` to `Deal`, `DealInput`, `DealUpdate` TypeScript types in `api-zod` and `api-client-react`.
+- Updated backend `PATCH /deals/:id` to require `wonAmount > 0` when stage becomes "Won" (instead of `totalValue`).
+- Updated dashboard `totalWonValue` calculation to prefer `wonAmount`, fallback to `totalValue`.
+- Updated frontend `deals.tsx` drag & drop flow: intercept WON drops with confirmation dialog → Won Amount popup → API call with `wonAmount`.
+- Updated `deal-detail.tsx` manual status change to WON to use `wonAmount` instead of `totalValue`.
+
+### In Progress
+- (none)
+
+### Blocked
+- (none)
 
 ---
 

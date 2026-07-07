@@ -12,6 +12,7 @@ import { Plus, Pencil, Trash2, SlidersHorizontal, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { onUserChange } from "@/lib/query-invalidation";
 
 const COLOR_PALETTE = ["#6366f1","#ec4899","#f59e0b","#10b981","#3b82f6","#ef4444","#8b5cf6","#14b8a6","#f97316","#84cc16"];
 
@@ -121,9 +122,18 @@ export default function Settings() {
     toast({ title: val ? "Auto-capitalize turned ON" : "Auto-capitalize turned OFF" });
   };
 
+  // Auto-hide completed deals preference (persisted in localStorage)
+  const [autoHideCompleted, setAutoHideCompleted] = useState(() => localStorage.getItem("crm_autoHideCompleted") === "on");
+
+  const handleAutoHideToggle = (val: boolean) => {
+    setAutoHideCompleted(val);
+    localStorage.setItem("crm_autoHideCompleted", val ? "on" : "off");
+    toast({ title: val ? "Auto-hide completed deals turned ON" : "Auto-hide completed deals turned OFF" });
+  };
+
   const handleCreate = (data: any) => {
     createUser.mutate({ data }, {
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() }); toast({ title: "Team member added" }); setCreateOpen(false); },
+      onSuccess: () => { onUserChange(queryClient); toast({ title: "Team member added" }); setCreateOpen(false); },
       onError: (e: any) => {
         const d = e?.data;
         const details = d?.details;
@@ -143,8 +153,7 @@ export default function Settings() {
     if (!payload.password) delete payload.password;
     updateUser.mutate({ id: editUser.id, data: payload }, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+        onUserChange(queryClient);
         toast({ title: "Updated" });
         setEditUser(null);
       },
@@ -155,7 +164,7 @@ export default function Settings() {
   const handleDelete = (id: number) => {
     if (!confirm("Remove this team member?")) return;
     deleteUser.mutate({ id }, {
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() }); toast({ title: "Removed" }); },
+      onSuccess: () => { onUserChange(queryClient); toast({ title: "Removed" }); },
       onError: () => toast({ title: "Error", variant: "destructive" }),
     });
   };
@@ -188,6 +197,17 @@ export default function Settings() {
               </p>
             </div>
             <Switch checked={autoCap} onCheckedChange={handleAutoCapToggle} />
+          </div>
+          <div className="flex items-center justify-between py-2 border-b">
+            <div>
+              <p className="font-medium text-sm">Auto Hide Completed Deals</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                When enabled, Won and Lost deals remain visible in the pipeline for 24 hours after completion,
+                then are automatically hidden from the pipeline view.
+                Reports and history are unaffected.
+              </p>
+            </div>
+            <Switch checked={autoHideCompleted} onCheckedChange={handleAutoHideToggle} />
           </div>
         </CardContent>
       </Card>

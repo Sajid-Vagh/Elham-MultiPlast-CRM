@@ -15,6 +15,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { onProductionChange } from "@/lib/query-invalidation";
 import { ArrowLeft, Plus, Clock, User } from "lucide-react";
 
 const STATUSES = [
@@ -64,9 +65,7 @@ export default function ProductionOrderDetail() {
         headers: { "Content-Type": "application/json" },
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: PRODUCTION_ORDER_QUERY_KEY(id) });
-      queryClient.invalidateQueries({ queryKey: ["production-orders"] });
-      queryClient.invalidateQueries({ queryKey: ["production-dashboard"] });
+      onProductionChange(queryClient, id);
       setStatusDialogOpen(false);
       setNewStatus("");
       setStatusNotes("");
@@ -83,7 +82,7 @@ export default function ProductionOrderDetail() {
         headers: { "Content-Type": "application/json" },
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: PRODUCTION_ORDER_QUERY_KEY(id) });
+      onProductionChange(queryClient, id);
       setNoteDialogOpen(false);
       setNewNote("");
       toast({ title: "Note added" });

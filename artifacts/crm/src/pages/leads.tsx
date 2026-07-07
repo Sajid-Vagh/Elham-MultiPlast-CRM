@@ -8,10 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Trash2, MessageSquare } from "lucide-react";
+import { Plus, Search, Trash2, MessageSquare, MoreVertical, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { MarkLostDialog } from "@/components/mark-lost-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
+import { onContactChange, onDealChange } from "@/lib/query-invalidation";
 
 export default function Leads() {
   const [search, setSearch] = useState("");
@@ -19,6 +22,12 @@ export default function Leads() {
   const [city, setCity] = useState<string | undefined>();
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
   const [unitFilter, setUnitFilter] = useState<string | undefined>();
+
+  // Mark Lost
+  const [lostContactId, setLostContactId] = useState<number | null>(null);
+  const [lostOpen, setLostOpen] = useState(false);
+  const [lostSubmitting, setLostSubmitting] = useState(false);
+  const [lostIsExistingClient, setLostIsExistingClient] = useState(false);
 
   // Single delete
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -100,9 +109,7 @@ export default function Leads() {
     if (!deleteId) return;
     deleteContact.mutate({ id: deleteId }, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: ["category-counts"] });
-        queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
+        onContactChange(queryClient);
         toast({ title: `"${deleteName}" deleted` });
         setDeleteId(null);
         setSelectedIds(prev => { const n = new Set(prev); n.delete(deleteId); return n; });
@@ -118,9 +125,7 @@ export default function Leads() {
     const ids = Array.from(selectedIds);
     bulkDelete.mutate({ data: { ids } }, {
       onSuccess: (result) => {
-        queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: ["category-counts"] });
-        queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
+        onContactChange(queryClient);
         toast({ title: `${result.deleted} lead${result.deleted !== 1 ? "s" : ""} deleted` });
         setSelectedIds(new Set());
         setBulkDeleteOpen(false);
@@ -129,6 +134,27 @@ export default function Leads() {
         toast({ title: "Bulk delete failed", variant: "destructive" });
         setBulkDeleteOpen(false);
       },
+    });
+  };
+
+  const handleMarkLost = ({ lostReason, lostCategory }: { lostReason: string; lostCategory?: string }) => {
+    if (!lostContactId) return;
+    setLostSubmitting(true);
+    fetch(`/api/contacts/${lostContactId}/mark-lost`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
+      body: JSON.stringify({ lostReason, ...(lostCategory ? { lostCategory } : {}) }),
+    }).then(async (res) => {
+      setLostSubmitting(false);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Error", description: err.error || "Failed to mark as Lost", variant: "destructive" });
+        return;
+      }
+      setLostOpen(false);
+      setLostContactId(null);
+      onContactChange(queryClient);
+      toast({ title: "Inquiry marked as Lost" });
     });
   };
 
@@ -355,18 +381,23 @@ export default function Leads() {
                     </TableCell>
                     <TableCell>{contact.unit || "-"}</TableCell>
                     <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setDeleteId(contact.id);
-                          setDeleteName(contact.name);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 text-muted-foreground transition-all">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => { setLostContactId(contact.id); setLostIsExistingClient(contact.category === "My Client"); setLostOpen(true); }}>
+                            <XCircle className="h-4 w-4 mr-2 text-red-500" />
+                            <span>Mark Lost</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-destructive" onClick={() => { setDeleteId(contact.id); setDeleteName(contact.name); }}>
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            <span>Delete</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 );
@@ -419,6 +450,14 @@ export default function Leads() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <MarkLostDialog
+        open={lostOpen}
+        onOpenChange={(o) => { setLostOpen(o); if (!o) { setLostContactId(null); setLostIsExistingClient(false); } }}
+        onSave={handleMarkLost}
+        saving={lostSubmitting}
+        hideCategory={lostIsExistingClient}
+      />
     </div>
   );
 }

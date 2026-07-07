@@ -212,6 +212,11 @@ router.post("/categories/move", async (req, res) => {
       res.status(400).json({ error: "Invalid category" });
       return;
     }
+    // Block bulk move to "My Client" (only via deal WON flow)
+    if (newCategory === "My Client") {
+      res.status(400).json({ error: "Cannot move contacts to My Client via bulk operation. A deal must be Won first." });
+      return;
+    }
 
     const isAdmin = user.role === "admin";
     const history: any[] = [];
@@ -225,6 +230,9 @@ router.post("/categories/move", async (req, res) => {
 
       if (!contact) continue;
       if (!isAdmin && contact.salesOwnerId !== user.id) continue;
+
+      // EXCEPTION: My Client customers ALWAYS stay in My Clients (admin can override)
+      if (contact.category === "My Client" && !isAdmin) continue;
 
       const prevCategory = contact.category;
 

@@ -279,6 +279,21 @@ router.patch("/contacts/:id", async (req, res) => {
     // Track category changes in category_history
     const newCategory = parsed.data.category;
     if (newCategory !== undefined && newCategory !== oldContact.category) {
+      // My Clients is permanent: only admins can move an existing client out
+      if (oldContact.category === "My Client" && user.role !== "admin") {
+        res.status(400).json({ error: "Cannot move an existing My Client customer to another category. My Clients is permanent." });
+        return;
+      }
+      // Block manual assignment to "My Client" (only allowed via deal WON flow)
+      if (newCategory === "My Client") {
+        const [wonDeal] = await db.select().from(dealsTable).where(
+          and(eq(dealsTable.contactId, contact.id), eq(dealsTable.stage, "Won"))
+        ).limit(1);
+        if (!wonDeal) {
+          res.status(400).json({ error: "Cannot manually set category to My Client. A deal must be Won first." });
+          return;
+        }
+      }
       await db.insert(categoryHistoryTable).values({
         contactId: params.data.id,
         previousCategory: oldContact.category,
@@ -392,6 +407,117 @@ router.patch("/contacts/:id", async (req, res) => {
       return;
     }
     req.log.error({ err }, "Update contact error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /contacts/:id/mark-lost — Mark a contact's inquiry as Lost
+router.post("/contacts/:id/mark-lost", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, id));
+    if (!contact) { res.status(404).json({ error: "Not found" }); return; }
+    if (user.role === "sales" && contact.salesOwnerId !== user.id) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+
+    const { lostReason, lostCategory } = req.body as { lostReason?: string; lostCategory?: string };
+    if (!lostReason) { res.status(400).json({ error: "Lost reason is required" }); return; }
+
+    const now = new Date();
+
+    // Category is optional: if provided (A/B/C) and contact is NOT an existing client, move to that category
+    // Existing My Client customers ALWAYS stay in My Clients regardless of lostCategory value
+    const [wonDeal] = await db.select({ id: dealsTable.id }).from(dealsTable).where(and(eq(dealsTable.contactId, id), eq(dealsTable.stage, "Won"))).limit(1);
+    const hasEverBeenClient = contact.category === "My Client" || !!wonDeal;
+    if (lostCategory && !hasEverBeenClient) {
+      if (!["A", "B", "C"].includes(lostCategory)) {
+        res.status(400).json({ error: "Lost category must be A, B, or C" }); return;
+      }
+      const categoryMap: Record<string, string> = {
+        A: "Category A", B: "Category B", C: "Category C",
+      };
+      const newCategory = categoryMap[lostCategory];
+      const prevCategory = contact.category;
+
+      await db.update(contactsTable).set({ category: newCategory }).where(eq(contactsTable.id, id));
+
+      await db.insert(categoryHistoryTable).values({
+        contactId: id,
+        previousCategory: prevCategory,
+        newCategory,
+        changedBy: user.id,
+        reason: `Lost Inquiry - ${lostReason}`,
+      });
+    }
+
+    // Mark all active deals as Lost
+    const activeDeals = await db
+      .select({ id: dealsTable.id })
+      .from(dealsTable)
+      .where(and(eq(dealsTable.contactId, id), eq(dealsTable.stage, "New")));
+    for (const deal of activeDeals) {
+      await db.update(dealsTable).set({
+        stage: "Lost",
+        lostReason,
+        lostCategory,
+        updatedAt: now,
+        completedAt: now,
+      }).where(eq(dealsTable.id, deal.id));
+    }
+
+    // Complete pending follow-ups
+    const [existingDeal] = await db
+      .select({ id: dealsTable.id })
+      .from(dealsTable)
+      .where(eq(dealsTable.contactId, id))
+      .limit(1);
+    if (existingDeal) {
+      const pendingFollowUps = await db
+        .select({ id: activitiesTable.id })
+        .from(activitiesTable)
+        .where(and(
+          eq(activitiesTable.dealId, existingDeal.id),
+          eq(activitiesTable.type, "FollowUp"),
+          or(eq(activitiesTable.callStatus, "Pending"), isNull(activitiesTable.callStatus)),
+        ));
+      if (pendingFollowUps.length > 0) {
+        const followUpIds = pendingFollowUps.map(f => f.id);
+        await db
+          .update(activitiesTable)
+          .set({ callStatus: "Completed", updatedAt: now, updatedBy: user.id, isEdited: true })
+          .where(inArray(activitiesTable.id, followUpIds));
+        await db
+          .update(notificationsTable)
+          .set({ readAt: now })
+          .where(and(
+            inArray(notificationsTable.relatedId, followUpIds),
+            eq(notificationsTable.relatedType, "activity"),
+            isNull(notificationsTable.readAt),
+          ));
+      }
+    }
+
+    // Create activity for the mark-lost action
+    const dealId = existingDeal?.id;
+    if (dealId) {
+      const ts = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      await db.insert(activitiesTable).values({
+        dealId,
+        contactId: id,
+        type: "Note",
+        notes: `${user.name} marked inquiry as Lost\n\nReason: ${lostReason}\nCategory: ${newCategory}\n\n${ts}`,
+        createdBy: user.id,
+      });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Mark lost error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

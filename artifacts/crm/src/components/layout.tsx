@@ -4,6 +4,7 @@ import { Link, useLocation } from "wouter";
 import { playFollowUpSound, showBrowserNotification } from "@/lib/notification-sound";
 import { useNotificationStream } from "@/lib/use-notification-stream";
 import { NotificationPopup } from "./notification-popup";
+import { onActivityChange } from "@/lib/query-invalidation";
 import {
   LayoutDashboard, Users, Briefcase,
   Package, BarChart, Download, Copy, Settings, LogOut, Bell, X, Clock, Phone, FolderTree, FileText, CheckCheck,

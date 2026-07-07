@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import * as XLSX from "xlsx";
-import { useImportIndiaMart, useImportExcel, useListUsers, getListContactsQueryKey, useGetMe } from "@workspace/api-client-react";
+import { useImportIndiaMart, useImportExcel, useListUsers, useGetMe } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { playNotificationSound, showBrowserNotification } from "@/lib/notification-sound";
@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { onContactChange } from "@/lib/query-invalidation";
 import { CheckCircle, AlertCircle, Upload, FileSpreadsheet, X, Info, Sparkles, ClipboardPaste } from "lucide-react";
 import { Link } from "wouter";
 
@@ -593,9 +594,7 @@ export default function ImportPage() {
     }, {
       onSuccess: (contact) => {
         setImResult({ success: true, contact });
-        queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: ["category-counts"] });
-        queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
+        onContactChange(queryClient);
         setIm(emptyIm);
         setParsePreview(null);
         toast({ title: `Lead "${im.clientName}" imported from IndiaMart` });
@@ -622,7 +621,7 @@ export default function ImportPage() {
   const [pasteOwner, setPasteOwner] = useState("");
   const [pasteResult, setPasteResult] = useState<any>(null);
 
-  const CATEGORY_OPTIONS = ["Regular Follow up", "Category A", "Category B", "Category C", "My Client"] as const;
+  const CATEGORY_OPTIONS = ["Regular Follow up", "Category A", "Category B", "Category C"] as const;
   const [importCategory, setImportCategory] = useState("Regular Follow up");
   const [useCategoryFromFile, setUseCategoryFromFile] = useState(false);
   const [duplicateAction, setDuplicateAction] = useState<"skip" | "update">("skip");
@@ -682,9 +681,7 @@ export default function ImportPage() {
     }, {
       onSuccess: (result) => {
         setExcelResult(result);
-        queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: ["category-counts"] });
-        queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
+        onContactChange(queryClient);
         toast({ title: `Imported ${result.imported} leads into ${(result as any).importedInto}` });
         if (result.imported > 0) {
           playNotificationSound();
@@ -713,9 +710,7 @@ export default function ImportPage() {
     importExcel.mutate({ data: { rows: rowsWithUnit, defaultSalesOwnerId: pasteOwner ? Number(pasteOwner) : null, category: importCategory, duplicateAction } as any }, {
       onSuccess: (result) => {
         setPasteResult(result);
-        queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: ["category-counts"] });
-        queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
+        onContactChange(queryClient);
         toast({ title: `Imported ${result.imported} leads` });
         if (result.imported > 0) {
           playNotificationSound();

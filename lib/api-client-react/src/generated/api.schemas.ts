@@ -64,6 +64,10 @@ export const UserInputUnit = {
   Himatnagar: 'Himatnagar',
   Surat: 'Surat',
   Rajkot: 'Rajkot',
+  'Unit 1': 'Unit 1',
+  'Unit 2': 'Unit 2',
+  'Unit 3': 'Unit 3',
+  'Not Sure': 'Not Sure',
   All: 'All',
 } as const;
 
@@ -120,6 +124,7 @@ export const ContactUnit = {
   Himatnagar: 'Himatnagar',
   Surat: 'Surat',
   Rajkot: 'Rajkot',
+  'Not Sure': 'Not Sure',
 } as const;
 
 /**
@@ -168,6 +173,8 @@ export interface Contact {
   /** @nullable */
   city?: string | null;
   /** @nullable */
+  state?: string | null;
+  /** @nullable */
   address?: string | null;
   /** @nullable */
   unit?: ContactUnit;
@@ -176,11 +183,21 @@ export interface Contact {
   /** @nullable */
   tags?: ContactTags;
   /** @nullable */
+  category?: string | null;
+  /** @nullable */
   inquiryDate?: string | null;
   /** @nullable */
   lastCallDate?: string | null;
   /** @nullable */
   nextCallDate?: string | null;
+  /** @nullable */
+  customerComments?: string | null;
+  /** @nullable */
+  commentUpdatedAt?: string | null;
+  /** @nullable */
+  commentUpdatedBy?: number | null;
+  /** @nullable */
+  commentUpdatedByUser?: User | null;
   createdAt: string;
 }
 
@@ -233,6 +250,8 @@ export interface ContactUpdate {
   /** @nullable */
   city?: string | null;
   /** @nullable */
+  state?: string | null;
+  /** @nullable */
   address?: string | null;
   /** @nullable */
   unit?: string | null;
@@ -241,15 +260,15 @@ export interface ContactUpdate {
   /** @nullable */
   tags?: string | null;
   /** @nullable */
+  category?: string | null;
+  /** @nullable */
   inquiryDate?: string | null;
   /** @nullable */
   lastCallDate?: string | null;
   /** @nullable */
   nextCallDate?: string | null;
   /** @nullable */
-  state?: string | null;
-  /** @nullable */
-  category?: string | null;
+  customerComments?: string | null;
 }
 
 export interface DuplicateGroup {
@@ -346,12 +365,16 @@ export interface Deal {
   /** @nullable */
   totalValue?: number | null;
   /** @nullable */
+  wonAmount?: number | null;
+  /** @nullable */
   lostReason?: DealLostReason;
   /** @nullable */
   notes?: string | null;
   /** @nullable */
   salesOwnerId?: number | null;
   salesOwner?: User;
+  /** @nullable */
+  completedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -379,7 +402,11 @@ export interface DealInput {
   /** @nullable */
   totalValue?: number | null;
   /** @nullable */
+  wonAmount?: number | null;
+  /** @nullable */
   lostReason?: string | null;
+  /** @nullable */
+  lostCategory?: string | null;
   /** @nullable */
   notes?: string | null;
   /** @nullable */
@@ -408,7 +435,11 @@ export interface DealUpdate {
   /** @nullable */
   totalValue?: number | null;
   /** @nullable */
+  wonAmount?: number | null;
+  /** @nullable */
   lostReason?: string | null;
+  /** @nullable */
+  lostCategory?: string | null;
   /** @nullable */
   notes?: string | null;
   /** @nullable */
@@ -686,6 +717,8 @@ contactId?: number;
 salesOwnerId?: number;
 stage?: string;
 unit?: string;
+autoHideCompleted?: string;
+showHiddenCompleted?: string;
 };
 
 export type ListActivitiesParams = {

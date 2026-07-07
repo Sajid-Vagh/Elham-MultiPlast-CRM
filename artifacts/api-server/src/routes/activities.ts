@@ -167,14 +167,9 @@ router.get("/activities", async (req, res) => {
       };
     });
 
-    // Post-filter for upcoming: only Regular Follow up + Pending status
+    // Post-filter for upcoming: only Pending status (any category)
     if (upcoming && !dateFilter) {
-      enriched = enriched.filter(a => {
-        if (a.callStatus !== "Pending") return false;
-        const cat = a.contact?.category;
-        if (cat !== "Regular Follow up") return false;
-        return true;
-      });
+      enriched = enriched.filter(a => a.callStatus === "Pending");
     }
 
     // Post-filter for category

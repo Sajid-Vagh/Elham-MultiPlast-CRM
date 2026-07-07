@@ -4,15 +4,19 @@ import type { DragStartEvent, DragEndEvent } from "@dnd-kit/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { useListDeals, useListUsers, useGetMe, useUpdateDeal, getListDealsQueryKey } from "@workspace/api-client-react";
 import type { Deal, DealStage } from "@workspace/api-client-react";
-import { Link, useSearch, useLocation } from "wouter";
+import { useSearch, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { X } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { X, GripVertical } from "lucide-react";
 import { CategoryBadge } from "@/components/category-badge";
 import { useToast } from "@/hooks/use-toast";
-
-const STAGES = ['New', 'CL Sent', 'Price Given', 'Samples Sent', 'Samples Received', 'PI Sent', 'Won', 'Lost'];
+import { DEAL_STAGES } from "@/lib/deal-stages";
+import DealDetailDrawer from "@/components/deal-detail-drawer";
+import { MarkLostDialog } from "@/components/mark-lost-dialog";
+import { onDealChange } from "@/lib/query-invalidation";
 
 function DraggableCard({ deal, children }: { deal: Deal; children: ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -21,7 +25,10 @@ function DraggableCard({ deal, children }: { deal: Deal; children: ReactNode }) 
   });
   const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
   return (
-    <div ref={setNodeRef} {...listeners} {...attributes} style={style} className={isDragging ? 'opacity-50' : ''}>
+    <div ref={setNodeRef} style={style} className={`relative ${isDragging ? 'opacity-50' : ''}`}>
+      <div {...listeners} {...attributes} className="absolute top-1 right-1 z-10 p-1 rounded cursor-grab active:cursor-grabbing hover:bg-muted transition-colors">
+        <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
+      </div>
       {children}
     </div>
   );
@@ -57,8 +64,14 @@ export default function Deals() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Auto-hide completed deals setting (from localStorage)
+  const autoHideCompleted = localStorage.getItem("crm_autoHideCompleted") === "on";
+  const [showHiddenCompleted, setShowHiddenCompleted] = useState(false);
+
   const { data: deals, isLoading } = useListDeals({
     unit: unitFilter || undefined,
+    autoHideCompleted: autoHideCompleted ? "true" : undefined,
+    showHiddenCompleted: showHiddenCompleted ? "true" : undefined,
   });
   const { data: users } = useListUsers();
 
@@ -67,10 +80,24 @@ export default function Deals() {
   const [activeDeal, setActiveDeal] = useState<Deal | null>(null);
   const [optimisticStages, setOptimisticStages] = useState<Record<number, string>>({});
 
+  const [drawerDealId, setDrawerDealId] = useState<number | null>(null);
+
+  // WON confirmation + amount flow
+  const [confirmWonDeal, setConfirmWonDeal] = useState<{ deal: Deal; oldStage: string } | null>(null);
+  const [wonDealRef, setWonDealRef] = useState<{ deal: Deal; oldStage: string } | null>(null);
+  const [wonAmountOpen, setWonAmountOpen] = useState(false);
+  const [wonAmount, setWonAmount] = useState("");
+  const [wonNotes, setWonNotes] = useState("");
+  const [wonSubmitting, setWonSubmitting] = useState(false);
+
+  // Lost reason flow
+  const [lostDeal, setLostDeal] = useState<Deal | null>(null);
+  const [lostSubmitting, setLostSubmitting] = useState(false);
+
   if (isLoading) return <div className="p-8">Loading...</div>;
 
   const ownerName = ownerFilter ? users?.find(u => u.id === Number(ownerFilter))?.name : null;
-  const visibleStages = stageFilter ? STAGES.filter(s => s === stageFilter) : STAGES;
+  const visibleStages = stageFilter ? DEAL_STAGES.filter(s => s === stageFilter) : DEAL_STAGES;
 
   const filteredDeals = (() => {
     let d = deals || [];
@@ -83,6 +110,95 @@ export default function Deals() {
   })();
 
   const clearFilters = () => navigate("/deals");
+
+  const handleConfirmWonYes = () => {
+    setWonDealRef(confirmWonDeal);
+    setConfirmWonDeal(null);
+    setWonAmount("");
+    setWonNotes("");
+    setWonAmountOpen(true);
+  };
+
+  const handleConfirmWonNo = () => {
+    if (confirmWonDeal) {
+      setOptimisticStages(prev => { const n = { ...prev }; delete n[confirmWonDeal.deal.id]; return n; });
+    }
+    setConfirmWonDeal(null);
+  };
+
+  const handleWonAmountSave = () => {
+    if (!wonDealRef) return;
+    const amount = Number(wonAmount);
+    if (!wonAmount || isNaN(amount) || amount <= 0) {
+      toast({ title: "Validation Error", description: "Won Amount must be greater than 0", variant: "destructive" });
+      return;
+    }
+    setWonSubmitting(true);
+    updateDeal.mutate(
+      {
+        id: wonDealRef.deal.id,
+        data: {
+          stage: "Won" as DealStage,
+          wonAmount: amount,
+          notes: wonNotes || null,
+        },
+      },
+      {
+        onSuccess: () => {
+          setWonSubmitting(false);
+          setWonAmountOpen(false);
+          setWonDealRef(null);
+          setConfirmWonDeal(null);
+          setOptimisticStages(prev => { const n = { ...prev }; delete n[wonDealRef!.deal.id]; return n; });
+          onDealChange(queryClient, wonDealRef!.deal.id, wonDealRef!.deal.contactId);
+          toast({ title: "Deal moved to Won" });
+        },
+        onError: (err: any) => {
+          setWonSubmitting(false);
+          console.error("Won Amount save error:", err);
+          toast({ title: "Error", description: err?.data?.error || err?.message || "Failed to mark deal as Won", variant: "destructive" });
+        },
+      },
+    );
+  };
+
+  const handleWonAmountCancel = () => {
+    if (wonDealRef) {
+      setOptimisticStages(prev => { const n = { ...prev }; delete n[wonDealRef.deal.id]; return n; });
+    }
+    setWonAmountOpen(false);
+    setWonDealRef(null);
+    setConfirmWonDeal(null);
+  };
+
+  const handleLostCancel = () => {
+    if (lostDeal) {
+      setOptimisticStages(prev => { const n = { ...prev }; delete n[lostDeal.id]; return n; });
+    }
+    setLostDeal(null);
+  };
+
+  const handleLostSave = ({ lostReason, lostCategory }: { lostReason: string; lostCategory?: string }) => {
+    if (!lostDeal) return;
+    setLostSubmitting(true);
+    updateDeal.mutate(
+      { id: lostDeal.id, data: { stage: "Lost" as DealStage, lostReason, ...(lostCategory ? { lostCategory } : {}) } },
+      {
+        onSuccess: () => {
+          setLostSubmitting(false);
+          setLostDeal(null);
+          setOptimisticStages(prev => { const n = { ...prev }; delete n[lostDeal!.id]; return n; });
+          onDealChange(queryClient, lostDeal!.id, lostDeal!.contactId);
+          toast({ title: "Deal moved to Lost" });
+        },
+        onError: (err: any) => {
+          setLostSubmitting(false);
+          console.error("Lost save error:", err);
+          toast({ title: "Error", description: err?.data?.error || err?.message || "Failed to mark deal as Lost", variant: "destructive" });
+        },
+      },
+    );
+  };
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveDeal(event.active.data.current?.deal as Deal ?? null);
@@ -99,6 +215,20 @@ export default function Deals() {
     const oldStage = deal?.stage as string | undefined;
     if (!newStage || !deal || !oldStage || oldStage === newStage) return;
 
+    // Intercept WON drops — show confirmation first
+    if (newStage === "Won") {
+      setOptimisticStages(prev => ({ ...prev, [dealId]: "Won" }));
+      setConfirmWonDeal({ deal, oldStage });
+      return;
+    }
+
+    // Intercept LOST drops — show reason dialog first
+    if (newStage === "Lost") {
+      setOptimisticStages(prev => ({ ...prev, [dealId]: "Lost" }));
+      setLostDeal(deal);
+      return;
+    }
+
     setOptimisticStages(prev => ({ ...prev, [dealId]: newStage }));
 
     updateDeal.mutate(
@@ -106,7 +236,7 @@ export default function Deals() {
       {
         onSuccess: () => {
           setOptimisticStages(prev => { const n = { ...prev }; delete n[dealId]; return n; });
-          queryClient.invalidateQueries({ queryKey: getListDealsQueryKey() as any });
+          onDealChange(queryClient, dealId, deal?.contactId);
           toast({ title: `Deal moved to ${newStage}` });
         },
         onError: () => {
@@ -116,6 +246,8 @@ export default function Deals() {
       },
     );
   };
+
+  const dealName = wonDealRef?.deal.contact?.name || wonDealRef?.deal.title || confirmWonDeal?.deal.contact?.name || confirmWonDeal?.deal.title || "";
 
   return (
     <div className="p-8 h-full flex flex-col space-y-4">
@@ -161,6 +293,17 @@ export default function Deals() {
             <SelectItem value="Surat">Surat</SelectItem>
           </SelectContent>
         </Select>
+        {autoHideCompleted && (
+          <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showHiddenCompleted}
+              onChange={(e) => setShowHiddenCompleted(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300"
+            />
+            <span className="text-muted-foreground">Show Hidden Completed Deals</span>
+          </label>
+        )}
       </div>
 
       {(stageFilter || (isAdmin && ownerFilter) || unitFilter) && (
@@ -189,41 +332,42 @@ export default function Deals() {
                   <div className="flex-1 overflow-y-auto space-y-3">
                     {stageDeals.map(deal => (
                       <DraggableCard key={deal.id} deal={deal}>
-                        <Link href={`/deals/${deal.id}`}>
-                          <div className="bg-card p-3 rounded shadow-sm border cursor-pointer hover:border-primary transition-colors">
-                            <div className="flex justify-between items-start mb-2">
-                              <span className="font-medium text-sm line-clamp-1">{deal.title || deal.contact?.name || 'Unnamed Deal'}</span>
-                              {deal.salesOwner && (
-                                <div
-                                  className="w-2.5 h-2.5 rounded-full shrink-0"
-                                  style={{ backgroundColor: deal.salesOwner.colorCode || '#ccc' }}
-                                  title={deal.salesOwner.name}
-                                />
-                              )}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {deal.contact?.companyName || deal.contact?.name}
-                            </div>
-                            <div className="mt-1 flex items-center gap-2">
-                              <CategoryBadge category={deal.contact?.category} />
-                              {deal.contact?.unit && (
-                                <Badge variant="outline" className="text-[10px] px-1.5 py-0">{deal.contact.unit}</Badge>
-                              )}
-                            </div>
-                            {deal.contact?.customerComments && (
-                              <div className="mt-1 text-xs text-muted-foreground line-clamp-1" title={deal.contact.customerComments}>
-                                {deal.contact.customerComments.length > 80
-                                  ? `${deal.contact.customerComments.slice(0, 80)}...`
-                                  : deal.contact.customerComments}
-                              </div>
-                            )}
-                            {deal.totalValue != null && (
-                              <div className="mt-2 text-xs font-semibold text-primary">
-                                ₹{Number(deal.totalValue).toLocaleString()}
-                              </div>
+                        <div
+                          className="bg-card p-3 rounded shadow-sm border cursor-pointer hover:border-primary transition-colors"
+                          onClick={() => setDrawerDealId(deal.id)}
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <span className="font-medium text-sm line-clamp-1">{deal.contact?.name || deal.title || 'Unnamed'}</span>
+                            {deal.salesOwner && (
+                              <div
+                                className="w-2.5 h-2.5 rounded-full shrink-0"
+                                style={{ backgroundColor: deal.salesOwner.colorCode || '#ccc' }}
+                                title={deal.salesOwner.name}
+                              />
                             )}
                           </div>
-                        </Link>
+                          {deal.contact?.companyName && (
+                            <div className="text-xs text-muted-foreground mb-1">{deal.contact.companyName}</div>
+                          )}
+                          <div className="mt-1 flex items-center gap-2">
+                            <CategoryBadge category={deal.contact?.category} />
+                            {deal.contact?.unit && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0">{deal.contact.unit}</Badge>
+                            )}
+                          </div>
+                          {deal.contact?.customerComments && (
+                            <div className="mt-1 text-xs text-muted-foreground line-clamp-1" title={deal.contact.customerComments}>
+                              {deal.contact.customerComments.length > 80
+                                ? `${deal.contact.customerComments.slice(0, 80)}...`
+                                : deal.contact.customerComments}
+                            </div>
+                          )}
+                          {deal.totalValue != null && (
+                            <div className="mt-2 text-xs font-semibold text-primary">
+                              ₹{Number(deal.totalValue).toLocaleString()}
+                            </div>
+                          )}
+                        </div>
                       </DraggableCard>
                     ))}
                     {stageDeals.length === 0 && (
@@ -238,12 +382,14 @@ export default function Deals() {
             {activeDeal ? (
               <div className="bg-card p-3 rounded shadow-sm border opacity-80 rotate-[2deg] shadow-xl">
                 <div className="flex justify-between items-start mb-2">
-                  <span className="font-medium text-sm line-clamp-1">{activeDeal.title || activeDeal.contact?.name || 'Unnamed Deal'}</span>
+                  <span className="font-medium text-sm line-clamp-1">{activeDeal.contact?.name || activeDeal.title || 'Unnamed'}</span>
                   {activeDeal.salesOwner && (
                     <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: activeDeal.salesOwner.colorCode || '#ccc' }} />
                   )}
                 </div>
-                <div className="text-xs text-muted-foreground">{activeDeal.contact?.companyName || activeDeal.contact?.name}</div>
+                {activeDeal.contact?.companyName && (
+                  <div className="text-xs text-muted-foreground mb-1">{activeDeal.contact.companyName}</div>
+                )}
                 <div className="mt-1 flex items-center gap-2">
                   <CategoryBadge category={activeDeal.contact?.category} />
                   {activeDeal.contact?.unit && (
@@ -261,6 +407,80 @@ export default function Deals() {
           </DragOverlay>
         </DndContext>
       </div>
+
+      {/* Confirm Deal Won Dialog */}
+      <Dialog open={!!confirmWonDeal} onOpenChange={(open) => { if (!open) handleConfirmWonNo(); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Deal Won</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to mark this deal as WON? This action will move the deal to My Clients and include it in revenue reports.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={handleConfirmWonNo}>No</Button>
+            <Button onClick={handleConfirmWonYes}>Yes</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Won Amount Dialog */}
+      <Dialog open={wonAmountOpen} onOpenChange={(open) => { if (!open) handleWonAmountCancel(); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Won Amount</DialogTitle>
+            <DialogDescription>
+              Enter the deal amount for <strong>{dealName}</strong>
+              {(wonDealRef?.deal.contact?.companyName) && <> — {wonDealRef.deal.contact.companyName}</>}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <label className="text-sm font-medium">
+                Won Amount <span className="text-destructive">*</span>
+              </label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Enter amount"
+                value={wonAmount}
+                onChange={(e) => setWonAmount(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Notes (optional)</label>
+              <Input
+                placeholder="Additional notes"
+                value={wonNotes}
+                onChange={(e) => setWonNotes(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={handleWonAmountCancel} disabled={wonSubmitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleWonAmountSave} disabled={wonSubmitting}>
+              {wonSubmitting ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <MarkLostDialog
+        open={!!lostDeal}
+        onOpenChange={(open) => { if (!open) handleLostCancel(); }}
+        onSave={handleLostSave}
+        saving={lostSubmitting}
+        hideCategory={lostDeal?.contact?.category === "My Client"}
+      />
+      <DealDetailDrawer
+        dealId={drawerDealId}
+        open={drawerDealId !== null}
+        onClose={() => setDrawerDealId(null)}
+      />
     </div>
   );
 }

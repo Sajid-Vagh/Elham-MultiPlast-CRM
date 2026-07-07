@@ -13,6 +13,7 @@ import { Textarea } from "./ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
+import { onContactChange } from "@/lib/query-invalidation";
 
 interface MoveCategoryDialogProps {
   open: boolean;
@@ -57,7 +58,7 @@ export function MoveCategoryDialog({
         title: "Category Updated",
         description: `${data.moved} record(s) moved to ${selectedCategory}`,
       });
-      queryClient.invalidateQueries();
+      onContactChange(queryClient);
       onSuccess?.();
       onOpenChange(false);
     } catch (err) {
@@ -79,7 +80,7 @@ export function MoveCategoryDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 py-2">
-          {CATEGORIES.filter(c => c !== currentCategory).map((cat) => (
+          {CATEGORIES.filter(c => c !== currentCategory && c !== "My Client").map((cat) => (
             <button
               key={cat}
               type="button"

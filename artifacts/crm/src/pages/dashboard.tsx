@@ -8,6 +8,7 @@ import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
+import { STAGE_CHART_COLORS } from "@/lib/deal-stages";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, PieChart, Pie, Legend, Tooltip, LineChart, Line } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -26,11 +27,6 @@ function todayStr(): string {
 }
 
 const PIE_COLORS = ["#f87171","#fb923c","#fbbf24","#a3e635","#34d399","#60a5fa","#a78bfa","#f472b6","#94a3b8"];
-const STAGE_COLORS: Record<string, string> = {
-  "New": "#94a3b8", "CL Sent": "#60a5fa", "Price Given": "#fbbf24",
-  "Samples Sent": "#fb923c", "Samples Received": "#a78bfa", "PI Sent": "#818cf8",
-  "Won": "#4ade80", "Lost": "#f87171",
-};
 
 export default function Dashboard() {
   const [followUpDateFilter, setFollowUpDateFilter] = useState("");
@@ -199,46 +195,54 @@ export default function Dashboard() {
 
       {/* ── KPI CARDS ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{isAdmin ? "Total Leads" : "My Leads"}</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{kpi?.totalContacts ?? 0}</div>
-            <p className="text-xs text-muted-foreground">+{kpi?.newLeadsThisMonth ?? 0} this month</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{isAdmin ? "Active Deals" : "My Deals"}</CardTitle>
-            <Briefcase className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{kpi?.activeDeals ?? 0}</div>
-            <p className="text-xs text-muted-foreground">{kpi?.wonDeals} won / {kpi?.lostDeals} lost</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Won Value</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">₹{kpi?.totalWonValue?.toLocaleString() || 0}</div>
-            <p className="text-xs text-muted-foreground">{kpi?.totalDeals} total deals</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Win Rate / Conversion</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{kpi?.totalDeals ? Math.round((kpi.wonDeals / kpi.totalDeals) * 100) : 0}%</div>
-            <p className="text-xs text-muted-foreground">{kpi?.conversionRate ?? 0}% conversion to client</p>
-          </CardContent>
-        </Card>
+        <Link href="/leads" className="block">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">{isAdmin ? "Total Leads" : "My Leads"}</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{kpi?.totalContacts ?? 0}</div>
+              <p className="text-xs text-muted-foreground">+{kpi?.newLeadsThisMonth ?? 0} this month</p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/deals" className="block">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">{isAdmin ? "Active Deals" : "My Deals"}</CardTitle>
+              <Briefcase className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{kpi?.activeDeals ?? 0}</div>
+              <p className="text-xs text-muted-foreground">{kpi?.wonDeals} won / {kpi?.lostDeals} lost</p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/deals" className="block">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Won Value</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">₹{kpi?.totalWonValue?.toLocaleString() || 0}</div>
+              <p className="text-xs text-muted-foreground">{kpi?.totalDeals} total deals</p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/reports" className="block">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Win Rate / Conversion</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{kpi?.totalDeals ? Math.round((kpi.wonDeals / kpi.totalDeals) * 100) : 0}%</div>
+              <p className="text-xs text-muted-foreground">{kpi?.conversionRate ?? 0}% conversion to client</p>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       {/* Today's Calls + Additional KPI mini-cards */}
@@ -470,7 +474,7 @@ export default function Dashboard() {
                   <Tooltip />
                   <Bar dataKey="count" name="Deals" radius={[3,3,0,0]}>
                     {charts.dealStageDistribution.map((entry, i) => (
-                      <Cell key={i} fill={STAGE_COLORS[entry.stage] || PIE_COLORS[i % PIE_COLORS.length]} />
+                      <Cell key={i} fill={STAGE_CHART_COLORS[entry.stage] || PIE_COLORS[i % PIE_COLORS.length]} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -701,7 +705,7 @@ export default function Dashboard() {
                       className="h-full rounded-full"
                       style={{
                         width: `${(stageCount.count / maxCount) * 100}%`,
-                        backgroundColor: STAGE_COLORS[stageCount.stage] || "#3b82f6",
+                        backgroundColor: STAGE_CHART_COLORS[stageCount.stage] || "#3b82f6",
                       }}
                     />
                   </div>
