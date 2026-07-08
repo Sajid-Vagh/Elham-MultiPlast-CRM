@@ -64,14 +64,12 @@ export default function Deals() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Auto-hide completed deals setting (from localStorage)
-  const autoHideCompleted = localStorage.getItem("crm_autoHideCompleted") === "on";
-  const [showHiddenCompleted, setShowHiddenCompleted] = useState(false);
+  // Show completed deals for 24 hours setting (from localStorage)
+  const showCompletedFor24Hours = localStorage.getItem("crm_showCompletedFor24Hours") === "on";
 
   const { data: deals, isLoading } = useListDeals({
     unit: unitFilter || undefined,
-    autoHideCompleted: autoHideCompleted ? "true" : undefined,
-    showHiddenCompleted: showHiddenCompleted ? "true" : undefined,
+    showCompletedFor24Hours: showCompletedFor24Hours ? "true" : undefined,
   });
   const { data: users } = useListUsers();
 
@@ -293,17 +291,6 @@ export default function Deals() {
             <SelectItem value="Surat">Surat</SelectItem>
           </SelectContent>
         </Select>
-        {autoHideCompleted && (
-          <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={showHiddenCompleted}
-              onChange={(e) => setShowHiddenCompleted(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300"
-            />
-            <span className="text-muted-foreground">Show Hidden Completed Deals</span>
-          </label>
-        )}
       </div>
 
       {(stageFilter || (isAdmin && ownerFilter) || unitFilter) && (
@@ -474,7 +461,7 @@ export default function Deals() {
         onOpenChange={(open) => { if (!open) handleLostCancel(); }}
         onSave={handleLostSave}
         saving={lostSubmitting}
-        hideCategory={lostDeal?.contact?.category === "My Client"}
+        hideCategory={lostDeal?.contact?.isMyClient}
       />
       <DealDetailDrawer
         dealId={drawerDealId}

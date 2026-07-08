@@ -20,7 +20,6 @@ export type UserRole = typeof UserRole[keyof typeof UserRole];
 export const UserRole = {
   admin: 'admin',
   sales: 'sales',
-  production_manager: 'production_manager',
 } as const;
 
 export type UserUnit = typeof UserUnit[keyof typeof UserUnit];
@@ -54,7 +53,6 @@ export type UserInputRole = typeof UserInputRole[keyof typeof UserInputRole];
 export const UserInputRole = {
   admin: 'admin',
   sales: 'sales',
-  production_manager: 'production_manager',
 } as const;
 
 export type UserInputUnit = typeof UserInputUnit[keyof typeof UserInputUnit];
@@ -64,10 +62,6 @@ export const UserInputUnit = {
   Himatnagar: 'Himatnagar',
   Surat: 'Surat',
   Rajkot: 'Rajkot',
-  'Unit 1': 'Unit 1',
-  'Unit 2': 'Unit 2',
-  'Unit 3': 'Unit 3',
-  'Not Sure': 'Not Sure',
   All: 'All',
 } as const;
 
@@ -86,7 +80,6 @@ export type UserUpdateRole = typeof UserUpdateRole[keyof typeof UserUpdateRole];
 export const UserUpdateRole = {
   admin: 'admin',
   sales: 'sales',
-  production_manager: 'production_manager',
 } as const;
 
 export interface UserUpdate {
@@ -124,7 +117,6 @@ export const ContactUnit = {
   Himatnagar: 'Himatnagar',
   Surat: 'Surat',
   Rajkot: 'Rajkot',
-  'Not Sure': 'Not Sure',
 } as const;
 
 /**
@@ -173,8 +165,6 @@ export interface Contact {
   /** @nullable */
   city?: string | null;
   /** @nullable */
-  state?: string | null;
-  /** @nullable */
   address?: string | null;
   /** @nullable */
   unit?: ContactUnit;
@@ -183,21 +173,12 @@ export interface Contact {
   /** @nullable */
   tags?: ContactTags;
   /** @nullable */
-  category?: string | null;
-  /** @nullable */
   inquiryDate?: string | null;
   /** @nullable */
   lastCallDate?: string | null;
   /** @nullable */
   nextCallDate?: string | null;
-  /** @nullable */
-  customerComments?: string | null;
-  /** @nullable */
-  commentUpdatedAt?: string | null;
-  /** @nullable */
-  commentUpdatedBy?: number | null;
-  /** @nullable */
-  commentUpdatedByUser?: User | null;
+  isMyClient: boolean;
   createdAt: string;
 }
 
@@ -250,8 +231,6 @@ export interface ContactUpdate {
   /** @nullable */
   city?: string | null;
   /** @nullable */
-  state?: string | null;
-  /** @nullable */
   address?: string | null;
   /** @nullable */
   unit?: string | null;
@@ -260,15 +239,15 @@ export interface ContactUpdate {
   /** @nullable */
   tags?: string | null;
   /** @nullable */
-  category?: string | null;
-  /** @nullable */
   inquiryDate?: string | null;
   /** @nullable */
   lastCallDate?: string | null;
   /** @nullable */
   nextCallDate?: string | null;
   /** @nullable */
-  customerComments?: string | null;
+  state?: string | null;
+  /** @nullable */
+  category?: string | null;
 }
 
 export interface DuplicateGroup {
@@ -365,14 +344,14 @@ export interface Deal {
   /** @nullable */
   totalValue?: number | null;
   /** @nullable */
-  wonAmount?: number | null;
-  /** @nullable */
   lostReason?: DealLostReason;
   /** @nullable */
   notes?: string | null;
   /** @nullable */
   salesOwnerId?: number | null;
   salesOwner?: User;
+  /** @nullable */
+  wonAmount?: number | null;
   /** @nullable */
   completedAt?: string | null;
   createdAt: string;
@@ -402,15 +381,13 @@ export interface DealInput {
   /** @nullable */
   totalValue?: number | null;
   /** @nullable */
-  wonAmount?: number | null;
-  /** @nullable */
   lostReason?: string | null;
-  /** @nullable */
-  lostCategory?: string | null;
   /** @nullable */
   notes?: string | null;
   /** @nullable */
   salesOwnerId?: number | null;
+  /** @nullable */
+  wonAmount?: number | null;
 }
 
 export type DealUpdateStage = typeof DealUpdateStage[keyof typeof DealUpdateStage];
@@ -435,15 +412,13 @@ export interface DealUpdate {
   /** @nullable */
   totalValue?: number | null;
   /** @nullable */
-  wonAmount?: number | null;
-  /** @nullable */
   lostReason?: string | null;
-  /** @nullable */
-  lostCategory?: string | null;
   /** @nullable */
   notes?: string | null;
   /** @nullable */
   salesOwnerId?: number | null;
+  /** @nullable */
+  wonAmount?: number | null;
 }
 
 export interface DealProduct {
@@ -717,8 +692,7 @@ contactId?: number;
 salesOwnerId?: number;
 stage?: string;
 unit?: string;
-autoHideCompleted?: string;
-showHiddenCompleted?: string;
+showCompletedFor24Hours?: string;
 };
 
 export type ListActivitiesParams = {
@@ -738,6 +712,7 @@ city?: string;
 export type GetReportByOwnerParams = {
 month?: string;
 unit?: string;
+salesOwnerId?: number;
 };
 
 export type GetReportByProductParams = {

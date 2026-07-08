@@ -29,7 +29,7 @@ export const LoginResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -51,7 +51,7 @@ export const GetMeResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -65,7 +65,7 @@ export const ListUsersResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -80,7 +80,7 @@ export const CreateUserBody = zod.object({
   "name": zod.string(),
   "username": zod.string(),
   "password": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All'])
 })
@@ -89,7 +89,7 @@ export const CreateUserResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -104,7 +104,7 @@ export const GetUserResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -119,7 +119,7 @@ export const UpdateUserBody = zod.object({
   "name": zod.string().optional(),
   "username": zod.string().optional(),
   "password": zod.string().nullish(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']).optional(),
+  "role": zod.enum(['admin', 'sales']).optional(),
   "colorCode": zod.string().optional(),
   "unit": zod.string().optional()
 })
@@ -128,7 +128,7 @@ export const UpdateUserResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -165,7 +165,7 @@ export const ListContactsResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -219,7 +219,7 @@ export const CreateContactResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -254,7 +254,7 @@ export const GetContactResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -310,7 +310,7 @@ export const UpdateContactResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -366,7 +366,7 @@ export const ListDuplicateContactsResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -406,7 +406,7 @@ export const SearchContactByMobileResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -548,8 +548,7 @@ export const ListDealsQueryParams = zod.object({
   "salesOwnerId": zod.coerce.number().optional(),
   "stage": zod.coerce.string().optional(),
   "unit": zod.coerce.string().optional(),
-  "autoHideCompleted": zod.coerce.string().optional(),
-  "showHiddenCompleted": zod.coerce.string().optional()
+  "showCompletedFor24Hours": zod.coerce.string().optional()
 })
 
 export const ListDealsResponseItem = zod.object({
@@ -566,7 +565,7 @@ export const ListDealsResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -588,7 +587,6 @@ export const ListDealsResponseItem = zod.object({
   "stage": zod.enum(['New', 'CL Sent', 'Price Given', 'Samples Sent', 'Samples Received', 'PI Sent', 'Won', 'Lost']),
   "probability": zod.number(),
   "totalValue": zod.number().nullish(),
-  "wonAmount": zod.number().nullish(),
   "lostReason": zod.union([zod.literal('Price High'),zod.literal('Need Different Shape'),zod.literal('No Requirement Now'),zod.literal('Quality Problem'),zod.literal('Transport Concern'),zod.literal('Need in Future'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "notes": zod.string().nullish(),
   "salesOwnerId": zod.number().nullish(),
@@ -596,14 +594,17 @@ export const ListDealsResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
 }).optional(),
+  "completedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional()
 })
+export const ListDealsResponse = zod.array(ListDealsResponseItem)
+
 
 /**
  * @summary Create a deal
@@ -614,11 +615,10 @@ export const CreateDealBody = zod.object({
   "stage": zod.enum(['New', 'CL Sent', 'Price Given', 'Samples Sent', 'Samples Received', 'PI Sent', 'Won', 'Lost']),
   "probability": zod.number().optional(),
   "totalValue": zod.number().nullish(),
-  "wonAmount": zod.number().nullish(),
   "lostReason": zod.string().nullish(),
-  "lostCategory": zod.string().nullish(),
   "notes": zod.string().nullish(),
-  "salesOwnerId": zod.number().nullish()
+  "salesOwnerId": zod.number().nullish(),
+  "wonAmount": zod.number().nullish()
 })
 
 export const CreateDealResponse = zod.object({
@@ -635,7 +635,7 @@ export const CreateDealResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -651,21 +651,22 @@ export const CreateDealResponse = zod.object({
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "wonAmount": zod.number().nullish()
 }).optional(),
   "title": zod.string().nullish(),
   "stage": zod.enum(['New', 'CL Sent', 'Price Given', 'Samples Sent', 'Samples Received', 'PI Sent', 'Won', 'Lost']),
   "probability": zod.number(),
   "totalValue": zod.number().nullish(),
-  "wonAmount": zod.number().nullish(),
   "lostReason": zod.union([zod.literal('Price High'),zod.literal('Need Different Shape'),zod.literal('No Requirement Now'),zod.literal('Quality Problem'),zod.literal('Transport Concern'),zod.literal('Need in Future'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "notes": zod.string().nullish(),
+  "wonAmount": zod.number().nullish(),
   "salesOwnerId": zod.number().nullish(),
   "salesOwner": zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -674,6 +675,7 @@ export const CreateDealResponse = zod.object({
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional()
 })
+
 
 export const GetDealParams = zod.object({
   "id": zod.coerce.number()
@@ -693,7 +695,7 @@ export const GetDealResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -715,15 +717,15 @@ export const GetDealResponse = zod.object({
   "stage": zod.enum(['New', 'CL Sent', 'Price Given', 'Samples Sent', 'Samples Received', 'PI Sent', 'Won', 'Lost']),
   "probability": zod.number(),
   "totalValue": zod.number().nullish(),
-  "wonAmount": zod.number().nullish(),
   "lostReason": zod.union([zod.literal('Price High'),zod.literal('Need Different Shape'),zod.literal('No Requirement Now'),zod.literal('Quality Problem'),zod.literal('Transport Concern'),zod.literal('Need in Future'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "notes": zod.string().nullish(),
+  "wonAmount": zod.number().nullish(),
   "salesOwnerId": zod.number().nullish(),
   "salesOwner": zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -732,6 +734,7 @@ export const GetDealResponse = zod.object({
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional()
 })
+
 
 export const UpdateDealParams = zod.object({
   "id": zod.coerce.number()
@@ -742,11 +745,10 @@ export const UpdateDealBody = zod.object({
   "stage": zod.enum(['New', 'CL Sent', 'Price Given', 'Samples Sent', 'Samples Received', 'PI Sent', 'Won', 'Lost']).optional(),
   "probability": zod.number().optional(),
   "totalValue": zod.number().nullish(),
-  "wonAmount": zod.number().nullish(),
   "lostReason": zod.string().nullish(),
-  "lostCategory": zod.string().nullish(),
   "notes": zod.string().nullish(),
-  "salesOwnerId": zod.number().nullish()
+  "salesOwnerId": zod.number().nullish(),
+  "wonAmount": zod.number().nullish()
 })
 
 export const UpdateDealResponse = zod.object({
@@ -763,7 +765,7 @@ export const UpdateDealResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -785,15 +787,15 @@ export const UpdateDealResponse = zod.object({
   "stage": zod.enum(['New', 'CL Sent', 'Price Given', 'Samples Sent', 'Samples Received', 'PI Sent', 'Won', 'Lost']),
   "probability": zod.number(),
   "totalValue": zod.number().nullish(),
-  "wonAmount": zod.number().nullish(),
   "lostReason": zod.union([zod.literal('Price High'),zod.literal('Need Different Shape'),zod.literal('No Requirement Now'),zod.literal('Quality Problem'),zod.literal('Transport Concern'),zod.literal('Need in Future'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "notes": zod.string().nullish(),
+  "wonAmount": zod.number().nullish(),
   "salesOwnerId": zod.number().nullish(),
   "salesOwner": zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -899,7 +901,7 @@ export const ListActivitiesResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -941,7 +943,7 @@ export const CreateActivityResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -982,7 +984,7 @@ export const UpdateActivityResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()
@@ -1040,7 +1042,8 @@ export const GetPipelineReportResponse = zod.array(GetPipelineReportResponseItem
  */
 export const GetReportByOwnerQueryParams = zod.object({
   "month": zod.coerce.string().optional(),
-  "unit": zod.coerce.string().optional()
+  "unit": zod.coerce.string().optional(),
+  "salesOwnerId": zod.coerce.number().optional()
 })
 
 export const GetReportByOwnerResponseItem = zod.object({
@@ -1165,7 +1168,7 @@ export const ImportIndiaMartResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "username": zod.string(),
-  "role": zod.enum(['admin', 'sales', 'production_manager']),
+  "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "createdAt": zod.string().optional()

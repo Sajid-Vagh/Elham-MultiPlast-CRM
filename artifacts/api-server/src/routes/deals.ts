@@ -53,14 +53,20 @@ router.get("/deals", async (req, res) => {
       const regularFollowUpIds = new Set(contacts.filter(c => c.category === "Regular Follow up").map(c => c.id));
       resultDeals = deals.filter(d => regularFollowUpIds.has(d.contactId));
 
-      // Auto-hide Won/Lost deals completed > 24h ago, unless showHiddenCompleted is set
-      if (params.success && params.data.autoHideCompleted === "true" && params.data.showHiddenCompleted !== "true") {
-        const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-        resultDeals = resultDeals.filter(d => {
-          if (d.stage !== "Won" && d.stage !== "Lost") return true;
-          if (!d.completedAt) return true;
-          return new Date(d.completedAt) >= cutoff;
-        });
+      // Show/hide completed deals in pipeline based on setting
+      // showCompletedFor24Hours=true → keep Won/Lost visible for 24h
+      // showCompletedFor24Hours=not true → hide Won/Lost immediately
+      if (params.success) {
+        if (params.data.showCompletedFor24Hours === "true") {
+          const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          resultDeals = resultDeals.filter(d => {
+            if (d.stage !== "Won" && d.stage !== "Lost") return true;
+            if (!d.completedAt) return true;
+            return new Date(d.completedAt) >= cutoff;
+          });
+        } else {
+          resultDeals = resultDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost");
+        }
       }
     }
 
@@ -89,6 +95,7 @@ router.post("/deals", async (req, res) => {
   const probability = parsed.data.probability ?? STAGE_PROBS[parsed.data.stage] ?? 10;
   try {
     // Auto-set contact category to Regular Follow up when creating a deal
+    // Regular Follow Up is a temporary working state while a deal is active
     const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, parsed.data.contactId));
     if (contact && contact.category !== "Regular Follow up") {
       await db.update(contactsTable).set({ category: "Regular Follow up" }).where(eq(contactsTable.id, contact.id));
@@ -178,6 +185,7 @@ router.patch("/deals/:id", async (req, res) => {
 
         await db.update(contactsTable).set({
           category: "My Client",
+          isMyClient: true,
           customerSince: now,
           customerStatus: "Active",
           lastPurchaseDate: now.split("T")[0],
@@ -198,31 +206,41 @@ router.patch("/deals/:id", async (req, res) => {
       }
     }
 
-    // Auto-set contact category when deal is Lost (with lostCategory)
-    // EXCEPTION: Existing My Client customers ALWAYS stay in My Clients
-    if (deal.stage === "Lost" && parsed.data.lostCategory) {
+    // Restore contact category when deal is Lost
+    // EXCEPTION: My Clients is permanent — restore existing My Clients back to My Client
+    if (deal.stage === "Lost") {
       const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
-      // Check if this customer has EVER been a client (convertedToClient, any Won deal, or currently in My Clients)
-      const [anyWonDeal] = await db.select({ id: dealsTable.id }).from(dealsTable).where(and(eq(dealsTable.contactId, deal.contactId), eq(dealsTable.stage, "Won"))).limit(1);
-      const hasEverBeenClient = contact?.category === "My Client" || !!anyWonDeal || oldDeal.convertedToClient;
-      if (contact && !hasEverBeenClient) {
-        const prevCategory = contact.category;
-        const categoryMap: Record<string, string> = {
-          A: "Category A",
-          B: "Category B",
-          C: "Category C",
-        };
-        const newCategory = categoryMap[parsed.data.lostCategory] || "Category C";
+      if (contact) {
+        if (contact.isMyClient && contact.category !== "My Client") {
+          // Restore existing My Client back to My Client category
+          await db.update(contactsTable).set({ category: "My Client" }).where(eq(contactsTable.id, contact.id));
+          await db.insert(categoryHistoryTable).values({
+            contactId: contact.id,
+            previousCategory: contact.category,
+            newCategory: "My Client",
+            changedBy: user.id,
+            reason: "Deal Lost - Restored to My Client",
+          });
+        } else if (parsed.data.lostCategory) {
+          // Move to Category A/B/C based on lostCategory value
+          const prevCategory = contact.category;
+          const categoryMap: Record<string, string> = {
+            A: "Category A",
+            B: "Category B",
+            C: "Category C",
+          };
+          const newCategory = categoryMap[parsed.data.lostCategory] || "Category C";
 
-        await db.update(contactsTable).set({ category: newCategory }).where(eq(contactsTable.id, contact.id));
+          await db.update(contactsTable).set({ category: newCategory }).where(eq(contactsTable.id, contact.id));
 
-        await db.insert(categoryHistoryTable).values({
-          contactId: contact.id,
-          previousCategory: prevCategory,
-          newCategory,
-          changedBy: user.id,
-          reason: `Deal Lost - Categorized as ${newCategory}`,
-        });
+          await db.insert(categoryHistoryTable).values({
+            contactId: contact.id,
+            previousCategory: prevCategory,
+            newCategory,
+            changedBy: user.id,
+            reason: `Deal Lost - Categorized as ${newCategory}`,
+          });
+        }
       }
     }
 

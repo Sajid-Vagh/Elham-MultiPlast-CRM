@@ -231,8 +231,8 @@ router.post("/categories/move", async (req, res) => {
       if (!contact) continue;
       if (!isAdmin && contact.salesOwnerId !== user.id) continue;
 
-      // EXCEPTION: My Client customers ALWAYS stay in My Clients (admin can override)
-      if (contact.category === "My Client" && !isAdmin) continue;
+      // EXCEPTION: Permanent My Clients (isMyClient=true) ALWAYS stay in My Clients
+      if (contact.isMyClient) continue;
 
       const prevCategory = contact.category;
 

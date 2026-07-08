@@ -388,7 +388,7 @@ export default function Leads() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => { setLostContactId(contact.id); setLostIsExistingClient(contact.category === "My Client"); setLostOpen(true); }}>
+                           <DropdownMenuItem onClick={() => { setLostContactId(contact.id); setLostIsExistingClient(contact.isMyClient); setLostOpen(true); }}>
                             <XCircle className="h-4 w-4 mr-2 text-red-500" />
                             <span>Mark Lost</span>
                           </DropdownMenuItem>

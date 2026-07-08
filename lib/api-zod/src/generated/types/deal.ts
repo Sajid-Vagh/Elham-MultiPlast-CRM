@@ -21,14 +21,16 @@ export interface Deal {
   /** @nullable */
   totalValue?: number | null;
   /** @nullable */
-  wonAmount?: number | null;
-  /** @nullable */
   lostReason?: DealLostReason;
   /** @nullable */
   notes?: string | null;
   /** @nullable */
   salesOwnerId?: number | null;
   salesOwner?: User;
+  /** @nullable */
+  wonAmount?: number | null;
+  /** @nullable */
+  completedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
 }

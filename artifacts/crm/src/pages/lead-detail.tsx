@@ -372,7 +372,7 @@ export default function LeadDetail() {
               </div>
             </div>
             <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-              {contact.category !== "My Client" && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setShowMoveCategory(true)}><FolderTree className="h-3 w-3 mr-1" /> Move</Button>}
+              {contact.category !== "My Client" && !contact.isMyClient && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setShowMoveCategory(true)}><FolderTree className="h-3 w-3 mr-1" /> Move</Button>}
               <Link href={`/leads/${contactId}/edit`}><Button size="sm" variant="outline" className="h-7 text-xs">Edit</Button></Link>
               <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/40 hover:bg-destructive/10" onClick={() => setDeleteOpen(true)}><Trash2 className="h-3 w-3 mr-1" />Delete</Button>
             </div>
@@ -623,7 +623,7 @@ export default function LeadDetail() {
                 <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => { setActDealId(deal?.id?.toString() || ""); setSchedFuOpen(true); }}>
                   <Calendar className="h-3.5 w-3.5 shrink-0" /> Schedule Follow-up
                 </Button>
-                {contact.category !== "My Client" && (
+                {contact.category !== "My Client" && !contact.isMyClient && (
                   <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setShowMoveCategory(true)}>
                     <FolderTree className="h-3.5 w-3.5 shrink-0" /> Move Category
                   </Button>
@@ -660,7 +660,7 @@ export default function LeadDetail() {
             onOpenChange={setLostOpen}
             onSave={handleMarkLost}
             saving={lostSubmitting}
-            hideCategory={contact?.category === "My Client" || deals?.some(d => d.stage === "Won")}
+            hideCategory={contact?.isMyClient || deals?.some(d => d.stage === "Won")}
           />
         </div>
 

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, usersTable, CATEGORIES } from "@workspace/db";
-import { eq, or } from "drizzle-orm";
+import { db, contactsTable, dealsTable, usersTable, CATEGORIES } from "@workspace/db";
+import { eq, or, and } from "drizzle-orm";
 import { z } from "zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -128,6 +128,10 @@ router.post("/import/excel", async (req, res) => {
 
     if (existing.length > 0) {
       if (duplicateAction === "update") {
+        // My Clients is permanent: preserve category for permanent clients
+        if (contactCategory !== "My Client" && existing[0]!.isMyClient) {
+          contactCategory = "My Client";
+        }
         try {
           await db.update(contactsTable)
             .set({

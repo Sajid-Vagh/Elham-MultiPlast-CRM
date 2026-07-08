@@ -302,7 +302,7 @@ export default function DealDetail() {
     <div className="p-8 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
         <Link href="/deals"><Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-1" /> Back</Button></Link>
-        {contact && contact.category !== "My Client" && (
+        {contact && contact.category !== "My Client" && !contact.isMyClient && (
           <Button variant="outline" size="sm" onClick={() => setShowMoveCategory(true)}>
             <FolderTree className="h-4 w-4 mr-1" /> Move
           </Button>
@@ -644,7 +644,7 @@ export default function DealDetail() {
         onOpenChange={setLostOpen}
         onSave={handleLostSave}
         saving={lostSubmitting}
-        hideCategory={contact?.category === "My Client"}
+        hideCategory={contact?.isMyClient}
       />
 
       {/* Regular Follow-up Dialog */}

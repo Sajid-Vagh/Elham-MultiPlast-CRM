@@ -58,38 +58,38 @@ export function MarkLostDialog({ open, onOpenChange, onSave, saving, hideCategor
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleCancel(); }}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{hideCategory ? "Mark Deal as Lost" : "Mark Inquiry as Lost"}</DialogTitle>
-          <DialogDescription>{hideCategory ? "Select the reason for losing this deal. Your customer remains in My Clients." : "Select the reason and category for this lost inquiry."}</DialogDescription>
+          <DialogDescription className="text-xs sm:text-sm">{hideCategory ? "Select the reason for losing this deal. Your customer remains in My Clients." : "Select the reason and category for this lost inquiry."}</DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-2">
+        <div className="space-y-3 py-1 sm:space-y-4 sm:py-2">
           <div>
-            <Label>Lost Reason <span className="text-destructive">*</span></Label>
+            <Label className="text-xs sm:text-sm">Lost Reason <span className="text-destructive">*</span></Label>
             <Select value={lostReason} onValueChange={(v) => { setLostReason(v); if (v !== "Other") setLostOtherRemarks(""); }}>
-              <SelectTrigger className="mt-1"><SelectValue placeholder="Select reason" /></SelectTrigger>
-              <SelectContent>{LOST_REASONS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+              <SelectTrigger className="mt-1 text-xs sm:text-sm"><SelectValue placeholder="Select reason" /></SelectTrigger>
+              <SelectContent className="max-h-48">{LOST_REASONS.map(r => <SelectItem key={r} value={r} className="text-xs sm:text-sm">{r}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           {lostReason === "Other" && (
             <div>
-              <Label>Remarks <span className="text-destructive">*</span></Label>
-              <Textarea className="mt-1" placeholder="Please specify the reason..." value={lostOtherRemarks} onChange={e => setLostOtherRemarks(e.target.value)} />
+              <Label className="text-xs sm:text-sm">Remarks <span className="text-destructive">*</span></Label>
+              <Textarea className="mt-1 text-xs sm:text-sm" placeholder="Please specify the reason..." value={lostOtherRemarks} onChange={e => setLostOtherRemarks(e.target.value)} rows={3} />
             </div>
           )}
           {!hideCategory && (
             <div>
-              <Label>Move To Category <span className="text-destructive">*</span></Label>
+              <Label className="text-xs sm:text-sm">Move To Category <span className="text-destructive">*</span></Label>
               <Select value={lostCategory} onValueChange={setLostCategory}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Select category" /></SelectTrigger>
-                <SelectContent>{CATEGORY_OPTIONS.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
+                <SelectTrigger className="mt-1 text-xs sm:text-sm"><SelectValue placeholder="Select category" /></SelectTrigger>
+                <SelectContent className="max-h-48">{CATEGORY_OPTIONS.map(c => <SelectItem key={c.value} value={c.value} className="text-xs sm:text-sm">{c.label}</SelectItem>)}</SelectContent>
               </Select>
             </div>
           )}
         </div>
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={handleCancel} disabled={saving}>Cancel</Button>
-          <Button onClick={handleSave} disabled={saving || !lostReason || (!hideCategory && !lostCategory) || (lostReason === "Other" && !lostOtherRemarks.trim())}>
+        <DialogFooter className="gap-2 flex-col-reverse sm:flex-row">
+          <Button variant="outline" onClick={handleCancel} disabled={saving} className="w-full sm:w-auto text-xs sm:text-sm">Cancel</Button>
+          <Button onClick={handleSave} disabled={saving || !lostReason || (!hideCategory && !lostCategory) || (lostReason === "Other" && !lostOtherRemarks.trim())} className="w-full sm:w-auto text-xs sm:text-sm">
             {saving ? "Saving..." : "Save"}
           </Button>
         </DialogFooter>

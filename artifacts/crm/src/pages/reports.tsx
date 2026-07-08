@@ -1,8 +1,9 @@
 import { useState, useCallback } from "react";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import {
   useGetPipelineReport, useGetReportByOwner, useGetReportByCity,
-  useGetReportByProduct, useGetReportSummary, useListUsers, useGetReportLostReasons, useGetMe
+  useGetReportByProduct, useListUsers, useGetReportLostReasons, useGetMe
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -67,9 +68,22 @@ export default function Reports() {
   const [activeTab, setActiveTab] = useState("pipeline");
   const [, navigate] = useLocation();
 
-  const { data: summary } = useGetReportSummary();
+  const { data: summary } = useQuery({
+    queryKey: ["report-summary", ownerId, unit],
+    queryFn: async () => {
+      const token = localStorage.getItem("crm_token");
+      const params = new URLSearchParams();
+      if (ownerId) params.set("ownerId", ownerId);
+      if (unit) params.set("unit", unit);
+      const res = await fetch(`/api/reports/summary?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) return null;
+      return res.json() as Promise<{ totalContacts: number; totalDeals: number; wonDeals: number; lostDeals: number; activeDeals: number; totalWonValue: number; upcomingFollowUps: number; newLeadsThisMonth?: number }>;
+    },
+    enabled: !!localStorage.getItem("crm_token"),
+    staleTime: 30_000,
+  });
   const { data: pipeline } = useGetPipelineReport({ month: month || undefined, unit: unit || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
-  const { data: byOwner } = useGetReportByOwner({ month: month || undefined, unit: unit || undefined });
+  const { data: byOwner } = useGetReportByOwner({ month: month || undefined, unit: unit || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
   const { data: byCity } = useGetReportByCity({ month: month || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
   const { data: byProduct } = useGetReportByProduct({ month: month || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
   const { data: lostReasons } = useGetReportLostReasons({ month: month || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined, unit: unit || undefined });

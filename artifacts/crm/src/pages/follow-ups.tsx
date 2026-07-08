@@ -110,7 +110,7 @@ export default function FollowUps() {
   };
 
   const { data: activities, isLoading, refetch } = useQuery<FollowUpActivity[]>({
-    queryKey: ["follow-up-activities", activeDate, isAdmin ? "all" : me?.id],
+    queryKey: ["follow-up-activities", activeDate, isAdmin ? ownerFilter || "all" : me?.id, unitFilter],
     queryFn: async () => {
       const token = localStorage.getItem("crm_token");
       const params = new URLSearchParams();
@@ -121,6 +121,9 @@ export default function FollowUps() {
       }
       if (!isAdmin && me?.id) {
         params.set("userId", String(me.id));
+      }
+      if (isAdmin && ownerFilter) {
+        params.set("userId", ownerFilter);
       }
       const res = await fetch(`/api/activities?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },

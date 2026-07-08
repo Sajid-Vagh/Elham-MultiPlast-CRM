@@ -16,11 +16,7 @@ export interface DealInput {
   /** @nullable */
   totalValue?: number | null;
   /** @nullable */
-  wonAmount?: number | null;
-  /** @nullable */
   lostReason?: string | null;
-  /** @nullable */
-  lostCategory?: string | null;
   /** @nullable */
   notes?: string | null;
   /** @nullable */

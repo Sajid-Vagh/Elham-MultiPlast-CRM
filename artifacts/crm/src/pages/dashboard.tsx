@@ -58,9 +58,12 @@ export default function Dashboard() {
   });
 
   const { data: salesPerformance } = useQuery({
-    queryKey: ["dashboard-sales-performance"],
+    queryKey: ["dashboard-sales-performance", ownerFilter, unitFilter],
     queryFn: async () => {
-      const res = await fetch("/api/dashboard/sales-performance", { headers: authHeaders });
+      const params = new URLSearchParams();
+      if (ownerFilter) params.set("ownerId", ownerFilter);
+      if (unitFilter) params.set("unit", unitFilter);
+      const res = await fetch(`/api/dashboard/sales-performance?${params.toString()}`, { headers: authHeaders });
       if (!res.ok) return [];
       return res.json() as Promise<{
         userId: number; userName: string; colorCode: string; unit: string;
@@ -74,9 +77,12 @@ export default function Dashboard() {
   });
 
   const { data: charts } = useQuery({
-    queryKey: ["dashboard-charts"],
+    queryKey: ["dashboard-charts", ownerFilter, unitFilter],
     queryFn: async () => {
-      const res = await fetch("/api/dashboard/charts", { headers: authHeaders });
+      const params = new URLSearchParams();
+      if (ownerFilter) params.set("ownerId", ownerFilter);
+      if (unitFilter) params.set("unit", unitFilter);
+      const res = await fetch(`/api/dashboard/charts?${params.toString()}`, { headers: authHeaders });
       if (!res.ok) return null;
       return res.json() as Promise<{
         categoryDistribution: { name: string; value: number }[];
@@ -89,9 +95,12 @@ export default function Dashboard() {
   });
 
   const { data: recentActivities } = useQuery({
-    queryKey: ["dashboard-recent-activities"],
+    queryKey: ["dashboard-recent-activities", ownerFilter, unitFilter],
     queryFn: async () => {
-      const res = await fetch("/api/dashboard/recent-activities", { headers: authHeaders });
+      const params = new URLSearchParams();
+      if (ownerFilter) params.set("ownerId", ownerFilter);
+      if (unitFilter) params.set("unit", unitFilter);
+      const res = await fetch(`/api/dashboard/recent-activities?${params.toString()}`, { headers: authHeaders });
       if (!res.ok) return [];
       return res.json() as Promise<{
         id: number; type: string; notes: string | null; callStatus: string | null;
@@ -104,25 +113,18 @@ export default function Dashboard() {
   });
 
   const { data: dueContacts } = useQuery({
-    queryKey: ["due-contacts"],
+    queryKey: ["due-contacts", ownerFilter, unitFilter],
     queryFn: async () => {
-      const res = await fetch("/api/contacts?followUpDue=true", { headers: authHeaders });
+      const params = new URLSearchParams();
+      params.set("followUpDue", "true");
+      if (ownerFilter) params.set("salesOwnerId", ownerFilter);
+      if (unitFilter) params.set("unit", unitFilter);
+      const res = await fetch(`/api/contacts?${params.toString()}`, { headers: authHeaders });
       if (!res.ok) return [];
       return res.json() as Promise<any[]>;
     },
     enabled: !!token,
     staleTime: 30_000,
-  });
-
-  const { data: allContacts } = useQuery({
-    queryKey: ["all-contacts-counts"],
-    queryFn: async () => {
-      const res = await fetch("/api/contacts", { headers: authHeaders });
-      if (!res.ok) return [];
-      return res.json() as Promise<any[]>;
-    },
-    enabled: !!token,
-    staleTime: 60_000,
   });
 
   const { data: users } = useQuery({
@@ -137,14 +139,8 @@ export default function Dashboard() {
   });
 
   const unitStats = useMemo(() => {
-    if (!allContacts) return {};
-    const stats: Record<string, number> = {};
-    for (const c of allContacts) {
-      const u = c.unit || "Unassigned";
-      stats[u] = (stats[u] || 0) + 1;
-    }
-    return stats;
-  }, [allContacts]);
+    return kpi?.unitStats ?? {};
+  }, [kpi]);
 
   const overdueList = useMemo(() => {
     if (!dueContacts) return [];

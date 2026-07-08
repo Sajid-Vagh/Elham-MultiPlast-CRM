@@ -122,13 +122,13 @@ export default function Settings() {
     toast({ title: val ? "Auto-capitalize turned ON" : "Auto-capitalize turned OFF" });
   };
 
-  // Auto-hide completed deals preference (persisted in localStorage)
-  const [autoHideCompleted, setAutoHideCompleted] = useState(() => localStorage.getItem("crm_autoHideCompleted") === "on");
+  // Show completed deals for 24 hours preference (persisted in localStorage)
+  const [showCompletedFor24Hours, setShowCompletedFor24Hours] = useState(() => localStorage.getItem("crm_showCompletedFor24Hours") === "on");
 
-  const handleAutoHideToggle = (val: boolean) => {
-    setAutoHideCompleted(val);
-    localStorage.setItem("crm_autoHideCompleted", val ? "on" : "off");
-    toast({ title: val ? "Auto-hide completed deals turned ON" : "Auto-hide completed deals turned OFF" });
+  const handleShowCompletedToggle = (val: boolean) => {
+    setShowCompletedFor24Hours(val);
+    localStorage.setItem("crm_showCompletedFor24Hours", val ? "on" : "off");
+    toast({ title: val ? "Show completed deals for 24 hours turned ON" : "Show completed deals for 24 hours turned OFF" });
   };
 
   const handleCreate = (data: any) => {
@@ -200,14 +200,14 @@ export default function Settings() {
           </div>
           <div className="flex items-center justify-between py-2 border-b">
             <div>
-              <p className="font-medium text-sm">Auto Hide Completed Deals</p>
+              <p className="font-medium text-sm">Show Completed Deals in Pipeline for 24 Hours</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 When enabled, Won and Lost deals remain visible in the pipeline for 24 hours after completion,
-                then are automatically hidden from the pipeline view.
+                then are automatically hidden. When disabled, completed deals are removed from the pipeline immediately.
                 Reports and history are unaffected.
               </p>
             </div>
-            <Switch checked={autoHideCompleted} onCheckedChange={handleAutoHideToggle} />
+            <Switch checked={showCompletedFor24Hours} onCheckedChange={handleShowCompletedToggle} />
           </div>
         </CardContent>
       </Card>

@@ -373,7 +373,7 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
         onOpenChange={setLostOpen}
         onSave={handleLostSave}
         saving={lostSubmitting}
-        hideCategory={contact?.category === "My Client"}
+        hideCategory={contact?.isMyClient}
       />
 
       {/* Regular Follow-up Dialog */}

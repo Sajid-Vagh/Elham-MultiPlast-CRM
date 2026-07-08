@@ -6,6 +6,17 @@ import { getUserFromRequest } from "./auth";
 
 const router: IRouter = Router();
 
+function filterContactsByUnit(contacts: any[], unit: string | undefined) {
+  if (!unit) return contacts;
+  return contacts.filter(c => c.unit === unit);
+}
+
+function filterDealsByUnit(deals: any[], unit: string | undefined, allContacts: any[]) {
+  if (!unit) return deals;
+  const contactIds = new Set(allContacts.filter(c => c.unit === unit).map(c => c.id));
+  return deals.filter(d => contactIds.has(d.contactId));
+}
+
 async function restrictToOwnDeals(req: any, params: any) {
   const user = await getUserFromRequest(req);
   if (!user) { return null; }
@@ -21,10 +32,23 @@ router.get("/reports/summary", async (req, res) => {
     let contacts = await db.select().from(contactsTable);
     let deals = await db.select().from(dealsTable);
 
+    // Apply role-based scoping + query filters
+    const ownerId = req.query.ownerId ? Number(req.query.ownerId) : undefined;
+    const unitFilter = req.query.unit as string | undefined;
+
     if (user && user.role === "sales" && !user.canViewAllReports) {
       contacts = contacts.filter(c => c.salesOwnerId === user.id);
       deals = deals.filter(d => d.salesOwnerId === user.id);
+    } else if (user?.role === "admin" && ownerId) {
+      contacts = contacts.filter(c => c.salesOwnerId === ownerId);
+      deals = deals.filter(d => d.salesOwnerId === ownerId);
     }
+
+    if (unitFilter) {
+      contacts = filterContactsByUnit(contacts, unitFilter);
+      deals = filterDealsByUnit(deals, unitFilter, contacts);
+    }
+
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const today = now.toISOString().split("T")[0]!;
@@ -34,7 +58,7 @@ router.get("/reports/summary", async (req, res) => {
     const wonDeals = deals.filter(d => d.stage === "Won").length;
     const lostDeals = deals.filter(d => d.stage === "Lost").length;
     const activeDeals = deals.filter(d => d.stage !== "Won" && d.stage !== "Lost").length;
-    const totalWonValue = deals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? d.totalValue ?? 0), 0);
+    const totalWonValue = deals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? 0), 0);
     const newLeadsThisMonth = contacts.filter(c => c.createdAt >= new Date(monthStart)).length;
 
     // Upcoming follow-ups: Regular Follow up category + pending + followUpDate >= today
@@ -114,7 +138,15 @@ router.get("/reports/by-owner", async (req, res) => {
     if (authUser.role === "sales" && !authUser.canViewAllReports) {
       deals = deals.filter(d => d.salesOwnerId === authUser.id);
     }
+    // Apply owner filter from query if admin
+    const salesOwnerId = req.query.salesOwnerId ? Number(req.query.salesOwnerId) : undefined;
+    if (authUser.role === "admin" && salesOwnerId) {
+      deals = deals.filter(d => d.salesOwnerId === salesOwnerId);
+    }
+
     const users = await db.select().from(usersTable);
+    // Only include sales users
+    const salesUsers = users.filter(u => u.role === "admin" || u.role === "sales");
 
     if (params.success) {
       if (params.data.month) {
@@ -132,7 +164,7 @@ router.get("/reports/by-owner", async (req, res) => {
       }
     }
 
-    const result = users.map(u => {
+    const result = salesUsers.map(u => {
       const userDeals = deals.filter(d => d.salesOwnerId === u.id);
       return {
         userId: u.id,
@@ -142,7 +174,7 @@ router.get("/reports/by-owner", async (req, res) => {
         wonDeals: userDeals.filter(d => d.stage === "Won").length,
         lostDeals: userDeals.filter(d => d.stage === "Lost").length,
         activeDeals: userDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").length,
-        totalWonValue: userDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? d.totalValue ?? 0), 0),
+        totalWonValue: userDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? 0), 0),
       };
     });
     res.json(result);
@@ -235,7 +267,7 @@ router.get("/reports/lost-reasons", async (req, res) => {
       if (!reasonMap.has(reason)) reasonMap.set(reason, { count: 0, totalValue: 0 });
       const s = reasonMap.get(reason)!;
       s.count++;
-      s.totalValue += Number(deal.totalValue ?? 0);
+      s.totalValue += Number(deal.wonAmount ?? 0);
     }
 
     const result = Array.from(reasonMap.entries())
@@ -278,11 +310,11 @@ router.get("/reports/by-city", async (req, res) => {
       s.totalDeals++;
       if (deal.stage === "Won") {
         s.wonDeals++;
-        s.totalWonValue += Number(deal.wonAmount ?? deal.totalValue ?? 0);
+        s.totalWonValue += Number(deal.wonAmount ?? 0);
       }
       if (deal.stage === "Lost") {
         s.lostDeals++;
-        s.totalLostValue += Number(deal.totalValue ?? 0);
+        s.totalLostValue += Number(deal.wonAmount ?? 0);
       }
     }
 

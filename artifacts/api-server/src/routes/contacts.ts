@@ -279,9 +279,9 @@ router.patch("/contacts/:id", async (req, res) => {
     // Track category changes in category_history
     const newCategory = parsed.data.category;
     if (newCategory !== undefined && newCategory !== oldContact.category) {
-      // My Clients is permanent: only admins can move an existing client out
-      if (oldContact.category === "My Client" && user.role !== "admin") {
-        res.status(400).json({ error: "Cannot move an existing My Client customer to another category. My Clients is permanent." });
+      // My Clients is permanent: customers with isMyClient=true can never be moved out
+      if (oldContact.isMyClient && newCategory !== "My Client") {
+        res.status(400).json({ error: "Cannot move a customer with isMyClient=true out of My Clients. My Clients is permanent." });
         return;
       }
       // Block manual assignment to "My Client" (only allowed via deal WON flow)
@@ -430,11 +430,9 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
 
     const now = new Date();
 
-    // Category is optional: if provided (A/B/C) and contact is NOT an existing client, move to that category
-    // Existing My Client customers ALWAYS stay in My Clients regardless of lostCategory value
-    const [wonDeal] = await db.select({ id: dealsTable.id }).from(dealsTable).where(and(eq(dealsTable.contactId, id), eq(dealsTable.stage, "Won"))).limit(1);
-    const hasEverBeenClient = contact.category === "My Client" || !!wonDeal;
-    if (lostCategory && !hasEverBeenClient) {
+    // Category is optional: if provided (A/B/C) and contact is NOT a permanent My Client, move to that category
+    // Permanent My Clients (isMyClient=true) ALWAYS stay in My Clients regardless of lostCategory value
+    if (lostCategory && contact.isMyClient === false) {
       if (!["A", "B", "C"].includes(lostCategory)) {
         res.status(400).json({ error: "Lost category must be A, B, or C" }); return;
       }

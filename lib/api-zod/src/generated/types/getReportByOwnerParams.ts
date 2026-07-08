@@ -7,6 +7,7 @@
  */
 
 export type GetReportByOwnerParams = {
-month?: string;
-unit?: string;
+  month?: string;
+  unit?: string;
+  salesOwnerId?: number;
 };
