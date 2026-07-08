@@ -61,6 +61,7 @@ export function onActivityChange(queryClient: QueryClient, dealId?: number, cont
   queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
   queryClient.invalidateQueries({ queryKey: ["dashboard-kpi"] });
   queryClient.invalidateQueries({ queryKey: ["dashboard-recent-activities"] });
+  queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey() });
   if (dealId) {
     queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ dealId }) });
     queryClient.invalidateQueries({ queryKey: getListDealsQueryKey() });

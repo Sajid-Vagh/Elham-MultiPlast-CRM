@@ -115,7 +115,7 @@ export function ScheduleFollowUpDialog({ open, onOpenChange, contactId, dealId }
       },
     }, {
       onSuccess: () => {
-        onActivityChange(queryClient, contactId);
+        onActivityChange(queryClient, undefined, contactId);
         toast({ title: "Follow-up scheduled successfully" });
         resetForm();
         onOpenChange(false);
