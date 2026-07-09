@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
 import {
   Dialog,
@@ -23,6 +23,10 @@ interface MoveCategoryDialogProps {
   onSuccess?: () => void;
 }
 
+function isValidReason(val: string) {
+  return val.trim().length >= 5;
+}
+
 export function MoveCategoryDialog({
   open,
   onOpenChange,
@@ -32,12 +36,38 @@ export function MoveCategoryDialog({
 }: MoveCategoryDialogProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [reason, setReason] = useState("");
+  const [reasonError, setReasonError] = useState("");
   const [loading, setLoading] = useState(false);
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    if (!open) {
+      setSelectedCategory("");
+      setReason("");
+      setReasonError("");
+      setLoading(false);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (reasonError && reasonRef.current) {
+      reasonRef.current.focus();
+    }
+  }, [reasonError]);
+
   const handleMove = async () => {
     if (!selectedCategory) return;
+
+    const trimmed = reason.trim();
+    if (!isValidReason(trimmed)) {
+      setReasonError("Reason is required.");
+      if (reasonRef.current) reasonRef.current.focus();
+      return;
+    }
+    setReasonError("");
+
     setLoading(true);
     try {
       const res = await fetch("/api/categories/move", {
@@ -49,7 +79,7 @@ export function MoveCategoryDialog({
         body: JSON.stringify({
           contactIds,
           newCategory: selectedCategory,
-          reason: reason || null,
+          reason: trimmed,
         }),
       });
       if (!res.ok) throw new Error("Failed to move");
@@ -105,14 +135,23 @@ export function MoveCategoryDialog({
             </button>
           ))}
           <div>
-            <label className="text-sm font-medium text-muted-foreground">Reason / Notes (optional)</label>
+            <label className="text-sm font-medium text-muted-foreground">
+              Reason / Notes <span className="text-destructive">*</span>
+            </label>
             <Textarea
+              ref={reasonRef}
               value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Add a reason for moving..."
-              className="mt-1"
-              rows={2}
+              onChange={(e) => {
+                setReason(e.target.value);
+                if (reasonError) setReasonError("");
+              }}
+              placeholder="Please enter the reason for this action..."
+              className={`mt-1 ${reasonError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+              rows={3}
             />
+            {reasonError && (
+              <p className="text-xs text-red-500 mt-1">{reasonError}</p>
+            )}
           </div>
         </div>
         <DialogFooter>

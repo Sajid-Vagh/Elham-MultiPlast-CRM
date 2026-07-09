@@ -288,11 +288,18 @@ router.patch("/deals/:id", async (req, res) => {
       const stage = parsed.data.stage;
       const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
       // Create activity for stage change
+      let activityNotes: string;
+      if (stage === "Lost") {
+        const lostReason = parsed.data.lostReason || "No reason provided";
+        activityNotes = `Deal marked as Lost\n\nReason:\n"${lostReason}"\n\n${now}`;
+      } else {
+        activityNotes = `${user.name} moved deal stage from "${oldDeal.stage}" to "${stage}"\n\n${now}`;
+      }
       await db.insert(activitiesTable).values({
         dealId: deal.id,
         contactId: deal.contactId,
         type: "Note",
-        notes: `${user.name} moved deal stage from "${oldDeal.stage}" to "${stage}"\n\n${now}`,
+        notes: activityNotes,
         createdBy: user.id,
       });
 

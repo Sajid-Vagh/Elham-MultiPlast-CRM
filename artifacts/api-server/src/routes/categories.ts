@@ -217,6 +217,11 @@ router.post("/categories/move", async (req, res) => {
       res.status(400).json({ error: "Cannot move contacts to My Client via bulk operation. A deal must be Won first." });
       return;
     }
+    // Reason is mandatory — at least 5 non-space characters
+    if (!reason || reason.trim().length < 5) {
+      res.status(400).json({ error: "Reason is required and must be at least 5 characters." });
+      return;
+    }
 
     const isAdmin = user.role === "admin";
     const history: any[] = [];

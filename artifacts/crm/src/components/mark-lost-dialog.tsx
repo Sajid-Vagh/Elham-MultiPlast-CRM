@@ -43,9 +43,12 @@ export function MarkLostDialog({ open, onOpenChange, onSave, saving, hideCategor
       toast({ title: "Validation Error", description: "Please select a Lost Reason", variant: "destructive" });
       return;
     }
-    if (lostReason === "Other" && !lostOtherRemarks.trim()) {
-      toast({ title: "Validation Error", description: "Please enter remarks for 'Other' reason", variant: "destructive" });
-      return;
+    if (lostReason === "Other") {
+      const trimmed = lostOtherRemarks.trim();
+      if (trimmed.length < 5) {
+        toast({ title: "Validation Error", description: "Remarks must be at least 5 characters", variant: "destructive" });
+        return;
+      }
     }
     if (!hideCategory && !lostCategory) {
       toast({ title: "Validation Error", description: "Please select a category to move to", variant: "destructive" });
@@ -89,7 +92,7 @@ export function MarkLostDialog({ open, onOpenChange, onSave, saving, hideCategor
         </div>
         <DialogFooter className="gap-2 flex-col-reverse sm:flex-row">
           <Button variant="outline" onClick={handleCancel} disabled={saving} className="w-full sm:w-auto text-xs sm:text-sm">Cancel</Button>
-          <Button onClick={handleSave} disabled={saving || !lostReason || (!hideCategory && !lostCategory) || (lostReason === "Other" && !lostOtherRemarks.trim())} className="w-full sm:w-auto text-xs sm:text-sm">
+          <Button onClick={handleSave} disabled={saving || !lostReason || (!hideCategory && !lostCategory) || (lostReason === "Other" && lostOtherRemarks.trim().length < 5)} className="w-full sm:w-auto text-xs sm:text-sm">
             {saving ? "Saving..." : "Save"}
           </Button>
         </DialogFooter>
