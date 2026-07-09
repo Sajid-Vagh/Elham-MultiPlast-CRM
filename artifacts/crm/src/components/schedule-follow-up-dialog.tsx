@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { useToast } from "@/hooks/use-toast";
 import { onActivityChange } from "@/lib/query-invalidation";
 import { Calendar as CalendarIcon, Clock, Phone, MessageSquare, Video, Users, Bell, AlertTriangle, Mail, MapPin } from "lucide-react";
+import { UserAvatar } from "@/components/user-avatar";
 
 interface ScheduleFollowUpDialogProps {
   open: boolean;
@@ -271,7 +272,7 @@ export function ScheduleFollowUpDialog({ open, onOpenChange, contactId, dealId }
                 {users?.map(u => (
                   <SelectItem key={u.id} value={String(u.id)}>
                     <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: u.colorCode }} />
+                      <UserAvatar profilePhoto={u.profilePhoto} name={u.name} className="w-2 h-2" />
                       {u.name}
                     </div>
                   </SelectItem>

@@ -434,7 +434,9 @@ router.get("/categories/report", async (req, res) => {
         topPerformers.push({
           userId: u.id,
           userName: u.name,
+          username: u.username,
           colorCode: u.colorCode,
+          profilePhoto: u.profilePhoto,
           conversions: convResult?.count ?? 0,
         });
       }

@@ -113,6 +113,36 @@
 
 ---
 
+# Global Avatar System
+
+## Goal
+- Replace all initials/colored-circle avatar placeholders across the entire CRM with the user's uploaded profile photo, using a single reusable component.
+
+## Progress
+### Done
+- Created `artifacts/crm/src/components/user-avatar.tsx` — reusable `UserAvatar` component wrapping Radix `<Avatar>` + `<AvatarImage>` with fallback initials and cache-busting (`?v=timestamp`).
+- Backend `reports.ts:179` — added `profilePhoto` + `username` to GET /reports/by-owner response.
+- Backend `categories.ts` — added `profilePhoto` + `username` to GET /categories/report topPerformers response.
+- Frontend: replaced all coloured dots/initials with `UserAvatar` across 12 files:
+  - `layout.tsx` (sidebar user avatar)
+  - `lead-form.tsx` (assigned-to user selection)
+  - `schedule-follow-up-dialog.tsx` (assigned-to user selection)
+  - `dashboard.tsx` (sales performance)
+  - `leads.tsx` (assigned user)
+  - `lead-detail.tsx` (assigned user)
+  - `deals.tsx` (deal owner)
+  - `deal-detail.tsx` (deal owner)
+  - `duplicates.tsx` (duplicate contact owners)
+  - `reports.tsx` (Performance by Sales Owner table)
+  - `settings.tsx` (user list)
+  - `import.tsx` (assigned user dropdown)
+- Updated `query-invalidation.ts` `onUserChange` — invalidates `dashboard-sales-performance`, `dashboard-recent-activities`, `reports-by-owner`, `category-report` on user update.
+
+### Note
+- The Reports "Performance by Sales Owner" table appears to show initials only when the users queried have `profilePhoto = null` in the database. The logged-in user's photo is visible via `useGetMe` (sidebar), but the by-owner endpoint queries *all* sales users. Once a photo is uploaded for each user in **Settings**, it displays correctly.
+
+---
+
 # Proforma Invoice Module
 
 ## Goal

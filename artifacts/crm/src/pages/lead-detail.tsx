@@ -17,6 +17,7 @@ import { ArrowLeft, Phone, Mail, MapPin, Tag, Plus, Trash2, FolderTree, RefreshC
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
+import { UserAvatar } from "@/components/user-avatar";
 import { Label } from "@/components/ui/label";
 import { DialogFooter } from "@/components/ui/dialog";
 import { CategoryBadge } from "@/components/category-badge";
@@ -86,6 +87,7 @@ export default function LeadDetail() {
 
   const [newDealStage, setNewDealStage] = useState("New");
   const [newDealTitle, setNewDealTitle] = useState("");
+  const [newDealLostReason, setNewDealLostReason] = useState("");
   const [dealDialogOpen, setDealDialogOpen] = useState(false);
 
   const [actType, setActType] = useState("Call");
@@ -254,11 +256,11 @@ export default function LeadDetail() {
 
   const handleCreateDeal = () => {
     if (!newDealStage) return;
-    createDeal.mutate({ data: { contactId, stage: newDealStage as any, title: newDealTitle || null, salesOwnerId: contact.salesOwnerId } }, {
+    createDeal.mutate({ data: { contactId, stage: newDealStage as any, title: newDealTitle || null, salesOwnerId: contact.salesOwnerId, lostReason: newDealStage === "Lost" ? newDealLostReason || null : null } }, {
       onSuccess: () => {
         onDealChange(queryClient, undefined, contactId);
         toast({ title: "Deal created" });
-        setDealDialogOpen(false); setNewDealTitle("");
+        setDealDialogOpen(false); setNewDealTitle(""); setNewDealLostReason("");
       },
       onError: () => toast({ title: "Error creating deal", variant: "destructive" }),
     });
@@ -358,7 +360,7 @@ export default function LeadDetail() {
             <Link href="/leads"><Button variant="ghost" size="sm" className="shrink-0 -ml-2"><ArrowLeft className="h-4 w-4 mr-1" /> Back</Button></Link>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                {owner && <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: owner.colorCode }} />}
+                {owner && <UserAvatar profilePhoto={owner.profilePhoto} name={owner.name} className="w-3 h-3 shrink-0" />}
                 <h1 className="text-xl font-bold truncate">{contact.name}</h1>
                 <CategoryBadge category={(contact as any).category} />
                 {contact.tags && <Badge variant="outline" className="text-[10px]">{contact.tags}</Badge>}
@@ -812,6 +814,7 @@ export default function LeadDetail() {
                         <SelectContent>{["New","CL Sent","Price Given","Samples Sent","Samples Received","PI Sent","Won","Lost"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
+                    {newDealStage === "Lost" && <div><Label>Lost Reason *</Label><Textarea value={newDealLostReason} onChange={e => setNewDealLostReason(e.target.value)} placeholder="Reason for losing this deal" /></div>}
                     <Button onClick={handleCreateDeal} disabled={createDeal.isPending} className="w-full">Create</Button>
                   </div>
                 </DialogContent>

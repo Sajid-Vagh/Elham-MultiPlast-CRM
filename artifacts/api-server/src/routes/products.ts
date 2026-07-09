@@ -1,8 +1,9 @@
 import { Router, type IRouter } from "express";
-import { db, productsTable } from "@workspace/db";
+import { db, productsTable, usersTable } from "@workspace/db";
 import { eq, like, or, sql } from "drizzle-orm";
 import { CreateProductBody, UpdateProductBody, GetProductParams, UpdateProductParams, DeleteProductParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
+import { createNotification } from "./notifications";
 
 const router: IRouter = Router();
 
@@ -58,6 +59,23 @@ router.post("/products", async (req, res) => {
     }
     const insertData = { ...parsed.data, pricePerUnit: (parsed.data as any).pricePerUnit?.toString() ?? null, defaultGst: (parsed.data as any).defaultGst?.toString() ?? null } as any;
     const [product] = await db.insert(productsTable).values(insertData).returning();
+
+    // Notify admins about new product
+    const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
+    for (const admin of admins) {
+      if (admin.id !== user.id) {
+        await createNotification({
+          userId: admin.id,
+          type: "product_added",
+          title: "New Product Added",
+          message: `Product "${product!.name}" (Code: ${product!.productCode}) has been added.\nAdded By: ${user.name}`,
+          link: `/products`,
+          relatedId: product!.id,
+          relatedType: "product",
+        });
+      }
+    }
+
     res.status(201).json(product);
   } catch (err: any) {
     if (err?.code === "23505") {

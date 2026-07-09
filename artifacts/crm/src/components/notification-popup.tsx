@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { X, ExternalLink } from "lucide-react";
 import { Button } from "./ui/button";
 import { useLocation } from "wouter";
-import { playFollowUpSound } from "@/lib/notification-sound";
 
 interface NotificationPopupProps {
   id: number;
@@ -18,7 +17,6 @@ export function NotificationPopup({ id, title, message, link, type, onDismiss }:
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    playFollowUpSound();
     const timer = setTimeout(() => {
       setVisible(false);
       setTimeout(() => onDismiss(id), 300);

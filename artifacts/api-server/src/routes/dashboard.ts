@@ -170,7 +170,9 @@ router.get("/dashboard/sales-performance", async (req, res) => {
       return {
         userId: u.id,
         userName: u.name,
+        username: u.username,
         colorCode: u.colorCode,
+        profilePhoto: u.profilePhoto,
         unit: u.unit,
         totalContacts,
         totalDeals,

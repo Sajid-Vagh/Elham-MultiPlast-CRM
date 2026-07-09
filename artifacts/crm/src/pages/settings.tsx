@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useGetMe, useListUsers, useCreateUser, useUpdateUser, useDeleteUser, getListUsersQueryKey, getGetMeQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -8,35 +8,109 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Pencil, Trash2, SlidersHorizontal, Users } from "lucide-react";
+import { Plus, Pencil, Trash2, SlidersHorizontal, Users, Camera, X as XIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { onUserChange } from "@/lib/query-invalidation";
+import { UserAvatar } from "@/components/user-avatar";
+import { UNITS } from "@/lib/units";
 
 const COLOR_PALETTE = ["#6366f1","#ec4899","#f59e0b","#10b981","#3b82f6","#ef4444","#8b5cf6","#14b8a6","#f97316","#84cc16"];
 
-type User = { id: number; name: string; username: string; role: string; colorCode: string; unit: string; canViewAllReports?: boolean; canAssignLeads?: boolean };
+type User = { id: number; name: string; username: string; role: string; colorCode: string; unit: string; profilePhoto?: string | null; canViewAllReports?: boolean; canAssignLeads?: boolean };
 
-function UserForm({ initial, onSave, onCancel, loading, isEdit }: { initial?: Partial<User>; onSave: (d: any) => void; onCancel: () => void; loading: boolean; isEdit?: boolean }) {
+function UserForm({ initial, onSave, onCancel, loading, isEdit, me }: { initial?: Partial<User>; onSave: (d: any) => void; onCancel: () => void; loading: boolean; isEdit?: boolean; me?: User | null }) {
   const [form, setForm] = useState({
     name: initial?.name || "", username: initial?.username || "", password: "",
     role: initial?.role || "sales", colorCode: initial?.colorCode || COLOR_PALETTE[0], unit: initial?.unit || "All",
     canViewAllReports: initial?.canViewAllReports ?? false, canAssignLeads: initial?.canAssignLeads ?? false,
+    profilePhoto: initial?.profilePhoto ?? null as string | null,
   });
+  const [photoUploading, setPhotoUploading] = useState(false);
 
   useEffect(() => {
     setForm({
       name: initial?.name || "", username: initial?.username || "", password: "",
       role: initial?.role || "sales", colorCode: initial?.colorCode || COLOR_PALETTE[0], unit: initial?.unit || "All",
       canViewAllReports: initial?.canViewAllReports ?? false, canAssignLeads: initial?.canAssignLeads ?? false,
+      profilePhoto: initial?.profilePhoto ?? null,
     });
   }, [initial]);
 
   const f = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, [k]: e.target.value }));
 
+  const isAdmin = me?.role === "admin";
+  const userId = initial?.id;
+  const canEditPhoto = userId && (isAdmin || me?.id === userId);
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !userId) return;
+    setPhotoUploading(true);
+    const token = localStorage.getItem("crm_token");
+    const fd = new FormData();
+    fd.append("photo", file);
+    try {
+      const res = await fetch(`/api/users/${userId}/photo`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      setForm(p => ({ ...p, profilePhoto: data.profilePhoto }));
+      onSave({ ...form, profilePhoto: data.profilePhoto });
+    } catch (err) {
+      console.error("Photo upload error", err);
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    if (!userId) return;
+    setPhotoUploading(true);
+    const token = localStorage.getItem("crm_token");
+    try {
+      const res = await fetch(`/api/users/${userId}/photo`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Remove failed");
+      setForm(p => ({ ...p, profilePhoto: null }));
+      onSave({ ...form, profilePhoto: null });
+    } catch (err) {
+      console.error("Photo remove error", err);
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
+  const photoFileRef = useRef<HTMLInputElement>(null);
+
   return (
     <div className="space-y-4 pt-2">
+      {/* Profile Photo */}
+      {isEdit && canEditPhoto && (
+        <div className="flex items-center gap-4 pb-2 border-b">
+          <div className="relative">
+            <UserAvatar profilePhoto={form.profilePhoto} name={form.name || "?"} className="w-16 h-16 border-2 border-border" />
+          </div>
+          <div className="space-y-1.5">
+            <input ref={photoFileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+            <Button variant="outline" size="sm" disabled={photoUploading} onClick={() => photoFileRef.current?.click()}>
+              <Camera className="h-3.5 w-3.5 mr-1" />
+              {photoUploading ? "Uploading..." : form.profilePhoto ? "Change Photo" : "Upload Photo"}
+            </Button>
+            {form.profilePhoto && (
+              <Button variant="ghost" size="sm" className="text-destructive" disabled={photoUploading} onClick={handleRemovePhoto}>
+                <XIcon className="h-3.5 w-3.5 mr-1" /> Remove
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <div><Label>Full Name *</Label><Input value={form.name} onChange={f("name")} placeholder="Name" /></div>
         <div><Label>Username *</Label><Input value={form.username} onChange={f("username")} data-no-cap="1" placeholder="username" /></div>
@@ -96,6 +170,103 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit }: { initial?: Pa
           {loading ? "Saving..." : "Save"}
         </Button>
         <Button variant="outline" onClick={onCancel}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
+function SalesProfileView({ me, onClose }: { me: any; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [photo, setPhoto] = useState<string | null | undefined>((me as any).profilePhoto);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const token = localStorage.getItem("crm_token");
+    const fd = new FormData();
+    fd.append("photo", file);
+    try {
+      const res = await fetch(`/api/users/${me.id}/photo`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      setPhoto(data.profilePhoto);
+      onUserChange(queryClient);
+      toast({ title: "Profile photo updated" });
+    } catch {
+      toast({ title: "Photo upload failed", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRemove = async () => {
+    setUploading(true);
+    const token = localStorage.getItem("crm_token");
+    try {
+      const res = await fetch(`/api/users/${me.id}/photo`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Remove failed");
+      setPhoto(null);
+      onUserChange(queryClient);
+      toast({ title: "Profile photo removed" });
+    } catch {
+      toast({ title: "Failed to remove photo", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6 pt-2">
+      {/* Photo section */}
+      <div className="flex flex-col items-center gap-3 pb-4 border-b">
+        <UserAvatar profilePhoto={photo} name={me.name} className="w-24 h-24 border-2 border-border shadow-sm" />
+        <div className="flex gap-2">
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} />
+          <Button variant="outline" size="sm" disabled={uploading} onClick={() => fileRef.current?.click()}>
+            <Camera className="h-3.5 w-3.5 mr-1" />
+            {uploading ? "Uploading..." : photo ? "Change Photo" : "Upload Photo"}
+          </Button>
+          {photo && (
+            <Button variant="ghost" size="sm" className="text-destructive" disabled={uploading} onClick={handleRemove}>
+              <XIcon className="h-3.5 w-3.5 mr-1" /> Remove
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Read-only fields */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label className="text-xs text-muted-foreground">Full Name</Label>
+          <p className="text-sm font-medium mt-1">{me.name}</p>
+        </div>
+        <div>
+          <Label className="text-xs text-muted-foreground">Username</Label>
+          <p className="text-sm font-mono mt-1">@{me.username}</p>
+        </div>
+        <div>
+          <Label className="text-xs text-muted-foreground">Role</Label>
+          <p className="text-sm capitalize mt-1">{me.role.replace("_", " ")}</p>
+        </div>
+        <div>
+          <Label className="text-xs text-muted-foreground">Unit</Label>
+          <p className="text-sm mt-1">{me.unit || "—"}</p>
+        </div>
+      </div>
+
+      <div className="flex justify-end">
+        <Button variant="outline" onClick={onClose}>Close</Button>
       </div>
     </div>
   );
@@ -171,12 +342,98 @@ export default function Settings() {
 
   const isAdmin = me?.role === "admin";
 
+  const [profileEditOpen, setProfileEditOpen] = useState(false);
+
   return (
     <div className="p-8 space-y-8 max-w-4xl">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
         <p className="text-muted-foreground mt-1">Manage your preferences{isAdmin ? " and team members" : ""}</p>
       </div>
+
+      {/* ── My Profile (all users) ── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Users className="h-4 w-4 text-primary" />
+            My Profile
+          </CardTitle>
+          <CardDescription>Your personal information and account settings.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {me ? (
+            <div className="flex flex-col sm:flex-row gap-6">
+              <div className="flex flex-col items-center gap-2">
+                <UserAvatar profilePhoto={(me as any).profilePhoto} name={me.name} className="w-20 h-20 border-2 border-border shadow-sm" />
+              </div>
+              <div className="flex-1 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium">Name</p>
+                    <p className="text-sm font-semibold">{me.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium">Username</p>
+                    <p className="text-sm font-mono">@{me.username}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium">Role</p>
+                    <p className="text-sm capitalize">{me.role.replace("_", " ")}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium">Unit</p>
+                    <p className="text-sm">{me.unit || "—"}</p>
+                  </div>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => setProfileEditOpen(true)}>
+                  <Pencil className="h-3.5 w-3.5 mr-1" /> Edit Profile
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={profileEditOpen} onOpenChange={o => !o && setProfileEditOpen(false)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>{isAdmin ? "Edit Profile" : "My Profile"}</DialogTitle></DialogHeader>
+          {me && (isAdmin ? (
+            <UserForm
+              initial={{
+                id: me.id,
+                name: me.name,
+                username: me.username,
+                role: me.role,
+                unit: me.unit,
+                colorCode: me.colorCode,
+                profilePhoto: (me as any).profilePhoto,
+                canViewAllReports: (me as any).canViewAllReports ?? false,
+                canAssignLeads: (me as any).canAssignLeads ?? false,
+              }}
+              onSave={(data) => {
+                const payload = { ...data };
+                if (!payload.password) delete payload.password;
+                updateUser.mutate({ id: me.id, data: payload }, {
+                  onSuccess: () => {
+                    onUserChange(queryClient);
+                    toast({ title: "Profile updated" });
+                    setProfileEditOpen(false);
+                  },
+                  onError: () => toast({ title: "Error", variant: "destructive" }),
+                });
+              }}
+              onCancel={() => setProfileEditOpen(false)}
+              loading={updateUser.isPending}
+              isEdit
+              me={me}
+            />
+          ) : (
+            <SalesProfileView me={me} onClose={() => setProfileEditOpen(false)} />
+          ))}
+        </DialogContent>
+      </Dialog>
 
       {/* ── Preferences (all users) ── */}
       <Card>
@@ -226,7 +483,7 @@ export default function Settings() {
               </DialogTrigger>
               <DialogContent className="max-w-lg">
                 <DialogHeader><DialogTitle>Add Team Member</DialogTitle></DialogHeader>
-                <UserForm onSave={handleCreate} onCancel={() => setCreateOpen(false)} loading={createUser.isPending} />
+                <UserForm onSave={handleCreate} onCancel={() => setCreateOpen(false)} loading={createUser.isPending} me={me} />
               </DialogContent>
             </Dialog>
           </div>
@@ -256,7 +513,7 @@ export default function Settings() {
                     <TableCell>{u.unit}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 rounded-full border shadow-sm" style={{ backgroundColor: u.colorCode }} />
+                        <UserAvatar profilePhoto={u.profilePhoto} name={u.name} className="w-5 h-5 border shadow-sm" />
                         <span className="text-xs text-muted-foreground font-mono">{u.colorCode}</span>
                       </div>
                     </TableCell>
@@ -287,7 +544,7 @@ export default function Settings() {
       <Dialog open={!!editUser} onOpenChange={o => !o && setEditUser(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Edit Team Member</DialogTitle></DialogHeader>
-          {editUser && <UserForm initial={editUser} onSave={handleUpdate} onCancel={() => setEditUser(null)} loading={updateUser.isPending} isEdit />}
+          {editUser && <UserForm initial={editUser} onSave={handleUpdate} onCancel={() => setEditUser(null)} loading={updateUser.isPending} isEdit me={me} />}
         </DialogContent>
       </Dialog>
     </div>

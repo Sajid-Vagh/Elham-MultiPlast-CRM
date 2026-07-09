@@ -911,6 +911,8 @@ components:
         unit:
           type: string
           enum: [Himatnagar, Surat, Rajkot, All]
+        profilePhoto:
+          type: ["string", "null"]
         createdAt:
           type: string
 
@@ -981,7 +983,7 @@ components:
           type: ["string", "null"]
         unit:
           type: ["string", "null"]
-          enum: [Himatnagar, Surat, Rajkot, null]
+          enum: [Himatnagar, Surat, Rajkot, "Not Sure", null]
         industry:
           type: ["string", "null"]
           enum: ["Liquid Detergent", Lubricant, "Agro Chemical & Pesticide", "Edible Oil", Veterinary, Other, null]

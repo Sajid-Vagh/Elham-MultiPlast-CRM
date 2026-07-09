@@ -11,6 +11,7 @@ import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
 import { STAGE_CHART_COLORS } from "@/lib/deal-stages";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, PieChart, Pie, Legend, Tooltip, LineChart, Line } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { UserAvatar } from "@/components/user-avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 function daysDiff(dateStr: string): number {
@@ -66,7 +67,7 @@ export default function Dashboard() {
       const res = await fetch(`/api/dashboard/sales-performance?${params.toString()}`, { headers: authHeaders });
       if (!res.ok) return [];
       return res.json() as Promise<{
-        userId: number; userName: string; colorCode: string; unit: string;
+        userId: number; userName: string; colorCode: string; profilePhoto?: string | null; unit: string;
         totalContacts: number; totalDeals: number; wonDeals: number; lostDeals: number;
         activeDeals: number; totalWonValue: number; myClients: number;
         conversionRate: number; followUpRate: number;
@@ -341,8 +342,8 @@ export default function Dashboard() {
                 {salesPerformance.map(row => (
                   <TableRow key={row.userId}>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: row.colorCode }} />
+                        <div className="flex items-center gap-2">
+                        <UserAvatar profilePhoto={row.profilePhoto} name={row.userName} className="w-7 h-7 border border-[#E5E7EB]" />
                         <span className="font-medium">{row.userName}</span>
                       </div>
                     </TableCell>
@@ -390,7 +391,7 @@ export default function Dashboard() {
                         <p className="font-medium text-sm truncate">{contact.name}</p>
                         {contact.salesOwner && (
                           <div className="flex items-center gap-1">
-                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: contact.salesOwner.colorCode }} />
+                            <UserAvatar profilePhoto={contact.salesOwner.profilePhoto} name={contact.salesOwner.name} className="w-2 h-2" />
                             <span className="text-xs text-muted-foreground">{contact.salesOwner.name}</span>
                           </div>
                         )}
@@ -557,7 +558,7 @@ export default function Dashboard() {
                           <p className="font-medium text-sm truncate">{contact.name}</p>
                           {contact.salesOwner && (
                             <div className="flex items-center gap-1">
-                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: contact.salesOwner.colorCode }} />
+                              <UserAvatar profilePhoto={contact.salesOwner.profilePhoto} name={contact.salesOwner.name} className="w-2 h-2" />
                               <span className="text-xs text-muted-foreground">{contact.salesOwner.name}</span>
                             </div>
                           )}

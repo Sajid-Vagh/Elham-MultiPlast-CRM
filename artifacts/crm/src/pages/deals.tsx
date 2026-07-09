@@ -17,6 +17,7 @@ import { DEAL_STAGES } from "@/lib/deal-stages";
 import DealDetailDrawer from "@/components/deal-detail-drawer";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
 import { onDealChange } from "@/lib/query-invalidation";
+import { UserAvatar } from "@/components/user-avatar";
 
 function DraggableCard({ deal, children }: { deal: Deal; children: ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -326,11 +327,7 @@ export default function Deals() {
                           <div className="flex justify-between items-start mb-2">
                             <span className="font-medium text-sm line-clamp-1">{deal.contact?.name || deal.title || 'Unnamed'}</span>
                             {deal.salesOwner && (
-                              <div
-                                className="w-2.5 h-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: deal.salesOwner.colorCode || '#ccc' }}
-                                title={deal.salesOwner.name}
-                              />
+                              <UserAvatar profilePhoto={deal.salesOwner.profilePhoto} name={deal.salesOwner.name} className="w-2.5 h-2.5 shrink-0" />
                             )}
                           </div>
                           {deal.contact?.companyName && (
@@ -371,7 +368,7 @@ export default function Deals() {
                 <div className="flex justify-between items-start mb-2">
                   <span className="font-medium text-sm line-clamp-1">{activeDeal.contact?.name || activeDeal.title || 'Unnamed'}</span>
                   {activeDeal.salesOwner && (
-                    <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: activeDeal.salesOwner.colorCode || '#ccc' }} />
+                    <UserAvatar profilePhoto={activeDeal.salesOwner.profilePhoto} name={activeDeal.salesOwner.name} className="w-2.5 h-2.5 shrink-0" />
                   )}
                 </div>
                 {activeDeal.contact?.companyName && (

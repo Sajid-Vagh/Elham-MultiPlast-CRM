@@ -92,6 +92,13 @@ router.post("/deals", async (req, res) => {
     res.status(400).json({ error: "Invalid input", details: parsed.error });
     return;
   }
+  // Validate Lost: lostReason is mandatory
+  if (parsed.data.stage === "Lost") {
+    if (!parsed.data.lostReason) {
+      res.status(400).json({ error: "Lost reason is required before marking as Lost." });
+      return;
+    }
+  }
   const probability = parsed.data.probability ?? STAGE_PROBS[parsed.data.stage] ?? 10;
   try {
     // Auto-set contact category to Regular Follow up when creating a deal
@@ -101,6 +108,21 @@ router.post("/deals", async (req, res) => {
       await db.update(contactsTable).set({ category: "Regular Follow up" }).where(eq(contactsTable.id, contact.id));
     }
     const [deal] = await db.insert(dealsTable).values({ ...parsed.data, probability }).returning();
+
+    // Notify sales owner about new deal
+    const dealOwnerId = deal!.salesOwnerId || contact?.salesOwnerId;
+    if (dealOwnerId && dealOwnerId !== user.id) {
+      await createNotification({
+        userId: dealOwnerId,
+        type: "deal_created",
+        title: "New Deal Created",
+        message: `Deal "${deal!.title || `#${deal!.id}`}" has been created for ${contact?.name || "Unknown"}\nStage: ${deal!.stage}\nCreated By: ${user.name}`,
+        link: `/deals/${deal!.id}`,
+        relatedId: deal!.id,
+        relatedType: "deal",
+      });
+    }
+
     res.status(201).json(await enrichDeal(deal!));
   } catch (err) {
     req.log.error({ err }, "Create deal error");
@@ -273,9 +295,13 @@ router.patch("/deals/:id", async (req, res) => {
         notes: `${user.name} moved deal stage from "${oldDeal.stage}" to "${stage}"\n\n${now}`,
         createdBy: user.id,
       });
-      if (stage === "Won" && deal.salesOwnerId) {
+
+      const isReopened = (oldDeal.stage === "Won" || oldDeal.stage === "Lost") && stage !== "Won" && stage !== "Lost";
+      const notifyUserId = deal.salesOwnerId || oldDeal.salesOwnerId;
+
+      if (stage === "Won" && notifyUserId) {
         await createNotification({
-          userId: deal.salesOwnerId,
+          userId: notifyUserId,
           type: "deal_won",
           title: "Deal Won! 🎉",
           message: `Deal "${deal.title || `#${deal.id}`}" has been marked as Won.\nBy: ${assignedByName}`,
@@ -283,12 +309,48 @@ router.patch("/deals/:id", async (req, res) => {
           relatedId: deal.id,
           relatedType: "deal",
         });
-      } else if (stage === "Lost" && deal.salesOwnerId) {
+        // Notify admins about won deals
+        const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
+        for (const admin of admins) {
+          if (admin.id !== user.id && admin.id !== notifyUserId) {
+            await createNotification({
+              userId: admin.id,
+              type: "deal_won",
+              title: "Deal Won",
+              message: `Deal "${deal.title || `#${deal.id}`}" won for ${contact?.name || "Unknown"}\nBy: ${assignedByName}`,
+              link: `/deals/${deal.id}`,
+              relatedId: deal.id,
+              relatedType: "deal",
+            });
+          }
+        }
+      } else if (stage === "Lost" && notifyUserId) {
         await createNotification({
-          userId: deal.salesOwnerId,
+          userId: notifyUserId,
           type: "deal_lost",
           title: "Deal Lost",
           message: `Deal "${deal.title || `#${deal.id}`}" has been marked as Lost.\nBy: ${assignedByName}`,
+          link: `/deals/${deal.id}`,
+          relatedId: deal.id,
+          relatedType: "deal",
+        });
+      } else if (isReopened && notifyUserId) {
+        await createNotification({
+          userId: notifyUserId,
+          type: "deal_reopened",
+          title: "Deal Reopened",
+          message: `Deal "${deal.title || `#${deal.id}`}" has been reopened from "${oldDeal.stage}" to "${stage}".\nBy: ${assignedByName}`,
+          link: `/deals/${deal.id}`,
+          relatedId: deal.id,
+          relatedType: "deal",
+        });
+      } else if (notifyUserId && notifyUserId !== user.id) {
+        // General stage change notification
+        await createNotification({
+          userId: notifyUserId,
+          type: "deal_stage_changed",
+          title: "Deal Stage Updated",
+          message: `Deal "${deal.title || `#${deal.id}`}" moved from "${oldDeal.stage}" to "${stage}".\nBy: ${assignedByName}`,
           link: `/deals/${deal.id}`,
           relatedId: deal.id,
           relatedType: "deal",

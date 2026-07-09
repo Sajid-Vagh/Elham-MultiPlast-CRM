@@ -15,6 +15,40 @@ async function getUser(req: Request, res: Response) {
   return user;
 }
 
+function deriveModule(type: string): string {
+  if (type.startsWith("enquiry_") || type.startsWith("lead_")) return "Lead";
+  if (type.startsWith("follow_up")) return "Follow-up";
+  if (type.startsWith("deal_")) return "Deal";
+  if (type === "assignment") return "Lead";
+  if (type.startsWith("production_")) return "Production";
+  if (type.startsWith("invoice_")) return "Invoice";
+  if (type.startsWith("user_")) return "User";
+  if (type.startsWith("product_")) return "Product";
+  return "General";
+}
+
+function formatNotification(row: any) {
+  return {
+    id: row.id,
+    userId: row.userId,
+    type: row.type,
+    title: row.title,
+    message: row.message,
+    link: row.link,
+    relatedId: row.relatedId,
+    relatedType: row.relatedType,
+    readAt: row.readAt,
+    createdAt: row.createdAt,
+    notificationSeen: row.notificationSeen,
+    notificationSeenAt: row.notificationSeenAt,
+    soundPlayed: row.soundPlayed,
+    reminderShown: row.reminderShown,
+    reminderSoundPlayed: row.reminderSoundPlayed,
+    isRead: row.readAt !== null,
+    module: deriveModule(row.type),
+  };
+}
+
 // SSE stream for real-time notifications
 router.get("/notifications/stream", async (req: Request, res: Response) => {
   let user = await getUserFromRequest(req);
@@ -57,19 +91,45 @@ router.get("/notifications/stream", async (req: Request, res: Response) => {
   });
 });
 
-// List notifications for current user (only unseen)
-router.get("/notifications", async (req: Request, res: Response) => {
+// Get notification history with filters (all, unread, unseen, today, this_week, older)
+// THIS is the single canonical endpoint for reading notifications
+router.get("/notifications/history", async (req: Request, res: Response) => {
   const user = await getUser(req, res);
   if (!user) return;
 
   const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
   const offset = Math.max(Number(req.query.offset) || 0, 0);
+  const filter = (req.query.filter as string) || "all";
 
   try {
+    const conditions: any[] = [eq(notificationsTable.userId, user.id)];
+
+    if (filter === "unread" || filter === "unseen") {
+      conditions.push(isNull(notificationsTable.readAt));
+    } else if (filter === "today") {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      conditions.push(sql`${notificationsTable.createdAt} >= ${today.toISOString()}`);
+    } else if (filter === "this_week") {
+      const now = new Date();
+      const dayOfWeek = now.getDay();
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - dayOfWeek);
+      startOfWeek.setHours(0, 0, 0, 0);
+      conditions.push(sql`${notificationsTable.createdAt} >= ${startOfWeek.toISOString()}`);
+    } else if (filter === "older") {
+      const now = new Date();
+      const dayOfWeek = now.getDay();
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - dayOfWeek);
+      startOfWeek.setHours(0, 0, 0, 0);
+      conditions.push(sql`${notificationsTable.createdAt} < ${startOfWeek.toISOString()}`);
+    }
+
     const rows = await db
       .select()
       .from(notificationsTable)
-      .where(and(eq(notificationsTable.userId, user.id), eq(notificationsTable.notificationSeen, false)))
+      .where(and(...conditions))
       .orderBy(desc(notificationsTable.createdAt))
       .limit(limit)
       .offset(offset);
@@ -77,16 +137,19 @@ router.get("/notifications", async (req: Request, res: Response) => {
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)` })
       .from(notificationsTable)
-      .where(and(eq(notificationsTable.userId, user.id), eq(notificationsTable.notificationSeen, false)));
+      .where(and(...conditions));
 
-    res.json({ notifications: rows, total: Number(count) });
+    res.json({
+      notifications: rows.map(formatNotification),
+      total: Number(count),
+    });
   } catch (err) {
-    req.log.error({ err }, "List notifications error");
+    req.log.error({ err }, "List notification history error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// Get unread count
+// Get unread count (used by bell badge)
 router.get("/notifications/unread-count", async (req: Request, res: Response) => {
   try {
     let user: typeof usersTable.$inferSelect | null = null;
@@ -189,7 +252,7 @@ router.patch("/notifications/seen-by-related", async (req: Request, res: Respons
         eq(notificationsTable.userId, user.id),
         eq(notificationsTable.relatedId, Number(relatedId)),
         eq(notificationsTable.relatedType, relatedType as string),
-        eq(notificationsTable.notificationSeen, false)
+        eq(notificationsTable.notificationSeen, false),
       ))
       .returning();
 
@@ -313,5 +376,29 @@ export async function createNotification(params: {
   }
   return n;
 }
+
+// Delete notification (admin only)
+router.delete("/notifications/:id", async (req: Request, res: Response) => {
+  const user = await getUser(req, res);
+  if (!user) return;
+  if (user.role !== "admin") {
+    res.status(403).json({ error: "Admin only" });
+    return;
+  }
+
+  const id = Number(req.params.id);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+
+  try {
+    await db.delete(notificationsTable).where(eq(notificationsTable.id, id));
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Delete notification error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 export default router;

@@ -146,7 +146,7 @@ router.get("/reports/by-owner", async (req, res) => {
 
     const users = await db.select().from(usersTable);
     // Only include sales users
-    const salesUsers = users.filter(u => u.role === "admin" || u.role === "sales");
+    let salesUsers = users.filter(u => u.role === "admin" || u.role === "sales");
 
     if (params.success) {
       if (params.data.month) {
@@ -164,12 +164,19 @@ router.get("/reports/by-owner", async (req, res) => {
       }
     }
 
+    // Sales users should only see their own performance
+    if (authUser.role === "sales" && !authUser.canViewAllReports) {
+      salesUsers = salesUsers.filter(u => u.id === authUser.id);
+    }
+
     const result = salesUsers.map(u => {
       const userDeals = deals.filter(d => d.salesOwnerId === u.id);
       return {
         userId: u.id,
         userName: u.name,
+        username: u.username,
         colorCode: u.colorCode,
+        profilePhoto: u.profilePhoto,
         totalDeals: userDeals.length,
         wonDeals: userDeals.filter(d => d.stage === "Won").length,
         lostDeals: userDeals.filter(d => d.stage === "Lost").length,

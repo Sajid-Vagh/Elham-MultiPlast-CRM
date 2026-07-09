@@ -82,6 +82,10 @@ export function onUserChange(queryClient: QueryClient) {
   queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
   queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
   queryClient.invalidateQueries({ queryKey: ["users-list"] });
+  queryClient.invalidateQueries({ queryKey: ["dashboard-sales-performance"] });
+  queryClient.invalidateQueries({ queryKey: ["dashboard-recent-activities"] });
+  queryClient.invalidateQueries({ queryKey: ["reports-by-owner"] });
+  queryClient.invalidateQueries({ queryKey: ["category-report"] });
 }
 
 export function onProductionChange(queryClient: QueryClient, orderId?: string) {

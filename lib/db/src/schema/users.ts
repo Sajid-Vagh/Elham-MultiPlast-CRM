@@ -10,6 +10,7 @@ export const usersTable = pgTable("users", {
   role: text("role").notNull().default("sales"),
   colorCode: text("color_code").notNull().default("#6366f1"),
   unit: text("unit").notNull().default("All"),
+  profilePhoto: text("profile_photo"),
   canViewAllReports: boolean("can_view_all_reports").notNull().default(false),
   canAssignLeads: boolean("can_assign_leads").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

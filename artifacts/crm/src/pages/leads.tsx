@@ -15,6 +15,7 @@ import { MarkLostDialog } from "@/components/mark-lost-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
 import { onContactChange, onDealChange } from "@/lib/query-invalidation";
+import { UserAvatar } from "@/components/user-avatar";
 
 export default function Leads() {
   const [search, setSearch] = useState("");
@@ -353,10 +354,7 @@ export default function Leads() {
                     <TableCell>
                       {contact.salesOwner && (
                         <div className="flex items-center gap-2">
-                          <div
-                            className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: contact.salesOwner.colorCode || '#ccc' }}
-                          />
+                          <UserAvatar profilePhoto={contact.salesOwner.profilePhoto} name={contact.salesOwner.name} className="w-3 h-3" />
                           <span className="text-sm">{contact.salesOwner.name}</span>
                         </div>
                       )}

@@ -97,8 +97,8 @@ router.post("/contacts", async (req, res) => {
         await createNotification({
           userId: values.salesOwnerId,
           type: "enquiry_assigned",
-          title: "New Enquiry Assigned",
-          message: `Customer: ${contact.name}\nMobile: ${contact.mobile || "-"}\nAssigned By: ${user.name}\nTime: ${assignmentTime}`,
+          title: "New Lead Assigned",
+          message: `Lead: ${contact.name}\nCompany: ${contact.companyName || "-"}\nAssigned By: ${user.name}\nDate & Time: ${assignmentTime}`,
           link: `/leads/${contact.id}`,
           relatedId: contact.id,
           relatedType: "contact",
@@ -267,12 +267,27 @@ router.patch("/contacts/:id", async (req, res) => {
         await createNotification({
           userId: newOwnerId,
           type: "enquiry_assigned",
-          title: "New Enquiry Assigned",
-          message: `Customer: ${contact.name}\nMobile: ${contact.mobile || "-"}\nAssigned By: ${assignedByName}\nTime: ${assignmentTime}`,
+          title: "New Lead Assigned",
+          message: `Lead: ${contact.name}\nCompany: ${contact.companyName || "-"}\nAssigned By: ${assignedByName}\nDate & Time: ${assignmentTime}`,
           link: `/leads/${contact.id}`,
           relatedId: contact.id,
           relatedType: "contact",
         });
+        // Also notify admin(s) about the assignment
+        const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
+        for (const admin of admins) {
+          if (admin.id !== user.id) {
+            await createNotification({
+              userId: admin.id,
+              type: "enquiry_assigned",
+              title: "Lead Assigned",
+              message: `Lead "${contact.name}" was assigned to ${owner.name}\nAssigned By: ${assignedByName}\nDate & Time: ${assignmentTime}`,
+              link: `/leads/${contact.id}`,
+              relatedId: contact.id,
+              relatedType: "contact",
+            });
+          }
+        }
       }
     }
 
@@ -551,13 +566,41 @@ router.delete("/contacts/:id", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (user.role === "sales") {
-      const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId }).from(contactsTable).where(eq(contactsTable.id, params.data.id));
-      if (!contact || contact.salesOwnerId !== user.id) {
-        res.status(403).json({ error: "Forbidden" });
-        return;
+    const [contactToDelete] = await db.select().from(contactsTable).where(eq(contactsTable.id, params.data.id));
+    if (!contactToDelete) { res.status(404).json({ error: "Not found" }); return; }
+    if (user.role === "sales" && contactToDelete.salesOwnerId !== user.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    // Notify sales owner and admins about lead deletion
+    const deleteTime = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    if (contactToDelete.salesOwnerId && contactToDelete.salesOwnerId !== user.id) {
+      await createNotification({
+        userId: contactToDelete.salesOwnerId,
+        type: "lead_deleted",
+        title: "Lead Deleted",
+        message: `Lead "${contactToDelete.name}" has been deleted.\nDeleted By: ${user.name}\nDate & Time: ${deleteTime}`,
+        link: `/leads`,
+        relatedId: contactToDelete.id,
+        relatedType: "contact",
+      });
+    }
+    const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
+    for (const admin of admins) {
+      if (admin.id !== user.id && admin.id !== contactToDelete.salesOwnerId) {
+        await createNotification({
+          userId: admin.id,
+          type: "lead_deleted",
+          title: "Lead Deleted",
+          message: `Lead "${contactToDelete.name}" (${contactToDelete.companyName || "-"}) was deleted by ${user.name}.\nDate & Time: ${deleteTime}`,
+          link: `/leads`,
+          relatedId: contactToDelete.id,
+          relatedType: "contact",
+        });
       }
     }
+
     await db.delete(contactsTable).where(eq(contactsTable.id, params.data.id));
     res.status(204).send();
   } catch (err) {

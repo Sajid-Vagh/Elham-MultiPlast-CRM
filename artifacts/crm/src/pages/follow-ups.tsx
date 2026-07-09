@@ -15,6 +15,7 @@ import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { onActivityChange } from "@/lib/query-invalidation";
 import { CategoryBadge } from "@/components/category-badge";
+import { UNITS } from "@/lib/units";
 
 const PAGE_SIZE = 15;
 
@@ -125,6 +126,7 @@ export default function FollowUps() {
       if (isAdmin && ownerFilter) {
         params.set("userId", ownerFilter);
       }
+      params.set("category", "Regular Follow up");
       const res = await fetch(`/api/activities?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -363,9 +365,7 @@ export default function FollowUps() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Units</SelectItem>
-                  <SelectItem value="Himatnagar">Himatnagar</SelectItem>
-                  <SelectItem value="Rajkot">Rajkot</SelectItem>
-                  <SelectItem value="Surat">Surat</SelectItem>
+                  {UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                 </SelectContent>
               </Select>
               {isAdmin && (

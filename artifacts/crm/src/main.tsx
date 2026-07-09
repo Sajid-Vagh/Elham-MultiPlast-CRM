@@ -55,9 +55,16 @@ document.addEventListener(
 
     const val = el.value;
 
-    const capitalized = val.replace(
+    // Auto-capitalize: first letter of each word
+    let capitalized = val.replace(
       /(^|[\s\-\/])([a-z])/g,
       (_, sep, char) => sep + char.toUpperCase(),
+    );
+
+    // Auto-uppercase measurement units after numbers (e.g. 5l → 5L, 20ml → 20ML)
+    capitalized = capitalized.replace(
+      /(\d+\.?\d*)\s*(ml|ltr|ltrs|litre|litres|l|kg|kgs|kilogram|gm|gms|gram|pcs|nos|mtr|meter|cm|mm|inch|inches|ft|feet|yard|dozen|tonne?|mt|bags?|boxes?|carton|bottle|drum)\b/gi,
+      (_, num, unit) => num + unit.toUpperCase(),
     );
 
     if (capitalized === val) return;

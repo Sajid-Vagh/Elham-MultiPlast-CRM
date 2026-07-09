@@ -1,26 +1,18 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { useGetMe, useLogout, useListContacts, getListContactsQueryKey, useListActivities, getListActivitiesQueryKey, useUpdateActivity } from "@workspace/api-client-react";
+import { useGetMe, useLogout, useListActivities, getListActivitiesQueryKey, useUpdateActivity } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
 import { playFollowUpSound, showBrowserNotification } from "@/lib/notification-sound";
-import { useNotificationStream } from "@/lib/use-notification-stream";
+import { NotificationProvider, useNotifications } from "@/lib/notification-context";
 import { NotificationPopup } from "./notification-popup";
-import { onActivityChange } from "@/lib/query-invalidation";
 import {
   LayoutDashboard, Users, Briefcase,
   Package, BarChart, Download, Copy, Settings, LogOut, Bell, X, Clock, Phone, FolderTree, FileText, CheckCheck,
-  Factory, ClipboardList, UserCircle
+  Factory, ClipboardList
 } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
-
-const ACT_TYPE_ICONS: Record<string, { bg: string; emoji: string }> = {
-  Call: { bg: "#dcfce7", emoji: "📞" },
-  WhatsApp: { bg: "#ccfbf1", emoji: "💬" },
-  Email: { bg: "#dbeafe", emoji: "✉️" },
-  Note: { bg: "#fef9c3", emoji: "📝" },
-  FollowUp: { bg: "#ffedd5", emoji: "🔔" },
-};
+import { UserAvatar } from "@/components/user-avatar";
 
 const REMINDER_SOUND_SS_KEY = "crm_reminder_sound_played_ids";
 
@@ -77,17 +69,43 @@ function useTimeBasedReminders(activities: { id: number; followUpDate?: string |
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { data: user, isLoading } = useGetMe();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && !user) setLocation("/login");
+  }, [isLoading, user, setLocation]);
+
+  if (isLoading) return (
+    <div className="h-screen flex items-center justify-center bg-background">
+      <div className="text-center">
+        <img src="/images/logo1.png" alt="Elham MultiPlast LLP" className="max-w-[180px] w-full h-auto mx-auto mb-6" />
+        <div className="flex items-center justify-center gap-2">
+          <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    </div>
+  );
+  if (!user) return null;
+
+  return (
+    <NotificationProvider userId={user.id}>
+      <LayoutMain user={user}>{children}</LayoutMain>
+    </NotificationProvider>
+  );
+}
+
+function LayoutMain({ user, children }: { user: any; children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const logout = useLogout();
   const [bellOpen, setBellOpen] = useState(false);
   const [dismissedToday, setDismissedToday] = useState<Set<number>>(new Set());
   const [showLoginPopup, setShowLoginPopup] = useState(false);
-  const [bellRect, setBellRect] = useState<DOMRect | null>(null);
   const loginPopupShownRef = useRef(sessionStorage.getItem("crm_login_popup_shown") === "true");
   const bellRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const { unreadCount: sseUnreadCount, notifications: sseNotifications, latestNotification, markAsRead, markAllAsRead, markAsSeen, markAsSeenByRelated } = useNotificationStream(user?.id);
+  const { unreadCount: sseUnreadCount, notifications: sseNotifications, latestNotification, markAsRead, markAllAsRead, markAsSeen, markAsSeenByRelated } = useNotifications();
 
   const [activePopups, setActivePopups] = useState<Set<number>>(new Set());
 
@@ -125,10 +143,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
   useTimeBasedReminders(upcomingActivities);
 
   useEffect(() => {
-    if (!isLoading && !user) setLocation("/login");
-  }, [isLoading, user, setLocation]);
-
-  useEffect(() => {
     if (user) {
       localStorage.setItem("crm_user_role", user.role);
     }
@@ -149,18 +163,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   }, [bellOpen]);
 
   useEffect(() => {
-    if (!bellOpen) return;
-    const handleScroll = () => {
-      if (bellRef.current) {
-        setBellRect(bellRef.current.getBoundingClientRect());
-      }
-    };
-    window.addEventListener("scroll", handleScroll, true);
-    return () => window.removeEventListener("scroll", handleScroll, true);
-  }, [bellOpen]);
-
-  useEffect(() => {
-    if (user && !isLoading && !loginPopupShownRef.current) {
+    if (user && !loginPopupShownRef.current) {
       loginPopupShownRef.current = true;
       sessionStorage.setItem("crm_login_popup_shown", "true");
       if (todayActivities.length > 0) {
@@ -169,7 +172,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       }
     }
     return;
-  }, [user, isLoading, todayActivities.length]);
+  }, [user, todayActivities.length]);
 
   const handleDismissReminder = useCallback((activityId: number) => {
     setDismissedToday(prev => new Set(prev).add(activityId));
@@ -182,19 +185,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
       { onSuccess: () => setDismissedToday(prev => new Set(prev).add(activityId)) }
     );
   }, [updateActivity, markAsSeenByRelated]);
-
-  if (isLoading) return (
-    <div className="h-screen flex items-center justify-center bg-background">
-      <div className="text-center">
-        <img src="/images/logo1.png" alt="Elham MultiPlast LLP" className="max-w-[180px] w-full h-auto mx-auto mb-6" />
-        <div className="flex items-center justify-center gap-2">
-          <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    </div>
-  );
-  if (!user) return null;
 
   const isProductionOnly = user.role === "production_manager";
   const isAdmin = user.role === "admin";
@@ -245,12 +235,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7 relative"
-                onClick={() => {
-                  if (bellRef.current) {
-                    setBellRect(bellRef.current.getBoundingClientRect());
-                  }
-                  setBellOpen(prev => !prev);
-                }}
+                onClick={() => setBellOpen(prev => !prev)}
               >
                 <Bell className="h-3.5 w-3.5" />
                 {unreadCount > 0 && (
@@ -290,12 +275,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
         <div className="p-4 border-t border-[hsl(250_22%_88%)] bg-white/40">
           <div className="flex items-center gap-3 mb-3">
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-sm"
-              style={{ backgroundColor: user.colorCode || '#888' }}
-            >
-              {user.name.charAt(0)}
-            </div>
+            <UserAvatar profilePhoto={user.profilePhoto} name={user.name} className="w-8 h-8 shadow-sm" />
             <div className="flex-1 overflow-hidden">
               <p className="text-sm font-semibold truncate text-[hsl(245_30%_20%)]">{user.name}</p>
               <p className="text-xs truncate text-[hsl(248_16%_55%)]">{user.unit || (user.role === "production_manager" ? "Production" : user.role)}</p>
@@ -469,6 +449,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {sseNotifications.filter(n => !n.readAt).length === 0 && todayActivities.length === 0 && (
             <div className="p-8 text-center text-sm text-muted-foreground">No notifications</div>
           )}
+          <div className="border-t">
+            <Link href="/notifications">
+              <div className="p-2.5 text-center text-xs text-blue-600 hover:bg-blue-50 cursor-pointer font-medium" onClick={() => setBellOpen(false)}>
+                View All Notifications
+              </div>
+            </Link>
+          </div>
         </div>
       )}
 

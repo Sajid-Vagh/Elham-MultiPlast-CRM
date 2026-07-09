@@ -13,7 +13,9 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { onContactChange } from "@/lib/query-invalidation";
 import { CheckCircle, AlertCircle, Upload, FileSpreadsheet, X, Info, Sparkles, ClipboardPaste } from "lucide-react";
+import { UserAvatar } from "@/components/user-avatar";
 import { Link } from "wouter";
+import { UNITS } from "@/lib/units";
 
 // ── IndiaMart multi-format parser ────────────────────────────────────────────
 interface ParsedLead {
@@ -833,7 +835,7 @@ export default function ImportPage() {
                         {users?.map(u => (
                           <SelectItem key={u.id} value={u.id.toString()}>
                             <span className="flex items-center gap-2">
-                              <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: u.colorCode }} />
+                              <UserAvatar profilePhoto={u.profilePhoto} name={u.name} className="w-2.5 h-2.5" />
                               {u.name}
                             </span>
                           </SelectItem>
@@ -862,9 +864,7 @@ export default function ImportPage() {
                   <Select value={unit} onValueChange={setUnit}>
                     <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Himatnagar">Himatnagar</SelectItem>
-                      <SelectItem value="Rajkot">Rajkot</SelectItem>
-                      <SelectItem value="Surat">Surat</SelectItem>
+                      {UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1029,9 +1029,7 @@ export default function ImportPage() {
                       <Select value={unit} onValueChange={setUnit}>
                         <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Himatnagar">Himatnagar</SelectItem>
-                          <SelectItem value="Rajkot">Rajkot</SelectItem>
-                          <SelectItem value="Surat">Surat</SelectItem>
+                          {UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>

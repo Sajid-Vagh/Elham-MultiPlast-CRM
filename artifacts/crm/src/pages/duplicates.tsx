@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { Phone, Mail, AlertTriangle } from "lucide-react";
+import { UserAvatar } from "@/components/user-avatar";
 
 export default function Duplicates() {
   const { data: groups, isLoading } = useListDuplicateContacts();
@@ -49,9 +50,7 @@ export default function Duplicates() {
                   <div key={contact.id} className="flex items-start gap-3 p-3 border rounded-md bg-card">
                     <div className="flex-shrink-0">
                       {contact.salesOwner ? (
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: contact.salesOwner.colorCode }}>
-                          {contact.salesOwner.name.charAt(0)}
-                        </div>
+                        <UserAvatar profilePhoto={contact.salesOwner.profilePhoto} name={contact.salesOwner.name} className="w-8 h-8" />
                       ) : (
                         <div className="w-8 h-8 rounded-full bg-muted" />
                       )}

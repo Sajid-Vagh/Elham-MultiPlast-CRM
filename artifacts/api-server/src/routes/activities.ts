@@ -436,6 +436,33 @@ router.patch("/activities/:id", async (req, res) => {
           eq(notificationsTable.relatedType, "activity"),
           isNull(notificationsTable.readAt),
         ));
+
+      // Create notification when follow-up is completed
+      if (parsed.data.callStatus === "Completed") {
+        let contactOwnerId: number | null = null;
+        let contactName = "Unknown";
+        if (existingActivity.contactId) {
+          const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId, name: contactsTable.name }).from(contactsTable).where(eq(contactsTable.id, existingActivity.contactId));
+          if (contact) { contactOwnerId = contact.salesOwnerId; contactName = contact.name; }
+        } else if (existingActivity.dealId) {
+          const [deal] = await db.select({ contactId: dealsTable.contactId }).from(dealsTable).where(eq(dealsTable.id, existingActivity.dealId));
+          if (deal) {
+            const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId, name: contactsTable.name }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+            if (contact) { contactOwnerId = contact.salesOwnerId; contactName = contact.name; }
+          }
+        }
+        if (contactOwnerId && contactOwnerId !== user.id) {
+          await createNotification({
+            userId: contactOwnerId,
+            type: "follow_up_completed",
+            title: "Follow-up Completed",
+            message: `Follow-up for ${contactName} has been marked as Completed.\nCompleted By: ${user.name}`,
+            link: existingActivity.contactId ? `/leads/${existingActivity.contactId}` : existingActivity.dealId ? `/deals/${existingActivity.dealId}` : "#",
+            relatedId: params.data.id,
+            relatedType: "activity",
+          });
+        }
+      }
     }
 
     const [activity] = await db.update(activitiesTable).set(updateData).where(eq(activitiesTable.id, params.data.id)).returning();

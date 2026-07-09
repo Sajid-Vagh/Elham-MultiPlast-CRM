@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { AlertTriangle, ExternalLink } from "lucide-react";
 import { Link } from "wouter";
 import { UNITS } from "@/lib/units";
+import { UserAvatar } from "@/components/user-avatar";
 
 const schema = z.object({
   name: z.string().min(1, "Required"),
@@ -182,7 +183,7 @@ export default function LeadForm({
                         {users?.map(u => (
                           <SelectItem key={u.id} value={u.id.toString()}>
                             <span className="flex items-center gap-2">
-                              <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: u.colorCode }} />
+                              <UserAvatar profilePhoto={u.profilePhoto} name={u.name} className="w-3 h-3" />
                               {u.name}
                             </span>
                           </SelectItem>
@@ -196,7 +197,7 @@ export default function LeadForm({
                 <div>
                   <p className="text-sm font-medium mb-1">Sales Owner</p>
                   <p className="text-sm text-muted-foreground">
-                    <span className="inline-block w-3 h-3 rounded-full mr-1.5 align-middle" style={{ backgroundColor: me.colorCode }} />
+                    <UserAvatar profilePhoto={me.profilePhoto} name={me.name} className="w-3 h-3 inline-block mr-1.5 align-middle" />
                     {me.name} (you)
                   </p>
                 </div>
@@ -304,9 +305,7 @@ export default function LeadForm({
             <div className="bg-amber-50 border border-amber-200 rounded-md p-4 space-y-3">
               <div className="flex items-center gap-3">
                 {popupContact.salesOwner && (
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0" style={{ backgroundColor: popupContact.salesOwner.colorCode }}>
-                    {popupContact.salesOwner.name.charAt(0)}
-                  </div>
+                  <UserAvatar profilePhoto={popupContact.salesOwner.profilePhoto} name={popupContact.salesOwner.name} className="w-10 h-10 shrink-0" />
                 )}
                 <div>
                   <p className="font-semibold text-base">{popupContact.name}</p>
@@ -320,7 +319,7 @@ export default function LeadForm({
                 {popupContact.salesOwner && (
                   <div className="flex items-center gap-1.5">
                     <span className="text-muted-foreground">Assigned to: </span>
-                    <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: popupContact.salesOwner.colorCode }} />
+                    <UserAvatar profilePhoto={popupContact.salesOwner.profilePhoto} name={popupContact.salesOwner.name} className="w-2.5 h-2.5" />
                     <span className="font-medium text-primary">{popupContact.salesOwner.name}</span>
                   </div>
                 )}

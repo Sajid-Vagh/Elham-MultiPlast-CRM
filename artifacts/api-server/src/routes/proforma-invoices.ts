@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable, usersTable, contactsTable, dealsTable, customerMasterTable, INVOICE_STATUSES } from "@workspace/db";
 import { eq, desc, and, SQL, sql, like, gte, lte, inArray, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
+import { createNotification } from "./notifications";
 import { amountToWords } from "../lib/amount-to-words";
 import { getGstProvider } from "../lib/gst-provider";
 import axios from "axios";
@@ -804,6 +805,19 @@ router.post("/proforma-invoices", async (req, res) => {
       });
     }
 
+    // Notify sales owner and admins about new invoice
+    if (resolvedSalesOwnerId && resolvedSalesOwnerId !== user.id) {
+      await createNotification({
+        userId: resolvedSalesOwnerId,
+        type: "invoice_created",
+        title: "New Invoice Created",
+        message: `Invoice #${finalInvoiceNumber} created for ${customerName}\nAmount: ₹${Number(grandTotal || 0).toLocaleString()}\nCreated By: ${user.name}`,
+        link: `/proforma-invoices`,
+        relatedId: invoice!.id,
+        relatedType: "proforma_invoice",
+      });
+    }
+
     res.status(201).json(await enrichInvoice(invoice!));
   } catch (err) {
     req.log.error({ err }, "Create proforma invoice error");
@@ -1252,6 +1266,23 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
       }
     }
 
+    // Notify sales owner about status change
+    const notifyUserId = invoice.salesOwnerId || invoice.createdBy;
+    if (notifyUserId && notifyUserId !== user.id) {
+      const msg = status === "Converted to Order"
+        ? `Invoice #${invoice.invoiceNumber} has been converted to a Production Order.\nChanged By: ${user.name}`
+        : `Invoice #${invoice.invoiceNumber} status changed from "${prevStatus}" to "${status}".\nChanged By: ${user.name}`;
+      await createNotification({
+        userId: notifyUserId,
+        type: "invoice_updated",
+        title: status === "Converted to Order" ? "Invoice Converted to Order" : "Invoice Status Updated",
+        message: msg,
+        link: `/proforma-invoices`,
+        relatedId: id,
+        relatedType: "proforma_invoice",
+      });
+    }
+
     const [updated] = await db
       .select()
       .from(proformaInvoicesTable)
@@ -1383,6 +1414,20 @@ router.delete("/proforma-invoices/:id", async (req, res) => {
       changedBy: user.id,
       notes: `Proforma Invoice ${invoice.invoiceNumber} deleted by ${userName} on ${nowStr}`,
     });
+
+    // Notify sales owner about deletion
+    const notifyUserId = invoice.salesOwnerId || invoice.createdBy;
+    if (notifyUserId && notifyUserId !== user.id) {
+      await createNotification({
+        userId: notifyUserId,
+        type: "invoice_deleted",
+        title: "Invoice Deleted",
+        message: `Invoice #${invoice.invoiceNumber} for ${invoice.customerName} has been deleted.\nDeleted By: ${userName}`,
+        link: `/proforma-invoices`,
+        relatedId: id,
+        relatedType: "proforma_invoice",
+      });
+    }
 
     res.status(200).json({ success: true });
   } catch (err) {

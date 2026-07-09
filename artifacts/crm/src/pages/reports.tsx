@@ -13,7 +13,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, PieChart, Pie, Legend } from "recharts";
 import { TrendingUp, Users, Briefcase, DollarSign, XCircle, Download } from "lucide-react";
+import { UserAvatar } from "@/components/user-avatar";
 import { STAGE_CHART_COLORS } from "@/lib/deal-stages";
+import { UNITS } from "@/lib/units";
 
 function MonthPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return <Input type="month" value={value} onChange={e => onChange(e.target.value)} className="w-40" />;
@@ -25,7 +27,7 @@ function UnitPicker({ value, onChange }: { value: string; onChange: (v: string) 
       <SelectTrigger className="w-36"><SelectValue placeholder="All Units" /></SelectTrigger>
       <SelectContent>
         <SelectItem value="all">All Units</SelectItem>
-        {["Himatnagar","Surat","Rajkot"].map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+        {UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
       </SelectContent>
     </Select>
   );
@@ -255,7 +257,7 @@ export default function Reports() {
                     <TableRow key={row.userId}>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: row.colorCode }} />
+                          <UserAvatar profilePhoto={(row as any).profilePhoto} name={row.userName} className="w-3 h-3" />
                           <span className="font-medium">{row.userName}</span>
                         </div>
                       </TableCell>

@@ -39,6 +39,8 @@ export interface User {
   role: UserRole;
   colorCode: string;
   unit: UserUnit;
+  /** @nullable */
+  profilePhoto?: string | null;
   createdAt?: string;
 }
 
@@ -90,6 +92,8 @@ export interface UserUpdate {
   role?: UserUpdateRole;
   colorCode?: string;
   unit?: string;
+  /** @nullable */
+  profilePhoto?: string | null;
 }
 
 /**
@@ -117,6 +121,7 @@ export const ContactUnit = {
   Himatnagar: 'Himatnagar',
   Surat: 'Surat',
   Rajkot: 'Rajkot',
+  'Not Sure': 'Not Sure',
 } as const;
 
 /**

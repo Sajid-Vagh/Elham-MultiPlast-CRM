@@ -1,5 +1,5 @@
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
-import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
@@ -22,6 +22,7 @@ import Duplicates from "@/pages/duplicates";
 import Settings from "@/pages/settings";
 import CategoriesPage from "@/pages/categories";
 import ProformaInvoices from "@/pages/proforma-invoices";
+import NotificationsPage from "@/pages/notifications";
 import ProductionDashboard from "@/pages/production-dashboard";
 import ProductionOrders from "@/pages/production-orders";
 import ProductionOrderDetail from "@/pages/production-order-detail";
@@ -38,14 +39,7 @@ function ProtectedLayout({ children }: { children: React.ReactNode }) {
 
 function RoleGuard({ allowedRoles, children }: { allowedRoles: string[]; children: React.ReactNode }) {
   const [, setLocation] = useLocation();
-  const { data: user, isLoading } = useQuery({
-    queryKey: ["get-me"],
-    enabled: false,
-  });
-
-  if (isLoading) return null;
-
-  const role = (user as any)?.role ?? localStorage.getItem("crm_user_role");
+  const role = localStorage.getItem("crm_user_role") ?? "";
 
   if (!allowedRoles.includes(role)) {
     if (role === "production_manager") {
@@ -149,7 +143,7 @@ function Router() {
       </Route>
       <Route path="/settings">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin"]}><Settings /></RoleGuard>
+          <RoleGuard allowedRoles={["admin", "sales", "production_manager"]}><Settings /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route path="/production/dashboard">
@@ -165,6 +159,11 @@ function Router() {
       <Route path="/production/orders">
         <ProtectedLayout>
           <RoleGuard allowedRoles={["production_manager", "admin"]}><ProductionOrders /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+      <Route path="/notifications">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin", "sales", "production_manager"]}><NotificationsPage /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route component={NotFound} />

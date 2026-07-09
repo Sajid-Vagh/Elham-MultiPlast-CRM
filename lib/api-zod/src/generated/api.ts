@@ -32,6 +32,7 @@ export const LoginResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }),
   "token": zod.string()
@@ -54,6 +55,7 @@ export const GetMeResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 })
 
@@ -68,6 +70,7 @@ export const ListUsersResponseItem = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 })
 export const ListUsersResponse = zod.array(ListUsersResponseItem)
@@ -82,7 +85,8 @@ export const CreateUserBody = zod.object({
   "password": zod.string(),
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
-  "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All'])
+  "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish()
 })
 
 export const CreateUserResponse = zod.object({
@@ -92,6 +96,7 @@ export const CreateUserResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 })
 
@@ -107,6 +112,7 @@ export const GetUserResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 })
 
@@ -121,7 +127,8 @@ export const UpdateUserBody = zod.object({
   "password": zod.string().nullish(),
   "role": zod.enum(['admin', 'sales']).optional(),
   "colorCode": zod.string().optional(),
-  "unit": zod.string().optional()
+  "unit": zod.string().optional(),
+  "profilePhoto": zod.string().nullish()
 })
 
 export const UpdateUserResponse = zod.object({
@@ -131,6 +138,7 @@ export const UpdateUserResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 })
 
@@ -168,6 +176,7 @@ export const ListContactsResponseItem = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -175,7 +184,7 @@ export const ListContactsResponseItem = zod.object({
   "leadSource": zod.union([zod.literal('IndiaMart'),zod.literal('TradeIndia'),zod.literal('Social Media'),zod.literal('Organic'),zod.literal('Email'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "city": zod.string().nullish(),
   "address": zod.string().nullish(),
-  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal(null)]).nullish(),
+  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal('Not Sure'),zod.literal(null)]).nullish(),
   "industry": zod.union([zod.literal('Liquid Detergent'),zod.literal('Lubricant'),zod.literal('Agro Chemical & Pesticide'),zod.literal('Edible Oil'),zod.literal('Veterinary'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "tags": zod.union([zod.literal('Interested'),zod.literal('Category B'),zod.literal('Category C'),zod.literal(null)]).nullish(),
   "inquiryDate": zod.string().nullish(),
@@ -222,6 +231,7 @@ export const CreateContactResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -229,7 +239,7 @@ export const CreateContactResponse = zod.object({
   "leadSource": zod.union([zod.literal('IndiaMart'),zod.literal('TradeIndia'),zod.literal('Social Media'),zod.literal('Organic'),zod.literal('Email'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "city": zod.string().nullish(),
   "address": zod.string().nullish(),
-  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal(null)]).nullish(),
+  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal('Not Sure'),zod.literal(null)]).nullish(),
   "industry": zod.union([zod.literal('Liquid Detergent'),zod.literal('Lubricant'),zod.literal('Agro Chemical & Pesticide'),zod.literal('Edible Oil'),zod.literal('Veterinary'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "tags": zod.union([zod.literal('Interested'),zod.literal('Category B'),zod.literal('Category C'),zod.literal(null)]).nullish(),
   "inquiryDate": zod.string().nullish(),
@@ -257,6 +267,7 @@ export const GetContactResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -264,7 +275,7 @@ export const GetContactResponse = zod.object({
   "leadSource": zod.union([zod.literal('IndiaMart'),zod.literal('TradeIndia'),zod.literal('Social Media'),zod.literal('Organic'),zod.literal('Email'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "city": zod.string().nullish(),
   "address": zod.string().nullish(),
-  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal(null)]).nullish(),
+  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal('Not Sure'),zod.literal(null)]).nullish(),
   "industry": zod.union([zod.literal('Liquid Detergent'),zod.literal('Lubricant'),zod.literal('Agro Chemical & Pesticide'),zod.literal('Edible Oil'),zod.literal('Veterinary'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "tags": zod.union([zod.literal('Interested'),zod.literal('Category B'),zod.literal('Category C'),zod.literal(null)]).nullish(),
   "inquiryDate": zod.string().nullish(),
@@ -313,6 +324,7 @@ export const UpdateContactResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -320,7 +332,7 @@ export const UpdateContactResponse = zod.object({
   "leadSource": zod.union([zod.literal('IndiaMart'),zod.literal('TradeIndia'),zod.literal('Social Media'),zod.literal('Organic'),zod.literal('Email'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "city": zod.string().nullish(),
   "address": zod.string().nullish(),
-  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal(null)]).nullish(),
+  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal('Not Sure'),zod.literal(null)]).nullish(),
   "industry": zod.union([zod.literal('Liquid Detergent'),zod.literal('Lubricant'),zod.literal('Agro Chemical & Pesticide'),zod.literal('Edible Oil'),zod.literal('Veterinary'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "tags": zod.union([zod.literal('Interested'),zod.literal('Category B'),zod.literal('Category C'),zod.literal(null)]).nullish(),
   "inquiryDate": zod.string().nullish(),
@@ -369,6 +381,7 @@ export const ListDuplicateContactsResponseItem = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -376,7 +389,7 @@ export const ListDuplicateContactsResponseItem = zod.object({
   "leadSource": zod.union([zod.literal('IndiaMart'),zod.literal('TradeIndia'),zod.literal('Social Media'),zod.literal('Organic'),zod.literal('Email'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "city": zod.string().nullish(),
   "address": zod.string().nullish(),
-  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal(null)]).nullish(),
+  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal('Not Sure'),zod.literal(null)]).nullish(),
   "industry": zod.union([zod.literal('Liquid Detergent'),zod.literal('Lubricant'),zod.literal('Agro Chemical & Pesticide'),zod.literal('Edible Oil'),zod.literal('Veterinary'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "tags": zod.union([zod.literal('Interested'),zod.literal('Category B'),zod.literal('Category C'),zod.literal(null)]).nullish(),
   "inquiryDate": zod.string().nullish(),
@@ -409,6 +422,7 @@ export const SearchContactByMobileResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -416,7 +430,7 @@ export const SearchContactByMobileResponse = zod.object({
   "leadSource": zod.union([zod.literal('IndiaMart'),zod.literal('TradeIndia'),zod.literal('Social Media'),zod.literal('Organic'),zod.literal('Email'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "city": zod.string().nullish(),
   "address": zod.string().nullish(),
-  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal(null)]).nullish(),
+  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal('Not Sure'),zod.literal(null)]).nullish(),
   "industry": zod.union([zod.literal('Liquid Detergent'),zod.literal('Lubricant'),zod.literal('Agro Chemical & Pesticide'),zod.literal('Edible Oil'),zod.literal('Veterinary'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "tags": zod.union([zod.literal('Interested'),zod.literal('Category B'),zod.literal('Category C'),zod.literal(null)]).nullish(),
   "inquiryDate": zod.string().nullish(),
@@ -568,6 +582,7 @@ export const ListDealsResponseItem = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -575,7 +590,7 @@ export const ListDealsResponseItem = zod.object({
   "leadSource": zod.union([zod.literal('IndiaMart'),zod.literal('TradeIndia'),zod.literal('Social Media'),zod.literal('Organic'),zod.literal('Email'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "city": zod.string().nullish(),
   "address": zod.string().nullish(),
-  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal(null)]).nullish(),
+  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal('Not Sure'),zod.literal(null)]).nullish(),
   "industry": zod.union([zod.literal('Liquid Detergent'),zod.literal('Lubricant'),zod.literal('Agro Chemical & Pesticide'),zod.literal('Edible Oil'),zod.literal('Veterinary'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "tags": zod.union([zod.literal('Interested'),zod.literal('Category B'),zod.literal('Category C'),zod.literal(null)]).nullish(),
   "inquiryDate": zod.string().nullish(),
@@ -597,6 +612,7 @@ export const ListDealsResponseItem = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }).optional(),
   "completedAt": zod.string().nullish(),
@@ -638,6 +654,7 @@ export const CreateDealResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -645,7 +662,7 @@ export const CreateDealResponse = zod.object({
   "leadSource": zod.union([zod.literal('IndiaMart'),zod.literal('TradeIndia'),zod.literal('Social Media'),zod.literal('Organic'),zod.literal('Email'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "city": zod.string().nullish(),
   "address": zod.string().nullish(),
-  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal(null)]).nullish(),
+  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal('Not Sure'),zod.literal(null)]).nullish(),
   "industry": zod.union([zod.literal('Liquid Detergent'),zod.literal('Lubricant'),zod.literal('Agro Chemical & Pesticide'),zod.literal('Edible Oil'),zod.literal('Veterinary'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "tags": zod.union([zod.literal('Interested'),zod.literal('Category B'),zod.literal('Category C'),zod.literal(null)]).nullish(),
   "inquiryDate": zod.string().nullish(),
@@ -669,6 +686,7 @@ export const CreateDealResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }).optional(),
   "completedAt": zod.string().nullish(),
@@ -698,6 +716,7 @@ export const GetDealResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -705,7 +724,7 @@ export const GetDealResponse = zod.object({
   "leadSource": zod.union([zod.literal('IndiaMart'),zod.literal('TradeIndia'),zod.literal('Social Media'),zod.literal('Organic'),zod.literal('Email'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "city": zod.string().nullish(),
   "address": zod.string().nullish(),
-  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal(null)]).nullish(),
+  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal('Not Sure'),zod.literal(null)]).nullish(),
   "industry": zod.union([zod.literal('Liquid Detergent'),zod.literal('Lubricant'),zod.literal('Agro Chemical & Pesticide'),zod.literal('Edible Oil'),zod.literal('Veterinary'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "tags": zod.union([zod.literal('Interested'),zod.literal('Category B'),zod.literal('Category C'),zod.literal(null)]).nullish(),
   "inquiryDate": zod.string().nullish(),
@@ -728,6 +747,7 @@ export const GetDealResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }).optional(),
   "completedAt": zod.string().nullish(),
@@ -768,6 +788,7 @@ export const UpdateDealResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -775,7 +796,7 @@ export const UpdateDealResponse = zod.object({
   "leadSource": zod.union([zod.literal('IndiaMart'),zod.literal('TradeIndia'),zod.literal('Social Media'),zod.literal('Organic'),zod.literal('Email'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "city": zod.string().nullish(),
   "address": zod.string().nullish(),
-  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal(null)]).nullish(),
+  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal('Not Sure'),zod.literal(null)]).nullish(),
   "industry": zod.union([zod.literal('Liquid Detergent'),zod.literal('Lubricant'),zod.literal('Agro Chemical & Pesticide'),zod.literal('Edible Oil'),zod.literal('Veterinary'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "tags": zod.union([zod.literal('Interested'),zod.literal('Category B'),zod.literal('Category C'),zod.literal(null)]).nullish(),
   "inquiryDate": zod.string().nullish(),
@@ -798,6 +819,7 @@ export const UpdateDealResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }).optional(),
   "completedAt": zod.string().nullish(),
@@ -904,6 +926,7 @@ export const ListActivitiesResponseItem = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }).optional(),
   "createdAt": zod.string(),
@@ -946,6 +969,7 @@ export const CreateActivityResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }).optional(),
   "createdAt": zod.string(),
@@ -987,6 +1011,7 @@ export const UpdateActivityResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }).optional(),
   "createdAt": zod.string(),
@@ -1171,6 +1196,7 @@ export const ImportIndiaMartResponse = zod.object({
   "role": zod.enum(['admin', 'sales']),
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "profilePhoto": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -1178,7 +1204,7 @@ export const ImportIndiaMartResponse = zod.object({
   "leadSource": zod.union([zod.literal('IndiaMart'),zod.literal('TradeIndia'),zod.literal('Social Media'),zod.literal('Organic'),zod.literal('Email'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "city": zod.string().nullish(),
   "address": zod.string().nullish(),
-  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal(null)]).nullish(),
+  "unit": zod.union([zod.literal('Himatnagar'),zod.literal('Surat'),zod.literal('Rajkot'),zod.literal('Not Sure'),zod.literal(null)]).nullish(),
   "industry": zod.union([zod.literal('Liquid Detergent'),zod.literal('Lubricant'),zod.literal('Agro Chemical & Pesticide'),zod.literal('Edible Oil'),zod.literal('Veterinary'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "tags": zod.union([zod.literal('Interested'),zod.literal('Category B'),zod.literal('Category C'),zod.literal(null)]).nullish(),
   "inquiryDate": zod.string().nullish(),

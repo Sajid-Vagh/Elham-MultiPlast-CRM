@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Plus, Trash2, FolderTree, Pencil, Check, X } from "lucide-react";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
+import { UserAvatar } from "@/components/user-avatar";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -316,7 +317,7 @@ export default function DealDetail() {
         </Button>
         <div className="flex-1">
           <div className="flex items-center gap-3">
-            {owner && <div className="w-4 h-4 rounded-full shadow-sm" style={{ backgroundColor: owner.colorCode }} />}
+            {owner && <UserAvatar profilePhoto={owner.profilePhoto} name={owner.name} className="w-4 h-4 shadow-sm" />}
             <h1 className="text-2xl font-bold">{deal.title || `Deal #${deal.id}`}</h1>
             <CategoryBadge category={contact?.category} />
             <span className={`text-sm px-2.5 py-1 rounded-full font-medium ${STAGE_BADGE_COLORS[deal.stage] || "bg-gray-100"}`}>{deal.stage}</span>
