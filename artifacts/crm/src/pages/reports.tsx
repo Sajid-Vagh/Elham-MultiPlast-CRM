@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, PieChart, Pie, Legend } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, PieChart, Pie, Legend, Tooltip, Sector } from "recharts";
 import { TrendingUp, Users, Briefcase, DollarSign, XCircle, Download } from "lucide-react";
 import { UserAvatar } from "@/components/user-avatar";
 import { STAGE_CHART_COLORS } from "@/lib/deal-stages";
@@ -68,6 +68,7 @@ export default function Reports() {
   const [unit, setUnit] = useState("");
   const [ownerId, setOwnerId] = useState("");
   const [activeTab, setActiveTab] = useState("pipeline");
+  const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
   const [, navigate] = useLocation();
 
   const { data: summary } = useQuery({
@@ -190,10 +191,10 @@ export default function Reports() {
             <CardHeader><CardTitle>Pipeline by Stage</CardTitle></CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={pipeline ?? []} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <BarChart data={pipeline ?? []} margin={{ top: 20, right: 30, left: 45, bottom: 30 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="stage" tick={{ fontSize: 12 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+                  <XAxis dataKey="stage" tick={{ fontSize: 11 }} angle={-30} textAnchor="end" height={60} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={40} />
                   <Bar dataKey="count" name="count" radius={[4,4,0,0]}>
                     {pipeline?.map((entry, i) => <Cell key={i} fill={STAGE_CHART_COLORS[entry.stage] || "#94a3b8"} />)}
                   </Bar>
@@ -371,22 +372,53 @@ export default function Reports() {
                 {!lostReasons?.length ? (
                   <p className="text-sm text-muted-foreground text-center py-12">No lost deals found for the selected filters.</p>
                 ) : (
-                  <ResponsiveContainer width="100%" height={280}>
-                    <PieChart>
+                  <ResponsiveContainer width="100%" height={320}>
+                    <PieChart margin={{ top: 30, right: 30, bottom: 30, left: 30 }}>
                       <Pie
                         data={lostReasons}
                         dataKey="count"
                         nameKey="reason"
                         cx="50%"
                         cy="50%"
-                        outerRadius={100}
-                        label={({ reason, percent }) => `${reason} (${(percent * 100).toFixed(0)}%)`}
-                        labelLine={true}
+                        outerRadius="75%"
+                        activeIndex={activePieIndex ?? undefined}
+                        activeShape={(props: any) => {
+                          const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props;
+                          return (
+                            <Sector
+                              cx={cx}
+                              cy={cy}
+                              innerRadius={innerRadius}
+                              outerRadius={Math.min(outerRadius + 6, cx, cy)}
+                              startAngle={startAngle}
+                              endAngle={endAngle}
+                              fill={fill}
+                              opacity={0.85}
+                            />
+                          );
+                        }}
+                        onMouseEnter={(_: any, index: number) => setActivePieIndex(index)}
+                        onMouseLeave={() => setActivePieIndex(null)}
                       >
                         {lostReasons.map((_, i) => (
                           <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                         ))}
                       </Pie>
+                      <Tooltip
+                        offset={20}
+                        content={({ active, payload }: any) => {
+                          if (!active || !payload?.length) return null;
+                          const d = payload[0].payload;
+                          const pct = ((d.count / totalLost) * 100).toFixed(1);
+                          return (
+                            <div className="rounded-lg border bg-background px-3 py-2 text-xs shadow-md">
+                              <p className="font-medium">{d.reason}</p>
+                              <p>Lost: {d.count}</p>
+                              <p className="text-muted-foreground">{pct}%</p>
+                            </div>
+                          );
+                        }}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 )}

@@ -92,7 +92,7 @@ router.get("/dashboard/kpi", async (req, res) => {
     const todayActivities = activitiesQueryResult.filter(a => a.followUpDate === today);
     const todayTotal = todayActivities.length;
     const todayCompleted = todayActivities.filter(a => a.callStatus === "Completed").length;
-    const todayPending = todayTotal - todayCompleted;
+    const todayPending = todayActivities.filter(a => a.callStatus === "Pending").length;
 
     const dueContacts = filteredContacts.filter(c => c.nextCallDate && c.nextCallDate < today);
     const overdueCount = dueContacts.length;

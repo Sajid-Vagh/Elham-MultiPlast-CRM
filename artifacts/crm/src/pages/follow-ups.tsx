@@ -126,7 +126,6 @@ export default function FollowUps() {
       if (isAdmin && ownerFilter) {
         params.set("userId", ownerFilter);
       }
-      params.set("category", "Regular Follow up");
       const res = await fetch(`/api/activities?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });

@@ -122,7 +122,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
 
   const { data: upcomingActivities } = useListActivities(
     { upcoming: true },
-    { query: { enabled: !!user, staleTime: 5 * 60 * 1000, queryKey: getListActivitiesQueryKey({ upcoming: true }) } }
+    { query: { enabled: !!user, staleTime: 30 * 1000, queryKey: getListActivitiesQueryKey({ upcoming: true }) } }
   );
   const followUpCount = useMemo(() => {
     if (!upcomingActivities) return 0;

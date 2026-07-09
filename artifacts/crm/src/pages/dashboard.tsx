@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
 import { STAGE_CHART_COLORS } from "@/lib/deal-stages";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, PieChart, Pie, Legend, Tooltip, LineChart, Line } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, PieChart, Pie, Legend, Tooltip, LineChart, Line, Sector } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserAvatar } from "@/components/user-avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -33,6 +33,7 @@ export default function Dashboard() {
   const [followUpDateFilter, setFollowUpDateFilter] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("");
   const [unitFilter, setUnitFilter] = useState("");
+  const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
 
@@ -193,7 +194,7 @@ export default function Dashboard() {
       {/* ── KPI CARDS ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Link href="/leads" className="block">
-          <Card className="hover:shadow-md transition-shadow cursor-pointer">
+          <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">{isAdmin ? "Total Leads" : "My Leads"}</CardTitle>
               <Users className="h-4 w-4 text-muted-foreground" />
@@ -205,7 +206,7 @@ export default function Dashboard() {
           </Card>
         </Link>
         <Link href="/deals" className="block">
-          <Card className="hover:shadow-md transition-shadow cursor-pointer">
+          <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">{isAdmin ? "Active Deals" : "My Deals"}</CardTitle>
               <Briefcase className="h-4 w-4 text-muted-foreground" />
@@ -217,7 +218,7 @@ export default function Dashboard() {
           </Card>
         </Link>
         <Link href="/deals" className="block">
-          <Card className="hover:shadow-md transition-shadow cursor-pointer">
+          <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Won Value</CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
@@ -229,7 +230,7 @@ export default function Dashboard() {
           </Card>
         </Link>
         <Link href="/reports" className="block">
-          <Card className="hover:shadow-md transition-shadow cursor-pointer">
+          <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Win Rate / Conversion</CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
@@ -245,7 +246,7 @@ export default function Dashboard() {
       {/* Today's Calls + Additional KPI mini-cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         <Link href="/follow-ups" className="block">
-          <Card className="hover:shadow-md transition-shadow cursor-pointer border-blue-200">
+          <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out border-blue-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-xs font-medium">Today's Calls</CardTitle>
               <Phone className="h-4 w-4 text-blue-500" />
@@ -256,7 +257,7 @@ export default function Dashboard() {
           </Card>
         </Link>
         <Link href="/follow-ups" className="block">
-          <Card className="hover:shadow-md transition-shadow cursor-pointer border-green-200">
+          <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out border-green-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-xs font-medium">Completed</CardTitle>
               <CheckCircle2 className="h-4 w-4 text-green-500" />
@@ -267,7 +268,7 @@ export default function Dashboard() {
           </Card>
         </Link>
         <Link href="/follow-ups" className="block">
-          <Card className="hover:shadow-md transition-shadow cursor-pointer border-orange-200">
+          <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out border-orange-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-xs font-medium">Pending</CardTitle>
               <Clock className="h-4 w-4 text-orange-500" />
@@ -278,7 +279,7 @@ export default function Dashboard() {
           </Card>
         </Link>
         <Link href="/follow-ups" className="block">
-          <Card className="hover:shadow-md transition-shadow cursor-pointer border-red-200">
+          <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out border-red-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-xs font-medium">Overdue</CardTitle>
               <AlertCircle className="h-4 w-4 text-red-500" />
@@ -289,7 +290,7 @@ export default function Dashboard() {
           </Card>
         </Link>
         <Link href="/leads" className="block">
-          <Card className="hover:shadow-md transition-shadow cursor-pointer border-purple-200">
+          <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out border-purple-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-xs font-medium">My Clients</CardTitle>
               <UserCheck className="h-4 w-4 text-purple-500" />
@@ -299,7 +300,7 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </Link>
-        <Card className="border-amber-200">
+        <Card className="border-amber-200 hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-xs font-medium">Conversion</CardTitle>
             <UserPlus className="h-4 w-4 text-amber-500" />
@@ -312,7 +313,7 @@ export default function Dashboard() {
 
       {/* ── SALES PERFORMANCE (admin only) ── */}
       {isAdmin && salesPerformance && salesPerformance.length > 0 && (
-        <Card>
+        <Card className="hover:shadow-lg transition-shadow duration-200">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2">
@@ -340,7 +341,7 @@ export default function Dashboard() {
               </TableHeader>
               <TableBody>
                 {salesPerformance.map(row => (
-                  <TableRow key={row.userId}>
+                  <TableRow key={row.userId} className="hover:bg-muted/50 transition-colors">
                     <TableCell>
                         <div className="flex items-center gap-2">
                         <UserAvatar profilePhoto={row.profilePhoto} name={row.userName} className="w-7 h-7 border border-[#E5E7EB]" />
@@ -370,7 +371,7 @@ export default function Dashboard() {
 
       {/* ── OVERDUE FOLLOW-UPS ── */}
       {overdueList.length > 0 && (
-        <Card className="border-red-200 bg-red-50/50">
+        <Card className="border-red-200 bg-red-50/50 hover:shadow-lg transition-shadow duration-200">
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-red-600" />
@@ -424,7 +425,7 @@ export default function Dashboard() {
       {charts && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Category Distribution Pie */}
-          <Card>
+          <Card className="hover:shadow-lg transition-shadow duration-200">
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <PieChart className="h-4 w-4 text-orange-500" />
@@ -432,30 +433,62 @@ export default function Dashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
+              <ResponsiveContainer width="100%" height={280}>
+                <PieChart margin={{ top: 30, right: 30, bottom: 70, left: 30 }}>
                   <Pie
-                    data={charts.categoryDistribution.filter(d => d.value > 0)}
+                    data={charts.categoryDistribution.filter((d: any) => d.value > 0)}
                     dataKey="value"
                     nameKey="name"
                     cx="50%"
                     cy="50%"
-                    outerRadius={80}
-                    label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
+                    outerRadius="70%"
+                    activeIndex={activePieIndex ?? undefined}
+                    activeShape={(props: any) => {
+                      const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props;
+                      return (
+                        <Sector
+                          cx={cx}
+                          cy={cy}
+                          innerRadius={innerRadius}
+                          outerRadius={Math.min(outerRadius + 6, cx, cy)}
+                          startAngle={startAngle}
+                          endAngle={endAngle}
+                          fill={fill}
+                          opacity={0.85}
+                        />
+                      );
+                    }}
+                    onMouseEnter={(_: any, index: number) => setActivePieIndex(index)}
+                    onMouseLeave={() => setActivePieIndex(null)}
                   >
-                    {charts.categoryDistribution.filter(d => d.value > 0).map((_, i) => (
+                    {charts.categoryDistribution.filter((d: any) => d.value > 0).map((_: any, i: number) => (
                       <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip />
-                  <Legend />
+                  <Tooltip
+                    offset={20}
+                    content={({ active, payload }: any) => {
+                      if (!active || !payload?.length) return null;
+                      const d = payload[0].payload;
+                      const total = charts.categoryDistribution.filter((x: any) => x.value > 0).reduce((s: number, x: any) => s + x.value, 0);
+                      const pct = ((d.value / total) * 100).toFixed(1);
+                      return (
+                        <div className="rounded-lg border bg-background px-3 py-2 text-xs shadow-md">
+                          <p className="font-medium">{d.name}</p>
+                          <p>Contacts: {d.value}</p>
+                          <p className="text-muted-foreground">{pct}%</p>
+                        </div>
+                      );
+                    }}
+                  />
+                  <Legend verticalAlign="bottom" wrapperStyle={{ fontSize: 12, paddingTop: 24 }} />
                 </PieChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
 
           {/* Deal Stage Distribution Bar */}
-          <Card>
+          <Card className="hover:shadow-lg transition-shadow duration-200">
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <BarChart3 className="h-4 w-4 text-blue-500" />
@@ -463,11 +496,11 @@ export default function Dashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={charts.dealStageDistribution} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={charts.dealStageDistribution} margin={{ top: 20, right: 20, left: 45, bottom: 60 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="stage" tick={{ fontSize: 10 }} angle={-20} textAnchor="end" height={50} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <XAxis dataKey="stage" tick={{ fontSize: 10 }} angle={-30} textAnchor="end" height={55} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={40} />
                   <Tooltip />
                   <Bar dataKey="count" name="Deals" radius={[3,3,0,0]}>
                     {charts.dealStageDistribution.map((entry, i) => (
@@ -480,7 +513,7 @@ export default function Dashboard() {
           </Card>
 
           {/* Monthly Trends Line */}
-          <Card>
+          <Card className="hover:shadow-lg transition-shadow duration-200">
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <TrendingUp className="h-4 w-4 text-green-500" />
@@ -488,15 +521,15 @@ export default function Dashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={charts.monthlyTrends} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+              <ResponsiveContainer width="100%" height={280}>
+                <LineChart data={charts.monthlyTrends} margin={{ top: 20, right: 20, left: 45, bottom: 75 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="month" tick={{ fontSize: 9 }} interval={2} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <XAxis dataKey="month" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={60} interval="preserveStartEnd" />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={40} />
                   <Tooltip />
                   <Line type="monotone" dataKey="contacts" stroke="#3b82f6" name="Leads" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="deals" stroke="#10b981" name="Deals" strokeWidth={2} dot={false} />
-                  <Legend />
+                  <Legend verticalAlign="bottom" wrapperStyle={{ fontSize: 12, paddingTop: 16 }} />
                 </LineChart>
               </ResponsiveContainer>
             </CardContent>
@@ -506,7 +539,7 @@ export default function Dashboard() {
 
       {/* ── FOLLOW-UP REMINDERS ── */}
       {dueContacts && dueContacts.length > 0 && (
-        <Card className="border-orange-200 bg-orange-50/50">
+        <Card className="border-orange-200 bg-orange-50/50 hover:shadow-lg transition-shadow duration-200">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between flex-wrap gap-3">
               <CardTitle className="flex items-center gap-2 text-orange-700">
@@ -585,7 +618,7 @@ export default function Dashboard() {
       {isAdmin && Object.keys(unitStats).length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {Object.entries(unitStats).map(([unit, count]) => (
-            <Card key={unit}>
+            <Card key={unit} className="hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">{unit}</CardTitle>
               </CardHeader>
@@ -600,7 +633,7 @@ export default function Dashboard() {
 
       {/* ── CATEGORY SUMMARY ── */}
       {kpi?.categoryCounts && kpi.categoryCounts.some(c => c.count > 0) && (
-        <Card>
+        <Card className="hover:shadow-lg transition-shadow duration-200">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2">
@@ -618,7 +651,7 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
               {kpi.categoryCounts.map(({ category, count }) => (
                 <Link key={category} href={`/categories`} className="block">
-                  <div className="text-center p-3 rounded-lg border hover:shadow-sm transition-shadow cursor-pointer">
+                  <div className="text-center p-3 rounded-lg border hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
                     <span className="text-2xl">{category === "My Client" ? "⭐" : category === "Regular Follow up" ? "📋" : "📁"}</span>
                     <p className="text-lg font-bold mt-1" style={{ color: CATEGORY_COLORS[category] }}>
                       {count}
@@ -634,7 +667,7 @@ export default function Dashboard() {
 
       {/* ── RECENT ACTIVITIES ── */}
       {recentActivities && recentActivities.length > 0 && (
-        <Card>
+        <Card className="hover:shadow-lg transition-shadow duration-200">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2">
@@ -686,7 +719,7 @@ export default function Dashboard() {
       )}
 
       {/* ── PIPELINE OVERVIEW ── */}
-      <Card>
+      <Card className="hover:shadow-lg transition-shadow duration-200">
         <CardHeader>
           <CardTitle>Pipeline Overview</CardTitle>
         </CardHeader>
