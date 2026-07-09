@@ -230,8 +230,8 @@ router.patch("/deals/:id", async (req, res) => {
 
     // Restore contact category when deal is Lost
     // EXCEPTION: My Clients is permanent — restore existing My Clients back to My Client
+    const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
     if (deal.stage === "Lost") {
-      const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
       if (contact) {
         if (contact.isMyClient && contact.category !== "My Client") {
           // Restore existing My Client back to My Client category

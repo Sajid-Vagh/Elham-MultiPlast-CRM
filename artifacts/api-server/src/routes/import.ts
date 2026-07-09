@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, dealsTable, usersTable, CATEGORIES } from "@workspace/db";
+import { db, contactsTable, usersTable, CATEGORIES } from "@workspace/db";
 import { eq, or, and } from "drizzle-orm";
 import { z } from "zod";
 import { getUserFromRequest } from "./auth";

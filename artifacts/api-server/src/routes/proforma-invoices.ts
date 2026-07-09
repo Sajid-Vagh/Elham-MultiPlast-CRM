@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable, usersTable, contactsTable, dealsTable, customerMasterTable, INVOICE_STATUSES } from "@workspace/db";
-import { eq, desc, and, SQL, sql, like, gte, lte, inArray, isNull } from "drizzle-orm";
+import { eq, desc, and, SQL, sql, like, gte, lte, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { amountToWords } from "../lib/amount-to-words";
@@ -645,7 +645,7 @@ router.get("/proforma-invoices", async (req, res) => {
       .offset(offset);
 
     const enriched = await Promise.all(invoices.map(enrichInvoice));
-    res.json({ data: enriched, total: count, page: pageNum, totalPages: Math.ceil(count / pageSize) });
+    res.json({ data: enriched, total: count as number, page: pageNum, totalPages: Math.ceil((count as number) / pageSize) });
   } catch (err) {
     req.log.error({ err }, "List proforma invoices error");
     res.status(500).json({ error: "Internal server error" });
@@ -1495,7 +1495,7 @@ router.get("/proforma-invoices/:id/pdf", async (req, res) => {
       });
       const page = await browser.newPage();
       await page.setViewport({ width: 1240, height: 1754 });
-      await page.setContent(html, { waitUntil: "networkidle0", timeout: 30000 });
+      await page.setContent(html, { waitUntil: "networkidle0" as "load", timeout: 30000 });
       const pdf = await page.pdf({
         format: "A4",
         printBackground: true,

@@ -9,7 +9,7 @@ import {
   usersTable,
   contactsTable,
 } from "@workspace/db";
-import { eq, desc, and, SQL, sql, gte, lte, or, like } from "drizzle-orm";
+import { eq, desc, and, SQL, sql, gte, lte, or } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 

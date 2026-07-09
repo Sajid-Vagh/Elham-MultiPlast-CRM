@@ -73,6 +73,7 @@ router.post("/documents/upload", upload.single("file"), async (req: Request, res
     // Create activity entry
     await db.insert(activitiesTable).values({
       contactId,
+      dealId: dealId ?? 0,
       type: "Note",
       notes: `${documentType} Uploaded: ${docName}`,
       createdBy: user.id,
@@ -136,7 +137,7 @@ router.post("/documents/upload-multiple", upload.array("files", 20), async (req:
     }
 
     await db.insert(activitiesTable).values({
-      contactId, type: "Note",
+      contactId, dealId: dealId ?? 0, type: "Note",
       notes: `${results.length} document(s) uploaded`,
       createdBy: user.id,
     });
@@ -252,7 +253,7 @@ router.get("/documents/:id/download", async (req: Request, res: Response) => {
 
     // Record activity for download
     await db.insert(activitiesTable).values({
-      contactId: doc.contactId, type: "Note",
+      contactId: doc.contactId, dealId: doc.dealId ?? 0, type: "Note",
       notes: `${doc.documentType} Downloaded: ${doc.name}`,
       createdBy: user.id,
     });
@@ -366,7 +367,7 @@ router.post("/documents/:id/replace", upload.single("file"), async (req: Request
     });
 
     await db.insert(activitiesTable).values({
-      contactId: doc.contactId, type: "Note",
+      contactId: doc.contactId, dealId: doc.dealId ?? 0, type: "Note",
       notes: `${doc.documentType} Replaced: ${doc.name} (v${newVersion})`,
       createdBy: user.id,
     });
@@ -430,7 +431,7 @@ router.delete("/documents/:id", async (req: Request, res: Response) => {
     await db.update(documentsTable).set({ isDeleted: true, updatedBy: user.id }).where(eq(documentsTable.id, id));
 
     await db.insert(activitiesTable).values({
-      contactId: doc.contactId, type: "Note",
+      contactId: doc.contactId, dealId: doc.dealId ?? 0, type: "Note",
       notes: `${doc.documentType} Deleted: ${doc.name}`,
       createdBy: user.id,
     });

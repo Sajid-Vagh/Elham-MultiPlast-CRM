@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, activitiesTable, DEAL_STAGES, STAGE_PROBS } from "@workspace/db";
-import { eq, and, gte, lte, SQL, count, sum } from "drizzle-orm";
+import { eq, and, gte } from "drizzle-orm";
 import { GetPipelineReportQueryParams, GetReportByOwnerQueryParams, GetReportByProductQueryParams, GetReportByCityQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 

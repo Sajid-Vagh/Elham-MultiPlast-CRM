@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { DndContext, DragOverlay, useDraggable, useDroppable, closestCenter } from "@dnd-kit/core";
 import type { DragStartEvent, DragEndEvent } from "@dnd-kit/core";
 import { useQueryClient } from "@tanstack/react-query";
-import { useListDeals, useListUsers, useGetMe, useUpdateDeal, getListDealsQueryKey } from "@workspace/api-client-react";
+import { useListDeals, useListUsers, useGetMe, useUpdateDeal } from "@workspace/api-client-react";
 import type { Deal, DealStage } from "@workspace/api-client-react";
 import { useSearch, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";

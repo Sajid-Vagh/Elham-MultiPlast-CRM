@@ -386,7 +386,7 @@ router.get("/categories/report", async (req, res) => {
     }
 
     const totalResult = await db
-      .select({ count: sql`count(*)::int` })
+      .select({ count: sql`count(*)::int`.mapWith(Number) })
       .from(contactsTable)
       .where(and(...contactConditions));
     const totalRecords = totalResult[0]?.count ?? 0;
@@ -395,7 +395,7 @@ router.get("/categories/report", async (req, res) => {
     for (const category of CATEGORIES) {
       const catConditions = [eq(contactsTable.category, category), ...contactConditions];
       const [result] = await db
-        .select({ count: sql`count(*)::int` })
+        .select({ count: sql`count(*)::int`.mapWith(Number) })
         .from(contactsTable)
         .where(and(...catConditions));
       const count = result?.count ?? 0;
@@ -416,7 +416,7 @@ router.get("/categories/report", async (req, res) => {
       .groupBy(categoryHistoryTable.previousCategory, categoryHistoryTable.newCategory);
 
     const myClientsResult = await db
-      .select({ count: sql`count(*)::int` })
+      .select({ count: sql`count(*)::int`.mapWith(Number) })
       .from(contactsTable)
       .where(and(eq(contactsTable.category, "My Client"), ...contactConditions));
     const myClientsCount = myClientsResult[0]?.count ?? 0;

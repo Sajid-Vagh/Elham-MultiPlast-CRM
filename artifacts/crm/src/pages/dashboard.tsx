@@ -1,9 +1,9 @@
 import { useState, useMemo } from "react";
-import { useGetReportSummary, useGetMe } from "@workspace/api-client-react";
+import { useGetMe } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Briefcase, Users, DollarSign, TrendingUp, AlertCircle, PhoneCall, X, Clock, Phone, CheckCircle2, FolderTree, UserCheck, Activity, BarChart3, PieChart as PieChartIcon, ChevronRight, UserPlus, Download } from "lucide-react";
+import { Briefcase, Users, DollarSign, TrendingUp, AlertCircle, PhoneCall, X, Clock, Phone, CheckCircle2, FolderTree, UserCheck, Activity, BarChart3, ChevronRight, UserPlus, Download } from "lucide-react";
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

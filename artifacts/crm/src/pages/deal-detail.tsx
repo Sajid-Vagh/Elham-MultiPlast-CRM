@@ -2,13 +2,13 @@ import { useState, useMemo } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import {
   useGetDeal, useUpdateDeal, useDeleteDeal, useListDealProducts, useAddDealProduct, useRemoveDealProduct,
-  useListActivities, useCreateActivity, useUpdateActivity, useDeleteActivity, useListProducts, useListUsers,
+  useListActivities, useCreateActivity, useUpdateActivity, useDeleteActivity, useListProducts,
   useGetMe,
   getGetDealQueryKey,   getListDealProductsQueryKey, getListActivitiesQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { onDealChange, onActivityChange, onContactChange } from "@/lib/query-invalidation";
+import { onDealChange, onActivityChange } from "@/lib/query-invalidation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";

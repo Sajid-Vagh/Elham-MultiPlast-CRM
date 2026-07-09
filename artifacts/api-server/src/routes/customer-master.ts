@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, customerMasterTable, proformaInvoicesTable, proformaInvoiceItemsTable, usersTable } from "@workspace/db";
-import { eq, desc, and, like, sql, or } from "drizzle-orm";
+import { db, customerMasterTable, proformaInvoicesTable } from "@workspace/db";
+import { eq, desc, and, sql, or } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 
 const router: IRouter = Router();

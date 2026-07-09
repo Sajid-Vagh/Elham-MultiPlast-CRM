@@ -447,6 +447,7 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
 
     // Category is optional: if provided (A/B/C) and contact is NOT a permanent My Client, move to that category
     // Permanent My Clients (isMyClient=true) ALWAYS stay in My Clients regardless of lostCategory value
+    let newCategory: string | undefined;
     if (lostCategory && contact.isMyClient === false) {
       if (!["A", "B", "C"].includes(lostCategory)) {
         res.status(400).json({ error: "Lost category must be A, B, or C" }); return;
@@ -454,7 +455,7 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
       const categoryMap: Record<string, string> = {
         A: "Category A", B: "Category B", C: "Category C",
       };
-      const newCategory = categoryMap[lostCategory];
+      newCategory = categoryMap[lostCategory];
       const prevCategory = contact.category;
 
       await db.update(contactsTable).set({ category: newCategory }).where(eq(contactsTable.id, id));

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, activitiesTable, usersTable, contactsTable, dealsTable, notificationsTable, CATEGORIES } from "@workspace/db";
-import { eq, and, gte, lte, isNull, SQL, inArray } from "drizzle-orm";
+import { db, activitiesTable, usersTable, contactsTable, dealsTable, notificationsTable } from "@workspace/db";
+import { eq, and, gte, isNull, SQL } from "drizzle-orm";
 import { CreateActivityBody, UpdateActivityBody, ListActivitiesQueryParams, UpdateActivityParams, DeleteActivityParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";

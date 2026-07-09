@@ -1,6 +1,5 @@
 import bcrypt from "bcryptjs";
 import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
 
 const users = [
   { name: "Admin", username: "admin", password: "admin123", role: "admin", colorCode: "#6366f1", unit: "All", canViewAllReports: true, canAssignLeads: true },
@@ -16,6 +15,6 @@ const users = [
 for (const u of users) {
   const passwordHash = await bcrypt.hash(u.password, 10);
   await db.insert(usersTable).values({ name: u.name, username: u.username, passwordHash, role: u.role, colorCode: u.colorCode, unit: u.unit, canViewAllReports: u.canViewAllReports, canAssignLeads: u.canAssignLeads }).onConflictDoNothing({ target: usersTable.username });
-  console.log(`Seeded user: ${u.username}`);
+  process.stdout.write(`Seeded user: ${u.username}\n`);
 }
-console.log("Seed complete!");
+process.stdout.write("Seed complete!\n");

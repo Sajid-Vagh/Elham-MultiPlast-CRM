@@ -543,8 +543,6 @@ export default function ProformaInvoicesPage() {
   };
 
   const applyGstDetails = (data: any) => {
-    console.log("[GST Apply] Data:", JSON.stringify(data, null, 2));
-
     setCustomerName("");
     setCompanyName("");
     setTradeName("");

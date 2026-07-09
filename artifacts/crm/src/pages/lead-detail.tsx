@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import {
   useGetContact, useListDeals, useListActivities, useCreateDeal, useCreateActivity,
@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Phone, Mail, MapPin, Tag, Plus, Trash2, FolderTree, RefreshCw, Star, MessageSquare, Pencil, Clock, Calendar, ChevronRight, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, Globe, Hash, ListOrdered, FileText, AlertCircle, X } from "lucide-react";
+import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
@@ -24,7 +24,6 @@ import { CategoryBadge } from "@/components/category-badge";
 import { MoveCategoryDialog } from "@/components/move-category-dialog";
 import { DocumentManager } from "@/components/document-manager";
 import { DocumentUploadDialog } from "@/components/document-upload-dialog";
-import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
 import { ScheduleFollowUpDialog } from "@/components/schedule-follow-up-dialog";
 import { STAGE_BADGE_COLORS } from "@/lib/deal-stages";
 import { onContactChange, onDealChange, onActivityChange } from "@/lib/query-invalidation";

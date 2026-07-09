@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { onContactChange } from "@/lib/query-invalidation";
-import { CheckCircle, AlertCircle, Upload, FileSpreadsheet, X, Info, Sparkles, ClipboardPaste } from "lucide-react";
+import { CheckCircle, AlertCircle, Upload, FileSpreadsheet, X, Sparkles, ClipboardPaste } from "lucide-react";
 import { UserAvatar } from "@/components/user-avatar";
 import { Link } from "wouter";
 import { UNITS } from "@/lib/units";

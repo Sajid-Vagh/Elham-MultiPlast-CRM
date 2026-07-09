@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Calendar, ArrowLeft, Phone, PhoneOff, X, Clock, Search, Eye, Pencil, History, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
+import { Calendar, ArrowLeft, Phone, PhoneOff, X, Clock, Search, Eye, Pencil, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { onActivityChange } from "@/lib/query-invalidation";
