@@ -16,6 +16,15 @@ import dashboardRouter from "./dashboard";
 import documentsRouter from "./documents";
 import gstRouter from "./gst";
 import productionRouter from "./production";
+import ordersRouter from "./orders";
+import quotationsRouter from "./quotations";
+import batchesRouter from "./batches";
+import dispatchRouter from "./dispatch";
+import complaintsRouter from "./complaints";
+import communicationsRouter from "./communications";
+import notesRouter from "./notes";
+import auditLogsRouter from "./audit-logs";
+import searchRouter from "./search";
 
 const router: IRouter = Router();
 
@@ -36,5 +45,14 @@ router.use(dashboardRouter);
 router.use(documentsRouter);
 router.use(gstRouter);
 router.use(productionRouter);
+router.use(ordersRouter);
+router.use(quotationsRouter);
+router.use(batchesRouter);
+router.use(dispatchRouter);
+router.use(complaintsRouter);
+router.use(communicationsRouter);
+router.use(notesRouter);
+router.use(auditLogsRouter);
+router.use(searchRouter);
 
 export default router;

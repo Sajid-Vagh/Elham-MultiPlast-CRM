@@ -7,7 +7,7 @@ import { NotificationPopup } from "./notification-popup";
 import {
   LayoutDashboard, Users, Briefcase,
   Package, BarChart, Download, Copy, Settings, LogOut, Bell, X, Clock, Phone, FolderTree, FileText, CheckCheck,
-  Factory, ClipboardList
+  Factory, ClipboardList, ShoppingCart, FileSignature, Truck, AlertTriangle, Search, Layers
 } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -187,6 +187,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   }, [updateActivity, markAsSeenByRelated]);
 
   const isProductionOnly = user.role === "production_manager";
+  const isSupport = user.role === "support";
   const isAdmin = user.role === "admin";
 
   const salesNavItems = [
@@ -195,6 +196,10 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: Briefcase, label: "Deals", href: "/deals", color: "#34d399" },
     { icon: Bell, label: "Follow-ups", href: "/follow-ups", color: "#f59e0b" },
     { icon: FolderTree, label: "Categories", href: "/categories", color: "#f97316" },
+    { icon: ShoppingCart, label: "Orders", href: "/orders", color: "#22c55e" },
+    { icon: FileSignature, label: "Quotations", href: "/quotations", color: "#8b5cf6" },
+    { icon: Truck, label: "Dispatch", href: "/dispatch", color: "#f43f5e" },
+    { icon: AlertTriangle, label: "Complaints", href: "/complaints", color: "#ef4444" },
     { icon: FileText, label: "Proforma Invoices", href: "/proforma-invoices", color: "#06b6d4" },
     { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
     { icon: BarChart, label: "Reports", href: "/reports", color: "#f472b6" },
@@ -203,14 +208,28 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
   ];
 
+  const supportNavItems = [
+    { icon: ShoppingCart, label: "Orders", href: "/orders", color: "#22c55e" },
+    { icon: Truck, label: "Dispatch", href: "/dispatch", color: "#f43f5e" },
+    { icon: AlertTriangle, label: "Complaints", href: "/complaints", color: "#ef4444" },
+    { icon: FileSignature, label: "Quotations", href: "/quotations", color: "#8b5cf6" },
+    { icon: Bell, label: "Follow-ups", href: "/follow-ups", color: "#f59e0b" },
+    { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
+    { icon: FileText, label: "Proforma Invoices", href: "/proforma-invoices", color: "#06b6d4" },
+    { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
+  ];
+
   const productionNavItems = [
     { icon: Factory, label: "Production Dashboard", href: "/production/dashboard", color: "#7c3aed" },
     { icon: ClipboardList, label: "Production Orders", href: "/production/orders", color: "#7c3aed" },
+    { icon: Layers, label: "Batches", href: "/production/batches", color: "#7c3aed" },
   ];
 
   let navItems: typeof salesNavItems;
   if (isProductionOnly) {
     navItems = productionNavItems;
+  } else if (isSupport) {
+    navItems = supportNavItems;
   } else if (isAdmin) {
     navItems = [...salesNavItems, ...productionNavItems];
   } else {
@@ -319,7 +338,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
           </DialogHeader>
           <div className="max-h-60 overflow-y-auto space-y-2">
             {todayActivities.map(a => {
-              const name = a.contact?.name || a.deal?.contact?.name || "Unknown";
+              const name = (a as any).contact?.name || (a as any).deal?.contact?.name || "Unknown";
               const time = a.followUpTime
                 ? (() => {
                     const [h, m] = a.followUpTime.split(":");
@@ -402,7 +421,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
               </div>
               <div className="divide-y">
                 {todayActivities.map(a => {
-                  const name = a.contact?.name || a.deal?.contact?.name || "Unknown";
+                  const name = (a as any).contact?.name || (a as any).deal?.contact?.name || "Unknown";
                   const time = a.followUpTime
                     ? (() => {
                         const [h, m] = a.followUpTime.split(":");

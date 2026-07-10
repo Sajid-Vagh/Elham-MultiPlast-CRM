@@ -39,8 +39,8 @@ interface LeadFormProps {
   onSubmit: (data: LeadFormData) => void;
   onCancel?: () => void;
   submitLabel?: string;
-  users?: { id: number; name: string; colorCode: string }[];
-  me?: { id: number; name: string; role: string; colorCode: string } | null;
+  users?: { id: number; name: string; colorCode: string; profilePhoto?: string | null }[];
+  me?: { id: number; name: string; role: string; colorCode: string; profilePhoto?: string | null } | null;
   /** For create mode, enable duplicate detection on mobile/email blur */
   enableDuplicateDetection?: boolean;
 }

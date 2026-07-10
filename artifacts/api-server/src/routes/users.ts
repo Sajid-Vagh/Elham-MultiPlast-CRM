@@ -46,10 +46,10 @@ router.post("/users", async (req, res) => {
     res.status(400).json({ error: "Invalid input", details });
     return;
   }
-  const { password, ...rest } = parsed.data;
+  const { password, ...fields } = parsed.data;
   try {
     const passwordHash = await bcrypt.hash(password, 10);
-    const [user] = await db.insert(usersTable).values({ ...rest, passwordHash }).returning();
+    const [user] = await db.insert(usersTable).values({ ...fields, passwordHash }).returning();
 
     // Notify all admins about new user creation
     const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
@@ -108,7 +108,7 @@ router.patch("/users/:id", async (req, res) => {
 
   // Non-admin users may only update profilePhoto
   if (!isAdmin) {
-    const restrictedFields = ["name", "username", "role", "colorCode", "unit", "canViewAllReports", "canAssignLeads"];
+    const restrictedFields = ["name", "username", "role", "colorCode", "unit", "canViewAllReports", "canAssignLeads", "permissions"];
     const attempted = Object.keys(fields).filter(k => restrictedFields.includes(k));
     if (attempted.length > 0 || password) {
       res.status(403).json({ error: "Sales users may only update their profile photo" });
@@ -124,6 +124,7 @@ router.patch("/users/:id", async (req, res) => {
   if (fields.unit !== undefined) updateData.unit = fields.unit;
   if (fields.canViewAllReports !== undefined) updateData.canViewAllReports = fields.canViewAllReports;
   if (fields.canAssignLeads !== undefined) updateData.canAssignLeads = fields.canAssignLeads;
+  if (fields.permissions !== undefined) updateData.permissions = fields.permissions;
   if (fields.profilePhoto !== undefined) updateData.profilePhoto = fields.profilePhoto;
   if (password && isAdmin) {
     updateData.passwordHash = await bcrypt.hash(password, 10);

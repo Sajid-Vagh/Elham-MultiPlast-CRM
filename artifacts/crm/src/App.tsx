@@ -26,6 +26,17 @@ import NotificationsPage from "@/pages/notifications";
 import ProductionDashboard from "@/pages/production-dashboard";
 import ProductionOrders from "@/pages/production-orders";
 import ProductionOrderDetail from "@/pages/production-order-detail";
+import Orders from "@/pages/orders";
+import OrderDetail from "@/pages/order-detail";
+import OrderCreate from "@/pages/order-create";
+import Quotations from "@/pages/quotations";
+import QuotationCreate from "@/pages/quotation-create";
+import Batches from "@/pages/batches";
+import BatchDetail from "@/pages/batch-detail";
+import DispatchPage from "@/pages/dispatch";
+import ComplaintsPage from "@/pages/complaints";
+import CustomerProfile from "@/pages/customer-profile";
+import GlobalSearch from "@/pages/global-search";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,6 +55,8 @@ function RoleGuard({ allowedRoles, children }: { allowedRoles: string[]; childre
   if (!allowedRoles.includes(role)) {
     if (role === "production_manager") {
       setLocation("/production/dashboard");
+    } else if (role === "support") {
+      setLocation("/orders");
     } else {
       setLocation("/dashboard");
     }
@@ -52,6 +65,10 @@ function RoleGuard({ allowedRoles, children }: { allowedRoles: string[]; childre
 
   return <>{children}</>;
 }
+
+const SALES_ADMIN_ROLES = ["admin", "sales"];
+const PRODUCTION_ROLES = ["production_manager", "admin"];
+const SUPPORT_ROLES = ["admin", "sales", "support"];
 
 function Router() {
   return (
@@ -63,7 +80,13 @@ function Router() {
             const token = localStorage.getItem("crm_token");
             const role = localStorage.getItem("crm_user_role");
             if (token) {
-              window.location.replace(role === "production_manager" ? "/production/dashboard" : "/dashboard");
+              if (role === "production_manager") {
+                window.location.replace("/production/dashboard");
+              } else if (role === "support") {
+                window.location.replace("/orders");
+              } else {
+                window.location.replace("/dashboard");
+              }
             } else {
               window.location.replace("/login");
             }
@@ -71,101 +94,173 @@ function Router() {
           return null;
         }}
       </Route>
+
+      {/* Sales & Admin routes */}
       <Route path="/dashboard">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales"]}><Dashboard /></RoleGuard>
+          <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><Dashboard /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route path="/leads/new">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales"]}><LeadsNew /></RoleGuard>
+          <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><LeadsNew /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route path="/leads/:id/edit">
         {(params) => <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales"]}><LeadsEdit /></RoleGuard>
+          <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><LeadsEdit /></RoleGuard>
         </ProtectedLayout>}
       </Route>
       <Route path="/leads/:id">
         {(params) => <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales"]}><LeadDetail /></RoleGuard>
+          <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><LeadDetail /></RoleGuard>
         </ProtectedLayout>}
       </Route>
       <Route path="/leads">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales"]}><Leads /></RoleGuard>
+          <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><Leads /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route path="/deals/:id">
         {(params) => <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales"]}><DealDetail /></RoleGuard>
+          <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><DealDetail /></RoleGuard>
         </ProtectedLayout>}
       </Route>
       <Route path="/deals">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales"]}><Deals /></RoleGuard>
+          <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><Deals /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route path="/follow-ups">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales"]}><FollowUps /></RoleGuard>
-        </ProtectedLayout>
-      </Route>
-      <Route path="/products">
-        <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales"]}><Products /></RoleGuard>
+          <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><FollowUps /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route path="/categories">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales"]}><CategoriesPage /></RoleGuard>
-        </ProtectedLayout>
-      </Route>
-      <Route path="/proforma-invoices">
-        <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales"]}><ProformaInvoices /></RoleGuard>
+          <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><CategoriesPage /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route path="/reports">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales"]}><Reports /></RoleGuard>
+          <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><Reports /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route path="/import">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales"]}><ImportPage /></RoleGuard>
+          <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><ImportPage /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route path="/duplicates">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales"]}><Duplicates /></RoleGuard>
+          <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><Duplicates /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+
+      {/* Shared routes (all roles) */}
+      <Route path="/products">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={SUPPORT_ROLES}><Products /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+      <Route path="/proforma-invoices">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={SUPPORT_ROLES}><ProformaInvoices /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route path="/settings">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales", "production_manager"]}><Settings /></RoleGuard>
-        </ProtectedLayout>
-      </Route>
-      <Route path="/production/dashboard">
-        <ProtectedLayout>
-          <RoleGuard allowedRoles={["production_manager", "admin"]}><ProductionDashboard /></RoleGuard>
-        </ProtectedLayout>
-      </Route>
-      <Route path="/production/orders/:id">
-        {(params) => <ProtectedLayout>
-          <RoleGuard allowedRoles={["production_manager", "admin"]}><ProductionOrderDetail /></RoleGuard>
-        </ProtectedLayout>}
-      </Route>
-      <Route path="/production/orders">
-        <ProtectedLayout>
-          <RoleGuard allowedRoles={["production_manager", "admin"]}><ProductionOrders /></RoleGuard>
+          <RoleGuard allowedRoles={["admin", "sales", "production_manager", "support"]}><Settings /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route path="/notifications">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales", "production_manager"]}><NotificationsPage /></RoleGuard>
+          <RoleGuard allowedRoles={["admin", "sales", "production_manager", "support"]}><NotificationsPage /></RoleGuard>
         </ProtectedLayout>
       </Route>
+      <Route path="/search">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={SUPPORT_ROLES}><GlobalSearch /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+
+      {/* Order routes (Sales, Support, Admin) */}
+      <Route path="/orders/new">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={SUPPORT_ROLES}><OrderCreate /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+      <Route path="/orders/:id">
+        {(params) => <ProtectedLayout>
+          <RoleGuard allowedRoles={SUPPORT_ROLES}><OrderDetail /></RoleGuard>
+        </ProtectedLayout>}
+      </Route>
+      <Route path="/orders">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={SUPPORT_ROLES}><Orders /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+
+      {/* Quotation routes (Sales, Admin) */}
+      <Route path="/quotations/new">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><QuotationCreate /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+      <Route path="/quotations">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={SUPPORT_ROLES}><Quotations /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+
+      {/* Dispatch routes (Support, Admin) */}
+      <Route path="/dispatch">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={SUPPORT_ROLES}><DispatchPage /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+
+      {/* Complaint routes (Support, Admin) */}
+      <Route path="/complaints">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={SUPPORT_ROLES}><ComplaintsPage /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+
+      {/* Customer Profile */}
+      <Route path="/customers/:id">
+        {(params) => <ProtectedLayout>
+          <RoleGuard allowedRoles={SUPPORT_ROLES}><CustomerProfile /></RoleGuard>
+        </ProtectedLayout>}
+      </Route>
+
+      {/* Production routes */}
+      <Route path="/production/dashboard">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={PRODUCTION_ROLES}><ProductionDashboard /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+      <Route path="/production/orders/:id">
+        {(params) => <ProtectedLayout>
+          <RoleGuard allowedRoles={PRODUCTION_ROLES}><ProductionOrderDetail /></RoleGuard>
+        </ProtectedLayout>}
+      </Route>
+      <Route path="/production/orders">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={PRODUCTION_ROLES}><ProductionOrders /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+      <Route path="/production/batches/:id">
+        {(params) => <ProtectedLayout>
+          <RoleGuard allowedRoles={PRODUCTION_ROLES}><BatchDetail /></RoleGuard>
+        </ProtectedLayout>}
+      </Route>
+      <Route path="/production/batches">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={PRODUCTION_ROLES}><Batches /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+
       <Route component={NotFound} />
     </Switch>
   );

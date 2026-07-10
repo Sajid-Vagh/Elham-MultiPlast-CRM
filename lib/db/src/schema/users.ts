@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -13,6 +13,7 @@ export const usersTable = pgTable("users", {
   profilePhoto: text("profile_photo"),
   canViewAllReports: boolean("can_view_all_reports").notNull().default(false),
   canAssignLeads: boolean("can_assign_leads").notNull().default(false),
+  permissions: jsonb("permissions").$type<Record<string, boolean>>().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

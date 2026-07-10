@@ -20,6 +20,8 @@ export type UserRole = typeof UserRole[keyof typeof UserRole];
 export const UserRole = {
   admin: 'admin',
   sales: 'sales',
+  production_manager: 'production_manager',
+  support: 'support',
 } as const;
 
 export type UserUnit = typeof UserUnit[keyof typeof UserUnit];
@@ -39,6 +41,9 @@ export interface User {
   role: UserRole;
   colorCode: string;
   unit: UserUnit;
+  canViewAllReports?: boolean;
+  canAssignLeads?: boolean;
+  permissions?: Record<string, boolean>;
   /** @nullable */
   profilePhoto?: string | null;
   createdAt?: string;
@@ -55,6 +60,8 @@ export type UserInputRole = typeof UserInputRole[keyof typeof UserInputRole];
 export const UserInputRole = {
   admin: 'admin',
   sales: 'sales',
+  support: 'support',
+  production_manager: 'production_manager',
 } as const;
 
 export type UserInputUnit = typeof UserInputUnit[keyof typeof UserInputUnit];
@@ -74,6 +81,9 @@ export interface UserInput {
   role: UserInputRole;
   colorCode: string;
   unit: UserInputUnit;
+  canViewAllReports?: boolean;
+  canAssignLeads?: boolean;
+  permissions?: Record<string, boolean>;
 }
 
 export type UserUpdateRole = typeof UserUpdateRole[keyof typeof UserUpdateRole];
@@ -82,6 +92,8 @@ export type UserUpdateRole = typeof UserUpdateRole[keyof typeof UserUpdateRole];
 export const UserUpdateRole = {
   admin: 'admin',
   sales: 'sales',
+  support: 'support',
+  production_manager: 'production_manager',
 } as const;
 
 export interface UserUpdate {
@@ -92,6 +104,9 @@ export interface UserUpdate {
   role?: UserUpdateRole;
   colorCode?: string;
   unit?: string;
+  canViewAllReports?: boolean;
+  canAssignLeads?: boolean;
+  permissions?: Record<string, boolean>;
   /** @nullable */
   profilePhoto?: string | null;
 }
@@ -183,6 +198,26 @@ export interface Contact {
   lastCallDate?: string | null;
   /** @nullable */
   nextCallDate?: string | null;
+  /** @nullable */
+  state?: string | null;
+  /** @nullable */
+  category?: string | null;
+  /** @nullable */
+  customerSince?: string | null;
+  /** @nullable */
+  totalOrders?: number | null;
+  /** @nullable */
+  totalRevenue?: number | null;
+  /** @nullable */
+  lastPurchaseDate?: string | null;
+  /** @nullable */
+  customerStatus?: string | null;
+  /** @nullable */
+  customerComments?: string | null;
+  /** @nullable */
+  commentUpdatedAt?: string | null;
+  /** @nullable */
+  commentUpdatedBy?: number | null;
   isMyClient: boolean;
   createdAt: string;
 }
@@ -275,6 +310,14 @@ export interface Product {
   bottleColour?: string | null;
   /** @nullable */
   capColour?: string | null;
+  /** @nullable */
+  materialType?: string | null;
+  /** @nullable */
+  hsnCode?: string | null;
+  /** @nullable */
+  defaultUnit?: string | null;
+  /** @nullable */
+  defaultGst?: number | null;
   createdAt?: string;
 }
 
@@ -521,6 +564,10 @@ export interface ActivityInput {
   followUpType?: string | null;
   /** @nullable */
   callStatus?: string | null;
+  /** @nullable */
+  reminder?: string | null;
+  /** @nullable */
+  assignedTo?: number | null;
 }
 
 export type ActivityUpdateType = typeof ActivityUpdateType[keyof typeof ActivityUpdateType];

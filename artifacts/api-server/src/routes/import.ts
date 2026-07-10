@@ -27,6 +27,7 @@ const ImportExcelRowSchema = z.object({
   category: z.string().nullish(),
   address: z.string().nullish(),
   tags: z.string().nullish(),
+  comments: z.string().nullish(),
 });
 
 const ImportExcelRequestSchema = z.object({

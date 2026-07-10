@@ -26,7 +26,7 @@ export default function Login() {
         localStorage.setItem("crm_token", data.token);
         localStorage.setItem("crm_user_role", data.user.role);
         queryClient.setQueryData(getGetMeQueryKey(), data.user);
-        setLocation(data.user.role === "production_manager" ? "/production/dashboard" : "/dashboard");
+        setLocation(data.user.role === "production_manager" ? "/production/dashboard" : data.user.role === "support" ? "/orders" : "/dashboard");
       },
       onError: (err) => {
         toast({

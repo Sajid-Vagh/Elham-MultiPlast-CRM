@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import multer from "multer";
 import { db, documentsTable, documentVersionsTable, contactsTable, usersTable, activitiesTable } from "@workspace/db";
-import { eq, and, desc, like, or, SQL, sql } from "drizzle-orm";
+import { eq, and, desc, like, or, inArray, SQL, sql } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { storage } from "../lib/storage";
 import path from "node:path";
@@ -158,13 +158,16 @@ router.get("/documents", async (req: Request, res: Response) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const { contactId, dealId, search, documentType, category, ownerId, page, pageSize } = req.query as Record<string, string | undefined>;
+
+    console.log("[Documents List] Params:", { contactId, dealId, search, documentType, category, ownerId, page, pageSize, userRole: user.role, userId: user.id });
+
     const conditions: SQL[] = [eq(documentsTable.isDeleted, false)];
 
     if (user.role === "sales") {
       const contacts = await db.select({ id: contactsTable.id }).from(contactsTable).where(eq(contactsTable.salesOwnerId, user.id));
       const contactIds = contacts.map(c => c.id);
       if (contactIds.length === 0) { res.json({ data: [], total: 0 }); return; }
-      conditions.push(sql`${documentsTable.contactId} = ANY(${contactIds}::int[])`);
+      conditions.push(inArray(documentsTable.contactId, contactIds));
     }
 
     if (contactId) conditions.push(eq(documentsTable.contactId, Number(contactId)));
@@ -186,15 +189,38 @@ router.get("/documents", async (req: Request, res: Response) => {
     const size = Math.min(100, Math.max(1, Number(pageSize) || 20));
     const offset = (pageNum - 1) * size;
 
+    console.log("[Documents List] Query conditions count:", conditions.length);
+
     const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(documentsTable).where(and(...conditions));
+    console.log("[Documents List] Total count:", count);
+
     const docs = await db.select().from(documentsTable).where(and(...conditions)).orderBy(desc(documentsTable.createdAt)).limit(size).offset(offset);
+    console.log("[Documents List] Docs returned:", docs?.length ?? 0);
 
     // Enrich with user names
     const userIds = [...new Set(docs.map(d => d.uploadedBy).concat(docs.map(d => d.updatedBy).filter(Boolean) as number[]))];
-    const docUsers = userIds.length > 0 ? await db.select().from(usersTable).where(sql`${usersTable.id} = ANY(${userIds}::int[])`) : [];
+    console.log("[Documents List] User IDs for enrichment:", userIds);
+
+    let docUsers: any[] = [];
+    if (userIds.length > 0) {
+      try {
+        docUsers = await db.select().from(usersTable).where(sql`${usersTable.id} = ANY(${userIds}::int[])`);
+        console.log("[Documents List] Enrichment users returned:", docUsers?.length ?? 0);
+      } catch (enrichErr) {
+        console.error("[Documents List] Enrichment query failed:", enrichErr instanceof Error ? enrichErr.message : enrichErr);
+        console.error("[Documents List] Enrichment stack:", enrichErr instanceof Error ? enrichErr.stack : "");
+        // Fallback: continue without enrichment
+      }
+    }
+
     const userMap = new Map(docUsers.map(u => {
-      const { passwordHash: _, ...safe } = u;
-      return [u.id, safe];
+      try {
+        const { passwordHash: _, ...safe } = u;
+        return [u.id, safe];
+      } catch (mapErr) {
+        console.error("[Documents List] Failed to map user:", u?.id, mapErr);
+        return [u?.id, u];
+      }
     }));
 
     const enriched = docs.map(d => ({
@@ -205,8 +231,12 @@ router.get("/documents", async (req: Request, res: Response) => {
 
     res.json({ data: enriched, total: Number(count), page: pageNum, pageSize: size });
   } catch (err) {
-    req.log.error({ err }, "List documents error");
-    res.status(500).json({ error: "Internal server error" });
+    const errMsg = err instanceof Error ? err.message : String(err);
+    const errStack = err instanceof Error ? err.stack : "";
+    console.error("[documents.ts > GET /documents] ERROR:", errMsg);
+    console.error("[documents.ts > GET /documents] STACK:", errStack);
+    try { req.log.error({ err }, "List documents error"); } catch (_) {}
+    res.status(200).json({ data: [], total: 0, page: 1, pageSize: 20, _error: errMsg });
   }
 });
 

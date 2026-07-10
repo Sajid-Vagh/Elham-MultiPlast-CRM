@@ -73,7 +73,7 @@ export function ScheduleFollowUpDialog({ open, onOpenChange, contactId, dealId }
       const token = localStorage.getItem("crm_token");
       const res = await fetch("/api/users", { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) return [];
-      return res.json() as Promise<Array<{ id: number; name: string; role: string; unit: string; colorCode: string }>>;
+      return res.json() as Promise<Array<{ id: number; name: string; role: string; unit: string; colorCode: string; profilePhoto?: string | null }>>;
     },
     staleTime: 60_000,
   });
@@ -110,8 +110,6 @@ export function ScheduleFollowUpDialog({ open, onOpenChange, contactId, dealId }
         followUpTime: time || null,
         followUpType: followUpType,
         callStatus: "Pending",
-        priority: priority,
-        reminder: reminder || null,
         assignedTo: assignedTo ? Number(assignedTo) : null,
       },
     }, {

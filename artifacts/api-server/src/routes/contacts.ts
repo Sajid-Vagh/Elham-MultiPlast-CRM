@@ -478,7 +478,6 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
       await db.update(dealsTable).set({
         stage: "Lost",
         lostReason,
-        lostCategory,
         updatedAt: now,
         completedAt: now,
       }).where(eq(dealsTable.id, deal.id));
@@ -530,9 +529,9 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
     }
 
     res.json({ success: true });
-  } catch (err) {
-    req.log.error({ err }, "Mark lost error");
-    res.status(500).json({ error: "Internal server error" });
+  } catch (err: any) {
+    req.log.error({ err, message: err?.message, stack: err?.stack }, "Mark lost error");
+    res.status(500).json({ success: false, error: err?.message || "Internal server error" });
   }
 });
 

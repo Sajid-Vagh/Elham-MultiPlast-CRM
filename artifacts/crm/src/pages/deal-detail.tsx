@@ -221,7 +221,7 @@ export default function DealDetail() {
 
   const handleDeleteActivity = () => {
     if (!deleteActId) return;
-    deleteActivity.mutate(deleteActId, {
+    deleteActivity.mutate({ id: deleteActId }, {
       onSuccess: () => {
         onActivityChange(queryClient, dealId, contact?.id);
         toast({ title: "Activity deleted" });
