@@ -133,7 +133,7 @@ function Router() {
       </Route>
       <Route path="/follow-ups">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><FollowUps /></RoleGuard>
+          <RoleGuard allowedRoles={SUPPORT_ROLES}><FollowUps /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route path="/categories">
