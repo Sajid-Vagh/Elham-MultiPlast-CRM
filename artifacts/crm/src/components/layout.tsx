@@ -194,7 +194,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", color: "#a78bfa" },
     { icon: Users, label: "Leads", href: "/leads", color: "#60a5fa" },
     { icon: Briefcase, label: "Deals", href: "/deals", color: "#34d399" },
-    { icon: Bell, label: "Follow-ups", href: "/follow-ups", color: "#f59e0b" },
+    { icon: Bell, label: "Activity", href: "/follow-ups", color: "#f59e0b" },
     { icon: FolderTree, label: "Categories", href: "/categories", color: "#f97316" },
     { icon: Truck, label: "Dispatch", href: "/dispatch", color: "#f43f5e" },
     { icon: AlertTriangle, label: "Complaints", href: "/complaints", color: "#ef4444" },
@@ -209,7 +209,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   const supportNavItems = [
     { icon: Truck, label: "Dispatch", href: "/dispatch", color: "#f43f5e" },
     { icon: AlertTriangle, label: "Complaints", href: "/complaints", color: "#ef4444" },
-    { icon: Bell, label: "Follow-ups", href: "/follow-ups", color: "#f59e0b" },
+    { icon: Bell, label: "Activity", href: "/follow-ups", color: "#f59e0b" },
     { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" },
     { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
     { icon: FileText, label: "Proforma Invoices", href: "/proforma-invoices", color: "#06b6d4" },
@@ -327,10 +327,10 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Bell className="h-5 w-5 text-amber-500" />
-              Today's Follow-ups
+              Today's Activities
             </DialogTitle>
             <DialogDescription>
-              You have <strong>{todayActivities.length}</strong> follow-up{todayActivities.length !== 1 ? "s" : ""} scheduled today.
+              You have <strong>{todayActivities.length}</strong> {todayActivities.length === 1 ? "activity" : "activities"} scheduled today.
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-60 overflow-y-auto space-y-2">
@@ -414,7 +414,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
           {todayActivities.length > 0 && (
             <>
               <div className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider bg-muted/20 border-t">
-                Follow-ups Today
+                Activities Today
               </div>
               <div className="divide-y">
                 {todayActivities.map(a => {

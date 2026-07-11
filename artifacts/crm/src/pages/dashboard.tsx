@@ -336,7 +336,7 @@ export default function Dashboard() {
                   <TableHead>Won Value</TableHead>
                   <TableHead>Clients</TableHead>
                   <TableHead>Conv. Rate</TableHead>
-                  <TableHead>Follow-up %</TableHead>
+                   <TableHead>Activity %</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -375,7 +375,7 @@ export default function Dashboard() {
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-red-600" />
-              <CardTitle className="text-red-700">Overdue Follow-ups ({overdueList.length})</CardTitle>
+              <CardTitle className="text-red-700">Overdue Activities ({overdueList.length})</CardTitle>
             </div>
           </CardHeader>
           <CardContent>
@@ -544,7 +544,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between flex-wrap gap-3">
               <CardTitle className="flex items-center gap-2 text-orange-700">
                 <AlertCircle className="h-5 w-5" />
-                Follow-up Reminders
+                Activity Reminders
                 <Badge className="ml-1 bg-orange-500 text-white">
                   {filteredDueContacts?.length ?? 0}
                 </Badge>

@@ -36,7 +36,7 @@ const SUPPORT_PERMISSION_CATEGORIES: PermissionCategory[] = [
       { key: "manageExistingCustomers", label: "Manage Existing Customers", desc: "View and edit existing customer profiles and details" },
       { key: "viewCustomerTimeline", label: "View Customer Timeline", desc: "View the full activity timeline for customers" },
       { key: "updateCustomerCommunication", label: "Update Customer Communication", desc: "Log and update customer communication records" },
-      { key: "createFollowups", label: "Create Follow-ups", desc: "Schedule and manage follow-up activities" },
+      { key: "createFollowups", label: "Create Activities", desc: "Schedule and manage follow-up activities" },
     ],
   },
   {
@@ -108,7 +108,7 @@ const SALES_PERMISSIONS: PermissionDef[] = [
 
 const ROLE_SUMMARIES: Record<string, { label: string; color: string; icon: React.ReactNode; bullets: string[] }> = {
   admin: { label: "Admin (CEO)", color: "bg-primary/10 text-primary border-primary/20", icon: <Shield className="h-4 w-4" />, bullets: ["Full system access", "Manage team & settings", "All reports & analytics"] },
-  sales: { label: "Sales", color: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800", icon: <Users className="h-4 w-4" />, bullets: ["Existing Customers", "Follow-ups & Deals", "Reports & Pipeline"] },
+  sales: { label: "Sales", color: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800", icon: <Users className="h-4 w-4" />, bullets: ["Existing Customers", "Activities & Deals", "Reports & Pipeline"] },
   support: { label: "Support", color: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800", icon: <Users className="h-4 w-4" />, bullets: ["Existing Customers", "Repeat Orders", "Dispatch & Complaints", "Production Coordination"] },
   production_manager: { label: "Production Manager", color: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800", icon: <Settings2 className="h-4 w-4" />, bullets: ["Batch Management", "Quality Control", "Production Scheduling"] },
 };

@@ -237,23 +237,23 @@ export default function FollowUps() {
       });
     }
 
-    // Status filter
-    if (statusFilter !== "all") {
-      if (statusFilter === "Upcoming") {
-        list = list.filter(a => {
-          if (a.callStatus !== "Pending") return false;
-          const today = todayStr();
-          return a.followUpDate ? a.followUpDate > today : true;
-        });
-      } else if (statusFilter === "Today") {
+    // Status filter — default: only show active pending activities
+    if (statusFilter === "all") {
+      list = list.filter(a => (a.callStatus || "Pending") === "Pending");
+    } else if (statusFilter === "Upcoming") {
+      list = list.filter(a => {
+        if (a.callStatus !== "Pending") return false;
         const today = todayStr();
-        list = list.filter(a => a.followUpDate === today && a.callStatus === "Pending");
-      } else if (statusFilter === "Overdue") {
-        const today = todayStr();
-        list = list.filter(a => a.followUpDate && a.followUpDate < today && a.callStatus === "Pending");
-      } else {
-        list = list.filter(a => (a.callStatus || "Pending") === statusFilter);
-      }
+        return a.followUpDate ? a.followUpDate > today : true;
+      });
+    } else if (statusFilter === "Today") {
+      const today = todayStr();
+      list = list.filter(a => a.followUpDate === today && a.callStatus === "Pending");
+    } else if (statusFilter === "Overdue") {
+      const today = todayStr();
+      list = list.filter(a => a.followUpDate && a.followUpDate < today && a.callStatus === "Pending");
+    } else {
+      list = list.filter(a => (a.callStatus || "Pending") === statusFilter);
     }
 
     // Type filter
@@ -323,8 +323,8 @@ export default function FollowUps() {
           </Button>
         </Link>
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Follow-ups</h1>
-          <p className="text-sm text-muted-foreground">View and manage all scheduled follow-ups.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Activity</h1>
+          <p className="text-sm text-muted-foreground">View and manage all scheduled activities.</p>
         </div>
       </div>
 
