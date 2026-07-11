@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ExportDropdown } from "@/components/export-dropdown";
 import { Search, Users, Factory, Truck, AlertTriangle, Clock, CheckCircle2, XCircle, Phone } from "lucide-react";
 
 const EXISTING_CUSTOMER_STATUSES = ["All", "Active", "Production Running", "Dispatch Pending", "Repeat Order Due", "Complaint Open", "Inactive"];
@@ -66,9 +67,12 @@ export default function ExistingCustomers() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Existing Customers</h1>
-        <p className="text-sm text-muted-foreground mt-1">Manage and view all existing customers</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Existing Customers</h1>
+          <p className="text-sm text-muted-foreground mt-1">Manage and view all existing customers</p>
+        </div>
+        <ExportDropdown exportUrl="/api/exports/existing-customers" filename="Existing_Customers" />
       </div>
 
       {/* KPI Cards */}

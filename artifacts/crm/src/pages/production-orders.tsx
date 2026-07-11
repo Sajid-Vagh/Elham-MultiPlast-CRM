@@ -14,7 +14,8 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Search, ChevronLeft, ChevronRight, ArrowUpDown } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { ExportDropdown } from "@/components/export-dropdown";
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
@@ -67,6 +68,7 @@ export default function ProductionOrders() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Production Orders</h1>
+        <ExportDropdown exportUrl="/api/exports/production" filename="Production_Orders" />
       </div>
 
       <div className="flex flex-wrap gap-3 items-center">

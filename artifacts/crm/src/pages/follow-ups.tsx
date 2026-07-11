@@ -15,6 +15,7 @@ import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { onActivityChange } from "@/lib/query-invalidation";
 import { CategoryBadge } from "@/components/category-badge";
+import { ExportDropdown } from "@/components/export-dropdown";
 import { UNITS } from "@/lib/units";
 
 const PAGE_SIZE = 15;
@@ -316,16 +317,19 @@ export default function FollowUps() {
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-5">
       {/* Header */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <Link href="/dashboard">
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Activity</h1>
-          <p className="text-sm text-muted-foreground">View and manage all scheduled activities.</p>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <Link href="/dashboard">
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Activity</h1>
+            <p className="text-sm text-muted-foreground">View and manage all scheduled activities.</p>
+          </div>
         </div>
+        <ExportDropdown exportUrl="/api/exports/activities" filename="Activities" />
       </div>
 
       {/* Filters Card */}

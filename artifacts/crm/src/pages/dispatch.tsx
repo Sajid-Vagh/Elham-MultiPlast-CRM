@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Search, Filter, Truck, Eye } from "lucide-react";
+import { ExportDropdown } from "@/components/export-dropdown";
 import { useToast } from "@/hooks/use-toast";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -58,6 +59,7 @@ export default function DispatchPage() {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Dispatch Management</h1>
+        <ExportDropdown exportUrl="/api/exports/dispatch" filename="Dispatch" />
       </div>
 
       <div className="flex items-center gap-3">

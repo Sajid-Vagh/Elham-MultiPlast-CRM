@@ -7,7 +7,7 @@ import { NotificationPopup } from "./notification-popup";
 import {
   LayoutDashboard, Users, Briefcase,
   Package, BarChart, Download, Copy, Settings, LogOut, Bell, X, Clock, Phone, FolderTree, FileText, CheckCheck,
-  Factory, ClipboardList, Truck, AlertTriangle, Search, Layers
+  Factory, ClipboardList, Truck, AlertTriangle, Layers
 } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";

@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Plus, Trash2, FolderTree, Pencil, Check, X } from "lucide-react";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
+import { DealWonCelebration } from "@/components/deal-won-celebration";
 import { UserAvatar } from "@/components/user-avatar";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
@@ -102,6 +103,7 @@ export default function DealDetail() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [showMoveCategory, setShowMoveCategory] = useState(false);
   const [wonSubmitting, setWonSubmitting] = useState(false);
+  const [wonDealForCelebration, setWonDealForCelebration] = useState<any>(null);
 
   const deleteDeal = useDeleteDeal();
 
@@ -150,6 +152,26 @@ export default function DealDetail() {
         onDealChange(queryClient, dealId, contact?.id);
         toast({ title: `Deal moved to ${stage}` });
         setWonConfirmOpen(false); setLostOpen(false); setPendingStage(null); setWonAmount("");
+
+        // Trigger celebration when deal becomes Won (once per deal)
+        if (stage === "Won") {
+          const celebKey = `deal_won_celebrated_${dealId}`;
+          if (!sessionStorage.getItem(celebKey) && localStorage.getItem("crm_dealWonCelebration") !== "off") {
+            sessionStorage.setItem(celebKey, "true");
+            const dealData = { ...deal, id: dealId, contact, salesOwner: deal.salesOwner };
+            setWonDealForCelebration(dealData);
+            const name = contact?.name || deal.title || "Customer";
+            const company = contact?.companyName || "";
+            const amt = deal.wonAmount ? Number(deal.wonAmount) : (deal.totalValue ? Number(deal.totalValue) : 0);
+            const formatted = amt ? `₹${amt.toLocaleString("en-IN")}` : "";
+            const msg = `${name} won a deal${company ? ` for ${company}` : ""}${formatted ? ` worth ${formatted}` : ""}.`;
+            fetch("/api/activities", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
+              body: JSON.stringify({ dealId, contactId: contact?.id, type: "Note", notes: msg }),
+            }).catch(() => {});
+          }
+        }
       },
       onError: (err: any) => {
         setWonSubmitting(false);
@@ -678,6 +700,16 @@ export default function DealDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {wonDealForCelebration && (
+        <DealWonCelebration
+          deal={wonDealForCelebration}
+          open
+          onClose={() => setWonDealForCelebration(null)}
+          onViewOrder={() => { setLocation(`/deals/${wonDealForCelebration.id}`); setWonDealForCelebration(null); }}
+          onGoToProduction={() => { setLocation("/production/orders"); setWonDealForCelebration(null); }}
+        />
+      )}
     </div>
   );
 }

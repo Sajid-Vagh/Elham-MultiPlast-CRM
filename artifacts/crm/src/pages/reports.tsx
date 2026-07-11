@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { UserAvatar } from "@/components/user-avatar";
 import { STAGE_CHART_COLORS } from "@/lib/deal-stages";
 import { UNITS } from "@/lib/units";
+import { ExportDropdown } from "@/components/export-dropdown";
 
 function MonthPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return <Input type="month" value={value} onChange={e => onChange(e.target.value)} className="w-40" />;
@@ -214,18 +215,10 @@ export default function Reports() {
 
         {/* Export buttons */}
         <div className="flex gap-2 flex-wrap mb-4">
-          <Button variant="outline" size="sm" onClick={exportCSV}>
-            <Download className="h-3.5 w-3.5 mr-1" />
-            CSV
-          </Button>
-          <Button variant="outline" size="sm" onClick={exportPrint}>
-            <Download className="h-3.5 w-3.5 mr-1" />
-            Print
-          </Button>
-          <Button variant="outline" size="sm" onClick={exportExcel}>
-            <Download className="h-3.5 w-3.5 mr-1" />
-            Excel
-          </Button>
+          <ExportDropdown
+            exportUrl="/api/exports/reports"
+            filename="Pipeline_Report"
+          />
         </div>
 
         {/* ── PIPELINE TAB ── */}

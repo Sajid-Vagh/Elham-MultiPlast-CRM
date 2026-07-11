@@ -573,6 +573,8 @@ export default function Settings() {
     toast({ title: `Completed deals visibility: ${labels[val] || val}` });
   };
 
+  const [dealWonCelebration, setDealWonCelebration] = useState(() => localStorage.getItem("crm_dealWonCelebration") !== "off");
+
   const handleCreate = (data: any) => {
     createUser.mutate({ data }, {
       onSuccess: () => { onUserChange(queryClient); toast({ title: "Team member added" }); setCreateOpen(false); },
@@ -719,6 +721,20 @@ export default function Settings() {
                 <SelectItem value="forever">Keep Forever</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="flex items-center justify-between py-2 border-b">
+            <div>
+              <p className="font-medium text-sm">Deal Won Celebration</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Show confetti animation and success modal when a deal is marked as Won.</p>
+            </div>
+            <Switch
+              checked={dealWonCelebration}
+              onCheckedChange={(val) => {
+                setDealWonCelebration(val);
+                localStorage.setItem("crm_dealWonCelebration", val ? "on" : "off");
+                toast({ title: val ? "Deal Won Celebration turned ON" : "Deal Won Celebration turned OFF" });
+              }}
+            />
           </div>
         </CardContent>
       </Card>

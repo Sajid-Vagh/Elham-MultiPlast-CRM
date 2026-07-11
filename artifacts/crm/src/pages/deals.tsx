@@ -16,8 +16,10 @@ import { useToast } from "@/hooks/use-toast";
 import { DEAL_STAGES } from "@/lib/deal-stages";
 import DealDetailDrawer from "@/components/deal-detail-drawer";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
+import { DealWonCelebration } from "@/components/deal-won-celebration";
 import { onDealChange } from "@/lib/query-invalidation";
 import { UserAvatar } from "@/components/user-avatar";
+import { ExportDropdown } from "@/components/export-dropdown";
 
 function DraggableCard({ deal, children }: { deal: Deal; children: ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -139,6 +141,7 @@ export default function Deals() {
   const [wonAmount, setWonAmount] = useState("");
   const [wonNotes, setWonNotes] = useState("");
   const [wonSubmitting, setWonSubmitting] = useState(false);
+  const [wonDealForCelebration, setWonDealForCelebration] = useState<Deal | null>(null);
 
   // Lost reason flow
   const [lostDeal, setLostDeal] = useState<Deal | null>(null);
@@ -197,11 +200,30 @@ export default function Deals() {
         onSuccess: () => {
           setWonSubmitting(false);
           setWonAmountOpen(false);
+          const ref = wonDealRef;
           setWonDealRef(null);
           setConfirmWonDeal(null);
-          setOptimisticStages(prev => { const n = { ...prev }; delete n[wonDealRef!.deal.id]; return n; });
-          onDealChange(queryClient, wonDealRef!.deal.id, wonDealRef!.deal.contactId);
+          setOptimisticStages(prev => { const n = { ...prev }; delete n[ref!.deal.id]; return n; });
+          onDealChange(queryClient, ref!.deal.id, ref!.deal.contactId);
           toast({ title: "Deal moved to Won" });
+
+          // Trigger celebration (once per deal, respects user preference)
+          const dealId = ref!.deal.id;
+          const celebKey = `deal_won_celebrated_${dealId}`;
+          if (!sessionStorage.getItem(celebKey) && localStorage.getItem("crm_dealWonCelebration") !== "off") {
+            sessionStorage.setItem(celebKey, "true");
+            setWonDealForCelebration(ref!.deal);
+            const name = ref!.deal.contact?.name || ref!.deal.title || "Customer";
+            const company = ref!.deal.contact?.companyName || "";
+            const amt = ref!.deal.wonAmount ? Number(ref!.deal.wonAmount) : (ref!.deal.totalValue ? Number(ref!.deal.totalValue) : 0);
+            const formatted = amt ? `₹${amt.toLocaleString("en-IN")}` : "";
+            const msg = `${name} won a deal${company ? ` for ${company}` : ""}${formatted ? ` worth ${formatted}` : ""}.`;
+            fetch("/api/activities", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
+              body: JSON.stringify({ dealId, contactId: ref!.deal.contactId, type: "Note", notes: msg }),
+            }).catch(() => {});
+          }
         },
         onError: (err: any) => {
           setWonSubmitting(false);
@@ -306,6 +328,7 @@ export default function Deals() {
           <h1 className="text-3xl font-bold tracking-tight">Pipeline</h1>
           <p className="text-muted-foreground mt-1">Manage deals across stages.</p>
         </div>
+        <ExportDropdown exportUrl="/api/exports/deals" filename="Pipeline_Deals" />
       </div>
 
       <div className="flex items-center gap-3 shrink-0">
@@ -516,6 +539,15 @@ export default function Deals() {
         open={drawerDealId !== null}
         onClose={() => setDrawerDealId(null)}
       />
+      {wonDealForCelebration && (
+        <DealWonCelebration
+          deal={wonDealForCelebration}
+          open
+          onClose={() => setWonDealForCelebration(null)}
+          onViewOrder={() => { navigate(`/deals/${wonDealForCelebration.id}`); setWonDealForCelebration(null); }}
+          onGoToProduction={() => { navigate("/production/orders"); setWonDealForCelebration(null); }}
+        />
+      )}
     </div>
   );
 }

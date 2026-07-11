@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
 import { onContactChange, onDealChange } from "@/lib/query-invalidation";
 import { UserAvatar } from "@/components/user-avatar";
+import { ExportDropdown } from "@/components/export-dropdown";
 
 export default function Leads() {
   const [search, setSearch] = useState("");
@@ -165,11 +166,14 @@ export default function Leads() {
           <h1 className="text-3xl font-bold tracking-tight">Leads</h1>
           <p className="text-muted-foreground mt-1">Manage and track your contacts.</p>
         </div>
-        <Link href="/leads/new">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" /> New Lead
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <ExportDropdown exportUrl="/api/exports/contacts" filename="Leads" />
+          <Link href="/leads/new">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" /> New Lead
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <div className="flex gap-4 items-center bg-card p-4 border rounded-lg shadow-sm">

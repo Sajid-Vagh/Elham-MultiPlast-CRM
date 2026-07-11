@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Search, Filter } from "lucide-react";
+import { ExportDropdown } from "@/components/export-dropdown";
 import { useToast } from "@/hooks/use-toast";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -72,7 +73,10 @@ export default function ComplaintsPage() {
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Complaints</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold">Complaints</h1>
+          <ExportDropdown exportUrl="/api/exports/complaints" filename="Complaints" />
+        </div>
         <Button onClick={() => setShowCreateDialog(true)}><Plus className="h-4 w-4 mr-2" />New Complaint</Button>
       </div>
 

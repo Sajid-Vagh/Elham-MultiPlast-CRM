@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, quotationsTable, quotationItemsTable, ordersTable, orderItemsTable, orderTimelineTable, usersTable, contactsTable } from "@workspace/db";
-import { eq, desc, sql, and } from "drizzle-orm";
+import { eq, desc, sql, and, or, ilike } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { generateId } from "../lib/id-generator";
