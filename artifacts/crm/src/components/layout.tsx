@@ -7,7 +7,7 @@ import { NotificationPopup } from "./notification-popup";
 import {
   LayoutDashboard, Users, Briefcase,
   Package, BarChart, Download, Copy, Settings, LogOut, Bell, X, Clock, Phone, FolderTree, FileText, CheckCheck,
-  Factory, ClipboardList, Truck, AlertTriangle, Layers
+  Factory, ClipboardList, Truck, AlertTriangle, Layers, MapPin
 } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -200,6 +200,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: AlertTriangle, label: "Complaints", href: "/complaints", color: "#ef4444" },
     { icon: FileText, label: "Proforma Invoices", href: "/proforma-invoices", color: "#06b6d4" },
     { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
+    { icon: MapPin, label: "Transport Lookup", href: "/transport-logistics/lookup", color: "#14b8a6" },
     { icon: BarChart, label: "Reports", href: "/reports", color: "#f472b6" },
     { icon: Download, label: "Import", href: "/import", color: "#fbbf24" },
     { icon: Copy, label: "Duplicates", href: "/duplicates", color: "#f87171" },
@@ -213,6 +214,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" },
     { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
     { icon: FileText, label: "Proforma Invoices", href: "/proforma-invoices", color: "#06b6d4" },
+    { icon: MapPin, label: "Transport Logistics", href: "/transport-logistics", color: "#14b8a6" },
     { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
   ];
 

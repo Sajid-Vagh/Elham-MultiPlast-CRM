@@ -7,6 +7,7 @@ import {
 } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
+import { promoteDealToExistingCustomer } from "./existing-customers";
 
 const router: IRouter = Router();
 
@@ -255,6 +256,14 @@ router.patch("/deals/:id", async (req, res) => {
             changedBy: user.id,
             reason: "Deal Won - Auto converted to My Client",
           });
+        }
+
+        // Promote to Existing Customers so Support team sees them immediately
+        try {
+          const owner = deal.salesOwnerId || user.id;
+          await promoteDealToExistingCustomer(deal.contactId, owner);
+        } catch (promoErr) {
+          console.error("Failed to promote deal won contact to existing customer:", promoErr);
         }
       }
     }

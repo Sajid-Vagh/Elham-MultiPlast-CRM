@@ -35,6 +35,8 @@ import CustomerProfile from "@/pages/customer-profile";
 import ExistingCustomers from "@/pages/existing-customers";
 import ExistingCustomerDetail from "@/pages/existing-customer-detail";
 import GlobalSearch from "@/pages/global-search";
+import TransportLogistics from "@/pages/transport-logistics";
+import TransportLogisticsLookup from "@/pages/transport-logistics-readonly";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -212,6 +214,18 @@ function Router() {
       <Route path="/existing-customers">
         <ProtectedLayout>
           <RoleGuard allowedRoles={SUPPORT_ROLES}><ExistingCustomers /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+
+      {/* Transport Logistics */}
+      <Route path="/transport-logistics/lookup">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><TransportLogisticsLookup /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+      <Route path="/transport-logistics">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={SUPPORT_ROLES}><TransportLogistics /></RoleGuard>
         </ProtectedLayout>
       </Route>
 

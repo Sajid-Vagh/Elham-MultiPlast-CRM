@@ -8,12 +8,47 @@ import {
   proformaInvoiceItemsTable,
   usersTable,
   contactsTable,
+  ordersTable,
+  orderItemsTable,
 } from "@workspace/db";
 import { eq, desc, and, SQL, sql, gte, lte, or } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 
 const router: IRouter = Router();
+
+// --- Pending Production Requirements (aggregated by product + gramage) ---
+router.get("/production/pending-requirements", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const results = await db.execute(sql`
+      SELECT
+        oi.product_name AS "productName",
+        COALESCE(oi.gramage, 'N/A') AS "gramage",
+        SUM(oi.quantity::numeric) AS "totalOrdered",
+        SUM(oi.dispatched_quantity::numeric) AS "totalDispatched",
+        SUM(oi.quantity::numeric) - SUM(oi.dispatched_quantity::numeric) AS "pending",
+        COUNT(DISTINCT oi.order_id) AS "orderCount"
+      FROM order_items oi
+      JOIN orders o ON o.id = oi.order_id
+      WHERE o.is_deleted = false
+        AND oi.status NOT IN ('Completed', 'Cancelled', 'Dispatched')
+        AND o.status NOT IN ('Cancelled', 'Completed')
+      GROUP BY oi.product_name, oi.gramage
+      HAVING SUM(oi.quantity::numeric) - SUM(oi.dispatched_quantity::numeric) > 0
+      ORDER BY (SUM(oi.quantity::numeric) - SUM(oi.dispatched_quantity::numeric)) DESC
+    `);
+
+    res.json(results.rows || []);
+  } catch (err) {
+    console.error("Get pending requirements error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// --- Existing production endpoints below ---
 
 const PRODUCTION_STATUSES = [
   "Pending",

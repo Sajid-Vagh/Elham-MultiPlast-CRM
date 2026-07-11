@@ -39,6 +39,25 @@ export async function promoteToExistingCustomer(order: typeof ordersTable.$infer
   return record;
 }
 
+// ── Helper: promote deal-won contact to existing customer (no order required) ──
+export async function promoteDealToExistingCustomer(contactId: number, salesOwnerId: number) {
+  const existing = await db.select().from(existingCustomersTable)
+    .where(eq(existingCustomersTable.contactId, contactId)).then(r => r[0]);
+  if (existing) return existing;
+
+  const now = new Date();
+  const [record] = await db.insert(existingCustomersTable).values({
+    contactId,
+    salesOwnerId,
+    totalOrders: 0,
+    repeatOrderCount: 0,
+    status: "Active",
+    totalRevenue: "0",
+    isActive: true,
+  }).returning();
+  return record;
+}
+
 // ── Helper: refresh existing customer stats from orders ──
 async function refreshExistingCustomerStats(contactId: number) {
   const ec = await db.select().from(existingCustomersTable).where(eq(existingCustomersTable.contactId, contactId)).then(r => r[0]);

@@ -4,8 +4,9 @@ import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
-import { Factory, PackageCheck, Settings2, ShieldCheck, Package, Truck, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
+import { Factory, PackageCheck, Settings2, ShieldCheck, Package, Truck, CheckCircle2, Clock, AlertTriangle, ListOrdered } from "lucide-react";
 
 const STATUS_CARDS = [
   { key: "pendingCount", label: "Pending Orders", icon: Clock, color: "bg-gray-100 text-gray-700 border-gray-300", hoverStatus: "Pending" },
@@ -25,6 +26,12 @@ export default function ProductionDashboard() {
   const { data: kpi, isLoading } = useQuery({
     queryKey: ["production-dashboard"],
     queryFn: () => customFetch<any>("/production/dashboard"),
+    enabled: !!user,
+  });
+
+  const { data: pendingReqs, isLoading: reqsLoading } = useQuery({
+    queryKey: ["production-pending-requirements"],
+    queryFn: () => customFetch<any[]>("/production/pending-requirements"),
     enabled: !!user,
   });
 
@@ -113,6 +120,64 @@ export default function ProductionDashboard() {
           </CardContent>
         </Card>
       )}
+
+      {/* Pending Production Requirements */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ListOrdered className="h-5 w-5 text-orange-500" />
+            <CardTitle className="text-lg">Pending Production Requirements</CardTitle>
+          </div>
+          <Badge variant="outline" className="text-xs">
+            {pendingReqs?.length ?? 0} items
+          </Badge>
+        </CardHeader>
+        <CardContent>
+          {reqsLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+            </div>
+          ) : !pendingReqs?.length ? (
+            <p className="text-sm text-muted-foreground text-center py-6">No pending production requirements</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Product Name</TableHead>
+                    <TableHead>Gramage</TableHead>
+                    <TableHead className="text-right">Total Ordered</TableHead>
+                    <TableHead className="text-right">Total Dispatched</TableHead>
+                    <TableHead className="text-right">Pending to Produce</TableHead>
+                    <TableHead className="text-right">Orders</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pendingReqs.map((req: any, idx: number) => {
+                    const pending = Number(req.pending || 0);
+                    return (
+                      <TableRow key={idx}>
+                        <TableCell className="font-medium">{req.productName}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">{req.gramage}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right">{Number(req.totalOrdered || 0).toLocaleString("en-IN")}</TableCell>
+                        <TableCell className="text-right">{Number(req.totalDispatched || 0).toLocaleString("en-IN")}</TableCell>
+                        <TableCell className="text-right">
+                          <span className={`font-bold ${pending > 0 ? "text-red-600" : "text-green-600"}`}>
+                            {pending.toLocaleString("en-IN")}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right text-muted-foreground">{req.orderCount}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

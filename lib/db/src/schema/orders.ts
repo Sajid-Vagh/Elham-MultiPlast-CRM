@@ -128,6 +128,7 @@ export const orderItemsTable = pgTable("order_items", {
   status: text("status").notNull().default("Pending"),
   readyQuantity: numeric("ready_quantity", { precision: 12, scale: 2 }).notNull().default("0"),
   dispatchedQuantity: numeric("dispatched_quantity", { precision: 12, scale: 2 }).notNull().default("0"),
+  gramage: text("gramage"),
   batchNumber: text("batch_number"),
   dispatchStatus: text("dispatch_status").notNull().default("Pending"),
   remarks: text("remarks"),
