@@ -24,3 +24,4 @@ export * from "./customer_communications";
 export * from "./audit_logs";
 export * from "./internal_notes";
 export * from "./id_counters";
+export * from "./existing_customers";

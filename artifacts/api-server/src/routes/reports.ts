@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, activitiesTable, DEAL_STAGES, STAGE_PROBS } from "@workspace/db";
-import { eq, and, gte } from "drizzle-orm";
+import { eq, and, gte, sql, inArray } from "drizzle-orm";
 import { GetPipelineReportQueryParams, GetReportByOwnerQueryParams, GetReportByProductQueryParams, GetReportByCityQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 
@@ -249,32 +249,53 @@ router.get("/reports/lost-reasons", async (req, res) => {
     const params = GetPipelineReportQueryParams.safeParse(req.query);
     const user = await restrictToOwnDeals(req, params.data ?? {});
     if (!user) { res.status(403).json({ error: "Unauthorized" }); return; }
+
+    // Collect lost reasons from both deals and contacts
     let deals = await db.select().from(dealsTable).where(eq(dealsTable.stage, "Lost"));
+    let lostContacts = await db.select().from(contactsTable).where(
+      sql`${contactsTable.lostReason} IS NOT NULL`
+    );
 
     if (params.success) {
-      if (params.data.salesOwnerId) deals = deals.filter(d => d.salesOwnerId === params.data.salesOwnerId);
+      if (params.data.salesOwnerId) {
+        deals = deals.filter(d => d.salesOwnerId === params.data.salesOwnerId);
+        lostContacts = lostContacts.filter(c => c.salesOwnerId === params.data.salesOwnerId);
+      }
       if (params.data.month) {
         const [year, month] = params.data.month.split("-").map(Number);
         if (year && month) {
           const start = new Date(year, month - 1, 1);
           const end = new Date(year, month, 1);
           deals = deals.filter(d => d.createdAt >= start && d.createdAt < end);
+          lostContacts = lostContacts.filter(c => c.lostDate && c.lostDate >= start && c.lostDate < end);
         }
       }
       if (params.data.unit) {
         const contacts = await db.select().from(contactsTable).where(eq(contactsTable.unit, params.data.unit));
         const contactIds = new Set(contacts.map(c => c.id));
         deals = deals.filter(d => contactIds.has(d.contactId));
+        lostContacts = lostContacts.filter(c => contactIds.has(c.id));
       }
     }
 
     const reasonMap = new Map<string, { count: number; totalValue: number }>();
+
+    // Count from lost deals
     for (const deal of deals) {
       const reason = deal.lostReason ?? "Not Specified";
       if (!reasonMap.has(reason)) reasonMap.set(reason, { count: 0, totalValue: 0 });
       const s = reasonMap.get(reason)!;
       s.count++;
       s.totalValue += Number(deal.wonAmount ?? 0);
+    }
+
+    // Count from lost leads (contacts)
+    for (const c of lostContacts) {
+      const reason = c.lostReason ?? "Not Specified";
+      if (!reasonMap.has(reason)) reasonMap.set(reason, { count: 0, totalValue: 0 });
+      const s = reasonMap.get(reason)!;
+      s.count++;
+      // Lost leads have no monetary value associated
     }
 
     const result = Array.from(reasonMap.entries())
@@ -284,6 +305,134 @@ router.get("/reports/lost-reasons", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Lost reasons report error");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/reports/lost-reasons/detail", async (req, res) => {
+  try {
+    const reason = req.query.reason as string;
+    if (!reason) { res.status(400).json({ error: "reason query param is required" }); return; }
+
+    const params = GetPipelineReportQueryParams.safeParse(req.query);
+    const user = await restrictToOwnDeals(req, params.data ?? {});
+    if (!user) { res.status(403).json({ error: "Unauthorized" }); return; }
+
+    const search = ((req.query.search as string) ?? "").toLowerCase();
+
+    const allUsers = await db.select().from(usersTable);
+    const userMap = new Map(allUsers.map(u => [u.id, u]));
+
+    // Fetch data
+    let deals = await db.select().from(dealsTable).where(eq(dealsTable.stage, "Lost"));
+    let allContacts = await db.select().from(contactsTable);
+    const contactMap = new Map(allContacts.map(c => [c.id, c]));
+    let lostContacts = allContacts.filter(c => c.lostReason !== null);
+
+    // Fetch deal products for product info
+    const dealIds = deals.map(d => d.id);
+    const dealProductRows = dealIds.length > 0
+      ? await db.select().from(dealProductsTable).where(inArray(dealProductsTable.dealId, dealIds))
+      : [];
+    const productIds = [...new Set(dealProductRows.map(dp => dp.productId))];
+    const productRows = productIds.length > 0
+      ? await db.select().from(productsTable).where(inArray(productsTable.id, productIds))
+      : [];
+    const productNameMap = new Map(productRows.map(p => [p.id, p.name]));
+    const dealProductMap = new Map<number, string>();
+    for (const dp of dealProductRows) {
+      const name = productNameMap.get(dp.productId);
+      if (name && !dealProductMap.has(dp.dealId)) dealProductMap.set(dp.dealId, name);
+    }
+
+    if (params.success) {
+      if (params.data.salesOwnerId) {
+        deals = deals.filter(d => d.salesOwnerId === params.data.salesOwnerId);
+        lostContacts = lostContacts.filter(c => c.salesOwnerId === params.data.salesOwnerId);
+      }
+      if (params.data.month) {
+        const [y, m] = params.data.month.split("-").map(Number);
+        if (y && m) {
+          const start = new Date(y, m - 1, 1);
+          const end = new Date(y, m, 1);
+          deals = deals.filter(d => d.createdAt >= start && d.createdAt < end);
+          lostContacts = lostContacts.filter(c => c.lostDate && new Date(c.lostDate) >= start && new Date(c.lostDate) < end);
+        }
+      }
+      if (params.data.unit) {
+        const unitContactIds = new Set(allContacts.filter(c => c.unit === params.data.unit).map(c => c.id));
+        deals = deals.filter(d => unitContactIds.has(d.contactId));
+        lostContacts = lostContacts.filter(c => unitContactIds.has(c.id));
+      }
+    }
+
+    // Build records
+    const dealRecords = deals
+      .filter(d => (d.lostReason ?? "Not Specified") === reason)
+      .map(d => {
+        const contact = contactMap.get(d.contactId);
+        const owner = d.salesOwnerId ? userMap.get(d.salesOwnerId) : undefined;
+        return {
+          id: d.id,
+          type: "deal" as const,
+          customerName: contact?.name ?? "Unknown",
+          companyName: contact?.companyName ?? "",
+          mobile: contact?.mobile ?? "",
+          city: contact?.city ?? "",
+          salesPerson: owner?.name ?? "",
+          unit: contact?.unit ?? "",
+          product: dealProductMap.get(d.id) ?? "",
+          lostDate: d.updatedAt ? new Date(d.updatedAt).toISOString() : "",
+          lostReason: d.lostReason ?? "",
+          notes: d.otherReason ?? d.lostNotes ?? "",
+          dealValue: Number(d.wonAmount ?? d.totalValue ?? 0),
+          contactId: d.contactId,
+          dealId: d.id,
+        };
+      });
+
+    const contactRecords = lostContacts
+      .filter(c => c.lostReason === reason)
+      .map(c => {
+        const owner = c.salesOwnerId ? userMap.get(c.salesOwnerId) : undefined;
+        return {
+          id: c.id,
+          type: "lead" as const,
+          customerName: c.name,
+          companyName: c.companyName ?? "",
+          mobile: c.mobile,
+          city: c.city ?? "",
+          salesPerson: owner?.name ?? "",
+          unit: c.unit ?? "",
+          product: "",
+          lostDate: c.lostDate ? new Date(c.lostDate).toISOString() : "",
+          lostReason: c.lostReason ?? "",
+          notes: c.otherReason ?? c.lostNotes ?? "",
+          dealValue: 0,
+          contactId: c.id,
+          dealId: null,
+        };
+      });
+
+    let records: any[] = [...dealRecords, ...contactRecords];
+
+    if (search) {
+      records = records.filter(r =>
+        r.customerName.toLowerCase().includes(search) ||
+        r.companyName.toLowerCase().includes(search) ||
+        r.mobile.includes(search) ||
+        r.city.toLowerCase().includes(search) ||
+        r.salesPerson.toLowerCase().includes(search) ||
+        r.notes.toLowerCase().includes(search)
+      );
+    }
+
+    const totalValue = records.reduce((s: number, r: any) => s + r.dealValue, 0);
+
+    res.json({ success: true, data: records, total: records.length, totalValue });
+  } catch (err) {
+    console.error("Lost reason detail error:", err instanceof Error ? err.message : err);
+    req.log.error({ err }, "Lost reason detail error");
+    res.json({ success: true, data: [], total: 0, totalValue: 0 });
   }
 });
 

@@ -48,10 +48,14 @@ router.get("/deals", async (req, res) => {
     const userMap = new Map(users.map(u => { const { passwordHash: _, ...safe } = u; return [u.id, safe]; }));
 
     // Pipeline view: only show deals for contacts in "Regular Follow up" category
+    // + My Client contacts with active (non-Won, non-Lost) deals
     let resultDeals = deals;
     if (isPipelineView) {
       const regularFollowUpIds = new Set(contacts.filter(c => c.category === "Regular Follow up").map(c => c.id));
-      resultDeals = deals.filter(d => regularFollowUpIds.has(d.contactId));
+      const myClientActiveDealIds = new Set(
+        deals.filter(d => contacts.some(c => c.id === d.contactId && c.category === "My Client") && d.stage !== "Won" && d.stage !== "Lost").map(d => d.id)
+      );
+      resultDeals = deals.filter(d => regularFollowUpIds.has(d.contactId) || myClientActiveDealIds.has(d.id));
 
       // Show/hide completed deals in pipeline based on setting
       // showCompletedFor24Hours=true → keep Won/Lost visible for 24h
@@ -103,8 +107,9 @@ router.post("/deals", async (req, res) => {
   try {
     // Auto-set contact category to Regular Follow up when creating a deal
     // Regular Follow Up is a temporary working state while a deal is active
+    // EXCEPTION: My Clients stay in My Client permanently — the deal serves as the active opportunity
     const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, parsed.data.contactId));
-    if (contact && contact.category !== "Regular Follow up") {
+    if (contact && contact.category !== "Regular Follow up" && !contact.isMyClient) {
       await db.update(contactsTable).set({ category: "Regular Follow up" }).where(eq(contactsTable.id, contact.id));
     }
     const [deal] = await db.insert(dealsTable).values({ ...parsed.data, probability }).returning();
@@ -186,6 +191,10 @@ router.patch("/deals/:id", async (req, res) => {
         res.status(400).json({ error: "Lost reason is required before marking as Lost." });
         return;
       }
+      // Read otherReason and lostNotes from req.body (not in generated schema)
+      const body = req.body as Record<string, any>;
+      updateData.otherReason = body.otherReason || null;
+      updateData.lostNotes = body.lostNotes || null;
     }
 
     // Set completedAt when stage transitions to Won or Lost; clear when moving away
@@ -202,47 +211,47 @@ router.patch("/deals/:id", async (req, res) => {
     if (deal.stage === "Won" && !deal.convertedToClient) {
       const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
       if (contact) {
-        const now = new Date().toISOString();
-        const prevCategory = contact.category;
+        if (contact.isMyClient) {
+          // Already a permanent My Client — just mark this deal as converted
+          await db.update(dealsTable).set({
+            convertedToClient: true,
+            convertedAt: new Date(),
+          }).where(eq(dealsTable.id, deal.id));
+        } else {
+          const now = new Date().toISOString();
+          const prevCategory = contact.category;
 
-        await db.update(contactsTable).set({
-          category: "My Client",
-          isMyClient: true,
-          customerSince: now,
-          customerStatus: "Active",
-          lastPurchaseDate: now.split("T")[0],
-        }).where(eq(contactsTable.id, contact.id));
+          await db.update(contactsTable).set({
+            category: "My Client",
+            isMyClient: true,
+            customerSince: now,
+            customerStatus: "Active",
+            lastPurchaseDate: now.split("T")[0],
+          }).where(eq(contactsTable.id, contact.id));
 
-        await db.update(dealsTable).set({
-          convertedToClient: true,
-          convertedAt: new Date(),
-        }).where(eq(dealsTable.id, deal.id));
+          await db.update(dealsTable).set({
+            convertedToClient: true,
+            convertedAt: new Date(),
+          }).where(eq(dealsTable.id, deal.id));
 
-        await db.insert(categoryHistoryTable).values({
-          contactId: contact.id,
-          previousCategory: prevCategory,
-          newCategory: "My Client",
-          changedBy: user.id,
-          reason: "Deal Won - Auto converted to My Client",
-        });
+          await db.insert(categoryHistoryTable).values({
+            contactId: contact.id,
+            previousCategory: prevCategory,
+            newCategory: "My Client",
+            changedBy: user.id,
+            reason: "Deal Won - Auto converted to My Client",
+          });
+        }
       }
     }
 
     // Restore contact category when deal is Lost
-    // EXCEPTION: My Clients is permanent — restore existing My Clients back to My Client
+    // EXCEPTION: My Clients is permanent — they stay in My Client regardless
     const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
     if (deal.stage === "Lost") {
       if (contact) {
-        if (contact.isMyClient && contact.category !== "My Client") {
-          // Restore existing My Client back to My Client category
-          await db.update(contactsTable).set({ category: "My Client" }).where(eq(contactsTable.id, contact.id));
-          await db.insert(categoryHistoryTable).values({
-            contactId: contact.id,
-            previousCategory: contact.category,
-            newCategory: "My Client",
-            changedBy: user.id,
-            reason: "Deal Lost - Restored to My Client",
-          });
+        if (contact.isMyClient) {
+          // My Clients is permanent — contact stays in My Client, nothing to restore
         } else if (parsed.data.lostCategory) {
           // Move to Category A/B/C based on lostCategory value
           const prevCategory = contact.category;
@@ -290,8 +299,11 @@ router.patch("/deals/:id", async (req, res) => {
       // Create activity for stage change
       let activityNotes: string;
       if (stage === "Lost") {
-        const lostReason = parsed.data.lostReason || "No reason provided";
-        activityNotes = `Deal marked as Lost\n\nReason:\n"${lostReason}"\n\n${now}`;
+        const reason = parsed.data.lostReason || "No reason provided";
+        const body = req.body as Record<string, any>;
+        const other = body.otherReason;
+        const displayReason = reason === "Other" && other ? `Other - ${other}` : reason;
+        activityNotes = `Deal marked as Lost\n\nLost Reason: ${displayReason}`;
       } else {
         activityNotes = `${user.name} moved deal stage from "${oldDeal.stage}" to "${stage}"\n\n${now}`;
       }

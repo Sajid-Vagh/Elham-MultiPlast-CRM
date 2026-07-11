@@ -21,16 +21,12 @@ export const STAGE_CHART_COLORS: Record<string, string> = {
 };
 
 export const LOST_REASONS = [
-  "Product Not Manufactured",
-  "Out of Business Scope",
-  "Transportation Issue",
-  "Price Issue",
-  "Competitor Selected",
-  "No Response",
-  "Budget Issue",
-  "Quality Issue",
-  "Duplicate Inquiry",
-  "Customer Not Interested",
-  "Invalid / Incorrect Mobile Number",
+  "Price High",
+  "Need Different Shape",
+  "No Requirement Now",
+  "Quality Problem",
+  "Transport Concern",
+  "Need in Future",
+  "Not Responded",
   "Other",
 ] as const;

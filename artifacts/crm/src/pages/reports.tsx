@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
   useGetPipelineReport, useGetReportByOwner, useGetReportByCity,
@@ -9,10 +9,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from "@/components/ui/sheet";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, PieChart, Pie, Legend, Tooltip, Sector } from "recharts";
-import { TrendingUp, Users, Briefcase, DollarSign, XCircle, Download } from "lucide-react";
+import { TrendingUp, Users, Briefcase, DollarSign, XCircle, Download, Search, Phone, ExternalLink, Eye, Copy } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { UserAvatar } from "@/components/user-avatar";
 import { STAGE_CHART_COLORS } from "@/lib/deal-stages";
 import { UNITS } from "@/lib/units";
@@ -69,6 +72,11 @@ export default function Reports() {
   const [ownerId, setOwnerId] = useState("");
   const [activeTab, setActiveTab] = useState("pipeline");
   const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
+  const [selectedReason, setSelectedReason] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailSearch, setDetailSearch] = useState("");
+  const [detailData, setDetailData] = useState<{ data?: any[]; records?: any[]; total: number; totalValue: number } | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [, navigate] = useLocation();
 
   const { data: summary } = useQuery({
@@ -89,6 +97,7 @@ export default function Reports() {
   const { data: byOwner } = useGetReportByOwner({ month: month || undefined, unit: unit || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
   const { data: byCity } = useGetReportByCity({ month: month || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
   const { data: byProduct } = useGetReportByProduct({ month: month || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
+  const { toast } = useToast();
   const { data: lostReasons } = useGetReportLostReasons({ month: month || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined, unit: unit || undefined });
   const { data: me } = useGetMe();
   const { data: users } = useListUsers();
@@ -127,6 +136,40 @@ export default function Reports() {
     const data = getCurrentTabData() ?? [];
     downloadCSV(data, `report-${activeTab}.csv`);
   }, [getCurrentTabData, activeTab]);
+
+  const fetchLostDetail = useCallback(async (reason: string) => {
+    setDetailLoading(true);
+    setSelectedReason(reason);
+    setDetailSearch("");
+    try {
+      const token = localStorage.getItem("crm_token");
+      const p = new URLSearchParams();
+      p.set("reason", reason);
+      if (month) p.set("month", month);
+      if (unit) p.set("unit", unit);
+      if (ownerId) p.set("salesOwnerId", ownerId);
+      const url = `/api/reports/lost-reasons/detail?${p.toString()}`;
+      console.log("Fetching lost detail:", url);
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDetailData(data);
+        setDetailOpen(true);
+        toast({ title: "Lost Records", description: `${data.length} records loaded` });
+      } else {
+        const text = await res.text();
+        console.error("Lost detail fetch failed:", res.status, text);
+        toast({ title: "Error", description: `Server returned ${res.status}: ${text.slice(0, 200)}`, variant: "destructive" });
+      }
+    } catch (err) {
+      console.error("Failed to fetch lost reason detail", err);
+      toast({ title: "Error", description: String(err), variant: "destructive" });
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [month, unit, ownerId]);
 
   return (
     <div className="p-8 space-y-6">
@@ -399,9 +442,11 @@ export default function Reports() {
                         }}
                         onMouseEnter={(_: any, index: number) => setActivePieIndex(index)}
                         onMouseLeave={() => setActivePieIndex(null)}
+                        onClick={(entry: any) => fetchLostDetail(entry.reason)}
+                        className="cursor-pointer"
                       >
-                        {lostReasons.map((_, i) => (
-                          <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                        {lostReasons.map((row, i) => (
+                          <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} onClick={() => fetchLostDetail(row.reason)} />
                         ))}
                       </Pie>
                       <Tooltip
@@ -447,7 +492,11 @@ export default function Reports() {
                     </TableHeader>
                     <TableBody>
                       {lostReasons.map((row, i) => (
-                        <TableRow key={row.reason}>
+                        <TableRow
+                          key={row.reason}
+                          className="cursor-pointer hover:bg-primary/5 transition-colors"
+                          onClick={() => fetchLostDetail(row.reason)}
+                        >
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <div className="w-3 h-3 rounded-full" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
@@ -482,6 +531,210 @@ export default function Reports() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* ── LOST REASON DETAIL SHEET ── */}
+      <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
+        <SheetContent className="sm:max-w-[90vw] max-w-[90vw] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2 text-xl">
+              <XCircle className="h-5 w-5 text-red-400" />
+              Lost Reason: {selectedReason}
+            </SheetTitle>
+          </SheetHeader>
+
+              {detailLoading ? (
+            <div className="flex items-center justify-center py-20"><p className="text-muted-foreground">Loading...</p></div>
+          ) : detailData ? (
+            <div className="mt-6 space-y-4">
+              {/* Totals */}
+              <div className="flex items-center gap-6 flex-wrap">
+                <div className="text-sm"><span className="text-muted-foreground">Total Records: </span><span className="font-semibold">{detailData.total}</span></div>
+                <div className="text-sm"><span className="text-muted-foreground">Total Lost Value: </span><span className="font-semibold text-red-500">₹{detailData.totalValue.toLocaleString()}</span></div>
+              </div>
+
+              {/* Search + Export */}
+              {(() => {
+                const records: any[] = detailData.data ?? detailData.records ?? [];
+                const searchQ = detailSearch.toLowerCase();
+                const filtered = detailSearch
+                  ? records.filter((r: any) =>
+                      (r.customerName?.toLowerCase() ?? "").includes(searchQ) ||
+                      (r.companyName?.toLowerCase() ?? "").includes(searchQ) ||
+                      (r.mobile ?? "").includes(detailSearch) ||
+                      (r.city?.toLowerCase() ?? "").includes(searchQ) ||
+                      (r.salesPerson?.toLowerCase() ?? "").includes(searchQ) ||
+                      (r.notes?.toLowerCase() ?? "").includes(searchQ)
+                    )
+                  : records;
+                return (
+                  <>
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div className="relative w-64">
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Search records..."
+                          value={detailSearch}
+                          onChange={e => setDetailSearch(e.target.value)}
+                          className="pl-8"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => {
+                          if (!filtered.length) return;
+                          const headers = ["Customer Name","Company Name","Mobile","City","Sales Person","Unit","Product","Type","Lost Date","Lost Reason","Notes","Deal Value"];
+                          const csv = [
+                            headers.join(","),
+                            ...filtered.map((r: any) =>
+                              headers.map(h => {
+                                const key: Record<string, string> = {
+                                  "Customer Name": "customerName",
+                                  "Company Name": "companyName",
+                                  "Mobile": "mobile",
+                                  "City": "city",
+                                  "Sales Person": "salesPerson",
+                                  "Unit": "unit",
+                                  "Product": "product",
+                                  "Type": "type",
+                                  "Lost Date": "lostDate",
+                                  "Lost Reason": "lostReason",
+                                  "Notes": "notes",
+                                  "Deal Value": "dealValue",
+                                };
+                                const val = r[key[h]] ?? "";
+                                const str = String(val);
+                                return str.includes(",") || str.includes('"') || str.includes("\n")
+                                  ? `"${str.replace(/"/g, '""')}"`
+                                  : str;
+                              }).join(",")
+                            ),
+                          ].join("\n");
+                          const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `lost-reason-${selectedReason}.csv`;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                        }}>
+                          <Download className="h-3.5 w-3.5 mr-1" />
+                          CSV
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => window.print()}>
+                          <Download className="h-3.5 w-3.5 mr-1" />
+                          Print
+                        </Button>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">{filtered.length} record{filtered.length !== 1 ? "s" : ""}</p>
+                    <div className="border rounded-lg overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="whitespace-nowrap">Customer Name</TableHead>
+                            <TableHead className="whitespace-nowrap">Company Name</TableHead>
+                            <TableHead className="whitespace-nowrap">Mobile</TableHead>
+                            <TableHead className="whitespace-nowrap">City</TableHead>
+                            <TableHead className="whitespace-nowrap">Sales Person</TableHead>
+                            <TableHead className="whitespace-nowrap">Unit</TableHead>
+                            <TableHead className="whitespace-nowrap">Product</TableHead>
+                            <TableHead className="whitespace-nowrap">Type</TableHead>
+                            <TableHead className="whitespace-nowrap">Lost Date</TableHead>
+                            <TableHead className="whitespace-nowrap">Lost Reason</TableHead>
+                            <TableHead className="whitespace-nowrap">Notes</TableHead>
+                            <TableHead className="whitespace-nowrap text-right">Deal Value</TableHead>
+                            <TableHead className="whitespace-nowrap text-center">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filtered.map((r: any) => (
+                            <TableRow key={`${r.type}-${r.id}`}>
+                              <TableCell className="font-medium whitespace-nowrap">
+                                <Link to={`/lead/${r.contactId}`} className="hover:underline text-primary">
+                                  {r.customerName}
+                                </Link>
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap">{r.companyName}</TableCell>
+                              <TableCell className="whitespace-nowrap font-mono text-sm">{r.mobile}</TableCell>
+                              <TableCell className="whitespace-nowrap">{r.city}</TableCell>
+                              <TableCell className="whitespace-nowrap">{r.salesPerson}</TableCell>
+                              <TableCell className="whitespace-nowrap">{r.unit}</TableCell>
+                              <TableCell className="whitespace-nowrap">{r.product || "—"}</TableCell>
+                              <TableCell className="whitespace-nowrap">
+                                <Badge variant={r.type === "deal" ? "default" : "secondary"} className="text-xs">
+                                  {r.type === "deal" ? "Deal" : "Lead"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                                {r.lostDate ? new Date(r.lostDate).toLocaleDateString() : "—"}
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap max-w-[140px] truncate" title={r.lostReason}>
+                                {r.lostReason}
+                              </TableCell>
+                              <TableCell className="max-w-[180px] truncate text-sm text-muted-foreground" title={r.notes}>
+                                {r.notes || "—"}
+                              </TableCell>
+                              <TableCell className="text-right whitespace-nowrap text-red-500 font-medium">
+                                {r.dealValue ? `₹${Number(r.dealValue).toLocaleString()}` : "—"}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1 justify-center">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    title="Open Customer"
+                                    asChild
+                                  >
+                                    <Link to={`/lead/${r.contactId}`}>
+                                      <ExternalLink className="h-3.5 w-3.5" />
+                                    </Link>
+                                  </Button>
+                                  {r.dealId && (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7"
+                                      title="Open Deal"
+                                      asChild
+                                    >
+                                      <Link to={`/deal/${r.dealId}`}>
+                                        <Eye className="h-3.5 w-3.5" />
+                                      </Link>
+                                    </Button>
+                                  )}
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    title="Copy Mobile"
+                                    onClick={() => { navigator.clipboard.writeText(r.mobile); }}
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                          {filtered.length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
+                                No records match your search.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          ) : null}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

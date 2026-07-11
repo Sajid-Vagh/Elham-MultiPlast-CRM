@@ -177,11 +177,11 @@ export default function Deals() {
     setLostDeal(null);
   };
 
-  const handleLostSave = ({ lostReason, lostCategory }: { lostReason: string; lostCategory?: string }) => {
+  const handleLostSave = (data: { lostReason: string; otherReason: string; lostNotes: string }) => {
     if (!lostDeal) return;
     setLostSubmitting(true);
     updateDeal.mutate(
-      { id: lostDeal.id, data: { stage: "Lost" as DealStage, lostReason, ...(lostCategory ? { lostCategory } : {}) } },
+      { id: lostDeal.id, data: { stage: "Lost" as DealStage, lostReason: data.lostReason, otherReason: data.otherReason, lostNotes: data.lostNotes } as any },
       {
         onSuccess: () => {
           setLostSubmitting(false);
@@ -458,7 +458,6 @@ export default function Deals() {
         onOpenChange={(open) => { if (!open) handleLostCancel(); }}
         onSave={handleLostSave}
         saving={lostSubmitting}
-        hideCategory={lostDeal?.contact?.isMyClient}
       />
       <DealDetailDrawer
         dealId={drawerDealId}

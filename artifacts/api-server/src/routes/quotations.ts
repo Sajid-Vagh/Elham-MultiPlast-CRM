@@ -1,8 +1,10 @@
 import { Router, type IRouter } from "express";
-import { db, quotationsTable, quotationItemsTable, ordersTable, orderItemsTable, orderTimelineTable, usersTable } from "@workspace/db";
-import { eq, and, or, ilike, desc, sql } from "drizzle-orm";
+import { db, quotationsTable, quotationItemsTable, ordersTable, orderItemsTable, orderTimelineTable, usersTable, contactsTable } from "@workspace/db";
+import { eq, desc, sql, and } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
+import { createNotification } from "./notifications";
 import { generateId } from "../lib/id-generator";
+import { promoteToExistingCustomer } from "./existing-customers";
 
 const router: IRouter = Router();
 
@@ -218,6 +220,14 @@ router.post("/quotations/:id/convert", async (req, res) => {
       description: `Order created from Quotation ${quotation.quotationNumber}`,
       createdBy: user.id,
     });
+
+    // Promote contact to existing customer
+    try {
+      const [updatedOrder] = await db.select().from(ordersTable).where(eq(ordersTable.id, order.id));
+      if (updatedOrder) await promoteToExistingCustomer(updatedOrder);
+    } catch (promoErr) {
+      console.error("Failed to promote to existing customer:", promoErr);
+    }
 
     res.json({ order, quotation });
   } catch (err) {

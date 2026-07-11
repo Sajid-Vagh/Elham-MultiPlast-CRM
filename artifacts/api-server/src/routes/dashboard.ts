@@ -60,13 +60,21 @@ router.get("/dashboard/kpi", async (req, res) => {
     const totalDeals = filteredDeals.length;
     const wonDeals = filteredDeals.filter(d => d.stage === "Won").length;
     const lostDeals = filteredDeals.filter(d => d.stage === "Lost").length;
+    const lostLeads = filteredContacts.filter(c => c.lostReason != null).length;
     const activeDeals = filteredDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").length;
     const totalWonValue = filteredDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? 0), 0);
 
-    const categoryCounts = CATEGORIES.map(category => ({
-      category,
-      count: filteredContacts.filter(c => c.category === category).length,
-    }));
+    const activeDealContactIds = new Set(
+      filteredDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").map(d => d.contactId)
+    );
+    const categoryCounts = CATEGORIES.map(category => {
+      if (category === "Regular Follow up") {
+        const physicalCount = filteredContacts.filter(c => c.category === category).length;
+        const virtualCount = filteredContacts.filter(c => c.category === "My Client" && activeDealContactIds.has(c.id)).length;
+        return { category, count: physicalCount + virtualCount };
+      }
+      return { category, count: filteredContacts.filter(c => c.category === category).length };
+    });
 
     const unitStats: Record<string, number> = {};
     for (const c of filteredContacts) {
@@ -107,6 +115,7 @@ router.get("/dashboard/kpi", async (req, res) => {
       totalDeals,
       wonDeals,
       lostDeals,
+      lostLeads,
       activeDeals,
       totalWonValue,
       categoryCounts,
@@ -211,10 +220,17 @@ router.get("/dashboard/charts", async (req, res) => {
     const filteredContacts = filterContactsByUnit(allContacts, unitFilter);
     const filteredDeals = filterDealsByUnit(allDeals, unitFilter, allContacts);
 
-    const categoryDistribution = CATEGORIES.map(category => ({
-      name: category,
-      value: filteredContacts.filter(c => c.category === category).length,
-    }));
+    const activeDealContactIdsCharts = new Set(
+      filteredDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").map(d => d.contactId)
+    );
+    const categoryDistribution = CATEGORIES.map(category => {
+      if (category === "Regular Follow up") {
+        const physicalCount = filteredContacts.filter(c => c.category === category).length;
+        const virtualCount = filteredContacts.filter(c => c.category === "My Client" && activeDealContactIdsCharts.has(c.id)).length;
+        return { name: category, value: physicalCount + virtualCount };
+      }
+      return { name: category, value: filteredContacts.filter(c => c.category === category).length };
+    });
 
     const dealStageDistribution = DEAL_STAGES.map(stage => ({
       stage,

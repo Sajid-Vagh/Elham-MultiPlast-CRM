@@ -7,13 +7,13 @@ import { Upload, X, File, AlertCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 const DOCUMENT_TYPES = [
   "Visiting Card", "GST Certificate", "PAN Card", "Aadhaar",
-  "Company Registration", "Purchase Order", "Quotation", "Proforma Invoice PDF",
+  "Company Registration", "Purchase Order", "Proforma Invoice PDF",
   "Product Image", "Customer Image", "Payment Receipt", "Signed Agreement",
   "Product Specification", "Catalogue", "Excel File", "Word File", "PDF File", "ZIP File", "Other",
 ] as const;
 
 const DOCUMENT_CATEGORIES = [
-  "Customer Documents", "GST", "PAN", "Quotation", "Purchase Order",
+  "Customer Documents", "GST", "PAN", "Purchase Order",
   "Proforma Invoice", "Images", "Payment Proof", "Other Files",
 ] as const;
 

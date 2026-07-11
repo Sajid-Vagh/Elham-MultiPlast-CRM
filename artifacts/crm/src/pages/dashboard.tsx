@@ -49,7 +49,7 @@ export default function Dashboard() {
       const res = await fetch(`/api/dashboard/kpi?${params.toString()}`, { headers: authHeaders });
       if (!res.ok) return null;
       return res.json() as Promise<{
-        totalContacts: number; totalDeals: number; wonDeals: number; lostDeals: number;
+        totalContacts: number; totalDeals: number; wonDeals: number; lostDeals: number; lostLeads: number;
         activeDeals: number; totalWonValue: number; categoryCounts: { category: string; count: number }[];
         unitStats: Record<string, number>; todayTotal: number; todayCompleted: number; todayPending: number;
         overdueCount: number; newLeadsThisMonth: number; myClientsCount: number; conversionRate: number;
@@ -213,7 +213,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{kpi?.activeDeals ?? 0}</div>
-              <p className="text-xs text-muted-foreground">{kpi?.wonDeals} won / {kpi?.lostDeals} lost</p>
+              <p className="text-xs text-muted-foreground">{kpi?.wonDeals} won / {kpi?.lostDeals} deals lost / {kpi?.lostLeads || 0} leads lost</p>
             </CardContent>
           </Card>
         </Link>

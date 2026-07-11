@@ -28,7 +28,6 @@ export default function Leads() {
   const [lostContactId, setLostContactId] = useState<number | null>(null);
   const [lostOpen, setLostOpen] = useState(false);
   const [lostSubmitting, setLostSubmitting] = useState(false);
-  const [lostIsExistingClient, setLostIsExistingClient] = useState(false);
 
   // Single delete
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -138,13 +137,13 @@ export default function Leads() {
     });
   };
 
-  const handleMarkLost = ({ lostReason, lostCategory }: { lostReason: string; lostCategory?: string }) => {
+  const handleMarkLost = (data: { lostReason: string; otherReason: string; lostNotes: string }) => {
     if (!lostContactId) return;
     setLostSubmitting(true);
     fetch(`/api/contacts/${lostContactId}/mark-lost`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
-      body: JSON.stringify({ lostReason, ...(lostCategory ? { lostCategory } : {}) }),
+      body: JSON.stringify(data),
     }).then(async (res) => {
       setLostSubmitting(false);
       if (!res.ok) {
@@ -386,7 +385,7 @@ export default function Leads() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                           <DropdownMenuItem onClick={() => { setLostContactId(contact.id); setLostIsExistingClient(contact.isMyClient); setLostOpen(true); }}>
+                           <DropdownMenuItem onClick={() => { setLostContactId(contact.id); setLostOpen(true); }}>
                             <XCircle className="h-4 w-4 mr-2 text-red-500" />
                             <span>Mark Lost</span>
                           </DropdownMenuItem>
@@ -451,10 +450,11 @@ export default function Leads() {
 
       <MarkLostDialog
         open={lostOpen}
-        onOpenChange={(o) => { setLostOpen(o); if (!o) { setLostContactId(null); setLostIsExistingClient(false); } }}
+        onOpenChange={(o) => { setLostOpen(o); if (!o) { setLostContactId(null); } }}
         onSave={handleMarkLost}
         saving={lostSubmitting}
-        hideCategory={lostIsExistingClient}
+        title="Mark Inquiry as Lost"
+        description="Select the reason for marking this inquiry as Lost."
       />
     </div>
   );

@@ -30,13 +30,20 @@ router.get("/contacts", async (req, res) => {
       conditions.push(eq(contactsTable.salesOwnerId, user.id));
     }
 
+    const isAdmin = user.role === "admin";
+    const categoryParam = req.query.category as string | undefined;
+
     if (params.success) {
-      if (params.data.salesOwnerId && user.role === "admin") conditions.push(eq(contactsTable.salesOwnerId, params.data.salesOwnerId));
+      if (params.data.salesOwnerId && isAdmin) conditions.push(eq(contactsTable.salesOwnerId, params.data.salesOwnerId));
       if (params.data.city) conditions.push(ilike(contactsTable.city, `%${params.data.city}%`));
       if (params.data.unit) conditions.push(eq(contactsTable.unit, params.data.unit));
       if (params.data.industry) conditions.push(eq(contactsTable.industry, params.data.industry));
-      const categoryParam = req.query.category as string | undefined;
-      if (categoryParam) conditions.push(eq(contactsTable.category, categoryParam));
+      if (categoryParam && categoryParam !== "Regular Follow up") {
+        conditions.push(eq(contactsTable.category, categoryParam));
+      } else if (categoryParam === "Regular Follow up") {
+        // Virtual RFU: My Client contacts with active deals are shown alongside physical RFU
+        // We handle this below after building the base query
+      }
       if (params.data.search) {
         const s = `%${params.data.search}%`;
         conditions.push(
@@ -55,9 +62,31 @@ router.get("/contacts", async (req, res) => {
         conditions.push(lte(contactsTable.nextCallDate, today));
       }
     }
-    const contacts = conditions.length
-      ? await db.select().from(contactsTable).where(and(...conditions)).orderBy(contactsTable.createdAt)
-      : await db.select().from(contactsTable).orderBy(contactsTable.createdAt);
+
+    let contacts: (typeof contactsTable.$inferSelect)[];
+    if (categoryParam === "Regular Follow up") {
+      // Physical RFU contacts
+      const rfuContacts = await db.select().from(contactsTable)
+        .where(and(eq(contactsTable.category, "Regular Follow up"), ...conditions))
+        .orderBy(contactsTable.createdAt);
+      // My Client contacts with active deals
+      const myClientContacts = await db.select().from(contactsTable)
+        .where(and(eq(contactsTable.category, "My Client"), ...conditions))
+        .orderBy(contactsTable.createdAt);
+      const allDeals = await db.select().from(dealsTable);
+      const activeDealContactIds = new Set(
+        allDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").map(d => d.contactId)
+      );
+      const virtualContacts = myClientContacts.filter(c => activeDealContactIds.has(c.id));
+      contacts = [...rfuContacts, ...virtualContacts];
+    } else if (categoryParam) {
+      conditions.push(eq(contactsTable.category, categoryParam));
+      contacts = await db.select().from(contactsTable).where(and(...conditions)).orderBy(contactsTable.createdAt);
+    } else {
+      contacts = conditions.length
+        ? await db.select().from(contactsTable).where(and(...conditions)).orderBy(contactsTable.createdAt)
+        : await db.select().from(contactsTable).orderBy(contactsTable.createdAt);
+    }
 
     const users = await db.select().from(usersTable);
     const userMap = new Map(users.map(u => {
@@ -440,34 +469,18 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 
-    const { lostReason, lostCategory } = req.body as { lostReason?: string; lostCategory?: string };
+    const { lostReason, otherReason, lostNotes } = req.body as { lostReason?: string; otherReason?: string; lostNotes?: string };
     if (!lostReason) { res.status(400).json({ error: "Lost reason is required" }); return; }
 
     const now = new Date();
 
-    // Category is optional: if provided (A/B/C) and contact is NOT a permanent My Client, move to that category
-    // Permanent My Clients (isMyClient=true) ALWAYS stay in My Clients regardless of lostCategory value
-    let newCategory: string | undefined;
-    if (lostCategory && contact.isMyClient === false) {
-      if (!["A", "B", "C"].includes(lostCategory)) {
-        res.status(400).json({ error: "Lost category must be A, B, or C" }); return;
-      }
-      const categoryMap: Record<string, string> = {
-        A: "Category A", B: "Category B", C: "Category C",
-      };
-      newCategory = categoryMap[lostCategory];
-      const prevCategory = contact.category;
-
-      await db.update(contactsTable).set({ category: newCategory }).where(eq(contactsTable.id, id));
-
-      await db.insert(categoryHistoryTable).values({
-        contactId: id,
-        previousCategory: prevCategory,
-        newCategory,
-        changedBy: user.id,
-        reason: `Lost Inquiry - ${lostReason}`,
-      });
-    }
+    // Save lost fields on the contact
+    await db.update(contactsTable).set({
+      lostReason,
+      otherReason: otherReason || null,
+      lostNotes: lostNotes || null,
+      lostDate: now,
+    }).where(eq(contactsTable.id, id));
 
     // Mark all active deals as Lost
     const activeDeals = await db
@@ -478,6 +491,8 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
       await db.update(dealsTable).set({
         stage: "Lost",
         lostReason,
+        otherReason: otherReason || null,
+        lostNotes: lostNotes || null,
         updatedAt: now,
         completedAt: now,
       }).where(eq(dealsTable.id, deal.id));
@@ -516,17 +531,14 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
     }
 
     // Create activity for the mark-lost action
-    const dealId = existingDeal?.id;
-    if (dealId) {
-      const ts = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-      await db.insert(activitiesTable).values({
-        dealId,
-        contactId: id,
-        type: "Note",
-        notes: `${user.name} marked inquiry as Lost\n\nReason: ${lostReason}\nCategory: ${newCategory}\n\n${ts}`,
-        createdBy: user.id,
-      });
-    }
+    const displayReason = lostReason === "Other" && otherReason ? `Other - ${otherReason}` : lostReason;
+    await db.insert(activitiesTable).values({
+      contactId: id,
+      dealId: existingDeal?.id || null,
+      type: "Note",
+      notes: `Lead marked as Lost\n\nLost Reason: ${displayReason}`,
+      createdBy: user.id,
+    });
 
     res.json({ success: true });
   } catch (err: any) {

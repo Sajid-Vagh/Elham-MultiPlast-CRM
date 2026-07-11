@@ -159,9 +159,9 @@ export default function DealDetail() {
     });
   };
 
-  const handleLostSave = ({ lostReason, lostCategory }: { lostReason: string; lostCategory?: string }) => {
+  const handleLostSave = (data: { lostReason: string; otherReason: string; lostNotes: string }) => {
     setLostSubmitting(true);
-    updateDeal.mutate({ id: dealId, data: { stage: "Lost" as any, lostReason, ...(lostCategory ? { lostCategory } : {}) } }, {
+    updateDeal.mutate({ id: dealId, data: { stage: "Lost" as any, lostReason: data.lostReason, otherReason: data.otherReason, lostNotes: data.lostNotes } as any }, {
       onSuccess: () => {
         setLostSubmitting(false); setLostOpen(false); setPendingStage(null);
         onDealChange(queryClient, dealId, contact?.id);
@@ -645,7 +645,6 @@ export default function DealDetail() {
         onOpenChange={setLostOpen}
         onSave={handleLostSave}
         saving={lostSubmitting}
-        hideCategory={contact?.isMyClient}
       />
 
       {/* Regular Follow-up Dialog */}

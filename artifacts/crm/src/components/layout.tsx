@@ -7,7 +7,7 @@ import { NotificationPopup } from "./notification-popup";
 import {
   LayoutDashboard, Users, Briefcase,
   Package, BarChart, Download, Copy, Settings, LogOut, Bell, X, Clock, Phone, FolderTree, FileText, CheckCheck,
-  Factory, ClipboardList, ShoppingCart, FileSignature, Truck, AlertTriangle, Search, Layers
+  Factory, ClipboardList, Truck, AlertTriangle, Search, Layers
 } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -196,8 +196,6 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: Briefcase, label: "Deals", href: "/deals", color: "#34d399" },
     { icon: Bell, label: "Follow-ups", href: "/follow-ups", color: "#f59e0b" },
     { icon: FolderTree, label: "Categories", href: "/categories", color: "#f97316" },
-    { icon: ShoppingCart, label: "Orders", href: "/orders", color: "#22c55e" },
-    { icon: FileSignature, label: "Quotations", href: "/quotations", color: "#8b5cf6" },
     { icon: Truck, label: "Dispatch", href: "/dispatch", color: "#f43f5e" },
     { icon: AlertTriangle, label: "Complaints", href: "/complaints", color: "#ef4444" },
     { icon: FileText, label: "Proforma Invoices", href: "/proforma-invoices", color: "#06b6d4" },
@@ -209,11 +207,10 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   ];
 
   const supportNavItems = [
-    { icon: ShoppingCart, label: "Orders", href: "/orders", color: "#22c55e" },
     { icon: Truck, label: "Dispatch", href: "/dispatch", color: "#f43f5e" },
     { icon: AlertTriangle, label: "Complaints", href: "/complaints", color: "#ef4444" },
-    { icon: FileSignature, label: "Quotations", href: "/quotations", color: "#8b5cf6" },
     { icon: Bell, label: "Follow-ups", href: "/follow-ups", color: "#f59e0b" },
+    { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" },
     { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
     { icon: FileText, label: "Proforma Invoices", href: "/proforma-invoices", color: "#06b6d4" },
     { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
@@ -231,7 +228,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   } else if (isSupport) {
     navItems = supportNavItems;
   } else if (isAdmin) {
-    navItems = [...salesNavItems, ...productionNavItems];
+    navItems = [...salesNavItems, ...productionNavItems, { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" }];
   } else {
     navItems = salesNavItems;
   }

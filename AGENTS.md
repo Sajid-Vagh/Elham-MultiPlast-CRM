@@ -246,3 +246,69 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `artifacts/crm/src/pages/login.tsx`: login redirect based on role
 - `artifacts/crm/src/pages/settings.tsx`: role dropdown includes Production Manager
 - `artifacts/api-server/src/seed.ts`: includes production user
+
+---
+
+# Existing Customers Module
+
+## Goal
+- Provide a dedicated Existing Customers management interface for Support and Admin roles, showing enriched customer data from the `existing_customers` table with dashboard KPIs, order history, repeat orders, complaints, communications, timeline, and internal notes.
+
+## Progress
+### Done
+- Renamed migration `019_add_existing_customers.sql` → `020_add_existing_customers.sql` (resolved naming conflict with `019_add_completed_at.sql`).
+- DB schema `lib/db/src/schema/existing_customers.ts` — Drizzle ORM table with 25 columns (pre-existing).
+- Migration `lib/db/migrations/020_add_existing_customers.sql` — CREATE TABLE with indexes (pre-existing, renamed).
+- Backend API routes `artifacts/api-server/src/routes/existing-customers.ts` — 15 endpoints:
+  - `GET /existing-customers/dashboard` — 8 KPI counts
+  - `GET /existing-customers` — paginated list with search, enriched filters, pagination
+  - `GET /existing-customers/:id` — enriched single customer detail
+  - `GET /existing-customers/:id/orders` — order history with items + sales owner
+  - `GET /existing-customers/:id/complaints` — complaint history with assigned user name
+  - `GET /existing-customers/:id/repeat-orders` — filtered repeat orders with items
+  - `GET /existing-customers/:id/communications` — communication history
+  - `POST /existing-customers/:id/communications` — log communication
+  - `GET /existing-customers/:id/notes` — internal notes (pinned first)
+  - `POST /existing-customers/:id/notes` — add note
+  - `GET /existing-customers/:id/timeline` — combined events (lead, promotion, orders, timeline, complaints, comms, follow-ups)
+  - `POST /existing-customers/:id/follow-ups` — create activity + notification for sales owner
+  - `POST /existing-customers/:id/repeat-order` — create repeat order from source (copies items, calculates totals, notifies)
+  - `PATCH /existing-customers/:id` — update status/supportOwner/repeatOrderDue/isActive
+  - `POST /existing-customers/refresh/:contactId` — refresh stats from orders
+- Route registration in `routes/index.ts` — already imported and mounted (pre-existing).
+- **Auto-promotion:** `promoteToExistingCustomer` wired into `orders.ts` PATCH when status → "Delivered" or "Completed" (not on creation). Quotations conversion unchanged.
+- **List endpoint enhanced:** filters: `productionStatus`, `dispatchStatus`, `complaintStatus`, `lastOrderBefore`, `lastOrderAfter`; search includes `email`, `gstNumber`, `supportOwner`, `lastProductName`, `lastOrder.orderNumber`.
+- **Backend helper enhanced:** `enrichExistingCustomer` includes `freight`, `paymentTerms`, `deliveryTerms`, `dispatchAddress`, `transportDetails` on lastOrder.
+- **"To Call Today" KPI** fixed to use `activitiesTable` (Pending + followUpDate=today) instead of `internalNotesTable`.
+- **Frontend:** `existing-customers.tsx` — list page with 8 KPI cards, search, status filter, enriched table, pagination (pre-existing, compatible with new backends).
+- **Frontend:** `existing-customer-detail.tsx` — detail page fully rewritten with:
+  - Header: Back + Name + Status badge + Action buttons (Edit, Log Comm, Note, Follow-up, Repeat Order)
+  - Contact Info row (6 cards): Mobile, Email, Company, City, Customer Since, GST
+  - Stats row (5 cards): Total Orders, Total Revenue, Repeat Orders, Notes, Repeat Due date
+  - Status cards (3 color-coded): Production, Dispatch, Active Complaint
+  - Last Order card with extended details (freight, payment terms, delivery terms, dispatch address, transport) + link to order
+  - First Order card
+  - Assigned Team row (4 columns): Sales Owner, Support Owner, Last Product, Repeat Orders
+  - 6 tabs: Orders (with repeat indicator), Repeat Orders, Complaints, Communications, Timeline (icon + dot visual timeline), Notes (pinned first)
+  - 5 dialogs: Log Communication, Add Note, Edit Customer, Schedule Follow-up, Create Repeat Order
+- **App.tsx:** Routes for `/existing-customers` (list) and `/existing-customers/:id` (detail) — guarded by SUPPORT_ROLES (admin + support).
+- **layout.tsx:** "Customers" nav item added to supportNavItems and admin's combined nav (indigo color, Users icon).
+
+## Key Decisions
+- Frontend uses direct `fetch()` calls (not generated hooks) to avoid modifying generated files in `api-client-react` and `api-zod`. Consistent with `customer-profile.tsx` pattern.
+- Timeline deduplication not needed (each event source has unique `id` prefix).
+- Repeat order copies from last order's items with quantity adjustment support; navigates to new order on success.
+- Follow-up endpoint auto-creates a deal if none exists (links activity to deal).
+- "To Call Today" KPI counts activities with Pending status + today's date (not internal notes).
+- Migration rename to `020_` avoids conflict: `019_add_completed_at.sql` likely already ran.
+- DB migration not yet applied; pending user approval.
+
+## Relevant Files
+- `lib/db/src/schema/existing_customers.ts`: Drizzle ORM table schema (pre-existing)
+- `lib/db/migrations/020_add_existing_customers.sql`: migration to create existing_customers table (renamed from 019)
+- `artifacts/api-server/src/routes/existing-customers.ts`: all 15 backend endpoints + helpers
+- `artifacts/api-server/src/routes/orders.ts`: promotion trigger on status → Delivered/Completed
+- `artifacts/crm/src/pages/existing-customers.tsx`: list page with dashboard KPIs + filters + table
+- `artifacts/crm/src/pages/existing-customer-detail.tsx`: detail page (fully rewritten with 6 tabs, 5 dialogs, extended info)
+- `artifacts/crm/src/App.tsx`: routes for existing customers
+- `artifacts/crm/src/components/layout.tsx`: sidebar navigation item

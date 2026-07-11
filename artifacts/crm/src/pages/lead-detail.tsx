@@ -313,12 +313,12 @@ export default function LeadDetail() {
     });
   };
 
-  const handleMarkLost = ({ lostReason, lostCategory }: { lostReason: string; lostCategory?: string }) => {
+  const handleMarkLost = (data: { lostReason: string; otherReason: string; lostNotes: string }) => {
     setLostSubmitting(true);
     fetch(`/api/contacts/${contactId}/mark-lost`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
-      body: JSON.stringify({ lostReason, ...(lostCategory ? { lostCategory } : {}) }),
+      body: JSON.stringify(data),
     }).then(async (res) => {
       setLostSubmitting(false);
       if (!res.ok) {
@@ -661,7 +661,8 @@ export default function LeadDetail() {
             onOpenChange={setLostOpen}
             onSave={handleMarkLost}
             saving={lostSubmitting}
-            hideCategory={contact?.isMyClient || deals?.some(d => d.stage === "Won")}
+            title="Mark Inquiry as Lost"
+            description="Select the reason for marking this inquiry as Lost."
           />
         </div>
 

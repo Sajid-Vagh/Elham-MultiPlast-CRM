@@ -25,6 +25,7 @@ import communicationsRouter from "./communications";
 import notesRouter from "./notes";
 import auditLogsRouter from "./audit-logs";
 import searchRouter from "./search";
+import existingCustomersRouter from "./existing-customers";
 
 const router: IRouter = Router();
 
@@ -54,5 +55,6 @@ router.use(communicationsRouter);
 router.use(notesRouter);
 router.use(auditLogsRouter);
 router.use(searchRouter);
+router.use(existingCustomersRouter);
 
 export default router;

@@ -26,16 +26,14 @@ import NotificationsPage from "@/pages/notifications";
 import ProductionDashboard from "@/pages/production-dashboard";
 import ProductionOrders from "@/pages/production-orders";
 import ProductionOrderDetail from "@/pages/production-order-detail";
-import Orders from "@/pages/orders";
-import OrderDetail from "@/pages/order-detail";
-import OrderCreate from "@/pages/order-create";
-import Quotations from "@/pages/quotations";
-import QuotationCreate from "@/pages/quotation-create";
+
 import Batches from "@/pages/batches";
 import BatchDetail from "@/pages/batch-detail";
 import DispatchPage from "@/pages/dispatch";
 import ComplaintsPage from "@/pages/complaints";
 import CustomerProfile from "@/pages/customer-profile";
+import ExistingCustomers from "@/pages/existing-customers";
+import ExistingCustomerDetail from "@/pages/existing-customer-detail";
 import GlobalSearch from "@/pages/global-search";
 
 const queryClient = new QueryClient({
@@ -56,7 +54,7 @@ function RoleGuard({ allowedRoles, children }: { allowedRoles: string[]; childre
     if (role === "production_manager") {
       setLocation("/production/dashboard");
     } else if (role === "support") {
-      setLocation("/orders");
+      setLocation("/existing-customers");
     } else {
       setLocation("/dashboard");
     }
@@ -83,7 +81,7 @@ function Router() {
               if (role === "production_manager") {
                 window.location.replace("/production/dashboard");
               } else if (role === "support") {
-                window.location.replace("/orders");
+                window.location.replace("/existing-customers");
               } else {
                 window.location.replace("/dashboard");
               }
@@ -184,35 +182,6 @@ function Router() {
         </ProtectedLayout>
       </Route>
 
-      {/* Order routes (Sales, Support, Admin) */}
-      <Route path="/orders/new">
-        <ProtectedLayout>
-          <RoleGuard allowedRoles={SUPPORT_ROLES}><OrderCreate /></RoleGuard>
-        </ProtectedLayout>
-      </Route>
-      <Route path="/orders/:id">
-        {(params) => <ProtectedLayout>
-          <RoleGuard allowedRoles={SUPPORT_ROLES}><OrderDetail /></RoleGuard>
-        </ProtectedLayout>}
-      </Route>
-      <Route path="/orders">
-        <ProtectedLayout>
-          <RoleGuard allowedRoles={SUPPORT_ROLES}><Orders /></RoleGuard>
-        </ProtectedLayout>
-      </Route>
-
-      {/* Quotation routes (Sales, Admin) */}
-      <Route path="/quotations/new">
-        <ProtectedLayout>
-          <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><QuotationCreate /></RoleGuard>
-        </ProtectedLayout>
-      </Route>
-      <Route path="/quotations">
-        <ProtectedLayout>
-          <RoleGuard allowedRoles={SUPPORT_ROLES}><Quotations /></RoleGuard>
-        </ProtectedLayout>
-      </Route>
-
       {/* Dispatch routes (Support, Admin) */}
       <Route path="/dispatch">
         <ProtectedLayout>
@@ -232,6 +201,18 @@ function Router() {
         {(params) => <ProtectedLayout>
           <RoleGuard allowedRoles={SUPPORT_ROLES}><CustomerProfile /></RoleGuard>
         </ProtectedLayout>}
+      </Route>
+
+      {/* Existing Customers (Support + Admin) */}
+      <Route path="/existing-customers/:id">
+        {(params) => <ProtectedLayout>
+          <RoleGuard allowedRoles={SUPPORT_ROLES}><ExistingCustomerDetail /></RoleGuard>
+        </ProtectedLayout>}
+      </Route>
+      <Route path="/existing-customers">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={SUPPORT_ROLES}><ExistingCustomers /></RoleGuard>
+        </ProtectedLayout>
       </Route>
 
       {/* Production routes */}

@@ -9,13 +9,13 @@ import { DocumentUploadDialog } from "./document-upload-dialog";
 import { DocumentViewer } from "./document-viewer";
 const DOCUMENT_TYPES = [
   "Visiting Card", "GST Certificate", "PAN Card", "Aadhaar",
-  "Company Registration", "Purchase Order", "Quotation", "Proforma Invoice PDF",
+  "Company Registration", "Purchase Order", "Proforma Invoice PDF",
   "Product Image", "Customer Image", "Payment Receipt", "Signed Agreement",
   "Product Specification", "Catalogue", "Excel File", "Word File", "PDF File", "ZIP File", "Other",
 ] as const;
 
 const DOCUMENT_CATEGORIES = [
-  "Customer Documents", "GST", "PAN", "Quotation", "Purchase Order",
+  "Customer Documents", "GST", "PAN", "Purchase Order",
   "Proforma Invoice", "Images", "Payment Proof", "Other Files",
 ] as const;
 import {
@@ -66,7 +66,6 @@ function FileIcon({ ext }: { ext?: string }) {
 const CATEGORY_COLORS: Record<string, string> = {
   "GST": "bg-orange-100 text-orange-700",
   "PAN": "bg-purple-100 text-purple-700",
-  "Quotation": "bg-blue-100 text-blue-700",
   "Purchase Order": "bg-green-100 text-green-700",
   "Proforma Invoice": "bg-indigo-100 text-indigo-700",
   "Images": "bg-pink-100 text-pink-700",

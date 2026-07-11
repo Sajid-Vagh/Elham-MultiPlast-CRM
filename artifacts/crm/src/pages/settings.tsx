@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Pencil, Trash2, SlidersHorizontal, Users, Camera, X as XIcon, CheckCircle2, ArrowLeft, Settings2, Package, Truck, AlertTriangle, BarChart3, Shield } from "lucide-react";
+import { Plus, Pencil, Trash2, SlidersHorizontal, Users, Camera, X as XIcon, CheckCircle2, ArrowLeft, Settings2, Truck, AlertTriangle, BarChart3, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,16 +37,6 @@ const SUPPORT_PERMISSION_CATEGORIES: PermissionCategory[] = [
       { key: "viewCustomerTimeline", label: "View Customer Timeline", desc: "View the full activity timeline for customers" },
       { key: "updateCustomerCommunication", label: "Update Customer Communication", desc: "Log and update customer communication records" },
       { key: "createFollowups", label: "Create Follow-ups", desc: "Schedule and manage follow-up activities" },
-    ],
-  },
-  {
-    id: "orders", label: "Orders",
-    icon: <Package className="h-4 w-4" />,
-    permissions: [
-      { key: "createRepeatOrders", label: "Create Repeat Orders", desc: "Create new orders for existing customers" },
-      { key: "editRepeatOrders", label: "Edit Repeat Orders", desc: "Modify details of existing repeat orders" },
-      { key: "createOrderRevisionRequest", label: "Create Order Revision Request", desc: "Submit order revision requests for approval" },
-      { key: "viewRevisionHistory", label: "View Revision History", desc: "View past order revisions and their status" },
     ],
   },
   {
@@ -92,13 +82,6 @@ const SUPPORT_PERMISSION_CATEGORIES: PermissionCategory[] = [
 ];
 
 const PRODUCTION_PERMISSION_CATEGORIES: PermissionCategory[] = [
-  {
-    id: "orders", label: "Orders",
-    icon: <Package className="h-4 w-4" />,
-    permissions: [
-      { key: "viewSalesOrders", label: "View Sales Orders", desc: "View all sales orders in the system" },
-    ],
-  },
   {
     id: "production", label: "Production",
     icon: <Settings2 className="h-4 w-4" />,

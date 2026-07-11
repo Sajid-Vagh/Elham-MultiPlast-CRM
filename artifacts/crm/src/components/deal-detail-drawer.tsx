@@ -123,10 +123,10 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
     );
   };
 
-  const handleLostSave = ({ lostReason, lostCategory }: { lostReason: string; lostCategory?: string }) => {
+  const handleLostSave = (data: { lostReason: string; otherReason: string; lostNotes: string }) => {
     setLostSubmitting(true);
     updateDeal.mutate(
-      { id: dealId!, data: { stage: "Lost" as DealStage, lostReason, ...(lostCategory ? { lostCategory } : {}) } },
+      { id: dealId!, data: { stage: "Lost" as DealStage, lostReason: data.lostReason, otherReason: data.otherReason, lostNotes: data.lostNotes } as any },
       { onSuccess: () => { setLostSubmitting(false); setLostOpen(false); toast({ title: "Deal marked as Lost" }); invalidateAllDeal(); }, onError: (err: any) => { setLostSubmitting(false); toast({ title: "Error", description: err?.data?.error || err?.message || "Failed", variant: "destructive" }); } },
     );
   };
@@ -373,7 +373,6 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
         onOpenChange={setLostOpen}
         onSave={handleLostSave}
         saving={lostSubmitting}
-        hideCategory={contact?.isMyClient}
       />
 
       {/* Regular Follow-up Dialog */}

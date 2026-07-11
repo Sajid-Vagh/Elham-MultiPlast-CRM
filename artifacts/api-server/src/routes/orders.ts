@@ -5,6 +5,7 @@ import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { generateId } from "../lib/id-generator";
 import { logAudit } from "../middlewares/auth";
+import { promoteToExistingCustomer } from "./existing-customers";
 
 const router: IRouter = Router();
 
@@ -231,6 +232,16 @@ router.patch("/orders/:id", async (req, res) => {
 
     // Update order
     const [updated] = await db.update(ordersTable).set({ ...updateData, updatedAt: new Date() }).where(eq(ordersTable.id, id)).returning();
+
+    // Promote to existing customer when first order is Delivered or Completed
+    if (updateData.status && ["Delivered", "Completed"].includes(updateData.status) && existing.contactId) {
+      try {
+        const [promoOrder] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
+        if (promoOrder) await promoteToExistingCustomer(promoOrder);
+      } catch (promoErr) {
+        console.error("Failed to promote to existing customer:", promoErr);
+      }
+    }
 
     // Update items if provided
     if (items && Array.isArray(items)) {

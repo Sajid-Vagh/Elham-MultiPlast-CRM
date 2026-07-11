@@ -13,6 +13,8 @@ export const dealsTable = pgTable("deals", {
   totalValue: numeric("total_value", { precision: 14, scale: 2 }),
   wonAmount: numeric("won_amount", { precision: 14, scale: 2 }),
   lostReason: text("lost_reason"),
+  otherReason: text("other_reason"),
+  lostNotes: text("lost_notes"),
   notes: text("notes"),
   salesOwnerId: integer("sales_owner_id").references(() => usersTable.id),
   category: text("category").notNull().default("Category A"),

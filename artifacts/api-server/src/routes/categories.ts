@@ -20,15 +20,27 @@ router.get("/categories/counts", async (req, res) => {
       conditions.push(eq(contactsTable.unit, unit));
     }
 
-    const counts = [];
-    for (const category of CATEGORIES) {
-      const catConditions = [eq(contactsTable.category, category), ...conditions];
-      const [result] = await db
-        .select({ count: sql`count(*)::int` })
-        .from(contactsTable)
-        .where(and(...catConditions));
-      counts.push({ category, count: result?.count ?? 0 });
+    // Fetch contacts and deals once for virtual "Regular Follow up" counting
+    const allContacts = await db.select().from(contactsTable).where(and(...conditions));
+    const allDeals = await db.select().from(dealsTable);
+
+    // Count active (non-Won, non-Lost) deals per contact
+    const activeDealContactIds = new Set<number>();
+    for (const d of allDeals) {
+      if (d.stage !== "Won" && d.stage !== "Lost" && allContacts.some(c => c.id === d.contactId)) {
+        activeDealContactIds.add(d.contactId);
+      }
     }
+
+    const counts = CATEGORIES.map(category => {
+      if (category === "Regular Follow up") {
+        // Physical RFU contacts + My Client contacts with active deals
+        const physicalCount = allContacts.filter(c => c.category === category).length;
+        const virtualCount = allContacts.filter(c => c.category === "My Client" && activeDealContactIds.has(c.id)).length;
+        return { category, count: physicalCount + virtualCount };
+      }
+      return { category, count: allContacts.filter(c => c.category === category).length };
+    });
 
     res.json(counts);
   } catch (err) {
@@ -50,19 +62,41 @@ router.get("/categories/:category/contacts", async (req, res) => {
       return;
     }
 
-    const conditions: SQL[] = [eq(contactsTable.category, category)];
+    const baseConditions: SQL[] = [];
     if (!isAdmin) {
-      conditions.push(eq(contactsTable.salesOwnerId, user.id));
+      baseConditions.push(eq(contactsTable.salesOwnerId, user.id));
     }
     if (unit) {
-      conditions.push(eq(contactsTable.unit, unit));
+      baseConditions.push(eq(contactsTable.unit, unit));
     }
 
-    const contacts = await db
-      .select()
-      .from(contactsTable)
-      .where(and(...conditions))
-      .orderBy(contactsTable.createdAt);
+    let contacts: (typeof contactsTable.$inferSelect)[];
+    if (category === "Regular Follow up") {
+      // Physical RFU contacts
+      const rfuContacts = await db
+        .select()
+        .from(contactsTable)
+        .where(and(eq(contactsTable.category, category), ...baseConditions))
+        .orderBy(contactsTable.createdAt);
+      // My Client contacts with active deals
+      const myClientContacts = await db
+        .select()
+        .from(contactsTable)
+        .where(and(eq(contactsTable.category, "My Client"), ...baseConditions))
+        .orderBy(contactsTable.createdAt);
+      const allDeals = await db.select().from(dealsTable);
+      const activeDealContactIds = new Set(
+        allDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").map(d => d.contactId)
+      );
+      const virtualContacts = myClientContacts.filter(c => activeDealContactIds.has(c.id));
+      contacts = [...rfuContacts, ...virtualContacts];
+    } else {
+      contacts = await db
+        .select()
+        .from(contactsTable)
+        .where(and(eq(contactsTable.category, category), ...baseConditions))
+        .orderBy(contactsTable.createdAt);
+    }
 
     const users = await db.select().from(usersTable);
     const userMap = new Map(users.map(u => {
@@ -146,28 +180,48 @@ router.get("/categories/:category/contacts/search", async (req, res) => {
       return;
     }
 
-    const conditions: SQL[] = [eq(contactsTable.category, category)];
+    const schConditions: SQL[] = [];
     if (!isAdmin) {
-      conditions.push(eq(contactsTable.salesOwnerId, user.id));
+      schConditions.push(eq(contactsTable.salesOwnerId, user.id));
     }
     if (unit) {
-      conditions.push(eq(contactsTable.unit, unit));
+      schConditions.push(eq(contactsTable.unit, unit));
     }
     if (q) {
       const s = `%${q}%`;
-      conditions.push(
+      schConditions.push(
         sql`(${contactsTable.name} ILIKE ${s} OR ${contactsTable.mobile} ILIKE ${s} OR ${contactsTable.companyName} ILIKE ${s} OR ${contactsTable.city} ILIKE ${s})`
       );
     }
-    if (ownerId) conditions.push(eq(contactsTable.salesOwnerId, Number(ownerId)));
-    if (city) conditions.push(sql`${contactsTable.city} ILIKE ${`%${city}%`}`);
-    if (industry) conditions.push(eq(contactsTable.industry, industry));
+    if (ownerId) schConditions.push(eq(contactsTable.salesOwnerId, Number(ownerId)));
+    if (city) schConditions.push(sql`${contactsTable.city} ILIKE ${`%${city}%`}`);
+    if (industry) schConditions.push(eq(contactsTable.industry, industry));
 
-    const contacts = await db
-      .select()
-      .from(contactsTable)
-      .where(and(...conditions))
-      .orderBy(contactsTable.createdAt);
+    let contacts: (typeof contactsTable.$inferSelect)[];
+    if (category === "Regular Follow up") {
+      const rfuContacts = await db
+        .select()
+        .from(contactsTable)
+        .where(and(eq(contactsTable.category, category), ...schConditions))
+        .orderBy(contactsTable.createdAt);
+      const myClientContacts = await db
+        .select()
+        .from(contactsTable)
+        .where(and(eq(contactsTable.category, "My Client"), ...schConditions))
+        .orderBy(contactsTable.createdAt);
+      const allDeals = await db.select().from(dealsTable);
+      const activeDealContactIds = new Set(
+        allDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").map(d => d.contactId)
+      );
+      const virtualContacts = myClientContacts.filter(c => activeDealContactIds.has(c.id));
+      contacts = [...rfuContacts, ...virtualContacts];
+    } else {
+      contacts = await db
+        .select()
+        .from(contactsTable)
+        .where(and(eq(contactsTable.category, category), ...schConditions))
+        .orderBy(contactsTable.createdAt);
+    }
 
     const users = await db.select().from(usersTable);
     const userMap = new Map(users.map(u => {
