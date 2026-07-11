@@ -610,6 +610,7 @@ export default function Settings() {
   };
 
   const isAdmin = me?.role === "admin";
+  const isSalesOrAdmin = me?.role === "sales" || me?.role === "admin";
   const [profileEditOpen, setProfileEditOpen] = useState(false);
 
   // ── Full-page overlay for Add/Edit ──
@@ -705,37 +706,41 @@ export default function Settings() {
             </div>
             <Switch checked={autoCap} onCheckedChange={handleAutoCapToggle} />
           </div>
-          <div className="flex items-center justify-between py-2 border-b">
-            <div>
-              <p className="font-medium text-sm">Completed Deals Visibility</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Choose how long Won and Lost deals remain visible in the Pipeline after completion.</p>
-            </div>
-            <Select value={completedDealVisibility} onValueChange={handleCompletedVisibilityChange}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="hide">Hide Immediately</SelectItem>
-                <SelectItem value="24h">Keep for 24 Hours</SelectItem>
-                <SelectItem value="3d">Keep for 3 Days</SelectItem>
-                <SelectItem value="forever">Keep Forever</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center justify-between py-2 border-b">
-            <div>
-              <p className="font-medium text-sm">Deal Won Celebration</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Show confetti animation and success modal when a deal is marked as Won.</p>
-            </div>
-            <Switch
-              checked={dealWonCelebration}
-              onCheckedChange={(val) => {
-                setDealWonCelebration(val);
-                localStorage.setItem("crm_dealWonCelebration", val ? "on" : "off");
-                toast({ title: val ? "Deal Won Celebration turned ON" : "Deal Won Celebration turned OFF" });
-              }}
-            />
-          </div>
+          {isSalesOrAdmin && (
+            <>
+              <div className="flex items-center justify-between py-2 border-b">
+                <div>
+                  <p className="font-medium text-sm">Completed Deals Visibility</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Choose how long Won and Lost deals remain visible in the Pipeline after completion.</p>
+                </div>
+                <Select value={completedDealVisibility} onValueChange={handleCompletedVisibilityChange}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="hide">Hide Immediately</SelectItem>
+                    <SelectItem value="24h">Keep for 24 Hours</SelectItem>
+                    <SelectItem value="3d">Keep for 3 Days</SelectItem>
+                    <SelectItem value="forever">Keep Forever</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center justify-between py-2 border-b">
+                <div>
+                  <p className="font-medium text-sm">Deal Won Celebration</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Show confetti animation and success modal when a deal is marked as Won.</p>
+                </div>
+                <Switch
+                  checked={dealWonCelebration}
+                  onCheckedChange={(val) => {
+                    setDealWonCelebration(val);
+                    localStorage.setItem("crm_dealWonCelebration", val ? "on" : "off");
+                    toast({ title: val ? "Deal Won Celebration turned ON" : "Deal Won Celebration turned OFF" });
+                  }}
+                />
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
