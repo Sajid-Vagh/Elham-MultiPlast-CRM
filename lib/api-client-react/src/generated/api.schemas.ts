@@ -744,7 +744,7 @@ contactId?: number;
 salesOwnerId?: number;
 stage?: string;
 unit?: string;
-showCompletedFor24Hours?: string;
+completedDealVisibility?: "hide" | "24h" | "3d" | "forever";
 };
 
 export type ListActivitiesParams = {

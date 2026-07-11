@@ -11,4 +11,5 @@ contactId?: number;
 salesOwnerId?: number;
 stage?: string;
 unit?: string;
+completedDealVisibility?: "hide" | "24h" | "3d" | "forever";
 };

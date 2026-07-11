@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import { DndContext, DragOverlay, useDraggable, useDroppable, closestCenter } from "@dnd-kit/core";
 import type { DragStartEvent, DragEndEvent } from "@dnd-kit/core";
 import { useQueryClient } from "@tanstack/react-query";
@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { X, GripVertical } from "lucide-react";
+import { X, GripVertical, CheckCircle, XCircle } from "lucide-react";
 import { CategoryBadge } from "@/components/category-badge";
 import { useToast } from "@/hooks/use-toast";
 import { DEAL_STAGES } from "@/lib/deal-stages";
@@ -52,6 +52,50 @@ function DroppableColumn({ stage, children }: { stage: string; children: ReactNo
   );
 }
 
+function CompletionBadge({ deal, visibility }: { deal: Deal; visibility: string }) {
+  if (deal.stage !== "Won" && deal.stage !== "Lost") return null;
+  if (!deal.completedAt) return null;
+
+  const completedDate = new Date(deal.completedAt);
+  const now = new Date();
+  const diffMs = now.getTime() - completedDate.getTime();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  let label: string;
+  let variant: "default" | "secondary" | "outline" = "secondary";
+
+  if (visibility === "forever") {
+    label = deal.stage === "Won" ? "Won • Archived" : "Lost • Archived";
+    variant = "outline";
+  } else if (diffHours < 1) {
+    label = deal.stage === "Won" ? "Won • Just now" : "Lost • Just now";
+  } else if (diffHours < 24) {
+    if (visibility !== "hide") {
+      const maxHours = visibility === "3d" ? 72 : 24;
+      const remaining = maxHours - diffHours;
+      if (remaining > 0 && remaining <= 24) {
+        label = deal.stage === "Won" ? `Won • Expires in ${remaining}h` : `Lost • Expires in ${remaining}h`;
+      } else {
+        label = deal.stage === "Won" ? `Won • ${diffHours}h ago` : `Lost • ${diffHours}h ago`;
+      }
+    } else {
+      label = deal.stage === "Won" ? `Won • ${diffHours}h ago` : `Lost • ${diffHours}h ago`;
+    }
+  } else if (diffDays === 1) {
+    label = deal.stage === "Won" ? "Won • Yesterday" : "Lost • Yesterday";
+  } else {
+    label = deal.stage === "Won" ? `Won • ${diffDays}d ago` : `Lost • ${diffDays}d ago`;
+  }
+
+  return (
+    <Badge variant={variant} className={`text-[10px] px-1.5 py-0 ${deal.stage === "Won" ? "text-emerald-600 border-emerald-300" : "text-red-500 border-red-300"}`}>
+      {deal.stage === "Won" ? <CheckCircle className="h-2.5 w-2.5 mr-0.5" /> : <XCircle className="h-2.5 w-2.5 mr-0.5" />}
+      {label}
+    </Badge>
+  );
+}
+
 export default function Deals() {
   const searchStr = useSearch();
   const [, navigate] = useLocation();
@@ -65,12 +109,19 @@ export default function Deals() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Show completed deals for 24 hours setting (from localStorage)
-  const showCompletedFor24Hours = localStorage.getItem("crm_showCompletedFor24Hours") === "on";
+  // Completed deal visibility preference (from localStorage)
+  const completedDealVisibility = (() => {
+    const oldVal = localStorage.getItem("crm_showCompletedFor24Hours");
+    if (oldVal === "on") {
+      localStorage.setItem("crm_completedDealVisibility", "24h");
+      localStorage.removeItem("crm_showCompletedFor24Hours");
+    }
+    return localStorage.getItem("crm_completedDealVisibility") || "24h";
+  })();
 
   const { data: deals, isLoading } = useListDeals({
     unit: unitFilter || undefined,
-    showCompletedFor24Hours: showCompletedFor24Hours ? "true" : undefined,
+    completedDealVisibility: completedDealVisibility as "hide" | "24h" | "3d" | "forever" | undefined,
   });
   const { data: users } = useListUsers();
 
@@ -333,11 +384,12 @@ export default function Deals() {
                           {deal.contact?.companyName && (
                             <div className="text-xs text-muted-foreground mb-1">{deal.contact.companyName}</div>
                           )}
-                          <div className="mt-1 flex items-center gap-2">
+                          <div className="mt-1 flex items-center gap-2 flex-wrap">
                             <CategoryBadge category={deal.contact?.category} />
                             {deal.contact?.unit && (
                               <Badge variant="outline" className="text-[10px] px-1.5 py-0">{deal.contact.unit}</Badge>
                             )}
+                            <CompletionBadge deal={deal} visibility={completedDealVisibility} />
                           </div>
                           {deal.contact?.customerComments && (
                             <div className="mt-1 text-xs text-muted-foreground line-clamp-1" title={deal.contact.customerComments}>

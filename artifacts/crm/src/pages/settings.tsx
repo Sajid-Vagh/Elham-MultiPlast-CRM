@@ -556,11 +556,21 @@ export default function Settings() {
     toast({ title: val ? "Auto-capitalize turned ON" : "Auto-capitalize turned OFF" });
   };
 
-  const [showCompletedFor24Hours, setShowCompletedFor24Hours] = useState(() => localStorage.getItem("crm_showCompletedFor24Hours") === "on");
-  const handleShowCompletedToggle = (val: boolean) => {
-    setShowCompletedFor24Hours(val);
-    localStorage.setItem("crm_showCompletedFor24Hours", val ? "on" : "off");
-    toast({ title: val ? "Show completed deals for 24 hours turned ON" : "Show completed deals for 24 hours turned OFF" });
+  // Migrate old setting to new format
+  const [completedDealVisibility, setCompletedDealVisibility] = useState(() => {
+    const oldVal = localStorage.getItem("crm_showCompletedFor24Hours");
+    if (oldVal === "on") {
+      localStorage.setItem("crm_completedDealVisibility", "24h");
+      localStorage.removeItem("crm_showCompletedFor24Hours");
+      return "24h";
+    }
+    return localStorage.getItem("crm_completedDealVisibility") || "24h";
+  });
+  const handleCompletedVisibilityChange = (val: string) => {
+    setCompletedDealVisibility(val);
+    localStorage.setItem("crm_completedDealVisibility", val);
+    const labels: Record<string, string> = { hide: "Hide Immediately", "24h": "Keep for 24 Hours", "3d": "Keep for 3 Days", forever: "Keep Forever" };
+    toast({ title: `Completed deals visibility: ${labels[val] || val}` });
   };
 
   const handleCreate = (data: any) => {
@@ -695,10 +705,20 @@ export default function Settings() {
           </div>
           <div className="flex items-center justify-between py-2 border-b">
             <div>
-              <p className="font-medium text-sm">Show Completed Deals in Pipeline for 24 Hours</p>
-              <p className="text-xs text-muted-foreground mt-0.5">When enabled, Won and Lost deals remain visible for 24 hours after completion.</p>
+              <p className="font-medium text-sm">Completed Deals Visibility</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Choose how long Won and Lost deals remain visible in the Pipeline after completion.</p>
             </div>
-            <Switch checked={showCompletedFor24Hours} onCheckedChange={handleShowCompletedToggle} />
+            <Select value={completedDealVisibility} onValueChange={handleCompletedVisibilityChange}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="hide">Hide Immediately</SelectItem>
+                <SelectItem value="24h">Keep for 24 Hours</SelectItem>
+                <SelectItem value="3d">Keep for 3 Days</SelectItem>
+                <SelectItem value="forever">Keep Forever</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>

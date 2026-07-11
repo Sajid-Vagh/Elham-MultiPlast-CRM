@@ -598,7 +598,7 @@ export const ListDealsQueryParams = zod.object({
   "salesOwnerId": zod.coerce.number().optional(),
   "stage": zod.coerce.string().optional(),
   "unit": zod.coerce.string().optional(),
-  "showCompletedFor24Hours": zod.coerce.string().optional()
+  "completedDealVisibility": zod.enum(["hide", "24h", "3d", "forever"]).optional()
 })
 
 export const ListDealsResponseItem = zod.object({

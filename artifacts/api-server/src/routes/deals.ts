@@ -47,28 +47,42 @@ router.get("/deals", async (req, res) => {
     const contactMap = new Map(contacts.map(c => [c.id, c]));
     const userMap = new Map(users.map(u => { const { passwordHash: _, ...safe } = u; return [u.id, safe]; }));
 
-    // Pipeline view: only show deals for contacts in "Regular Follow up" category
-    // + My Client contacts with active (non-Won, non-Lost) deals
+    // Pipeline view: show deals for "Regular Follow up" contacts + all "My Client" contacts
+    // Completed (Won/Lost) deal visibility is controlled by completedDealVisibility param
     let resultDeals = deals;
     if (isPipelineView) {
       const regularFollowUpIds = new Set(contacts.filter(c => c.category === "Regular Follow up").map(c => c.id));
-      const myClientActiveDealIds = new Set(
-        deals.filter(d => contacts.some(c => c.id === d.contactId && c.category === "My Client") && d.stage !== "Won" && d.stage !== "Lost").map(d => d.id)
+      const myClientIds = new Set(
+        deals.filter(d => contacts.some(c => c.id === d.contactId && c.category === "My Client")).map(d => d.id)
       );
-      resultDeals = deals.filter(d => regularFollowUpIds.has(d.contactId) || myClientActiveDealIds.has(d.id));
+      resultDeals = deals.filter(d => regularFollowUpIds.has(d.contactId) || myClientIds.has(d.id));
 
-      // Show/hide completed deals in pipeline based on setting
-      // showCompletedFor24Hours=true → keep Won/Lost visible for 24h
-      // showCompletedFor24Hours=not true → hide Won/Lost immediately
+      // Apply completed deal visibility filter based on user preference
+      // completedDealVisibility values:
+      //   "hide"    → hide Won/Lost immediately
+      //   "24h"     → keep visible for 24 hours after completion (default)
+      //   "3d"      → keep visible for 72 hours
+      //   "forever" → never auto-hide completed deals
       if (params.success) {
-        if (params.data.showCompletedFor24Hours === "true") {
+        const visibility = params.data.completedDealVisibility || "24h";
+        if (visibility === "forever") {
+          // Keep all completed deals visible — no filter needed
+        } else if (visibility === "24h") {
           const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
           resultDeals = resultDeals.filter(d => {
             if (d.stage !== "Won" && d.stage !== "Lost") return true;
             if (!d.completedAt) return true;
             return new Date(d.completedAt) >= cutoff;
           });
+        } else if (visibility === "3d") {
+          const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+          resultDeals = resultDeals.filter(d => {
+            if (d.stage !== "Won" && d.stage !== "Lost") return true;
+            if (!d.completedAt) return true;
+            return new Date(d.completedAt) >= cutoff;
+          });
         } else {
+          // "hide" or any other value: hide Won/Lost immediately
           resultDeals = resultDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost");
         }
       }
