@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, dealsTable, usersTable, categoryHistoryTable, activitiesTable, notificationsTable, productsTable, dealProductsTable, CATEGORIES } from "@workspace/db";
-import { eq, and, or, inArray, isNull, SQL, sql } from "drizzle-orm";
+import { db, contactsTable, dealsTable, usersTable, categoryHistoryTable, activitiesTable, productsTable, dealProductsTable, CATEGORIES } from "@workspace/db";
+import { eq, and, inArray, SQL, sql } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
+import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
 
 const router: IRouter = Router();
 
@@ -332,62 +333,11 @@ router.post("/categories/move", async (req, res) => {
           .update(dealsTable)
           .set({ stage: "Lost", lostReason: "Lead moved out of pipeline category", updatedAt: new Date() })
           .where(inArray(dealsTable.id, contactDeals.map(d => d.id)));
-      }
 
-      const pendingFollowUps = await db
-        .select({ id: activitiesTable.id, dealId: activitiesTable.dealId })
-        .from(activitiesTable)
-        .where(
-          and(
-            eq(activitiesTable.type, "FollowUp"),
-            inArray(activitiesTable.contactId, movedContactIds),
-            or(eq(activitiesTable.callStatus, "Pending"), isNull(activitiesTable.callStatus)),
-          )
-        );
-
-      if (pendingFollowUps.length > 0) {
-        const followUpIds = pendingFollowUps.map(f => f.id);
-        await db
-          .update(activitiesTable)
-          .set({ callStatus: "Completed", updatedAt: new Date(), updatedBy: user.id, isEdited: true })
-          .where(inArray(activitiesTable.id, followUpIds));
-
-        const allDealIds = contactDeals.map(d => d.id);
-
-        if (allDealIds.length > 0) {
-          const pendingDealFollowUps = await db
-            .select({ id: activitiesTable.id })
-            .from(activitiesTable)
-            .where(
-              and(
-                eq(activitiesTable.type, "FollowUp"),
-                eq(activitiesTable.contactId, null as any),
-                inArray(activitiesTable.dealId, allDealIds),
-                or(eq(activitiesTable.callStatus, "Pending"), isNull(activitiesTable.callStatus)),
-              )
-            );
-
-          if (pendingDealFollowUps.length > 0) {
-            await db
-              .update(activitiesTable)
-              .set({ callStatus: "Completed", updatedAt: new Date(), updatedBy: user.id, isEdited: true })
-              .where(inArray(activitiesTable.id, pendingDealFollowUps.map(f => f.id)));
-
-            followUpIds.push(...pendingDealFollowUps.map(f => f.id));
-          }
+        // Auto-complete all pending activities for each affected deal
+        for (const deal of contactDeals) {
+          await completePendingActivitiesForDeal(db, deal.id, null, "Lost", user.id);
         }
-
-        // Mark related notifications as read
-        await db
-          .update(notificationsTable)
-          .set({ readAt: new Date() })
-          .where(
-            and(
-              inArray(notificationsTable.relatedId, followUpIds),
-              eq(notificationsTable.relatedType, "activity"),
-              isNull(notificationsTable.readAt),
-            )
-          );
       }
     }
 

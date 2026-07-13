@@ -302,8 +302,13 @@ export interface Product {
   /** @nullable */
   category?: string | null;
   /** @nullable */
+  industry?: string | null;
+  /** @nullable */
+  machineType?: string | null;
+  /** @nullable */
   pricePerUnit?: number | null;
-  productCode: string;
+  /** @nullable */
+  productCode?: string | null;
   /** @nullable */
   bottleWeight?: string | null;
   /** @nullable */
@@ -328,14 +333,27 @@ export interface ProductInput {
   /** @nullable */
   category?: string | null;
   /** @nullable */
+  industry?: string | null;
+  /** @nullable */
+  machineType?: string | null;
+  /** @nullable */
   pricePerUnit?: number | null;
-  productCode: string;
+  /** @nullable */
+  productCode?: string | null;
   /** @nullable */
   bottleWeight?: string | null;
   /** @nullable */
   bottleColour?: string | null;
   /** @nullable */
   capColour?: string | null;
+  /** @nullable */
+  materialType?: string | null;
+  /** @nullable */
+  hsnCode?: string | null;
+  /** @nullable */
+  defaultUnit?: string | null;
+  /** @nullable */
+  defaultGst?: number | null;
   /** @nullable */
   status?: string | null;
 }
@@ -345,14 +363,27 @@ export interface ProductUpdate {
   /** @nullable */
   category?: string | null;
   /** @nullable */
+  industry?: string | null;
+  /** @nullable */
+  machineType?: string | null;
+  /** @nullable */
   pricePerUnit?: number | null;
-  productCode?: string;
+  /** @nullable */
+  productCode?: string | null;
   /** @nullable */
   bottleWeight?: string | null;
   /** @nullable */
   bottleColour?: string | null;
   /** @nullable */
   capColour?: string | null;
+  /** @nullable */
+  materialType?: string | null;
+  /** @nullable */
+  hsnCode?: string | null;
+  /** @nullable */
+  defaultUnit?: string | null;
+  /** @nullable */
+  defaultGst?: number | null;
   /** @nullable */
   status?: string | null;
 }

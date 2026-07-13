@@ -12,6 +12,7 @@ import {
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 import { UserAvatar } from "@/components/user-avatar";
 
 const REMINDER_SOUND_SS_KEY = "crm_reminder_sound_played_ids";
@@ -101,6 +102,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   const [bellOpen, setBellOpen] = useState(false);
   const [dismissedToday, setDismissedToday] = useState<Set<number>>(new Set());
   const [showLoginPopup, setShowLoginPopup] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const loginPopupShownRef = useRef(sessionStorage.getItem("crm_login_popup_shown") === "true");
   const bellRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -222,6 +224,8 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: Factory, label: "Production Dashboard", href: "/production/dashboard", color: "#7c3aed" },
     { icon: ClipboardList, label: "Production Orders", href: "/production/orders", color: "#7c3aed" },
     { icon: Layers, label: "Batches", href: "/production/batches", color: "#7c3aed" },
+    { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
+    { icon: BarChart, label: "Machine Report", href: "/production/machine-report", color: "#7c3aed" },
   ];
 
   let navItems: typeof salesNavItems;
@@ -303,16 +307,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
             variant="outline"
             size="sm"
             className="w-full justify-start text-[hsl(248_16%_50%)] border-[hsl(250_22%_88%)] bg-white/60 hover:bg-white"
-            onClick={() => {
-              logout.mutate(undefined, {
-                onSuccess: () => {
-                  localStorage.removeItem("crm_token");
-                  localStorage.removeItem("crm_user_role");
-                  sessionStorage.removeItem("crm_notif_since");
-                  setLocation("/login");
-                }
-              });
-            }}
+            onClick={() => setShowLogoutConfirm(true)}
           >
             <LogOut className="h-3.5 w-3.5 mr-2" />
             Logout
@@ -476,6 +471,41 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
           </div>
         </div>
       )}
+
+      {/* Logout Confirmation */}
+      <AlertDialog open={showLogoutConfirm} onOpenChange={setShowLogoutConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Logout</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to logout from your account?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={logout.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={logout.isPending}
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                logout.mutate(undefined, {
+                  onSuccess: () => {
+                    localStorage.removeItem("crm_token");
+                    localStorage.removeItem("crm_user_role");
+                    sessionStorage.removeItem("crm_notif_since");
+                    setShowLogoutConfirm(false);
+                    setLocation("/login");
+                  },
+                  onSettled: () => {
+                    setShowLogoutConfirm(false);
+                  }
+                });
+              }}
+            >
+              {logout.isPending ? "Logging out…" : "Logout"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Notification popups */}
       {sseNotifications.filter(n => activePopups.has(n.id)).slice(0, 3).map(n => (

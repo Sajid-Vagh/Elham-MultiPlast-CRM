@@ -4,6 +4,7 @@ import { eq, or, and, ilike, lte, isNotNull, isNull, inArray, SQL, desc } from "
 import { CreateContactBody, UpdateContactBody, GetContactParams, UpdateContactParams, DeleteContactParams, ListContactsQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
+import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
 
 const router: IRouter = Router();
 
@@ -498,39 +499,18 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
       }).where(eq(dealsTable.id, deal.id));
     }
 
-    // Complete pending follow-ups
+    // Complete pending activities for each affected deal
+    for (const deal of activeDeals) {
+      await completePendingActivitiesForDeal(db, deal.id, id, "Lost", user.id);
+    }
+
+    // Create activity for the mark-lost action
     const [existingDeal] = await db
       .select({ id: dealsTable.id })
       .from(dealsTable)
       .where(eq(dealsTable.contactId, id))
       .limit(1);
-    if (existingDeal) {
-      const pendingFollowUps = await db
-        .select({ id: activitiesTable.id })
-        .from(activitiesTable)
-        .where(and(
-          eq(activitiesTable.dealId, existingDeal.id),
-          eq(activitiesTable.type, "FollowUp"),
-          or(eq(activitiesTable.callStatus, "Pending"), isNull(activitiesTable.callStatus)),
-        ));
-      if (pendingFollowUps.length > 0) {
-        const followUpIds = pendingFollowUps.map(f => f.id);
-        await db
-          .update(activitiesTable)
-          .set({ callStatus: "Completed", updatedAt: now, updatedBy: user.id, isEdited: true })
-          .where(inArray(activitiesTable.id, followUpIds));
-        await db
-          .update(notificationsTable)
-          .set({ readAt: now })
-          .where(and(
-            inArray(notificationsTable.relatedId, followUpIds),
-            eq(notificationsTable.relatedType, "activity"),
-            isNull(notificationsTable.readAt),
-          ));
-      }
-    }
 
-    // Create activity for the mark-lost action
     const displayReason = lostReason === "Other" && otherReason ? `Other - ${otherReason}` : lostReason;
     await db.insert(activitiesTable).values({
       contactId: id,

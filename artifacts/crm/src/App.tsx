@@ -29,6 +29,7 @@ import ProductionOrderDetail from "@/pages/production-order-detail";
 
 import Batches from "@/pages/batches";
 import BatchDetail from "@/pages/batch-detail";
+import MachineReport from "@/pages/machine-report";
 import DispatchPage from "@/pages/dispatch";
 import ComplaintsPage from "@/pages/complaints";
 import CustomerProfile from "@/pages/customer-profile";
@@ -160,7 +161,7 @@ function Router() {
       {/* Shared routes (all roles) */}
       <Route path="/products">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={SUPPORT_ROLES}><Products /></RoleGuard>
+          <RoleGuard allowedRoles={[...SUPPORT_ROLES, "production_manager"]}><Products /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route path="/proforma-invoices">
@@ -253,6 +254,12 @@ function Router() {
       <Route path="/production/batches">
         <ProtectedLayout>
           <RoleGuard allowedRoles={PRODUCTION_ROLES}><Batches /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+
+      <Route path="/production/machine-report">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin", "support", "production_manager"]}><MachineReport /></RoleGuard>
         </ProtectedLayout>
       </Route>
 

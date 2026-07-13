@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import { contactsTable } from "./contacts";
 import { usersTable } from "./users";
 import { productsTable } from "./products";
+import { dealsTable } from "./deals";
 
 export const ORDER_STATUSES = [
   "Draft",
@@ -98,6 +99,7 @@ export const ordersTable = pgTable("orders", {
   transportDetails: text("transport_details"),
   remarks: text("remarks"),
   quotationId: integer("quotation_id"),
+  dealId: integer("deal_id").references(() => dealsTable.id, { onDelete: "set null" }),
   previousOrderId: integer("previous_order_id"),
   isRepeatOrder: boolean("is_repeat_order").notNull().default(false),
   healthStatus: text("health_status").notNull().default("Healthy"),

@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { proformaInvoicesTable } from "./proforma_invoices";
 import { usersTable } from "./users";
+import { dealsTable } from "./deals";
 
 export const PRODUCTION_STATUSES = [
   "Pending",
@@ -25,9 +26,8 @@ export type PriorityLevel = typeof PRIORITY_LEVELS[number];
 export const productionOrdersTable = pgTable("production_orders", {
   id: serial("id").primaryKey(),
   proformaInvoiceId: integer("proforma_invoice_id")
-    .references(() => proformaInvoicesTable.id, { onDelete: "cascade" })
-    .notNull()
-    .unique(),
+    .references(() => proformaInvoicesTable.id, { onDelete: "cascade" }),
+  dealId: integer("deal_id").references(() => dealsTable.id, { onDelete: "set null" }),
   status: text("status").notNull().default("Pending"),
   priority: text("priority").notNull().default("Medium"),
   expectedDispatchDate: text("expected_dispatch_date"),

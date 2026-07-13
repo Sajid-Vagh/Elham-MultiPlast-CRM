@@ -8,18 +8,22 @@ import { useSearch, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { X, GripVertical, CheckCircle, XCircle } from "lucide-react";
+import { X, GripVertical, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { CategoryBadge } from "@/components/category-badge";
 import { useToast } from "@/hooks/use-toast";
 import { DEAL_STAGES } from "@/lib/deal-stages";
 import DealDetailDrawer from "@/components/deal-detail-drawer";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
 import { DealWonCelebration } from "@/components/deal-won-celebration";
-import { onDealChange } from "@/lib/query-invalidation";
+import { onDealChange, onProductionChange } from "@/lib/query-invalidation";
 import { UserAvatar } from "@/components/user-avatar";
 import { ExportDropdown } from "@/components/export-dropdown";
+import { customFetch } from "@workspace/api-client-react/custom-fetch";
+import { UNITS } from "@/lib/units";
 
 function DraggableCard({ deal, children }: { deal: Deal; children: ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -134,12 +138,12 @@ export default function Deals() {
 
   const [drawerDealId, setDrawerDealId] = useState<number | null>(null);
 
-  // WON confirmation + amount flow
-  const [confirmWonDeal, setConfirmWonDeal] = useState<{ deal: Deal; oldStage: string } | null>(null);
-  const [wonDealRef, setWonDealRef] = useState<{ deal: Deal; oldStage: string } | null>(null);
-  const [wonAmountOpen, setWonAmountOpen] = useState(false);
+  // MARK WON dialog (single comprehensive dialog)
+  const [markWonDeal, setMarkWonDeal] = useState<{ deal: Deal; oldStage: string } | null>(null);
   const [wonAmount, setWonAmount] = useState("");
-  const [wonNotes, setWonNotes] = useState("");
+  const [wonProductionUnit, setWonProductionUnit] = useState("");
+  const [wonProductionNotes, setWonProductionNotes] = useState("");
+  const [wonSalesNotes, setWonSalesNotes] = useState("");
   const [wonSubmitting, setWonSubmitting] = useState(false);
   const [wonDealForCelebration, setWonDealForCelebration] = useState<Deal | null>(null);
 
@@ -164,83 +168,65 @@ export default function Deals() {
 
   const clearFilters = () => navigate("/deals");
 
-  const handleConfirmWonYes = () => {
-    setWonDealRef(confirmWonDeal);
-    setConfirmWonDeal(null);
-    setWonAmount("");
-    setWonNotes("");
-    setWonAmountOpen(true);
-  };
+  const WON_UNITS = useMemo(() => UNITS.filter(u => u !== "Not Sure"), []);
 
-  const handleConfirmWonNo = () => {
-    if (confirmWonDeal) {
-      setOptimisticStages(prev => { const n = { ...prev }; delete n[confirmWonDeal.deal.id]; return n; });
+  const handleMarkWonCancel = () => {
+    if (markWonDeal) {
+      setOptimisticStages(prev => { const n = { ...prev }; delete n[markWonDeal.deal.id]; return n; });
     }
-    setConfirmWonDeal(null);
+    setMarkWonDeal(null);
+    setWonAmount("");
+    setWonProductionUnit("");
+    setWonProductionNotes("");
+    setWonSalesNotes("");
   };
 
-  const handleWonAmountSave = () => {
-    if (!wonDealRef) return;
+  const handleMarkWonSubmit = async () => {
+    if (!markWonDeal) return;
     const amount = Number(wonAmount);
     if (!wonAmount || isNaN(amount) || amount <= 0) {
       toast({ title: "Validation Error", description: "Won Amount must be greater than 0", variant: "destructive" });
       return;
     }
-    setWonSubmitting(true);
-    updateDeal.mutate(
-      {
-        id: wonDealRef.deal.id,
-        data: {
-          stage: "Won" as DealStage,
-          wonAmount: amount,
-          notes: wonNotes || null,
-        },
-      },
-      {
-        onSuccess: () => {
-          setWonSubmitting(false);
-          setWonAmountOpen(false);
-          const ref = wonDealRef;
-          setWonDealRef(null);
-          setConfirmWonDeal(null);
-          setOptimisticStages(prev => { const n = { ...prev }; delete n[ref!.deal.id]; return n; });
-          onDealChange(queryClient, ref!.deal.id, ref!.deal.contactId);
-          toast({ title: "Deal moved to Won" });
-
-          // Trigger celebration (once per deal, respects user preference)
-          const dealId = ref!.deal.id;
-          const celebKey = `deal_won_celebrated_${dealId}`;
-          if (!sessionStorage.getItem(celebKey) && localStorage.getItem("crm_dealWonCelebration") !== "off") {
-            sessionStorage.setItem(celebKey, "true");
-            setWonDealForCelebration(ref!.deal);
-            const name = ref!.deal.contact?.name || ref!.deal.title || "Customer";
-            const company = ref!.deal.contact?.companyName || "";
-            const amt = ref!.deal.wonAmount ? Number(ref!.deal.wonAmount) : (ref!.deal.totalValue ? Number(ref!.deal.totalValue) : 0);
-            const formatted = amt ? `₹${amt.toLocaleString("en-IN")}` : "";
-            const msg = `${name} won a deal${company ? ` for ${company}` : ""}${formatted ? ` worth ${formatted}` : ""}.`;
-            fetch("/api/activities", {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
-              body: JSON.stringify({ dealId, contactId: ref!.deal.contactId, type: "Note", notes: msg }),
-            }).catch(() => {});
-          }
-        },
-        onError: (err: any) => {
-          setWonSubmitting(false);
-          console.error("Won Amount save error:", err);
-          toast({ title: "Error", description: err?.data?.error || err?.message || "Failed to mark deal as Won", variant: "destructive" });
-        },
-      },
-    );
-  };
-
-  const handleWonAmountCancel = () => {
-    if (wonDealRef) {
-      setOptimisticStages(prev => { const n = { ...prev }; delete n[wonDealRef.deal.id]; return n; });
+    if (!wonProductionUnit) {
+      toast({ title: "Validation Error", description: "Production Unit is required", variant: "destructive" });
+      return;
     }
-    setWonAmountOpen(false);
-    setWonDealRef(null);
-    setConfirmWonDeal(null);
+    setWonSubmitting(true);
+    try {
+      const result = await customFetch<any>(`/deals/${markWonDeal.deal.id}/mark-won`, {
+        method: "POST",
+        body: JSON.stringify({
+          wonAmount: amount,
+          productionUnit: wonProductionUnit,
+          productionNotes: wonProductionNotes || null,
+          salesNotes: wonSalesNotes || null,
+        }),
+      });
+      setWonSubmitting(false);
+      setMarkWonDeal(null);
+      setWonAmount("");
+      setWonProductionUnit("");
+      setWonProductionNotes("");
+      setWonSalesNotes("");
+      setOptimisticStages(prev => { const n = { ...prev }; delete n[markWonDeal.deal.id]; return n; });
+      onDealChange(queryClient, markWonDeal.deal.id, markWonDeal.deal.contactId);
+      onProductionChange(queryClient);
+      toast({
+        title: "Deal Won!",
+        description: `Order ${result.orderNumber} created automatically. Production team notified.`,
+      });
+
+      // Trigger celebration
+      const celebKey = `deal_won_celebrated_${markWonDeal.deal.id}`;
+      if (!sessionStorage.getItem(celebKey) && localStorage.getItem("crm_dealWonCelebration") !== "off") {
+        sessionStorage.setItem(celebKey, "true");
+        setWonDealForCelebration(markWonDeal.deal);
+      }
+    } catch (err: any) {
+      setWonSubmitting(false);
+      toast({ title: "Error", description: err?.message || "Failed to mark deal as Won", variant: "destructive" });
+    }
   };
 
   const handleLostCancel = () => {
@@ -287,10 +273,14 @@ export default function Deals() {
     const oldStage = deal?.stage as string | undefined;
     if (!newStage || !deal || !oldStage || oldStage === newStage) return;
 
-    // Intercept WON drops — show confirmation first
+    // Intercept WON drops — show Mark Won dialog directly
     if (newStage === "Won") {
       setOptimisticStages(prev => ({ ...prev, [dealId]: "Won" }));
-      setConfirmWonDeal({ deal, oldStage });
+      setMarkWonDeal({ deal, oldStage });
+      setWonAmount(deal.totalValue ? String(deal.totalValue) : "");
+      setWonProductionUnit("");
+      setWonProductionNotes("");
+      setWonSalesNotes("");
       return;
     }
 
@@ -319,7 +309,7 @@ export default function Deals() {
     );
   };
 
-  const dealName = wonDealRef?.deal.contact?.name || wonDealRef?.deal.title || confirmWonDeal?.deal.contact?.name || confirmWonDeal?.deal.title || "";
+  const dealName = markWonDeal?.deal.contact?.name || markWonDeal?.deal.title || "";
 
   return (
     <div className="p-8 h-full flex flex-col space-y-4">
@@ -467,62 +457,88 @@ export default function Deals() {
         </DndContext>
       </div>
 
-      {/* Confirm Deal Won Dialog */}
-      <Dialog open={!!confirmWonDeal} onOpenChange={(open) => { if (!open) handleConfirmWonNo(); }}>
-        <DialogContent>
+      {/* Mark Deal as Won Dialog — comprehensive single dialog */}
+      <Dialog open={!!markWonDeal} onOpenChange={(open) => { if (!open) handleMarkWonCancel(); }}>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Confirm Deal Won</DialogTitle>
+            <DialogTitle className="text-green-700">Mark Deal as Won</DialogTitle>
             <DialogDescription>
-              Are you sure you want to mark this deal as WON? This action will move the deal to My Clients and include it in revenue reports.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={handleConfirmWonNo}>No</Button>
-            <Button onClick={handleConfirmWonYes}>Yes</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Won Amount Dialog */}
-      <Dialog open={wonAmountOpen} onOpenChange={(open) => { if (!open) handleWonAmountCancel(); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Won Amount</DialogTitle>
-            <DialogDescription>
-              Enter the deal amount for <strong>{dealName}</strong>
-              {(wonDealRef?.deal.contact?.companyName) && <> — {wonDealRef.deal.contact.companyName}</>}
+              Create an Order and Production Order for <strong>{dealName}</strong>
+              {markWonDeal?.deal.contact?.companyName && <> — {markWonDeal.deal.contact.companyName}</>}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <label className="text-sm font-medium">
-                Won Amount <span className="text-destructive">*</span>
-              </label>
+              <Label className="text-sm font-medium">
+                Won Value (₹) <span className="text-destructive">*</span>
+              </Label>
               <Input
                 type="number"
                 min="0"
                 step="0.01"
-                placeholder="Enter amount"
+                placeholder="Enter won amount"
                 value={wonAmount}
                 onChange={(e) => setWonAmount(e.target.value)}
                 autoFocus
+                className="mt-1"
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                Auto-filled from deal value. Edit if needed.
+              </p>
             </div>
             <div>
-              <label className="text-sm font-medium">Notes (optional)</label>
-              <Input
-                placeholder="Additional notes"
-                value={wonNotes}
-                onChange={(e) => setWonNotes(e.target.value)}
+              <Label className="text-sm font-medium">
+                Production Unit <span className="text-destructive">*</span>
+              </Label>
+              <Select value={wonProductionUnit} onValueChange={setWonProductionUnit}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select production unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {WON_UNITS.map((u) => (
+                    <SelectItem key={u} value={u}>{u}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Production Notes (Optional)</Label>
+              <Textarea
+                value={wonProductionNotes}
+                onChange={(e) => setWonProductionNotes(e.target.value)}
+                placeholder="Special production instructions (visible to Production Team & Admin only)"
+                rows={3}
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Examples: Blue Cap, Customer Logo, Urgent Production, Transparent Bottle, Special Packing
+              </p>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Sales Notes (Optional)</Label>
+              <Textarea
+                value={wonSalesNotes}
+                onChange={(e) => setWonSalesNotes(e.target.value)}
+                placeholder="Internal sales notes (visible to Sales Team & Admin only)"
+                rows={2}
+                className="mt-1"
               />
             </div>
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={handleWonAmountCancel} disabled={wonSubmitting}>
+            <Button variant="outline" onClick={handleMarkWonCancel} disabled={wonSubmitting}>
               Cancel
             </Button>
-            <Button onClick={handleWonAmountSave} disabled={wonSubmitting}>
-              {wonSubmitting ? "Saving..." : "Save"}
+            <Button
+              className="bg-green-600 text-white hover:bg-green-700"
+              onClick={handleMarkWonSubmit}
+              disabled={wonSubmitting || !wonAmount || Number(wonAmount) <= 0 || !wonProductionUnit}
+            >
+              {wonSubmitting ? (
+                <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Processing...</>
+              ) : (
+                "Confirm — Mark as Won"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

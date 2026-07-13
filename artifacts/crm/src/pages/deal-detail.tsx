@@ -8,13 +8,13 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { onDealChange, onActivityChange } from "@/lib/query-invalidation";
+import { onDealChange, onActivityChange, onProductionChange } from "@/lib/query-invalidation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Plus, Trash2, FolderTree, Pencil, Check, X } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FolderTree, Pencil, Check, X, Loader2 } from "lucide-react";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
 import { DealWonCelebration } from "@/components/deal-won-celebration";
 import { UserAvatar } from "@/components/user-avatar";
@@ -24,6 +24,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { CategoryBadge } from "@/components/category-badge";
 import { MoveCategoryDialog } from "@/components/move-category-dialog";
 import { DEAL_STAGES, STAGE_PROBS, STAGE_BADGE_COLORS } from "@/lib/deal-stages";
+import { customFetch } from "@workspace/api-client-react/custom-fetch";
+import { UNITS } from "@/lib/units";
 
 const ACT_STYLE: Record<string, { bg: string; fg: string; icon: string }> = {
   "Call":     { bg: "#dcfce7", fg: "#15803d", icon: "\u{1F4DE}" },
@@ -95,15 +97,19 @@ export default function DealDetail() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteActId, setDeleteActId] = useState<number | null>(null);
 
-  const [pendingStage, setPendingStage] = useState<string | null>(null);
+  // Mark Won dialog state
+  const [markWonOpen, setMarkWonOpen] = useState(false);
   const [wonAmount, setWonAmount] = useState("");
-  const [wonConfirmOpen, setWonConfirmOpen] = useState(false);
+  const [wonProductionUnit, setWonProductionUnit] = useState("");
+  const [wonProductionNotes, setWonProductionNotes] = useState("");
+  const [wonSalesNotes, setWonSalesNotes] = useState("");
+  const [wonSubmitting, setWonSubmitting] = useState(false);
+  const [wonDealForCelebration, setWonDealForCelebration] = useState<any>(null);
+
   const [lostOpen, setLostOpen] = useState(false);
   const [lostSubmitting, setLostSubmitting] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [showMoveCategory, setShowMoveCategory] = useState(false);
-  const [wonSubmitting, setWonSubmitting] = useState(false);
-  const [wonDealForCelebration, setWonDealForCelebration] = useState<any>(null);
 
   const deleteDeal = useDeleteDeal();
 
@@ -132,50 +138,82 @@ export default function DealDetail() {
   if (isLoading) return <div className="p-8">Loading...</div>;
   if (!deal) return <div className="p-8">Deal not found.</div>;
 
+  const WON_UNITS = useMemo(() => UNITS.filter(u => u !== "Not Sure"), []);
+
   const handleStageSelect = (newStage: string) => {
     if (newStage === deal.stage) return;
-    if (newStage === "Won") { setPendingStage("Won"); setWonAmount(deal.totalValue ? String(deal.totalValue) : ""); setWonConfirmOpen(true); return; }
-    if (newStage === "Lost") { setPendingStage("Lost"); setLostOpen(true); return; }
+    if (newStage === "Won") {
+      setWonAmount(deal.totalValue ? String(deal.totalValue) : "");
+      setWonProductionUnit("");
+      setWonProductionNotes("");
+      setWonSalesNotes("");
+      setMarkWonOpen(true);
+      return;
+    }
+    if (newStage === "Lost") { setLostOpen(true); return; }
     doStageUpdate(newStage, null, null);
+  };
+
+  const handleMarkWonCancel = () => {
+    setMarkWonOpen(false);
+    setWonAmount("");
+    setWonProductionUnit("");
+    setWonProductionNotes("");
+    setWonSalesNotes("");
+  };
+
+  const handleMarkWonSubmit = async () => {
+    const amount = Number(wonAmount);
+    if (!wonAmount || isNaN(amount) || amount <= 0) {
+      toast({ title: "Validation Error", description: "Won Amount must be greater than 0", variant: "destructive" });
+      return;
+    }
+    if (!wonProductionUnit) {
+      toast({ title: "Validation Error", description: "Production Unit is required", variant: "destructive" });
+      return;
+    }
+    setWonSubmitting(true);
+    try {
+      const result = await customFetch<any>(`/deals/${dealId}/mark-won`, {
+        method: "POST",
+        body: JSON.stringify({
+          wonAmount: amount,
+          productionUnit: wonProductionUnit,
+          productionNotes: wonProductionNotes || null,
+          salesNotes: wonSalesNotes || null,
+        }),
+      });
+      setWonSubmitting(false);
+      setMarkWonOpen(false);
+      onDealChange(queryClient, dealId, contact?.id);
+      onProductionChange(queryClient);
+      toast({
+        title: "Deal Won!",
+        description: `Order ${result.orderNumber} created automatically. Production team notified.`,
+      });
+
+      // Trigger celebration
+      const celebKey = `deal_won_celebrated_${dealId}`;
+      if (!sessionStorage.getItem(celebKey) && localStorage.getItem("crm_dealWonCelebration") !== "off") {
+        sessionStorage.setItem(celebKey, "true");
+        const dealData = { ...deal, id: dealId, contact, salesOwner: deal.salesOwner };
+        setWonDealForCelebration(dealData);
+      }
+    } catch (err: any) {
+      setWonSubmitting(false);
+      toast({ title: "Error", description: err?.message || "Failed to mark deal as Won", variant: "destructive" });
+    }
   };
 
   const doStageUpdate = (stage: string, reason: string | null, category: string | null) => {
     const data: any = { stage: stage as any, lostReason: reason };
     if (category) data.lostCategory = category;
-    if (stage === "Won" && wonAmount) {
-      data.wonAmount = Number(wonAmount);
-    }
-    setWonSubmitting(true);
     updateDeal.mutate({ id: dealId, data }, {
       onSuccess: () => {
-        setWonSubmitting(false);
         onDealChange(queryClient, dealId, contact?.id);
         toast({ title: `Deal moved to ${stage}` });
-        setWonConfirmOpen(false); setLostOpen(false); setPendingStage(null); setWonAmount("");
-
-        // Trigger celebration when deal becomes Won (once per deal)
-        if (stage === "Won") {
-          const celebKey = `deal_won_celebrated_${dealId}`;
-          if (!sessionStorage.getItem(celebKey) && localStorage.getItem("crm_dealWonCelebration") !== "off") {
-            sessionStorage.setItem(celebKey, "true");
-            const dealData = { ...deal, id: dealId, contact, salesOwner: deal.salesOwner };
-            setWonDealForCelebration(dealData);
-            const name = contact?.name || deal.title || "Customer";
-            const company = contact?.companyName || "";
-            const amt = deal.wonAmount ? Number(deal.wonAmount) : (deal.totalValue ? Number(deal.totalValue) : 0);
-            const formatted = amt ? `₹${amt.toLocaleString("en-IN")}` : "";
-            const msg = `${name} won a deal${company ? ` for ${company}` : ""}${formatted ? ` worth ${formatted}` : ""}.`;
-            fetch("/api/activities", {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
-              body: JSON.stringify({ dealId, contactId: contact?.id, type: "Note", notes: msg }),
-            }).catch(() => {});
-          }
-        }
       },
       onError: (err: any) => {
-        setWonSubmitting(false);
-        console.error("Stage update error:", err);
         toast({ title: "Error updating stage", description: err?.data?.error || err?.message || "An error occurred", variant: "destructive" });
       },
     });
@@ -185,7 +223,7 @@ export default function DealDetail() {
     setLostSubmitting(true);
     updateDeal.mutate({ id: dealId, data: { stage: "Lost" as any, lostReason: data.lostReason, otherReason: data.otherReason, lostNotes: data.lostNotes } as any }, {
       onSuccess: () => {
-        setLostSubmitting(false); setLostOpen(false); setPendingStage(null);
+        setLostSubmitting(false); setLostOpen(false);
         onDealChange(queryClient, dealId, contact?.id);
         toast({ title: "Deal marked as Lost" });
       },
@@ -629,38 +667,92 @@ export default function DealDetail() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Won confirmation */}
-      <AlertDialog open={wonConfirmOpen} onOpenChange={setWonConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-green-700">🎉 Confirm — Deal Won?</AlertDialogTitle>
-            <AlertDialogDescription>
-              You are marking <strong>{deal.title || `Deal #${deal.id}`}</strong>
-              {contact ? ` with ${contact.name}` : ""} as <strong>Won</strong>.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="px-1 py-2">
-            <Label>Deal Amount (₹) *</Label>
-            <Input
-              type="number"
-              value={wonAmount}
-              onChange={e => setWonAmount(e.target.value)}
-              placeholder="Enter deal value"
-              className="mt-1"
-            />
+      {/* Mark Deal as Won Dialog */}
+      <Dialog open={markWonOpen} onOpenChange={(open) => { if (!open) handleMarkWonCancel(); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-green-700">Mark Deal as Won</DialogTitle>
+            <DialogDescription>
+              Create an Order and Production Order for <strong>{deal.title || `Deal #${deal.id}`}</strong>
+              {contact ? ` — ${contact.name}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label className="text-sm font-medium">
+                Won Value (₹) <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Enter won amount"
+                value={wonAmount}
+                onChange={(e) => setWonAmount(e.target.value)}
+                autoFocus
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Auto-filled from deal value. Edit if needed.
+              </p>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">
+                Production Unit <span className="text-destructive">*</span>
+              </Label>
+              <Select value={wonProductionUnit} onValueChange={setWonProductionUnit}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select production unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {WON_UNITS.map((u) => (
+                    <SelectItem key={u} value={u}>{u}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Production Notes (Optional)</Label>
+              <Textarea
+                value={wonProductionNotes}
+                onChange={(e) => setWonProductionNotes(e.target.value)}
+                placeholder="Special production instructions (visible to Production Team & Admin only)"
+                rows={3}
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Examples: Blue Cap, Customer Logo, Urgent Production, Transparent Bottle, Special Packing
+              </p>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Sales Notes (Optional)</Label>
+              <Textarea
+                value={wonSalesNotes}
+                onChange={(e) => setWonSalesNotes(e.target.value)}
+                placeholder="Internal sales notes (visible to Sales Team & Admin only)"
+                rows={2}
+                className="mt-1"
+              />
+            </div>
           </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingStage(null)} disabled={wonSubmitting}>Cancel</AlertDialogCancel>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={handleMarkWonCancel} disabled={wonSubmitting}>
+              Cancel
+            </Button>
             <Button
               className="bg-green-600 text-white hover:bg-green-700"
-              disabled={!wonAmount || Number(wonAmount) <= 0 || wonSubmitting}
-              onClick={() => doStageUpdate("Won", null, null)}
+              onClick={handleMarkWonSubmit}
+              disabled={wonSubmitting || !wonAmount || Number(wonAmount) <= 0 || !wonProductionUnit}
             >
-              {wonSubmitting ? "Saving..." : "Yes, Mark as Won"}
+              {wonSubmitting ? (
+                <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Processing...</>
+              ) : (
+                "Confirm — Mark as Won"
+              )}
             </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <MarkLostDialog
         open={lostOpen}

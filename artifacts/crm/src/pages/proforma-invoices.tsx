@@ -25,8 +25,6 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ProductionProgressSection } from "@/components/production-progress";
-import { UNITS } from "@/lib/units";
-
 const STATUS_COLORS: Record<string, string> = {
   "Draft": "bg-gray-100 text-gray-700",
   "Sent": "bg-blue-100 text-blue-700",
@@ -185,11 +183,6 @@ export default function ProformaInvoicesPage() {
   const [statusDialog, setStatusDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
   const [newStatus, setNewStatus] = useState("");
   const [statusNotes, setStatusNotes] = useState("");
-
-  const PRODUCTION_UNITS = [...UNITS];
-  const [convertDialog, setConvertDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
-  const [convertProductionUnit, setConvertProductionUnit] = useState("");
-  const [convertProductionRemarks, setConvertProductionRemarks] = useState("");
 
   const ensureArray = (json: any): any[] => {
     if (Array.isArray(json)) return json;
@@ -1127,14 +1120,6 @@ export default function ProformaInvoicesPage() {
   const handleStatusUpdate = async () => {
     if (!newStatus || !statusDialog.invoice) return;
 
-    if (newStatus === "Converted to Order") {
-      setConvertDialog({ open: true, invoice: statusDialog.invoice });
-      setStatusDialog({ open: false, invoice: null });
-      setConvertProductionUnit("");
-      setConvertProductionRemarks("");
-      return;
-    }
-
     try {
       const res = await fetch(`/api/proforma-invoices/${statusDialog.invoice.id}/status`, {
         method: "POST",
@@ -1154,40 +1139,6 @@ export default function ProformaInvoicesPage() {
       }
     } catch (err) {
       toast({ title: "Error", description: "Failed to update status", variant: "destructive" });
-    }
-  };
-
-  const handleConvertToOrder = async () => {
-    if (!convertDialog.invoice || !convertProductionUnit) return;
-    try {
-      const res = await fetch(`/api/proforma-invoices/${convertDialog.invoice.id}/status`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          status: "Converted to Order",
-          productionUnit: convertProductionUnit,
-          productionRemarks: convertProductionRemarks || null,
-          notes: statusNotes || null,
-        }),
-      });
-      if (res.ok) {
-        toast({ title: "Order Created", description: `Invoice converted to Production Order (${convertProductionUnit})` });
-        setConvertDialog({ open: false, invoice: null });
-        setConvertProductionUnit("");
-        setConvertProductionRemarks("");
-        setNewStatus("");
-        setStatusNotes("");
-        fetchInvoices();
-        if (mode === "detail") {
-          const updated = await res.json();
-          setSelectedInvoice(updated);
-        }
-      } else {
-        const err = await res.json().catch(() => ({}));
-        toast({ title: "Error", description: err.error || "Failed to convert", variant: "destructive" });
-      }
-    } catch (err) {
-      toast({ title: "Error", description: "Failed to convert to order", variant: "destructive" });
     }
   };
 
@@ -2286,50 +2237,6 @@ ${pagesHtml}
       )}
     </div>
     {deleteDialogEl}
-
-    {/* Convert to Order Confirmation Dialog */}
-    <Dialog open={convertDialog.open} onOpenChange={(o) => setConvertDialog({ ...convertDialog, open: o })}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Convert to Production Order</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="p-3 bg-muted/30 rounded-lg text-sm">
-            <p className="font-medium">{convertDialog.invoice?.companyName || convertDialog.invoice?.customerName}</p>
-            <p className="text-muted-foreground">Invoice: {convertDialog.invoice?.invoiceNumber}</p>
-          </div>
-          <div>
-            <Label>Production Unit *</Label>
-            <Select value={convertProductionUnit} onValueChange={setConvertProductionUnit}>
-              <SelectTrigger><SelectValue placeholder="Select production unit" /></SelectTrigger>
-              <SelectContent>
-                {PRODUCTION_UNITS.map((u) => (
-                  <SelectItem key={u} value={u}>{u}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Production Remarks (Optional)</Label>
-            <Textarea
-              value={convertProductionRemarks}
-              onChange={(e) => setConvertProductionRemarks(e.target.value)}
-              placeholder="Write special production instructions (Optional)&#10;Examples: Use Blue Cap, Customer logo printing, Urgent production, Transparent bottle, Special packing"
-              rows={4}
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setConvertDialog({ open: false, invoice: null })}>Cancel</Button>
-          <Button
-            disabled={!convertProductionUnit || convertDialog.open === false}
-            onClick={handleConvertToOrder}
-          >
-            Convert to Order
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
     </>
   );
 }
