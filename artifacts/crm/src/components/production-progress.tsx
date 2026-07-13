@@ -120,6 +120,12 @@ export function ProductionProgressSection({ invoiceId }: { invoiceId: number }) 
               </div>
             </>
           )}
+          {prod.productionUnit && (
+            <div>
+              <span className="text-xs text-muted-foreground">Production Unit</span>
+              <p className="font-medium">{prod.productionUnit}</p>
+            </div>
+          )}
           <div>
             <span className="text-xs text-muted-foreground">Expected Dispatch</span>
             <p className="font-medium">{formatDate(prod.expectedDispatchDate)}</p>
@@ -131,6 +137,12 @@ export function ProductionProgressSection({ invoiceId }: { invoiceId: number }) 
               {formatDateTime(prod.updatedAt)}
             </p>
           </div>
+          {prod.productionRemarks && (
+            <div className="col-span-2">
+              <span className="text-xs text-muted-foreground">Production Remarks</span>
+              <p className="font-medium text-sm bg-amber-50 border border-amber-200 rounded-md px-3 py-1.5 mt-1">{prod.productionRemarks}</p>
+            </div>
+          )}
         </div>
 
         <div>

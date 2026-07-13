@@ -11,7 +11,7 @@ import {
   ordersTable,
   orderItemsTable,
 } from "@workspace/db";
-import { eq, desc, and, SQL, sql, gte, lte, or } from "drizzle-orm";
+import { eq, desc, and, SQL, sql, gte, lte, or, inArray } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 
@@ -78,6 +78,13 @@ async function requireProductionUser(req: any, res: any): Promise<any | null> {
     return null;
   }
   return user;
+}
+
+function getAccessibleUnits(user: { role: string; unit?: string | null }): string[] | null {
+  if (user.role === "admin") return null;
+  const u = user.unit || "All";
+  if (u === "All") return null;
+  return [u];
 }
 
 async function enrichProductionOrder(order: any) {
@@ -188,6 +195,8 @@ async function enrichProductionOrder(order: any) {
     createdById: order.createdById,
     createdByName: order.createdByName,
     createdByRole: order.createdByRole,
+    productionUnit: order.productionUnit,
+    productionRemarks: order.productionRemarks,
   };
 }
 
@@ -196,6 +205,21 @@ router.get("/production/pending-summary", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
     if (!user) return;
+
+    const { unit: unitFilter } = req.query as Record<string, string | undefined>;
+    const accessibleUnits = getAccessibleUnits(user);
+    const unitConditions: SQL[] = [];
+
+    if (unitFilter && unitFilter !== "all") {
+      unitConditions.push(eq(productionOrdersTable.productionUnit, unitFilter));
+    } else if (accessibleUnits) {
+      unitConditions.push(or(
+        inArray(productionOrdersTable.productionUnit, accessibleUnits),
+        sql`${productionOrdersTable.productionUnit} IS NULL`
+      )!);
+    }
+
+    const unitWhere = unitConditions.length > 0 ? and(...unitConditions) : undefined;
 
     const results = await db.execute(sql`
       SELECT
@@ -208,6 +232,8 @@ router.get("/production/pending-summary", async (req, res) => {
       JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
       WHERE po.status NOT IN ('Completed', 'Cancelled')
         AND pi.is_deleted = false
+        ${unitFilter && unitFilter !== "all" ? sql`AND po.production_unit = ${unitFilter}` : sql``}
+        ${accessibleUnits && !(unitFilter && unitFilter !== "all") ? sql`AND (po.production_unit IN (${sql.join(accessibleUnits.map(u => sql`${u}`), sql`, `)}) OR po.production_unit IS NULL)` : sql``}
       GROUP BY pii.product_name
       HAVING SUM(pii.quantity::numeric) > 0
       ORDER BY SUM(pii.quantity::numeric) DESC
@@ -236,7 +262,28 @@ router.get("/production/dashboard", async (req, res) => {
     const user = await requireProductionUser(req, res);
     if (!user) return;
 
-    const allOrders = await db.select().from(productionOrdersTable);
+    const { unit: unitFilter } = req.query as Record<string, string | undefined>;
+    const accessibleUnits = getAccessibleUnits(user);
+    const conditions: SQL[] = [];
+
+    // Unit-based access control
+    if (accessibleUnits) {
+      conditions.push(or(
+        inArray(productionOrdersTable.productionUnit, accessibleUnits),
+        sql`${productionOrdersTable.productionUnit} IS NULL`
+      )!);
+    }
+
+    // Explicit unit filter (from UI dropdown)
+    if (unitFilter && unitFilter !== "all") {
+      conditions.length = 0;
+      conditions.push(eq(productionOrdersTable.productionUnit, unitFilter));
+    }
+
+    const allOrders = await db
+      .select()
+      .from(productionOrdersTable)
+      .where(conditions.length > 0 ? and(...conditions) : undefined);
 
     const pendingCount = allOrders.filter((o) => o.status === "Pending").length;
     const materialReadyCount = allOrders.filter((o) => o.status === "Material Ready").length;
@@ -285,11 +332,25 @@ router.get("/production/orders", async (req, res) => {
     const user = await requireProductionUser(req, res);
     if (!user) return;
 
-    const { status, priority, search, dateFrom, dateTo, createdBy, page, limit } = req.query as Record<
+    const { status, priority, search, dateFrom, dateTo, createdBy, unit: unitFilter, page, limit } = req.query as Record<
       string,
       string | undefined
     >;
     const conditions: SQL[] = [];
+
+    // Unit-based access control
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits) {
+      conditions.push(or(
+        inArray(productionOrdersTable.productionUnit, accessibleUnits),
+        sql`${productionOrdersTable.productionUnit} IS NULL`
+      )!);
+    }
+
+    // Explicit unit filter overrides access control
+    if (unitFilter && unitFilter !== "all") {
+      conditions.push(eq(productionOrdersTable.productionUnit, unitFilter));
+    }
 
     if (status && status !== "all") {
       conditions.push(eq(productionOrdersTable.status, status));
@@ -549,6 +610,64 @@ router.post("/production/orders/:id/notes", async (req, res) => {
     res.status(201).json({ ...newNote, createdByUser });
   } catch (err) {
     req.log.error({ err }, "Add production note error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Production Reports (with unit + status + date range filters) ──
+router.get("/production/reports", async (req, res) => {
+  try {
+    const user = await requireProductionUser(req, res);
+    if (!user) return;
+
+    const { unit: unitFilter, status, dateFrom, dateTo } = req.query as Record<string, string | undefined>;
+    const conditions: SQL[] = [];
+
+    // Unit-based access control
+    const accessibleUnits = getAccessibleUnits(user);
+    if (unitFilter && unitFilter !== "all") {
+      conditions.push(eq(productionOrdersTable.productionUnit, unitFilter));
+    } else if (accessibleUnits) {
+      conditions.push(or(
+        inArray(productionOrdersTable.productionUnit, accessibleUnits),
+        sql`${productionOrdersTable.productionUnit} IS NULL`
+      )!);
+    }
+
+    if (status && status !== "all") {
+      conditions.push(eq(productionOrdersTable.status, status));
+    }
+    if (dateFrom) {
+      conditions.push(gte(productionOrdersTable.createdAt, new Date(dateFrom)));
+    }
+    if (dateTo) {
+      conditions.push(lte(productionOrdersTable.createdAt, new Date(dateTo + "T23:59:59")));
+    }
+
+    const allOrders = await db
+      .select()
+      .from(productionOrdersTable)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(productionOrdersTable.createdAt));
+
+    const enriched = await Promise.all(allOrders.map(enrichProductionOrder));
+
+    // Aggregate stats
+    const totalOrders = enriched.length;
+    const byStatus: Record<string, number> = {};
+    const byUnit: Record<string, number> = {};
+    for (const o of enriched) {
+      byStatus[o.status] = (byStatus[o.status] || 0) + 1;
+      const u = o.productionUnit || "Unassigned";
+      byUnit[u] = (byUnit[u] || 0) + 1;
+    }
+
+    res.json({
+      data: enriched,
+      stats: { totalOrders, byStatus, byUnit },
+    });
+  } catch (err) {
+    req.log.error({ err }, "Production reports error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

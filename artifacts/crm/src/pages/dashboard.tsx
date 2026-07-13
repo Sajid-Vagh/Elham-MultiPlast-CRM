@@ -13,6 +13,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserAvatar } from "@/components/user-avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { UNITS } from "@/lib/units";
 
 function daysDiff(dateStr: string): number {
   const today = new Date();
@@ -184,7 +185,7 @@ export default function Dashboard() {
               <SelectTrigger className="w-36 h-8 text-sm"><SelectValue placeholder="All Units" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Units</SelectItem>
-                {["Himatnagar","Surat","Rajkot"].map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                {UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -232,7 +233,7 @@ export default function Dashboard() {
         <Link href="/reports" className="block">
           <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Win Rate / Conversion</CardTitle>
+              <CardTitle className="text-sm font-medium">Win Rate</CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -300,15 +301,17 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </Link>
-        <Card className="border-amber-200 hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-xs font-medium">Conversion</CardTitle>
-            <UserPlus className="h-4 w-4 text-amber-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold text-amber-600">{kpi?.conversionRate ?? 0}%</div>
-          </CardContent>
-        </Card>
+        <Link href="/reports" className="block">
+          <Card className="border-amber-200 hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-xs font-medium">Conversion</CardTitle>
+              <UserPlus className="h-4 w-4 text-amber-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold text-amber-600">{kpi?.conversionRate ?? 0}%</div>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       {/* ── SALES PERFORMANCE (admin only) ── */}

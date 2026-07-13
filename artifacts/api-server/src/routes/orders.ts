@@ -7,6 +7,8 @@ import { generateId } from "../lib/id-generator";
 import { logAudit } from "../middlewares/auth";
 import { promoteToExistingCustomer } from "./existing-customers";
 
+const PRODUCTION_UNITS = ["Himatnagar", "Surat", "Rajkot"] as const;
+
 const router: IRouter = Router();
 
 async function enrichOrder(order: any) {

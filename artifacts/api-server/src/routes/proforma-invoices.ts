@@ -1060,6 +1060,8 @@ router.get("/proforma-invoices/:id/production-progress", async (req, res) => {
       priority: po.priority,
       expectedDispatchDate: po.expectedDispatchDate,
       assignedProductionManager: assignedManager,
+      productionUnit: po.productionUnit,
+      productionRemarks: po.productionRemarks,
       updatedAt: po.updatedAt,
       timeline,
     });
@@ -1200,9 +1202,14 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-    const { status, notes } = req.body;
+    const { status, notes, productionUnit, productionRemarks } = req.body;
     if (!INVOICE_STATUSES.includes(status)) {
       res.status(400).json({ error: "Invalid status" });
+      return;
+    }
+
+    if (status === "Converted to Order" && !productionUnit) {
+      res.status(400).json({ error: "Production Unit is required when converting to Order" });
       return;
     }
 
@@ -1247,6 +1254,8 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
           proformaInvoiceId: id,
           status: "Pending",
           priority: "Medium",
+          productionUnit: productionUnit || null,
+          productionRemarks: productionRemarks || null,
           updatedBy: user.id,
           createdById: user.id,
           createdByName: user.name,
@@ -1278,36 +1287,53 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
           const totalQty = items.reduce((sum, i) => sum + Number(i.quantity || 0), 0);
           const unit = items[0]?.unit || "pcs";
 
-          // Notify all production managers and admins
+          // Notify production users based on production unit permissions
+          // Himatnagar sees ALL units, Surat sees only Surat, Rajkot sees only Rajkot
+          // Himatnagar is also notified for Surat and Rajkot orders
           const productionUsers = await db
-            .select({ id: usersTable.id })
+            .select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role })
             .from(usersTable)
             .where(or(
               eq(usersTable.role, "production_manager"),
               eq(usersTable.role, "admin"),
             ));
 
+          const remarksLine = productionRemarks ? `\nRemarks: ${productionRemarks}` : "";
+
           for (const pu of productionUsers) {
-            if (pu.id !== user.id) {
-              await createNotification({
-                userId: pu.id,
-                type: "production_order_created",
-                title: "New Production Order",
-                message: [
-                  `Created By: ${user.name}`,
-                  `Role: ${creatorRoleLabel}`,
-                  ``,
-                  `Customer: ${invoice.customerName}`,
-                  `Company: ${invoice.companyName || "N/A"}`,
-                  `Product: ${firstProduct}`,
-                  `Quantity: ${totalQty.toLocaleString("en-IN")} ${unit}`,
-                  `Order No: ${invoice.invoiceNumber}`,
-                ].join("\n"),
-                link: `/production/orders/${newOrder.id}`,
-                relatedId: newOrder.id,
-                relatedType: "production_order",
-              });
-            }
+            if (pu.id === user.id) continue;
+
+            const userUnit = pu.unit || "All";
+            const orderUnit = productionUnit || "Himatnagar";
+
+            // Himatnagar users see all, same-unit users see their unit, admin sees all
+            const shouldNotify =
+              pu.role === "admin" ||
+              userUnit === "All" ||
+              userUnit === orderUnit ||
+              orderUnit === "Himatnagar";
+
+            if (!shouldNotify) continue;
+
+            await createNotification({
+              userId: pu.id,
+              type: "production_order_created",
+              title: "New Production Order",
+              message: [
+                `Created By: ${user.name} (${creatorRoleLabel})`,
+                `Production Unit: ${productionUnit}`,
+                ``,
+                `Customer: ${invoice.customerName}`,
+                `Company: ${invoice.companyName || "N/A"}`,
+                `Product: ${firstProduct}`,
+                `Quantity: ${totalQty.toLocaleString("en-IN")} ${unit}`,
+                `Order No: ${invoice.invoiceNumber}`,
+                remarksLine,
+              ].filter(Boolean).join("\n"),
+              link: `/production/orders/${newOrder.id}`,
+              relatedId: newOrder.id,
+              relatedType: "production_order",
+            });
           }
         }
       }

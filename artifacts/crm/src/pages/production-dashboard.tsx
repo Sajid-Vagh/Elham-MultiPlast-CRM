@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
@@ -5,8 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { Factory, PackageCheck, Settings2, ShieldCheck, Package, Truck, CheckCircle2, Clock, AlertTriangle, ListOrdered, BoxSelect } from "lucide-react";
+import { UNITS } from "@/lib/units";
+
+const PRODUCTION_UNITS = ["All", ...UNITS];
 
 const STATUS_CARDS = [
   { key: "pendingCount", label: "Pending Orders", icon: Clock, color: "bg-gray-100 text-gray-700 border-gray-300", hoverStatus: "Pending" },
@@ -22,22 +27,25 @@ const STATUS_CARDS = [
 export default function ProductionDashboard() {
   const { data: user, isLoading: userLoading } = useGetMe();
   const [, setLocation] = useLocation();
+  const [unitFilter, setUnitFilter] = useState("all");
+
+  const showUnitFilter = user?.role === "admin" || user?.unit === "All";
 
   const { data: kpi, isLoading } = useQuery({
-    queryKey: ["production-dashboard"],
-    queryFn: () => customFetch<any>("/production/dashboard"),
+    queryKey: ["production-dashboard", unitFilter],
+    queryFn: () => customFetch<any>(`/production/dashboard${unitFilter !== "all" ? `?unit=${unitFilter}` : ""}`),
     enabled: !!user,
   });
 
   const { data: pendingReqs, isLoading: reqsLoading } = useQuery({
-    queryKey: ["production-pending-requirements"],
-    queryFn: () => customFetch<any[]>("/production/pending-requirements"),
+    queryKey: ["production-pending-requirements", unitFilter],
+    queryFn: () => customFetch<any[]>(`/production/pending-requirements${unitFilter !== "all" ? `?unit=${unitFilter}` : ""}`),
     enabled: !!user,
   });
 
   const { data: pendingSummary, isLoading: summaryLoading } = useQuery({
-    queryKey: ["production-pending-summary"],
-    queryFn: () => customFetch<any>("/production/pending-summary"),
+    queryKey: ["production-pending-summary", unitFilter],
+    queryFn: () => customFetch<any>(`/production/pending-summary${unitFilter !== "all" ? `?unit=${unitFilter}` : ""}`),
     enabled: !!user,
   });
 
@@ -61,6 +69,16 @@ export default function ProductionDashboard() {
           <h1 className="text-2xl font-bold tracking-tight">Production Dashboard</h1>
           <p className="text-sm text-muted-foreground mt-1">Overview of all production orders</p>
         </div>
+        {showUnitFilter && (
+          <Select value={unitFilter} onValueChange={setUnitFilter}>
+            <SelectTrigger className="w-[160px]"><SelectValue placeholder="All Units" /></SelectTrigger>
+            <SelectContent>
+              {PRODUCTION_UNITS.map((u) => (
+                <SelectItem key={u} value={u.toLowerCase()}>{u}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

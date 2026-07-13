@@ -101,6 +101,8 @@ export const ordersTable = pgTable("orders", {
   previousOrderId: integer("previous_order_id"),
   isRepeatOrder: boolean("is_repeat_order").notNull().default(false),
   healthStatus: text("health_status").notNull().default("Healthy"),
+  productionUnit: text("production_unit"),
+  productionRemarks: text("production_remarks"),
   isDeleted: boolean("is_deleted").notNull().default(false),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   deletedBy: integer("deleted_by").references(() => usersTable.id, { onDelete: "set null" }),

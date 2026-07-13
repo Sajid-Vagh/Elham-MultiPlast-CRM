@@ -186,6 +186,22 @@ export default function ProductionOrderDetail() {
                   <p className="font-medium mt-1">{order.assignedManager?.name || "-"}</p>
                 </div>
                 <div>
+                  <span className="text-muted-foreground">Production Unit</span>
+                  <p className="font-medium mt-1">
+                    {order.productionUnit ? (
+                      <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200">{order.productionUnit}</Badge>
+                    ) : (
+                      <span className="text-muted-foreground">Unassigned</span>
+                    )}
+                  </p>
+                </div>
+                <div className="col-span-2 md:col-span-3">
+                  <span className="text-muted-foreground">Production Remarks</span>
+                  <p className="font-medium mt-1">
+                    {order.productionRemarks || <span className="text-muted-foreground">No remarks</span>}
+                  </p>
+                </div>
+                <div>
                   <span className="text-muted-foreground">Last Updated</span>
                   <p className="font-medium mt-1">
                     {order.updatedAt ? new Date(order.updatedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}

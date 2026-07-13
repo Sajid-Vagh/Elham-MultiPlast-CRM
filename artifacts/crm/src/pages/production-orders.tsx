@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { ExportDropdown } from "@/components/export-dropdown";
+import { UNITS } from "@/lib/units";
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
@@ -37,6 +38,8 @@ const PRIORITY_COLORS: Record<string, string> = {
   Urgent: "bg-red-100 text-red-700",
 };
 
+const PRODUCTION_UNITS = ["All", ...UNITS];
+
 export default function ProductionOrders() {
   const { data: user } = useGetMe();
   const [, setLocation] = useLocation();
@@ -44,9 +47,12 @@ export default function ProductionOrders() {
 
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all");
   const [priorityFilter, setPriorityFilter] = useState(searchParams.get("priority") || "all");
+  const [unitFilter, setUnitFilter] = useState("all");
   const [createdByFilter, setCreatedByFilter] = useState("all");
   const [search, setSearch] = useState(searchParams.get("search") || "");
   const [page, setPage] = useState(1);
+
+  const showUnitFilter = user?.role === "admin" || user?.unit === "All";
 
   const { data: usersList } = useQuery({
     queryKey: ["users-list"],
@@ -58,10 +64,11 @@ export default function ProductionOrders() {
     const p: Record<string, string> = { page: String(page), limit: "15" };
     if (statusFilter !== "all") p.status = statusFilter;
     if (priorityFilter !== "all") p.priority = priorityFilter;
+    if (unitFilter !== "all") p.unit = unitFilter;
     if (createdByFilter !== "all") p.createdBy = createdByFilter;
     if (search.trim()) p.search = search.trim();
     return p;
-  }, [statusFilter, priorityFilter, createdByFilter, search, page]);
+  }, [statusFilter, priorityFilter, unitFilter, createdByFilter, search, page]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["production-orders", queryParams],
@@ -118,6 +125,17 @@ export default function ProductionOrders() {
           </SelectContent>
         </Select>
 
+        {showUnitFilter && (
+          <Select value={unitFilter} onValueChange={(v) => { setUnitFilter(v); setPage(1); }}>
+            <SelectTrigger className="w-[160px]"><SelectValue placeholder="All Units" /></SelectTrigger>
+            <SelectContent>
+              {PRODUCTION_UNITS.map((u) => (
+                <SelectItem key={u} value={u.toLowerCase()}>{u}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
         <Select value={createdByFilter} onValueChange={(v) => { setCreatedByFilter(v); setPage(1); }}>
           <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Users" /></SelectTrigger>
           <SelectContent>
@@ -154,6 +172,7 @@ export default function ProductionOrders() {
                   <TableHead>Bottle Size</TableHead>
                   <TableHead>Bottle Color</TableHead>
                   <TableHead>Quantity</TableHead>
+                  <TableHead>Production Unit</TableHead>
                   <TableHead>Created By</TableHead>
                   <TableHead>Priority</TableHead>
                   <TableHead>Order Date</TableHead>
@@ -178,6 +197,13 @@ export default function ProductionOrders() {
                       <TableCell>{firstItem?.capacity || firstItem?.weight || "-"}</TableCell>
                       <TableCell>{firstItem?.bottleType || "-"}</TableCell>
                       <TableCell>{firstItem ? Number(firstItem.quantity).toFixed(2) : "-"}</TableCell>
+                      <TableCell>
+                        {order.productionUnit ? (
+                          <Badge variant="outline" className="text-xs bg-indigo-50 text-indigo-700 border-indigo-200">{order.productionUnit}</Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Unassigned</span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         {order.createdByName ? (
                           <div className="text-xs">

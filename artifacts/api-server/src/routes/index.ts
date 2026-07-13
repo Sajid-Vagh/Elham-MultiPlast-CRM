@@ -28,6 +28,7 @@ import searchRouter from "./search";
 import existingCustomersRouter from "./existing-customers";
 import exportsRouter from "./exports";
 import transportLogisticsRouter from "./transport-logistics";
+import transportMastersRouter from "./transport-masters";
 
 const router: IRouter = Router();
 
@@ -59,6 +60,7 @@ router.use(auditLogsRouter);
 router.use(searchRouter);
 router.use(existingCustomersRouter);
 router.use(transportLogisticsRouter);
+router.use(transportMastersRouter);
 router.use("/exports", exportsRouter);
 
 export default router;
