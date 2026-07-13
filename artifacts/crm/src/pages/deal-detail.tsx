@@ -111,6 +111,11 @@ export default function DealDetail() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [showMoveCategory, setShowMoveCategory] = useState(false);
 
+  // PI Sent dialog state
+  const [piSentDialogOpen, setPiSentDialogOpen] = useState(false);
+  const [piSentLoading, setPiSentLoading] = useState(false);
+  const [piSentHasPI, setPiSentHasPI] = useState(false);
+
   const deleteDeal = useDeleteDeal();
 
   // Activity date filter
@@ -151,6 +156,22 @@ export default function DealDetail() {
       return;
     }
     if (newStage === "Lost") { setLostOpen(true); return; }
+    if (newStage === "PI Sent") {
+      setPiSentLoading(true);
+      setPiSentDialogOpen(true);
+      const token = localStorage.getItem("crm_token");
+      fetch(`/api/proforma-invoices`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then(res => res.ok ? res.json() : []).then((allPIs: any[]) => {
+        const hasPI = Array.isArray(allPIs) && allPIs.some((pi: any) => pi.dealId === dealId);
+        setPiSentHasPI(hasPI);
+      }).catch(() => {
+        setPiSentHasPI(false);
+      }).finally(() => {
+        setPiSentLoading(false);
+      });
+      return;
+    }
     doStageUpdate(newStage, null, null);
   };
 
@@ -760,6 +781,37 @@ export default function DealDetail() {
         onSave={handleLostSave}
         saving={lostSubmitting}
       />
+
+      {/* PI Sent Confirmation Dialog */}
+      <Dialog open={piSentDialogOpen} onOpenChange={(o) => setPiSentDialogOpen(o)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{piSentHasPI ? "Confirm Proforma" : "Proforma Invoice Required"}</DialogTitle>
+            <DialogDescription>
+              {piSentLoading
+                ? "Checking for Proforma Invoice..."
+                : piSentHasPI
+                  ? "Have you already sent the Proforma Invoice to the Customer?"
+                  : "No Proforma Invoice has been created for this Deal. Would you like to create one now?"}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            {piSentLoading ? (
+              <Button variant="outline" disabled><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Checking...</Button>
+            ) : piSentHasPI ? (
+              <>
+                <Button variant="outline" onClick={() => setPiSentDialogOpen(false)}>No</Button>
+                <Button onClick={() => { setPiSentDialogOpen(false); doStageUpdate("PI Sent", null, null); }}>Yes</Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setPiSentDialogOpen(false)}>Cancel</Button>
+                <Button onClick={() => { setPiSentDialogOpen(false); setLocation(`/proforma-invoices${contact?.id ? `?contactId=${contact.id}` : ""}`); }}>Create Proforma</Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Regular Follow-up Dialog */}
       <Dialog open={fuDialogOpen} onOpenChange={setFuDialogOpen}>

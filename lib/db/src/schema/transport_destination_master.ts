@@ -11,6 +11,7 @@ export const transportDestinationMasterTable = pgTable("transport_destination_ma
   city: text("city").notNull(),
   transportType: text("transport_type").notNull().default("Bundle Wise"),
   transportCharge: numeric("transport_charge", { precision: 12, scale: 2 }).notNull().default("0"),
+  productionUnit: text("production_unit"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

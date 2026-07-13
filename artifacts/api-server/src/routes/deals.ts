@@ -201,6 +201,15 @@ router.patch("/deals/:id", async (req, res) => {
         return;
       }
     }
+    // Validate PI Sent: Proforma Invoice must exist
+    if (updateData.stage === "PI Sent") {
+      const [existingPI] = await db.select().from(proformaInvoicesTable).where(eq(proformaInvoicesTable.dealId, params.data.id)).limit(1);
+      if (!existingPI) {
+        res.status(400).json({ error: "No Proforma Invoice found for this Deal. Create a PI before moving to PI Sent." });
+        return;
+      }
+    }
+
     // Validate Lost: lostReason is mandatory
     if (updateData.stage === "Lost") {
       const reason = parsed.data.lostReason;

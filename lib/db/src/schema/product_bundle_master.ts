@@ -7,6 +7,7 @@ export const productBundleMasterTable = pgTable("product_bundle_master", {
   productName: text("product_name").notNull(),
   productId: integer("product_id"),
   bundleSize: integer("bundle_size").notNull().default(80),
+  productionUnit: text("production_unit"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

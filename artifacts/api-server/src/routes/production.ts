@@ -88,10 +88,24 @@ function getAccessibleUnits(user: { role: string; unit?: string | null }): strin
 }
 
 async function enrichProductionOrder(order: any) {
-  const [invoice] = await db
-    .select()
-    .from(proformaInvoicesTable)
-    .where(eq(proformaInvoicesTable.id, order.proformaInvoiceId));
+  let invoice: any = null;
+  if (order.proformaInvoiceId) {
+    const [inv] = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(eq(proformaInvoicesTable.id, order.proformaInvoiceId));
+    invoice = inv || null;
+  }
+  // Fallback: if no PI linked but deal exists, fetch latest PI from deal
+  if (!invoice && order.dealId) {
+    const [inv] = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(eq(proformaInvoicesTable.dealId, order.dealId))
+      .orderBy(desc(proformaInvoicesTable.createdAt))
+      .limit(1);
+    invoice = inv || null;
+  }
 
   const items = invoice
     ? await db

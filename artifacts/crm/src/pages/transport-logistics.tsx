@@ -14,13 +14,16 @@ import { useGetMe } from "@workspace/api-client-react";
 
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("crm_token")}`, "Content-Type": "application/json" });
 
-type Bundle = { id: number; productName: string; bundleSize: number; isActive: boolean; createdAt: string; updatedAt: string };
-type BundleForm = { productName: string; bundleSize: string };
-const EMPTY_BUNDLE_FORM: BundleForm = { productName: "", bundleSize: "" };
+type Bundle = { id: number; productName: string; bundleSize: number; productionUnit: string | null; isActive: boolean; createdAt: string; updatedAt: string };
+type BundleForm = { productName: string; bundleSize: string; productionUnit: string };
+const EMPTY_BUNDLE_FORM: BundleForm = { productName: "", bundleSize: "", productionUnit: "all" };
 
-type Destination = { id: number; state: string; city: string; transportType: string; transportCharge: number; isActive: boolean; createdAt: string; updatedAt: string };
-type DestinationForm = { state: string; city: string; transportType: string; transportCharge: string };
-const EMPTY_DEST_FORM: DestinationForm = { state: "", city: "", transportType: "Bundle Wise", transportCharge: "" };
+type Destination = { id: number; state: string; city: string; transportType: string; transportCharge: number; productionUnit: string | null; isActive: boolean; createdAt: string; updatedAt: string };
+type DestinationForm = { state: string; city: string; transportType: string; transportCharge: string; productionUnit: string };
+const EMPTY_DEST_FORM: DestinationForm = { state: "", city: "", transportType: "Bundle Wise", transportCharge: "", productionUnit: "all" };
+
+const PRODUCTION_UNITS = ["all", "Himatnagar", "Surat", "Rajkot"] as const;
+const unitLabel = (u: string | null) => u || "All Units";
 
 function BundleMasterTab() {
   const queryClient = useQueryClient();
@@ -31,12 +34,14 @@ function BundleMasterTab() {
   const [editItem, setEditItem] = useState<Bundle | null>(null);
   const [createForm, setCreateForm] = useState<BundleForm>(EMPTY_BUNDLE_FORM);
   const [editForm, setEditForm] = useState<BundleForm>(EMPTY_BUNDLE_FORM);
+  const [unitFilter, setUnitFilter] = useState<string>("all");
 
   const { data, isLoading } = useQuery({
-    queryKey: ["product-bundles", { search, page }],
+    queryKey: ["product-bundles", { search, page, unit: unitFilter }],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
+      if (unitFilter && unitFilter !== "all") params.set("unit", unitFilter);
       params.set("page", String(page));
       const res = await fetch(`/api/transport-masters/bundles?${params}`, { headers: authHeaders() });
       if (!res.ok) throw new Error("Failed");
@@ -48,7 +53,7 @@ function BundleMasterTab() {
     mutationFn: async (form: BundleForm) => {
       const res = await fetch("/api/transport-masters/bundles", {
         method: "POST", headers: authHeaders(),
-        body: JSON.stringify({ productName: form.productName, bundleSize: Number(form.bundleSize) }),
+        body: JSON.stringify({ productName: form.productName, bundleSize: Number(form.bundleSize), productionUnit: form.productionUnit === "all" ? null : form.productionUnit }),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Failed"); }
       return res.json();
@@ -61,7 +66,7 @@ function BundleMasterTab() {
     mutationFn: async ({ id, form }: { id: number; form: BundleForm }) => {
       const res = await fetch(`/api/transport-masters/bundles/${id}`, {
         method: "PATCH", headers: authHeaders(),
-        body: JSON.stringify({ productName: form.productName, bundleSize: Number(form.bundleSize) }),
+        body: JSON.stringify({ productName: form.productName, bundleSize: Number(form.bundleSize), productionUnit: form.productionUnit === "all" ? null : form.productionUnit }),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Failed"); }
       return res.json();
@@ -88,6 +93,20 @@ function BundleMasterTab() {
         </Button>
       </div>
 
+      <div className="flex items-center gap-3">
+        <Select value={unitFilter} onValueChange={v => { setUnitFilter(v); setPage(1); }}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="All Units" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Units</SelectItem>
+            <SelectItem value="Himatnagar">Himatnagar</SelectItem>
+            <SelectItem value="Surat">Surat</SelectItem>
+            <SelectItem value="Rajkot">Rajkot</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input placeholder="Search by product name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} className="pl-9" />
@@ -99,6 +118,7 @@ function BundleMasterTab() {
             <TableHeader>
               <TableRow>
                 <TableHead>Product Name</TableHead>
+                <TableHead>Unit</TableHead>
                 <TableHead className="text-right">Bundle Size (pcs)</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-20" />
@@ -106,13 +126,16 @@ function BundleMasterTab() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={4} className="text-center py-8">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="text-center py-8">Loading...</TableCell></TableRow>
               ) : data?.data?.length === 0 ? (
-                <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No product bundles found</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No product bundles found</TableCell></TableRow>
               ) : (
                 data?.data?.map((item: Bundle) => (
                   <TableRow key={item.id}>
                     <TableCell className="font-medium">{item.productName}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{unitLabel(item.productionUnit)}</Badge>
+                    </TableCell>
                     <TableCell className="text-right font-bold">{item.bundleSize} pcs</TableCell>
                     <TableCell>
                       <Badge variant="outline" className={item.isActive ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500"}>
@@ -121,7 +144,7 @@ function BundleMasterTab() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditItem(item); setEditForm({ productName: item.productName, bundleSize: String(item.bundleSize) }); }}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditItem(item); setEditForm({ productName: item.productName, bundleSize: String(item.bundleSize), productionUnit: item.productionUnit || "all" }); }}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { if (confirm("Delete this bundle?")) deleteMut.mutate(item.id); }}>
@@ -153,6 +176,18 @@ function BundleMasterTab() {
           <div className="grid gap-3 pt-2">
             <div><Label>Product Name *</Label><Input value={createForm.productName} onChange={e => setCreateForm(p => ({ ...p, productName: e.target.value }))} placeholder="e.g. 5L Can" /></div>
             <div><Label>Bundle Size (pcs) *</Label><Input type="number" min={1} value={createForm.bundleSize} onChange={e => setCreateForm(p => ({ ...p, bundleSize: e.target.value }))} placeholder="e.g. 80" /></div>
+            <div>
+              <Label>Production Unit</Label>
+              <Select value={createForm.productionUnit} onValueChange={v => setCreateForm(p => ({ ...p, productionUnit: v }))}>
+                <SelectTrigger><SelectValue placeholder="All Units (Shared)" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Units (Shared)</SelectItem>
+                  <SelectItem value="Himatnagar">Himatnagar</SelectItem>
+                  <SelectItem value="Surat">Surat</SelectItem>
+                  <SelectItem value="Rajkot">Rajkot</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <div className="flex gap-2 pt-3">
             <Button disabled={createMut.isPending || !createForm.productName || !createForm.bundleSize} onClick={() => createMut.mutate(createForm)}>
@@ -169,6 +204,18 @@ function BundleMasterTab() {
           <div className="grid gap-3 pt-2">
             <div><Label>Product Name *</Label><Input value={editForm.productName} onChange={e => setEditForm(p => ({ ...p, productName: e.target.value }))} /></div>
             <div><Label>Bundle Size (pcs) *</Label><Input type="number" min={1} value={editForm.bundleSize} onChange={e => setEditForm(p => ({ ...p, bundleSize: e.target.value }))} /></div>
+            <div>
+              <Label>Production Unit</Label>
+              <Select value={editForm.productionUnit} onValueChange={v => setEditForm(p => ({ ...p, productionUnit: v }))}>
+                <SelectTrigger><SelectValue placeholder="All Units (Shared)" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Units (Shared)</SelectItem>
+                  <SelectItem value="Himatnagar">Himatnagar</SelectItem>
+                  <SelectItem value="Surat">Surat</SelectItem>
+                  <SelectItem value="Rajkot">Rajkot</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <div className="flex gap-2 pt-3">
             <Button disabled={updateMut.isPending || !editForm.productName || !editForm.bundleSize} onClick={() => editItem && updateMut.mutate({ id: editItem.id, form: editForm })}>
@@ -191,12 +238,14 @@ function DestinationMasterTab() {
   const [editItem, setEditItem] = useState<Destination | null>(null);
   const [createForm, setCreateForm] = useState<DestinationForm>(EMPTY_DEST_FORM);
   const [editForm, setEditForm] = useState<DestinationForm>(EMPTY_DEST_FORM);
+  const [unitFilter, setUnitFilter] = useState<string>("all");
 
   const { data, isLoading } = useQuery({
-    queryKey: ["transport-destinations", { search, page }],
+    queryKey: ["transport-destinations", { search, page, unit: unitFilter }],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
+      if (unitFilter && unitFilter !== "all") params.set("unit", unitFilter);
       params.set("page", String(page));
       const res = await fetch(`/api/transport-masters/destinations?${params}`, { headers: authHeaders() });
       if (!res.ok) throw new Error("Failed");
@@ -208,7 +257,7 @@ function DestinationMasterTab() {
     mutationFn: async (form: DestinationForm) => {
       const res = await fetch("/api/transport-masters/destinations", {
         method: "POST", headers: authHeaders(),
-        body: JSON.stringify({ state: form.state, city: form.city, transportType: form.transportType, transportCharge: Number(form.transportCharge) }),
+        body: JSON.stringify({ state: form.state, city: form.city, transportType: form.transportType, transportCharge: Number(form.transportCharge), productionUnit: form.productionUnit === "all" ? null : form.productionUnit }),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Failed"); }
       return res.json();
@@ -221,7 +270,7 @@ function DestinationMasterTab() {
     mutationFn: async ({ id, form }: { id: number; form: DestinationForm }) => {
       const res = await fetch(`/api/transport-masters/destinations/${id}`, {
         method: "PATCH", headers: authHeaders(),
-        body: JSON.stringify({ state: form.state, city: form.city, transportType: form.transportType, transportCharge: Number(form.transportCharge) }),
+        body: JSON.stringify({ state: form.state, city: form.city, transportType: form.transportType, transportCharge: Number(form.transportCharge), productionUnit: form.productionUnit === "all" ? null : form.productionUnit }),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Failed"); }
       return res.json();
@@ -254,6 +303,18 @@ function DestinationMasterTab() {
         </Select>
       </div>
       <div><Label>Transport Charge (₹) *</Label><Input type="number" min={0} step={0.01} value={form.transportCharge} onChange={e => setForm(p => ({ ...p, transportCharge: e.target.value }))} placeholder={form.transportType === "Vehicle Wise" ? "Vehicle charge" : "Per bundle cost"} /></div>
+      <div>
+        <Label>Production Unit</Label>
+        <Select value={form.productionUnit} onValueChange={v => setForm(p => ({ ...p, productionUnit: v }))}>
+          <SelectTrigger><SelectValue placeholder="All Units (Shared)" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Units (Shared)</SelectItem>
+            <SelectItem value="Himatnagar">Himatnagar</SelectItem>
+            <SelectItem value="Surat">Surat</SelectItem>
+            <SelectItem value="Rajkot">Rajkot</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
     </div>
   );
 
@@ -264,6 +325,20 @@ function DestinationMasterTab() {
         <Button size="sm" onClick={() => { setCreateForm(EMPTY_DEST_FORM); setCreateOpen(true); }}>
           <Plus className="h-4 w-4 mr-1" /> Add Destination
         </Button>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Select value={unitFilter} onValueChange={v => { setUnitFilter(v); setPage(1); }}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="All Units" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Units</SelectItem>
+            <SelectItem value="Himatnagar">Himatnagar</SelectItem>
+            <SelectItem value="Surat">Surat</SelectItem>
+            <SelectItem value="Rajkot">Rajkot</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="relative max-w-sm">
@@ -278,6 +353,7 @@ function DestinationMasterTab() {
               <TableRow>
                 <TableHead>State</TableHead>
                 <TableHead>City</TableHead>
+                <TableHead>Unit</TableHead>
                 <TableHead>Transport Type</TableHead>
                 <TableHead className="text-right">Charge (₹)</TableHead>
                 <TableHead className="w-20" />
@@ -285,19 +361,22 @@ function DestinationMasterTab() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={5} className="text-center py-8">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center py-8">Loading...</TableCell></TableRow>
               ) : data?.data?.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No destinations found</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No destinations found</TableCell></TableRow>
               ) : (
                 data?.data?.map((item: Destination) => (
                   <TableRow key={item.id}>
                     <TableCell><Badge variant="outline">{item.state}</Badge></TableCell>
                     <TableCell className="font-medium">{item.city}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{unitLabel(item.productionUnit)}</Badge>
+                    </TableCell>
                     <TableCell>{item.transportType}</TableCell>
                     <TableCell className="text-right font-bold">₹{Number(item.transportCharge).toLocaleString("en-IN")}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditItem(item); setEditForm({ state: item.state, city: item.city, transportType: item.transportType, transportCharge: String(item.transportCharge) }); }}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditItem(item); setEditForm({ state: item.state, city: item.city, transportType: item.transportType, transportCharge: String(item.transportCharge), productionUnit: item.productionUnit || "all" }); }}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { if (confirm("Delete this destination?")) deleteMut.mutate(item.id); }}>
