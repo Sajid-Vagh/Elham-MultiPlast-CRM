@@ -46,6 +46,7 @@ router.get("/products", async (req, res) => {
 router.post("/products", async (req, res) => {
   const user = await getUserFromRequest(req);
   if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+  if (user.role !== "admin") { res.status(403).json({ error: "Admin only" }); return; }
   const parsed = CreateProductBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid input", details: parsed.error });
@@ -105,6 +106,7 @@ router.get("/products/:id", async (req, res) => {
 router.patch("/products/:id", async (req, res) => {
   const user = await getUserFromRequest(req);
   if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+  if (user.role !== "admin") { res.status(403).json({ error: "Admin only" }); return; }
   const params = UpdateProductParams.safeParse({ id: Number(req.params.id) });
   if (!params.success) { res.status(400).json({ error: "Invalid id" }); return; }
   const parsed = UpdateProductBody.safeParse(req.body);
@@ -138,6 +140,7 @@ router.patch("/products/:id", async (req, res) => {
 router.delete("/products/:id", async (req, res) => {
   const user = await getUserFromRequest(req);
   if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+  if (user.role !== "admin") { res.status(403).json({ error: "Admin only" }); return; }
   const params = DeleteProductParams.safeParse({ id: Number(req.params.id) });
   if (!params.success) { res.status(400).json({ error: "Invalid id" }); return; }
   try {

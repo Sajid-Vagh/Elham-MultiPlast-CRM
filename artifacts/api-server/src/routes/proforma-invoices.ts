@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable, usersTable, contactsTable, dealsTable, customerMasterTable, INVOICE_STATUSES } from "@workspace/db";
-import { eq, desc, and, SQL, sql, like, gte, lte, isNull } from "drizzle-orm";
+import { eq, desc, and, or, SQL, sql, like, gte, lte, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { amountToWords } from "../lib/amount-to-words";
@@ -1241,11 +1241,16 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
         .limit(1);
 
       if (!existing) {
+        const creatorRoleLabel = user.role === "support" ? "Support" : "Sales";
+
         await db.insert(productionOrdersTable).values({
           proformaInvoiceId: id,
           status: "Pending",
           priority: "Medium",
           updatedBy: user.id,
+          createdById: user.id,
+          createdByName: user.name,
+          createdByRole: user.role,
         });
 
         // Record initial timeline entry
@@ -1259,9 +1264,51 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
           await db.insert(productionTimelineTable).values({
             productionOrderId: newOrder.id,
             status: "Pending",
-            notes: "Order received from Sales",
+            notes: `Order received from ${user.name} (${creatorRoleLabel})`,
             createdBy: user.id,
           });
+
+          // Fetch product items for notification
+          const items = await db
+            .select()
+            .from(proformaInvoiceItemsTable)
+            .where(eq(proformaInvoiceItemsTable.invoiceId, id));
+
+          const firstProduct = items[0]?.productName || "Multiple Items";
+          const totalQty = items.reduce((sum, i) => sum + Number(i.quantity || 0), 0);
+          const unit = items[0]?.unit || "pcs";
+
+          // Notify all production managers and admins
+          const productionUsers = await db
+            .select({ id: usersTable.id })
+            .from(usersTable)
+            .where(or(
+              eq(usersTable.role, "production_manager"),
+              eq(usersTable.role, "admin"),
+            ));
+
+          for (const pu of productionUsers) {
+            if (pu.id !== user.id) {
+              await createNotification({
+                userId: pu.id,
+                type: "production_order_created",
+                title: "New Production Order",
+                message: [
+                  `Created By: ${user.name}`,
+                  `Role: ${creatorRoleLabel}`,
+                  ``,
+                  `Customer: ${invoice.customerName}`,
+                  `Company: ${invoice.companyName || "N/A"}`,
+                  `Product: ${firstProduct}`,
+                  `Quantity: ${totalQty.toLocaleString("en-IN")} ${unit}`,
+                  `Order No: ${invoice.invoiceNumber}`,
+                ].join("\n"),
+                link: `/production/orders/${newOrder.id}`,
+                relatedId: newOrder.id,
+                relatedType: "production_order",
+              });
+            }
+          }
         }
       }
     }

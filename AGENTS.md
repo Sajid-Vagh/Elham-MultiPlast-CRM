@@ -185,17 +185,22 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - Role `production_manager` added to `UserRole`, `UserInputRole`, `UserUpdateRole` types
 - Backend `production.ts` routes:
   - `GET /production/dashboard` — KPI cards (pending, material ready, in production, QC, packing, ready for dispatch, completed today, delayed)
-  - `GET /production/orders` — list with search, status filter, priority filter, pagination
-  - `GET /production/orders/:id` — single order detail with invoice, items, timeline, notes
+  - `GET /production/orders` — list with search, status filter, priority filter, **creator filter**, pagination
+  - `GET /production/orders/:id` — single order detail with invoice, items, timeline, notes, **creator info**
+  - `GET /production/pending-summary` — product-wise pending production quantity (SQL GROUP BY)
   - `GET /production/by-invoice/:invoiceId` — lookup by proforma invoice (used by Sales read-only view)
   - `PATCH /production/orders/:id/status` — update status with timeline record + notification
   - `POST /production/orders/:id/notes` — add internal production note
 - Auto-create Production Order in `proforma-invoices.ts` when status → "Converted to Order"
-- Notification sent to Sales user on Production status change via `createNotification` (type: `production_status`)
+- **Permanent creator info** stored on production_orders: `createdById`, `createdByName`, `createdByRole`
+- **Real-time notifications** to all production managers/admins when new production order is created (via existing SSE infrastructure)
+- Notification includes: creator name, role, customer, company, product, quantity, order number
+- **Admin-only Product Management**: POST/PATCH/DELETE on `/products` restricted to admin role
 - Frontend pages:
-  - `production-dashboard.tsx` — 8 KPI cards linking to filtered order list
-  - `production-orders.tsx` — full list with search, status/priority filters, pagination
-  - `production-order-detail.tsx` — order details, product table, timeline, notes, status update dialog, note dialog
+  - `production-dashboard.tsx` — 8 KPI cards + **Pending Production Summary widget** (product-wise grouped quantities)
+  - `production-orders.tsx` — full list with search, status/priority/creator filters, **Created By column**
+  - `production-order-detail.tsx` — order details, product table, timeline, notes, status update dialog, note dialog, **creator info display**
+  - `products.tsx` — **admin-only Create/Edit/Delete**, **Status column** (Active/Inactive)
 - `production-progress.tsx` — read-only Production Progress card for Sales users in proforma invoice detail
 - `App.tsx` — `RoleGuard` component redirects users based on role; production routes guarded
 - `layout.tsx` — dynamic sidebar: Sales shows only Sales nav, Production shows only Production nav, Admin shows both
@@ -203,9 +208,12 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `settings.tsx` — role dropdown includes Production Manager option
 - `seed.ts` — includes `production` user with role `production_manager`
 - Backend 403 enforcement: all `/api/production/*` endpoints return 403 for non-production/non-admin users
+- **Query invalidation** updated to include `production-pending-summary` key
+- **Generated types** updated: `Product`, `ProductInput`, `ProductUpdate` interfaces + Zod schemas now include `status` field
+- **Migration `027_production_enhancements.sql`** adds creator info columns, product status, and performance indexes
 
 ### In Progress
-- Run migration `017_add_production_orders.sql` against Supabase database
+- Run migration `027_production_enhancements.sql` against Supabase database
 - Deploy and test Production module end-to-end
 
 ### Blocked
@@ -231,19 +239,24 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 
 ## Production Module Relevant Files
 - `lib/db/src/schema/production_orders.ts`: production_orders, production_timeline, production_notes table schemas
+- `lib/db/src/schema/products.ts`: products table schema (with `status` field)
 - `lib/db/migrations/017_add_production_orders.sql`: migration to create production tables
-- `artifacts/api-server/src/routes/production.ts`: all production API endpoints (dashboard, orders, status, notes)
-- `artifacts/api-server/src/routes/proforma-invoices.ts`: auto-create production order on "Converted to Order"
+- `lib/db/migrations/027_production_enhancements.sql`: migration for creator info, product status, indexes
+- `artifacts/api-server/src/routes/production.ts`: all production API endpoints (dashboard, orders, **pending-summary**, status, notes, **creator filter**)
+- `artifacts/api-server/src/routes/proforma-invoices.ts`: auto-create production order on "Converted to Order" with **creator info** + **real-time notifications to production users**
+- `artifacts/api-server/src/routes/products.ts`: CRUD + search, **admin-only POST/PATCH/DELETE**
 - `lib/api-zod/src/generated/types/userRole.ts`, `userInputRole.ts`, `userUpdateRole.ts`: role types updated
-- `lib/api-zod/src/generated/api.ts`: updated role enums in Zod schemas
-- `lib/api-client-react/src/generated/api.schemas.ts`: updated UserRole const
-- `artifacts/crm/src/pages/production-dashboard.tsx`: Production Dashboard with 8 KPI cards
-- `artifacts/crm/src/pages/production-orders.tsx`: Production Orders list with filters
-- `artifacts/crm/src/pages/production-order-detail.tsx`: Production Order detail with timeline, notes, status update
+- `lib/api-zod/src/generated/api.ts`: updated role enums + **Product status in Zod schemas**
+- `lib/api-client-react/src/generated/api.schemas.ts`: updated UserRole const + **Product status in interfaces**
+- `artifacts/crm/src/pages/production-dashboard.tsx`: Production Dashboard with 8 KPI cards + **Pending Production Summary widget**
+- `artifacts/crm/src/pages/production-orders.tsx`: Production Orders list with filters + **creator filter** + **Created By column**
+- `artifacts/crm/src/pages/production-order-detail.tsx`: Production Order detail with timeline, notes, status update + **creator info**
+- `artifacts/crm/src/pages/products.tsx`: Product Management — **admin-only controls**, **Status column**
 - `artifacts/crm/src/components/production-progress.tsx`: read-only Production Progress for Sales users
 - `artifacts/crm/src/App.tsx`: RoleGuard component, production routes
 - `artifacts/crm/src/components/layout.tsx`: dynamic role-based sidebar
 - `artifacts/crm/src/pages/login.tsx`: login redirect based on role
+- `artifacts/crm/src/lib/query-invalidation.ts`: `onProductionChange()` invalidates pending-summary
 - `artifacts/crm/src/pages/settings.tsx`: role dropdown includes Production Manager
 - `artifacts/api-server/src/seed.ts`: includes production user
 

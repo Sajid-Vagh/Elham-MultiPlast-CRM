@@ -15,6 +15,7 @@ export const productsTable = pgTable("products", {
   hsnCode: text("hsn_code"),
   defaultUnit: text("default_unit"),
   defaultGst: numeric("default_gst", { precision: 5, scale: 2 }),
+  status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

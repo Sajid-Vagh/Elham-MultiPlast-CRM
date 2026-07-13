@@ -19,4 +19,6 @@ export interface ProductInput {
   bottleColour?: string | null;
   /** @nullable */
   capColour?: string | null;
+  /** @nullable */
+  status?: string | null;
 }

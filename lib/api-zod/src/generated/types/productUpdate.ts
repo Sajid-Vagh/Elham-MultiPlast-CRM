@@ -19,4 +19,6 @@ export interface ProductUpdate {
   bottleColour?: string | null;
   /** @nullable */
   capColour?: string | null;
+  /** @nullable */
+  status?: string | null;
 }

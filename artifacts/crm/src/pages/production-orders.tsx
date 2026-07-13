@@ -44,16 +44,24 @@ export default function ProductionOrders() {
 
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all");
   const [priorityFilter, setPriorityFilter] = useState(searchParams.get("priority") || "all");
+  const [createdByFilter, setCreatedByFilter] = useState("all");
   const [search, setSearch] = useState(searchParams.get("search") || "");
   const [page, setPage] = useState(1);
+
+  const { data: usersList } = useQuery({
+    queryKey: ["users-list"],
+    queryFn: () => customFetch<any[]>("/users"),
+    enabled: !!user,
+  });
 
   const queryParams = useMemo(() => {
     const p: Record<string, string> = { page: String(page), limit: "15" };
     if (statusFilter !== "all") p.status = statusFilter;
     if (priorityFilter !== "all") p.priority = priorityFilter;
+    if (createdByFilter !== "all") p.createdBy = createdByFilter;
     if (search.trim()) p.search = search.trim();
     return p;
-  }, [statusFilter, priorityFilter, search, page]);
+  }, [statusFilter, priorityFilter, createdByFilter, search, page]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["production-orders", queryParams],
@@ -109,6 +117,18 @@ export default function ProductionOrders() {
             <SelectItem value="Urgent">Urgent</SelectItem>
           </SelectContent>
         </Select>
+
+        <Select value={createdByFilter} onValueChange={(v) => { setCreatedByFilter(v); setPage(1); }}>
+          <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Users" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Users</SelectItem>
+            <SelectItem value="sales">Sales Users</SelectItem>
+            <SelectItem value="support">Support Users</SelectItem>
+            {usersList?.filter((u: any) => u.role === "sales" || u.role === "support").map((u: any) => (
+              <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {isLoading ? (
@@ -134,6 +154,7 @@ export default function ProductionOrders() {
                   <TableHead>Bottle Size</TableHead>
                   <TableHead>Bottle Color</TableHead>
                   <TableHead>Quantity</TableHead>
+                  <TableHead>Created By</TableHead>
                   <TableHead>Priority</TableHead>
                   <TableHead>Order Date</TableHead>
                   <TableHead>Exp. Dispatch</TableHead>
@@ -157,6 +178,18 @@ export default function ProductionOrders() {
                       <TableCell>{firstItem?.capacity || firstItem?.weight || "-"}</TableCell>
                       <TableCell>{firstItem?.bottleType || "-"}</TableCell>
                       <TableCell>{firstItem ? Number(firstItem.quantity).toFixed(2) : "-"}</TableCell>
+                      <TableCell>
+                        {order.createdByName ? (
+                          <div className="text-xs">
+                            <span className="font-medium">{order.createdByName}</span>
+                            {order.createdByRole && (
+                              <Badge variant="outline" className="ml-1 text-[10px] py-0">
+                                {order.createdByRole === "support" ? "Support" : "Sales"}
+                              </Badge>
+                            )}
+                          </div>
+                        ) : "-"}
+                      </TableCell>
                       <TableCell>
                         <Badge className={`${PRIORITY_COLORS[order.priority] || "bg-gray-100"} border-0`}>
                           {order.priority}

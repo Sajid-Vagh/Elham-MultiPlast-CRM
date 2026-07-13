@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
-import { Factory, PackageCheck, Settings2, ShieldCheck, Package, Truck, CheckCircle2, Clock, AlertTriangle, ListOrdered } from "lucide-react";
+import { Factory, PackageCheck, Settings2, ShieldCheck, Package, Truck, CheckCircle2, Clock, AlertTriangle, ListOrdered, BoxSelect } from "lucide-react";
 
 const STATUS_CARDS = [
   { key: "pendingCount", label: "Pending Orders", icon: Clock, color: "bg-gray-100 text-gray-700 border-gray-300", hoverStatus: "Pending" },
@@ -32,6 +32,12 @@ export default function ProductionDashboard() {
   const { data: pendingReqs, isLoading: reqsLoading } = useQuery({
     queryKey: ["production-pending-requirements"],
     queryFn: () => customFetch<any[]>("/production/pending-requirements"),
+    enabled: !!user,
+  });
+
+  const { data: pendingSummary, isLoading: summaryLoading } = useQuery({
+    queryKey: ["production-pending-summary"],
+    queryFn: () => customFetch<any>("/production/pending-summary"),
     enabled: !!user,
   });
 
@@ -120,6 +126,58 @@ export default function ProductionDashboard() {
           </CardContent>
         </Card>
       )}
+
+      {/* Pending Production Summary Widget */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BoxSelect className="h-5 w-5 text-purple-500" />
+            <CardTitle className="text-lg">Pending Production Summary</CardTitle>
+          </div>
+          <div className="flex gap-2">
+            <Badge variant="outline" className="text-xs">
+              {pendingSummary?.totalPendingProducts ?? 0} products
+            </Badge>
+            <Badge variant="outline" className="text-xs font-semibold text-purple-600">
+              {(pendingSummary?.totalPendingPieces ?? 0).toLocaleString("en-IN")} total pcs
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {summaryLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+            </div>
+          ) : !pendingSummary?.products?.length ? (
+            <p className="text-sm text-muted-foreground text-center py-6">No pending production quantities</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Product Name</TableHead>
+                    <TableHead className="text-right">Pending Quantity</TableHead>
+                    <TableHead className="text-right">Active Orders</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pendingSummary.products.map((p: any) => (
+                    <TableRow key={p.productName}>
+                      <TableCell className="font-medium">{p.productName}</TableCell>
+                      <TableCell className="text-right">
+                        <span className="font-bold text-purple-600">
+                          {p.totalPendingQuantity.toLocaleString("en-IN")} pcs
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground">{p.orderCount}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Pending Production Requirements */}
       <Card>

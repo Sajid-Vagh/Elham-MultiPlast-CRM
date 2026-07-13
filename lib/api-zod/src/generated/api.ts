@@ -504,6 +504,7 @@ export const ListProductsResponseItem = zod.object({
   "bottleWeight": zod.string().nullish(),
   "bottleColour": zod.string().nullish(),
   "capColour": zod.string().nullish(),
+  "status": zod.string().nullish(),
   "createdAt": zod.string().optional()
 })
 export const ListProductsResponse = zod.array(ListProductsResponseItem)
@@ -519,7 +520,8 @@ export const CreateProductBody = zod.object({
   "productCode": zod.string(),
   "bottleWeight": zod.string().nullish(),
   "bottleColour": zod.string().nullish(),
-  "capColour": zod.string().nullish()
+  "capColour": zod.string().nullish(),
+  "status": zod.string().nullish()
 })
 
 export const CreateProductResponse = zod.object({
@@ -531,6 +533,7 @@ export const CreateProductResponse = zod.object({
   "bottleWeight": zod.string().nullish(),
   "bottleColour": zod.string().nullish(),
   "capColour": zod.string().nullish(),
+  "status": zod.string().nullish(),
   "createdAt": zod.string().optional()
 })
 
@@ -552,6 +555,7 @@ export const GetProductResponse = zod.object({
   "hsnCode": zod.string().nullish(),
   "defaultUnit": zod.string().nullish(),
   "defaultGst": zod.number().nullish(),
+  "status": zod.string().nullish(),
   "createdAt": zod.string().optional()
 })
 
@@ -567,7 +571,8 @@ export const UpdateProductBody = zod.object({
   "productCode": zod.string().optional(),
   "bottleWeight": zod.string().nullish(),
   "bottleColour": zod.string().nullish(),
-  "capColour": zod.string().nullish()
+  "capColour": zod.string().nullish(),
+  "status": zod.string().nullish()
 })
 
 export const UpdateProductResponse = zod.object({
@@ -579,6 +584,7 @@ export const UpdateProductResponse = zod.object({
   "bottleWeight": zod.string().nullish(),
   "bottleColour": zod.string().nullish(),
   "capColour": zod.string().nullish(),
+  "status": zod.string().nullish(),
   "createdAt": zod.string().optional()
 })
 

@@ -185,8 +185,50 @@ async function enrichProductionOrder(order: any) {
     lastUpdatedBy,
     timeline: timelineWithUsers,
     notes: notesWithUsers,
+    createdById: order.createdById,
+    createdByName: order.createdByName,
+    createdByRole: order.createdByRole,
   };
 }
+
+// ── Pending Production Summary (grouped by product) ──
+router.get("/production/pending-summary", async (req, res) => {
+  try {
+    const user = await requireProductionUser(req, res);
+    if (!user) return;
+
+    const results = await db.execute(sql`
+      SELECT
+        pii.product_name AS "productName",
+        SUM(pii.quantity::numeric) AS "totalQuantity",
+        COUNT(DISTINCT po.id) AS "orderCount",
+        array_agg(DISTINCT po.id) AS "orderIds"
+      FROM production_orders po
+      JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
+      JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
+      WHERE po.status NOT IN ('Completed', 'Cancelled')
+        AND pi.is_deleted = false
+      GROUP BY pii.product_name
+      HAVING SUM(pii.quantity::numeric) > 0
+      ORDER BY SUM(pii.quantity::numeric) DESC
+    `);
+
+    const summary = (results.rows || []).map((r: any) => ({
+      productName: r.productName,
+      totalPendingQuantity: Number(r.totalQuantity),
+      orderCount: Number(r.orderCount),
+      orderIds: r.orderIds,
+    }));
+
+    const totalPendingProducts = summary.length;
+    const totalPendingPieces = summary.reduce((s: number, r: any) => s + r.totalPendingQuantity, 0);
+
+    res.json({ products: summary, totalPendingProducts, totalPendingPieces });
+  } catch (err) {
+    console.error("Pending production summary error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 // ── Dashboard KPIs ──
 router.get("/production/dashboard", async (req, res) => {
@@ -243,7 +285,7 @@ router.get("/production/orders", async (req, res) => {
     const user = await requireProductionUser(req, res);
     if (!user) return;
 
-    const { status, priority, search, dateFrom, dateTo, page, limit } = req.query as Record<
+    const { status, priority, search, dateFrom, dateTo, createdBy, page, limit } = req.query as Record<
       string,
       string | undefined
     >;
@@ -254,6 +296,18 @@ router.get("/production/orders", async (req, res) => {
     }
     if (priority && priority !== "all") {
       conditions.push(eq(productionOrdersTable.priority, priority));
+    }
+    if (createdBy && createdBy !== "all") {
+      if (createdBy === "sales") {
+        conditions.push(eq(productionOrdersTable.createdByRole, "sales"));
+      } else if (createdBy === "support") {
+        conditions.push(eq(productionOrdersTable.createdByRole, "support"));
+      } else {
+        const userId = parseInt(createdBy, 10);
+        if (!isNaN(userId)) {
+          conditions.push(eq(productionOrdersTable.createdById, userId));
+        }
+      }
     }
     if (dateFrom) {
       conditions.push(gte(productionOrdersTable.createdAt, new Date(dateFrom)));

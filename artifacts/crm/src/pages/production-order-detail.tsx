@@ -171,6 +171,17 @@ export default function ProductionOrderDetail() {
                   </p>
                 </div>
                 <div>
+                  <span className="text-muted-foreground">Created By</span>
+                  <p className="font-medium mt-1">
+                    {order.createdByName || "-"}
+                    {order.createdByRole && (
+                      <Badge variant="outline" className="ml-2 text-[10px] py-0">
+                        {order.createdByRole === "support" ? "Support" : "Sales"}
+                      </Badge>
+                    )}
+                  </p>
+                </div>
+                <div>
                   <span className="text-muted-foreground">Assigned Manager</span>
                   <p className="font-medium mt-1">{order.assignedManager?.name || "-"}</p>
                 </div>

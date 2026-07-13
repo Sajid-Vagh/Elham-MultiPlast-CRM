@@ -318,6 +318,8 @@ export interface Product {
   defaultUnit?: string | null;
   /** @nullable */
   defaultGst?: number | null;
+  /** @nullable */
+  status?: string | null;
   createdAt?: string;
 }
 
@@ -334,6 +336,8 @@ export interface ProductInput {
   bottleColour?: string | null;
   /** @nullable */
   capColour?: string | null;
+  /** @nullable */
+  status?: string | null;
 }
 
 export interface ProductUpdate {
@@ -349,6 +353,8 @@ export interface ProductUpdate {
   bottleColour?: string | null;
   /** @nullable */
   capColour?: string | null;
+  /** @nullable */
+  status?: string | null;
 }
 
 export type DealStage = typeof DealStage[keyof typeof DealStage];

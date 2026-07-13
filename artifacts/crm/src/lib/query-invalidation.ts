@@ -91,6 +91,7 @@ export function onUserChange(queryClient: QueryClient) {
 export function onProductionChange(queryClient: QueryClient, orderId?: string) {
   queryClient.invalidateQueries({ queryKey: ["production-dashboard"] });
   queryClient.invalidateQueries({ queryKey: ["production-orders"] });
+  queryClient.invalidateQueries({ queryKey: ["production-pending-summary"] });
   if (orderId) {
     queryClient.invalidateQueries({ queryKey: ["production-order", orderId] });
   }

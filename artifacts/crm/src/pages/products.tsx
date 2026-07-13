@@ -1,8 +1,10 @@
 import { useState, useCallback } from "react";
 import { useListProducts, useCreateProduct, useUpdateProduct, useDeleteProduct, getListProductsQueryKey } from "@workspace/api-client-react";
+import { useGetMe } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -10,7 +12,7 @@ import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { onProductChange } from "@/lib/query-invalidation";
 
-type Product = { id: number; name: string; category?: string | null; pricePerUnit?: number | null; productCode: string; bottleWeight?: string | null; bottleColour?: string | null; capColour?: string | null; materialType?: string | null; hsnCode?: string | null; defaultUnit?: string | null; defaultGst?: number | null };
+type Product = { id: number; name: string; category?: string | null; pricePerUnit?: number | null; productCode: string; bottleWeight?: string | null; bottleColour?: string | null; capColour?: string | null; materialType?: string | null; hsnCode?: string | null; defaultUnit?: string | null; defaultGst?: number | null; status?: string | null };
 
 const HSN_BY_MATERIAL: Record<string, string> = {
   PET: "39239090",
@@ -18,7 +20,7 @@ const HSN_BY_MATERIAL: Record<string, string> = {
 };
 
 function ProductForm({ initial, onSave, onCancel, loading, codeError }: { initial?: Partial<Product>; onSave: (d: any) => void; onCancel: () => void; loading: boolean; codeError?: string | null }) {
-  const [form, setForm] = useState({ name: initial?.name || "", category: initial?.category || "", productCode: initial?.productCode || "", bottleWeight: initial?.bottleWeight || "", bottleColour: initial?.bottleColour || "", capColour: initial?.capColour || "", materialType: initial?.materialType || "", hsnCode: initial?.hsnCode || "", defaultUnit: initial?.defaultUnit || "", defaultGst: initial?.defaultGst?.toString() || "" });
+  const [form, setForm] = useState({ name: initial?.name || "", category: initial?.category || "", productCode: initial?.productCode || "", bottleWeight: initial?.bottleWeight || "", bottleColour: initial?.bottleColour || "", capColour: initial?.capColour || "", materialType: initial?.materialType || "", hsnCode: initial?.hsnCode || "", defaultUnit: initial?.defaultUnit || "", defaultGst: initial?.defaultGst?.toString() || "", status: initial?.status || "active" });
   const f = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm(p => ({ ...p, [k]: e.target.value }));
   const handleMaterialChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const mat = e.target.value;
@@ -67,8 +69,14 @@ function ProductForm({ initial, onSave, onCancel, loading, codeError }: { initia
       <div><Label>Bottle Weight</Label><Input value={form.bottleWeight} onChange={f("bottleWeight")} /></div>
       <div><Label>Bottle Colour</Label><Input value={form.bottleColour} onChange={f("bottleColour")} /></div>
       <div><Label>Cap Colour</Label><Input value={form.capColour} onChange={f("capColour")} /></div>
+      <div><Label>Status</Label>
+        <select value={form.status} onChange={f("status")} className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors">
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </div>
       <div className="col-span-2 flex gap-2 pt-2">
-        <Button disabled={loading || !form.name || !form.productCode} onClick={() => onSave({ ...form, category: form.category || null, bottleWeight: form.bottleWeight || null, bottleColour: form.bottleColour || null, capColour: form.capColour || null, materialType: form.materialType || null, hsnCode: form.hsnCode || null, defaultUnit: form.defaultUnit || null, defaultGst: form.defaultGst ? Number(form.defaultGst) : null })}>
+        <Button disabled={loading || !form.name || !form.productCode} onClick={() => onSave({ ...form, category: form.category || null, bottleWeight: form.bottleWeight || null, bottleColour: form.bottleColour || null, capColour: form.capColour || null, materialType: form.materialType || null, hsnCode: form.hsnCode || null, defaultUnit: form.defaultUnit || null, defaultGst: form.defaultGst ? Number(form.defaultGst) : null, status: form.status || "active" })}>
           {loading ? "Saving..." : "Save"}
         </Button>
         <Button variant="outline" onClick={onCancel}>Cancel</Button>
@@ -79,11 +87,14 @@ function ProductForm({ initial, onSave, onCancel, loading, codeError }: { initia
 
 export default function Products() {
   const { data: products, isLoading } = useListProducts();
+  const { data: currentUser } = useGetMe();
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
   const deleteProduct = useDeleteProduct();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  const isAdmin = currentUser?.role === "admin";
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
@@ -132,12 +143,14 @@ export default function Products() {
           <h1 className="text-3xl font-bold tracking-tight">Products</h1>
           <p className="text-muted-foreground mt-1">Manage product catalog</p>
         </div>
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-1" /> Add Product</Button></DialogTrigger>
-          <DialogContent><DialogHeader><DialogTitle>New Product</DialogTitle></DialogHeader>
-            <ProductForm onSave={handleCreate} onCancel={() => { setCreateOpen(false); setCreateCodeError(null); }} loading={createProduct.isPending} codeError={createCodeError} />
-          </DialogContent>
-        </Dialog>
+        {isAdmin && (
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+            <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-1" /> Add Product</Button></DialogTrigger>
+            <DialogContent><DialogHeader><DialogTitle>New Product</DialogTitle></DialogHeader>
+              <ProductForm onSave={handleCreate} onCancel={() => { setCreateOpen(false); setCreateCodeError(null); }} loading={createProduct.isPending} codeError={createCodeError} />
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <div className="bg-card border rounded-md shadow-sm overflow-hidden">
@@ -153,6 +166,7 @@ export default function Products() {
               <TableHead>Price/Unit</TableHead>
               <TableHead>Bottle</TableHead>
               <TableHead>Cap</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead className="w-20" />
             </TableRow>
           </TableHeader>
@@ -174,14 +188,21 @@ export default function Products() {
                   <TableCell>{[p.bottleWeight, p.bottleColour].filter(Boolean).join(" · ") || "-"}</TableCell>
                   <TableCell>{p.capColour || "-"}</TableCell>
                   <TableCell>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditProduct(p as Product)}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(p.id)}>
-                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                      </Button>
-                    </div>
+                    <Badge variant="outline" className={`text-xs ${p.status === "inactive" ? "text-red-600 border-red-300" : "text-green-600 border-green-300"}`}>
+                      {p.status === "inactive" ? "Inactive" : "Active"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {isAdmin && (
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditProduct(p as Product)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(p.id)}>
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))

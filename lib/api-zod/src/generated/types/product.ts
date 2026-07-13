@@ -20,5 +20,7 @@ export interface Product {
   bottleColour?: string | null;
   /** @nullable */
   capColour?: string | null;
+  /** @nullable */
+  status?: string | null;
   createdAt?: string;
 }
