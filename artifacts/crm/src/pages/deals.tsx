@@ -156,6 +156,8 @@ export default function Deals() {
   const [piSentLoading, setPiSentLoading] = useState(false);
   const [piSentExistingPi, setPiSentExistingPi] = useState(false);
 
+  const WON_UNITS = useMemo(() => UNITS.filter(u => u !== "Not Sure"), []);
+
   if (isLoading) return <div className="p-8">Loading...</div>;
 
   const ownerName = ownerFilter ? users?.find(u => u.id === Number(ownerFilter))?.name : null;
@@ -172,8 +174,6 @@ export default function Deals() {
   })();
 
   const clearFilters = () => navigate("/deals");
-
-  const WON_UNITS = useMemo(() => UNITS.filter(u => u !== "Not Sure"), []);
 
   const handleMarkWonCancel = () => {
     if (markWonDeal) {

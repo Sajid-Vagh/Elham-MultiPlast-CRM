@@ -286,7 +286,10 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
       {/* Edit Deal Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Edit Deal</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Edit Deal</DialogTitle>
+            <DialogDescription>Update the deal details below.</DialogDescription>
+          </DialogHeader>
           <div className="space-y-4 py-2">
             <div><Label>Title</Label><Input value={editTitle} onChange={e => setEditTitle(e.target.value)} placeholder="Deal title" /></div>
             <div><Label>Total Value (₹)</Label><Input type="number" value={editValue} onChange={e => setEditValue(e.target.value)} placeholder="0" /></div>
@@ -302,7 +305,10 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
       {/* Log Activity Dialog */}
       <Dialog open={activityOpen} onOpenChange={setActivityOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Log Activity</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Log Activity</DialogTitle>
+            <DialogDescription>Record a new activity for this deal.</DialogDescription>
+          </DialogHeader>
           <div className="space-y-4 py-2">
             <div><Label>Type</Label>
               <Select value={actType} onValueChange={setActType}>
@@ -324,7 +330,10 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
       {/* Change Stage Dialog */}
       <Dialog open={stageOpen} onOpenChange={setStageOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Change Stage</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Change Stage</DialogTitle>
+            <DialogDescription>Select a new stage for this deal.</DialogDescription>
+          </DialogHeader>
           <div className="py-4">
             <Label>New Stage</Label>
             <Select value={selectedStage} onValueChange={setSelectedStage}>

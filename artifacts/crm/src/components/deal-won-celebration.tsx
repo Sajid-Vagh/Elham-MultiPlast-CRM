@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { CheckCircle2 } from "lucide-react";
 
 interface CelebrationDeal {
@@ -131,6 +131,8 @@ export function DealWonCelebration({ deal, open, onClose, onViewOrder, onGoToPro
           }`}
           onInteractOutside={(e) => e.preventDefault()}
         >
+          <DialogTitle className="sr-only">Deal Won Successfully</DialogTitle>
+          <DialogDescription className="sr-only">Congratulations! The deal has been marked as won.</DialogDescription>
           <style>{`
             @keyframes confetti-fall {
               0% { transform: translateY(0) rotate(0deg); opacity: 1; }
