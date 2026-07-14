@@ -75,3 +75,19 @@ export type ProductionTimeline = typeof productionTimelineTable.$inferSelect;
 export const insertProductionNoteSchema = createInsertSchema(productionNotesTable).omit({ id: true, createdAt: true });
 export type InsertProductionNote = z.infer<typeof insertProductionNoteSchema>;
 export type ProductionNote = typeof productionNotesTable.$inferSelect;
+
+export const productionMessagesTable = pgTable("production_messages", {
+  id: serial("id").primaryKey(),
+  productionOrderId: integer("production_order_id")
+    .references(() => productionOrdersTable.id, { onDelete: "cascade" })
+    .notNull(),
+  senderId: integer("sender_id").references(() => usersTable.id, { onDelete: "set null" }),
+  senderName: text("sender_name").notNull(),
+  senderRole: text("sender_role").notNull(),
+  message: text("message").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertProductionMessageSchema = createInsertSchema(productionMessagesTable).omit({ id: true, createdAt: true });
+export type InsertProductionMessage = z.infer<typeof insertProductionMessageSchema>;
+export type ProductionMessage = typeof productionMessagesTable.$inferSelect;

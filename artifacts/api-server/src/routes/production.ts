@@ -4,6 +4,7 @@ import {
   productionOrdersTable,
   productionTimelineTable,
   productionNotesTable,
+  productionMessagesTable,
   proformaInvoicesTable,
   proformaInvoiceItemsTable,
   usersTable,
@@ -927,6 +928,150 @@ router.get("/production/progress-by-deal/:dealId", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Get production progress by deal error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Order Conversation: Get Messages ──
+router.get("/production/orders/:id/messages", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const messages = await db
+      .select()
+      .from(productionMessagesTable)
+      .where(eq(productionMessagesTable.productionOrderId, id))
+      .orderBy(productionMessagesTable.createdAt);
+
+    res.json(messages);
+  } catch (err) {
+    console.error("Get production messages error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Order Conversation: Send Message ──
+router.post("/production/orders/:id/messages", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const { message } = req.body;
+    if (!message || !message.trim()) {
+      res.status(400).json({ error: "Message is required" });
+      return;
+    }
+
+    // Verify production order exists
+    const [order] = await db
+      .select()
+      .from(productionOrdersTable)
+      .where(eq(productionOrdersTable.id, id));
+    if (!order) { res.status(404).json({ error: "Production order not found" }); return; }
+
+    // Insert message
+    const [newMessage] = await db
+      .insert(productionMessagesTable)
+      .values({
+        productionOrderId: id,
+        senderId: user.id,
+        senderName: user.name,
+        senderRole: user.role,
+        message: message.trim(),
+      })
+      .returning();
+
+    // Determine which users to notify based on sender role
+    const notifyUserIds: number[] = [];
+
+    if (user.role === "sales" || user.role === "support") {
+      // Notify the assigned production manager
+      if (order.assignedProductionManagerId && order.assignedProductionManagerId !== user.id) {
+        notifyUserIds.push(order.assignedProductionManagerId);
+      }
+      // Notify all admins (except sender)
+      const admins = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(eq(usersTable.role, "admin"));
+      for (const a of admins) {
+        if (a.id !== user.id && !notifyUserIds.includes(a.id)) {
+          notifyUserIds.push(a.id);
+        }
+      }
+    } else if (user.role === "production_manager") {
+      // Notify the sales owner who created the PI/deal
+      if (order.createdById && order.createdById !== user.id) {
+        notifyUserIds.push(order.createdById);
+      }
+      // Find the PI creator and deal contact owner
+      if (order.proformaInvoiceId) {
+        const [inv] = await db
+          .select({ createdBy: proformaInvoicesTable.createdBy, contactId: proformaInvoicesTable.contactId })
+          .from(proformaInvoicesTable)
+          .where(eq(proformaInvoicesTable.id, order.proformaInvoiceId));
+        if (inv?.createdBy && inv.createdBy !== user.id && !notifyUserIds.includes(inv.createdBy)) {
+          notifyUserIds.push(inv.createdBy);
+        }
+        if (inv?.contactId) {
+          const [contact] = await db
+            .select({ salesOwnerId: contactsTable.salesOwnerId })
+            .from(contactsTable)
+            .where(eq(contactsTable.id, inv.contactId));
+          if (contact?.salesOwnerId && contact.salesOwnerId !== user.id && !notifyUserIds.includes(contact.salesOwnerId)) {
+            notifyUserIds.push(contact.salesOwnerId);
+          }
+        }
+      }
+    } else if (user.role === "admin") {
+      // Notify assigned production manager
+      if (order.assignedProductionManagerId && order.assignedProductionManagerId !== user.id) {
+        notifyUserIds.push(order.assignedProductionManagerId);
+      }
+      // Notify PI creator / deal contact owner
+      if (order.proformaInvoiceId) {
+        const [inv] = await db
+          .select({ createdBy: proformaInvoicesTable.createdBy, contactId: proformaInvoicesTable.contactId })
+          .from(proformaInvoicesTable)
+          .where(eq(proformaInvoicesTable.id, order.proformaInvoiceId));
+        if (inv?.createdBy && inv.createdBy !== user.id && !notifyUserIds.includes(inv.createdBy)) {
+          notifyUserIds.push(inv.createdBy);
+        }
+        if (inv?.contactId) {
+          const [contact] = await db
+            .select({ salesOwnerId: contactsTable.salesOwnerId })
+            .from(contactsTable)
+            .where(eq(contactsTable.id, inv.contactId));
+          if (contact?.salesOwnerId && contact.salesOwnerId !== user.id && !notifyUserIds.includes(contact.salesOwnerId)) {
+            notifyUserIds.push(contact.salesOwnerId);
+          }
+        }
+      }
+    }
+
+    // Send notifications to relevant users
+    for (const uid of notifyUserIds) {
+      await createNotification({
+        userId: uid,
+        type: "production_message",
+        title: `New message from ${user.name}`,
+        message: message.trim().slice(0, 200),
+        link: `/production/orders/${id}`,
+        relatedId: id,
+        relatedType: "production_order",
+      });
+    }
+
+    res.status(201).json(newMessage);
+  } catch (err) {
+    console.error("Send production message error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

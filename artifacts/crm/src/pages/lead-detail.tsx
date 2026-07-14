@@ -3,9 +3,9 @@ import { useParams, useLocation, Link } from "wouter";
 import {
   useGetContact, useListDeals, useListActivities, useCreateDeal, useCreateActivity,
   useUpdateContact, useDeleteContact, useListUsers, useListContactProformaInvoices, getListContactProformaInvoicesQueryKey,
-  getGetContactQueryKey
+  getGetContactQueryKey, useGetMe
 } from "@workspace/api-client-react";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText, Factory } from "lucide-react";
+import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText, Factory, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
@@ -78,6 +78,7 @@ export default function LeadDetail() {
   const { data: deals } = useListDeals({ contactId: contactId });
   const { data: activities } = useListActivities({ contactId: contactId });
   const { data: users } = useListUsers();
+  const { data: currentUser } = useGetMe();
 
   const createDeal = useCreateDeal();
   const createActivity = useCreateActivity();
@@ -189,6 +190,49 @@ export default function LeadDetail() {
     enabled: !!contactId,
     staleTime: 10_000,
   });
+
+  // Production Messages (Order Conversation)
+  const [messageText, setMessageText] = useState("");
+  const { data: productionMessages, refetch: refetchMessages } = useQuery({
+    queryKey: ["production-messages", productionOrder?.id],
+    queryFn: async () => {
+      const token = localStorage.getItem("crm_token");
+      const res = await fetch(`/api/production/orders/${productionOrder!.id}/messages`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return [];
+      return res.json() as Promise<Array<{
+        id: number; productionOrderId: number; senderId: number | null;
+        senderName: string; senderRole: string; message: string; createdAt: string;
+      }>>;
+    },
+    enabled: !!productionOrder?.id,
+    staleTime: 3_000,
+    refetchInterval: productionOrder?.id ? 5_000 : false,
+  });
+
+  const sendMessage = useMutation({
+    mutationFn: async (msg: string) => {
+      const token = localStorage.getItem("crm_token");
+      const res = await fetch(`/api/production/orders/${productionOrder!.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ message: msg }),
+      });
+      if (!res.ok) throw new Error("Failed to send");
+      return res.json();
+    },
+    onSuccess: () => {
+      setMessageText("");
+      refetchMessages();
+    },
+    onError: () => toast({ title: "Failed to send message", variant: "destructive" }),
+  });
+
+  const handleSendMessage = () => {
+    if (!messageText.trim() || sendMessage.isPending) return;
+    sendMessage.mutate(messageText.trim());
+  };
 
   // Upcoming Follow-up
   const { data: upcomingFollowUp } = useQuery({
@@ -930,6 +974,60 @@ export default function LeadDetail() {
                       </div>
                     </div>
                   )}
+
+                  {/* Order Conversation */}
+                  <div className="border-t pt-3 mt-1">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Order Conversation</span>
+                      {productionMessages && productionMessages.length > 0 && (
+                        <Badge variant="outline" className="text-[10px]">{productionMessages.length}</Badge>
+                      )}
+                    </div>
+                    <div className="max-h-60 overflow-y-auto space-y-2 mb-3">
+                      {!productionMessages || productionMessages.length === 0 ? (
+                        <p className="text-[10px] text-muted-foreground text-center py-2">No messages yet. Start the conversation below.</p>
+                      ) : (
+                        productionMessages.map((msg) => {
+                          const isMe = currentUser && msg.senderId === currentUser.id;
+                          return (
+                            <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
+                              <div className={`max-w-[85%] rounded-lg px-2.5 py-1.5 text-xs ${isMe ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+                                {!isMe && (
+                                  <div className="flex items-center gap-1.5 mb-0.5">
+                                    <span className="font-medium text-[10px]">{msg.senderName}</span>
+                                    <Badge variant="outline" className="text-[8px] px-1 py-0 h-auto leading-none">{msg.senderRole}</Badge>
+                                  </div>
+                                )}
+                                <p className="whitespace-pre-wrap break-words">{msg.message}</p>
+                              </div>
+                              <span className="text-[9px] text-muted-foreground mt-0.5 px-1">
+                                {isMe ? msg.senderName : ""} {new Date(msg.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                    <div className="flex items-end gap-1.5">
+                      <Textarea
+                        value={messageText}
+                        onChange={e => setMessageText(e.target.value)}
+                        placeholder="Type a message..."
+                        rows={1}
+                        className="min-h-[36px] max-h-20 text-xs resize-none flex-1"
+                        onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
+                      />
+                      <Button
+                        size="icon"
+                        className="h-9 w-9 shrink-0"
+                        onClick={handleSendMessage}
+                        disabled={!messageText.trim() || sendMessage.isPending}
+                      >
+                        <Send className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+
                   <Link href={`/production/orders/${productionOrder.id}`}>
                     <Button size="sm" variant="outline" className="w-full h-7 text-xs mt-1">
                       <ExternalLink className="h-3 w-3 mr-1" /> View Production Order
