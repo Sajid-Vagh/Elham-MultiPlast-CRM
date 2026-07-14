@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { onUserChange } from "@/lib/query-invalidation";
 import { UserAvatar } from "@/components/user-avatar";
+import { EditProfileModal } from "@/components/edit-profile-modal";
 
 const COLOR_PALETTE = ["#6366f1","#ec4899","#f59e0b","#10b981","#3b82f6","#ef4444","#8b5cf6","#14b8a6","#f97316","#84cc16"];
 
@@ -458,85 +459,6 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me }: { initial?
   );
 }
 
-function SalesProfileView({ me, onClose }: { me: any; onClose: () => void }) {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  const [photo, setPhoto] = useState<string | null | undefined>((me as any).profilePhoto);
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    const token = localStorage.getItem("crm_token");
-    const fd = new FormData();
-    fd.append("photo", file);
-    try {
-      const res = await fetch(`/api/users/${me.id}/photo`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: fd,
-      });
-      if (!res.ok) throw new Error("Upload failed");
-      const data = await res.json();
-      setPhoto(data.profilePhoto);
-      onUserChange(queryClient);
-      toast({ title: "Profile photo updated" });
-    } catch {
-      toast({ title: "Photo upload failed", variant: "destructive" });
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleRemove = async () => {
-    setUploading(true);
-    const token = localStorage.getItem("crm_token");
-    try {
-      const res = await fetch(`/api/users/${me.id}/photo`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Remove failed");
-      setPhoto(null);
-      onUserChange(queryClient);
-      toast({ title: "Profile photo removed" });
-    } catch {
-      toast({ title: "Failed to remove photo", variant: "destructive" });
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  return (
-    <div className="space-y-6 pt-2">
-      <div className="flex flex-col items-center gap-3 pb-4 border-b">
-        <UserAvatar profilePhoto={photo} name={me.name} className="w-24 h-24 border-2 border-border shadow-sm" />
-        <div className="flex gap-2">
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} />
-          <Button variant="outline" size="sm" disabled={uploading} onClick={() => fileRef.current?.click()}>
-            <Camera className="h-3.5 w-3.5 mr-1" />
-            {uploading ? "Uploading..." : photo ? "Change Photo" : "Upload Photo"}
-          </Button>
-          {photo && (
-            <Button variant="ghost" size="sm" className="text-destructive" disabled={uploading} onClick={handleRemove}>
-              <XIcon className="h-3.5 w-3.5 mr-1" /> Remove
-            </Button>
-          )}
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div><Label className="text-xs text-muted-foreground">Full Name</Label><p className="text-sm font-medium mt-1">{me.name}</p></div>
-        <div><Label className="text-xs text-muted-foreground">Username</Label><p className="text-sm font-mono mt-1">@{me.username}</p></div>
-        <div><Label className="text-xs text-muted-foreground">Role</Label><p className="text-sm capitalize mt-1">{me.role.replace("_", " ")}</p></div>
-        <div><Label className="text-xs text-muted-foreground">Unit</Label><p className="text-sm mt-1">{me.unit || "\u2014"}</p></div>
-      </div>
-      <div className="flex justify-end"><Button variant="outline" onClick={onClose}>Close</Button></div>
-    </div>
-  );
-}
-
 export default function Settings() {
   const { data: me } = useGetMe();
   const { data: users, isLoading } = useListUsers();
@@ -667,27 +589,12 @@ export default function Settings() {
         </CardContent>
       </Card>
 
-      <Dialog open={profileEditOpen} onOpenChange={o => !o && setProfileEditOpen(false)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>{isAdmin ? "Edit Profile" : "My Profile"}</DialogTitle></DialogHeader>
-          {me && (isAdmin ? (
-            <UserForm
-              initial={{ id: me.id, name: me.name, username: me.username, role: me.role, unit: me.unit, colorCode: me.colorCode, profilePhoto: (me as any).profilePhoto, canViewAllReports: (me as any).canViewAllReports ?? false, canAssignLeads: (me as any).canAssignLeads ?? false, permissions: (me as any).permissions ?? {} }}
-              onSave={(data) => {
-                const payload = { ...data };
-                if (!payload.password) delete payload.password;
-                updateUser.mutate({ id: me.id, data: payload }, { onSuccess: () => { onUserChange(queryClient); toast({ title: "Profile updated" }); setProfileEditOpen(false); }, onError: () => toast({ title: "Error", variant: "destructive" }) });
-              }}
-              onCancel={() => setProfileEditOpen(false)}
-              loading={updateUser.isPending}
-              isEdit
-              me={me}
-            />
-          ) : (
-            <SalesProfileView me={me} onClose={() => setProfileEditOpen(false)} />
-          ))}
-        </DialogContent>
-      </Dialog>
+      <EditProfileModal
+        open={profileEditOpen}
+        onOpenChange={setProfileEditOpen}
+        me={me as any}
+        updateUser={updateUser}
+      />
 
       {/* Preferences */}
       <Card>
