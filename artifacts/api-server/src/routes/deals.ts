@@ -475,13 +475,27 @@ router.post("/deals/:id/mark-won", async (req, res) => {
     // Fetch contact
     const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
 
-    // Fetch latest proforma invoice for this deal
-    const [latestPI] = await db
+    // Fetch latest proforma invoice for this deal (fallback: by contact_id)
+    let [latestPI] = await db
       .select()
       .from(proformaInvoicesTable)
       .where(eq(proformaInvoicesTable.dealId, dealId))
       .orderBy(desc(proformaInvoicesTable.createdAt))
       .limit(1);
+
+    if (!latestPI && deal.contactId) {
+      const [contactPI] = await db
+        .select()
+        .from(proformaInvoicesTable)
+        .where(eq(proformaInvoicesTable.contactId, deal.contactId))
+        .orderBy(desc(proformaInvoicesTable.createdAt))
+        .limit(1);
+      if (contactPI) {
+        latestPI = contactPI;
+        // Link the PI to this deal for future lookups
+        await db.update(proformaInvoicesTable).set({ dealId: dealId }).where(eq(proformaInvoicesTable.id, contactPI.id));
+      }
+    }
 
     // Fetch proforma invoice items (if PI exists)
     let piItems: any[] = [];

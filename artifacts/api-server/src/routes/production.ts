@@ -10,6 +10,7 @@ import {
   contactsTable,
   ordersTable,
   orderItemsTable,
+  dealsTable,
 } from "@workspace/db";
 import { eq, desc, and, SQL, sql, gte, lte, or, inArray } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
@@ -96,7 +97,7 @@ async function enrichProductionOrder(order: any) {
       .where(eq(proformaInvoicesTable.id, order.proformaInvoiceId));
     invoice = inv || null;
   }
-  // Fallback: if no PI linked but deal exists, fetch latest PI from deal
+  // Fallback 1: if no PI linked but deal exists, fetch latest PI from deal
   if (!invoice && order.dealId) {
     const [inv] = await db
       .select()
@@ -105,6 +106,19 @@ async function enrichProductionOrder(order: any) {
       .orderBy(desc(proformaInvoicesTable.createdAt))
       .limit(1);
     invoice = inv || null;
+  }
+  // Fallback 2: try to find PI by contact from the deal
+  if (!invoice && order.dealId) {
+    const [deal] = await db.select({ contactId: dealsTable.contactId }).from(dealsTable).where(eq(dealsTable.id, order.dealId));
+    if (deal?.contactId) {
+      const [inv] = await db
+        .select()
+        .from(proformaInvoicesTable)
+        .where(eq(proformaInvoicesTable.contactId, deal.contactId))
+        .orderBy(desc(proformaInvoicesTable.createdAt))
+        .limit(1);
+      invoice = inv || null;
+    }
   }
 
   const items = invoice
@@ -118,6 +132,14 @@ async function enrichProductionOrder(order: any) {
   if (invoice?.contactId) {
     const [c] = await db.select().from(contactsTable).where(eq(contactsTable.id, invoice.contactId));
     if (c) contact = c;
+  }
+  // Fallback: get contact from deal when no invoice found
+  if (!contact && order.dealId) {
+    const [deal] = await db.select({ contactId: dealsTable.contactId }).from(dealsTable).where(eq(dealsTable.id, order.dealId));
+    if (deal?.contactId) {
+      const [c] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+      if (c) contact = c;
+    }
   }
 
   let assignedManager = null;
@@ -236,18 +258,31 @@ router.get("/production/pending-summary", async (req, res) => {
     const unitWhere = unitConditions.length > 0 ? and(...unitConditions) : undefined;
 
     const results = await db.execute(sql`
+      WITH resolved_invoices AS (
+        SELECT
+          po.id AS po_id,
+          COALESCE(
+            po.proforma_invoice_id,
+            (SELECT pi2.id FROM proforma_invoices pi2
+             JOIN deals d ON d.contact_id = pi2.contact_id
+             WHERE d.id = po.deal_id AND pi2.is_deleted = false
+             ORDER BY pi2.created_at DESC LIMIT 1)
+          ) AS resolved_invoice_id
+        FROM production_orders po
+        WHERE po.status NOT IN ('Completed', 'Cancelled')
+      )
       SELECT
         pii.product_name AS "productName",
         SUM(pii.quantity::numeric) AS "totalQuantity",
-        COUNT(DISTINCT po.id) AS "orderCount",
-        array_agg(DISTINCT po.id) AS "orderIds"
-      FROM production_orders po
-      JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
+        COUNT(DISTINCT ri.po_id) AS "orderCount",
+        array_agg(DISTINCT ri.po_id) AS "orderIds"
+      FROM resolved_invoices ri
+      JOIN proforma_invoices pi ON pi.id = ri.resolved_invoice_id
       JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
-      WHERE po.status NOT IN ('Completed', 'Cancelled')
+      WHERE ri.resolved_invoice_id IS NOT NULL
         AND pi.is_deleted = false
-        ${unitFilter && unitFilter !== "all" ? sql`AND po.production_unit = ${unitFilter}` : sql``}
-        ${accessibleUnits && !(unitFilter && unitFilter !== "all") ? sql`AND (po.production_unit IN (${sql.join(accessibleUnits.map(u => sql`${u}`), sql`, `)}) OR po.production_unit IS NULL)` : sql``}
+        ${unitFilter && unitFilter !== "all" ? sql`AND EXISTS (SELECT 1 FROM production_orders po WHERE po.id = ri.po_id AND po.production_unit = ${unitFilter})` : sql``}
+        ${accessibleUnits && !(unitFilter && unitFilter !== "all") ? sql`AND EXISTS (SELECT 1 FROM production_orders po WHERE po.id = ri.po_id AND (po.production_unit IN (${sql.join(accessibleUnits.map(u => sql`${u}`), sql`, `)}) OR po.production_unit IS NULL))` : sql``}
       GROUP BY pii.product_name
       HAVING SUM(pii.quantity::numeric) > 0
       ORDER BY SUM(pii.quantity::numeric) DESC
