@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText } from "lucide-react";
+import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText, Factory } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
@@ -163,6 +163,31 @@ export default function LeadDetail() {
     },
     enabled: !!contactId,
     staleTime: 30_000,
+  });
+
+  // Production Order for this contact
+  const { data: productionOrder } = useQuery({
+    queryKey: ["production-by-contact", contactId],
+    queryFn: async () => {
+      const token = localStorage.getItem("crm_token");
+      const res = await fetch(`/api/production/by-contact/${contactId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return null;
+      return res.json() as Promise<{
+        id: number; status: string; priority: string; expectedDispatchDate: string | null;
+        productionUnit: string | null; productionRemarks: string | null;
+        updatedAt: string; createdAt: string;
+        lastUpdatedBy: { id: number; name: string } | null;
+        assignedManager: { id: number; name: string } | null;
+        createdByName: string | null; createdByRole: string | null;
+        timeline: Array<{ id: number; status: string; notes: string | null; createdAt: string; createdByName: string | null }>;
+        notes: Array<{ id: number; note: string; createdAt: string; createdByName: string | null }>;
+        invoiceId: number | null; invoiceNumber: string | null;
+      } | null>;
+    },
+    enabled: !!contactId,
+    staleTime: 10_000,
   });
 
   // Upcoming Follow-up
@@ -837,6 +862,83 @@ export default function LeadDetail() {
               ))}
             </div>
           </div>
+
+          {/* Production Updates */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <Factory className="h-3.5 w-3.5" /> Production Updates
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!productionOrder ? (
+                <p className="text-xs text-muted-foreground text-center py-4">No Production Order has been created yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground text-xs">Status</span>
+                    <Badge className={`text-[10px] px-2 py-0.5 ${
+                      productionOrder.status === "Completed" ? "bg-green-100 text-green-700 border-green-200" :
+                      productionOrder.status === "Cancelled" ? "bg-red-100 text-red-700 border-red-200" :
+                      productionOrder.status === "On Hold" ? "bg-yellow-100 text-yellow-700 border-yellow-200" :
+                      "bg-blue-100 text-blue-700 border-blue-200"
+                    }`}>{productionOrder.status}</Badge>
+                  </div>
+                  {productionOrder.lastUpdatedBy && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground text-xs">Updated By</span>
+                      <span className="text-xs font-medium">{productionOrder.lastUpdatedBy.name}</span>
+                    </div>
+                  )}
+                  {productionOrder.updatedAt && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground text-xs">Last Updated</span>
+                      <span className="text-xs">{new Date(productionOrder.updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                    </div>
+                  )}
+                  {productionOrder.notes && productionOrder.notes.length > 0 && (
+                    <div>
+                      <span className="text-muted-foreground text-xs">Latest Production Note</span>
+                      <div className="mt-1 p-2 rounded-md bg-muted/30 text-xs">
+                        <p className="whitespace-pre-wrap line-clamp-3">{productionOrder.notes[0].note}</p>
+                        <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground">
+                          {productionOrder.notes[0].createdByName && <span>by {productionOrder.notes[0].createdByName}</span>}
+                          <span>{new Date(productionOrder.notes[0].createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {productionOrder.timeline && productionOrder.timeline.length > 0 && (
+                    <div>
+                      <span className="text-muted-foreground text-xs">Production Timeline</span>
+                      <div className="mt-1 space-y-1.5 max-h-40 overflow-y-auto">
+                        {productionOrder.timeline.slice(0, 5).map((t) => (
+                          <div key={t.id} className="flex items-start gap-2 text-xs">
+                            <div className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-primary mt-1.5" />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-medium">{t.status}</span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {new Date(t.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                                </span>
+                              </div>
+                              {t.notes && <p className="text-muted-foreground text-[10px] line-clamp-1">{t.notes}</p>}
+                              {t.createdByName && <p className="text-[10px] text-muted-foreground">by {t.createdByName}</p>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <Link href={`/production-orders/${productionOrder.id}`}>
+                    <Button size="sm" variant="outline" className="w-full h-7 text-xs mt-1">
+                      <ExternalLink className="h-3 w-3 mr-1" /> View Production Order
+                    </Button>
+                  </Link>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Section 8: Notification History */}
           <Card>

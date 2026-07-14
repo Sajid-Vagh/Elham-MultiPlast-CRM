@@ -692,6 +692,101 @@ router.post("/production/orders/:id/notes", async (req, res) => {
   }
 });
 
+// ── Production Order by Contact ID (for Lead Detail page) ──
+router.get("/production/by-contact/:contactId", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const contactId = Number(req.params.contactId);
+    if (isNaN(contactId)) { res.status(400).json({ error: "Invalid contact id" }); return; }
+
+    // Find proforma invoices for this contact
+    const invoices = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(eq(proformaInvoicesTable.contactId, contactId))
+      .orderBy(desc(proformaInvoicesTable.createdAt));
+
+    if (invoices.length === 0) { res.json(null); return; }
+
+    const invoiceIds = invoices.map(i => i.id);
+
+    // Find production orders linked to these invoices
+    const orders = await db
+      .select()
+      .from(productionOrdersTable)
+      .where(inArray(productionOrdersTable.proformaInvoiceId, invoiceIds))
+      .orderBy(desc(productionOrdersTable.createdAt));
+
+    if (orders.length === 0) { res.json(null); return; }
+
+    // Use the most recent production order
+    const po = orders[0];
+
+    let lastUpdatedBy = null;
+    if (po.updatedBy) {
+      const [u] = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, po.updatedBy));
+      if (u) lastUpdatedBy = u;
+    }
+
+    let assignedManager = null;
+    if (po.assignedProductionManagerId) {
+      const [m] = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, po.assignedProductionManagerId));
+      if (m) assignedManager = m;
+    }
+
+    const timeline = await db
+      .select({
+        id: productionTimelineTable.id,
+        status: productionTimelineTable.status,
+        notes: productionTimelineTable.notes,
+        createdAt: productionTimelineTable.createdAt,
+        createdByName: usersTable.name,
+      })
+      .from(productionTimelineTable)
+      .leftJoin(usersTable, eq(usersTable.id, productionTimelineTable.createdBy))
+      .where(eq(productionTimelineTable.productionOrderId, po.id))
+      .orderBy(desc(productionTimelineTable.createdAt));
+
+    const notes = await db
+      .select({
+        id: productionNotesTable.id,
+        note: productionNotesTable.note,
+        createdAt: productionNotesTable.createdAt,
+        createdByName: usersTable.name,
+      })
+      .from(productionNotesTable)
+      .leftJoin(usersTable, eq(usersTable.id, productionNotesTable.createdBy))
+      .where(eq(productionNotesTable.productionOrderId, po.id))
+      .orderBy(desc(productionNotesTable.createdAt));
+
+    const [invoice] = invoices;
+
+    res.json({
+      id: po.id,
+      status: po.status,
+      priority: po.priority,
+      expectedDispatchDate: po.expectedDispatchDate,
+      productionUnit: po.productionUnit,
+      productionRemarks: po.productionRemarks,
+      updatedAt: po.updatedAt,
+      createdAt: po.createdAt,
+      lastUpdatedBy,
+      assignedManager,
+      createdByName: po.createdByName,
+      createdByRole: po.createdByRole,
+      timeline,
+      notes,
+      invoiceId: invoice?.id,
+      invoiceNumber: invoice?.invoiceNumber,
+    });
+  } catch (err) {
+    console.error("Get production by contact error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ── Production Reports (with unit + status + date range filters) ──
 router.get("/production/reports", async (req, res) => {
   try {

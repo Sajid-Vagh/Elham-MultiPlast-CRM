@@ -88,7 +88,7 @@ export function onUserChange(queryClient: QueryClient) {
   queryClient.invalidateQueries({ queryKey: ["category-report"] });
 }
 
-export function onProductionChange(queryClient: QueryClient, orderId?: string, dealId?: number) {
+export function onProductionChange(queryClient: QueryClient, orderId?: string, dealId?: number, contactId?: number) {
   queryClient.invalidateQueries({ queryKey: ["production-dashboard"] });
   queryClient.invalidateQueries({ queryKey: ["production-orders"] });
   queryClient.invalidateQueries({ queryKey: ["production-pending-summary"] });
@@ -100,6 +100,9 @@ export function onProductionChange(queryClient: QueryClient, orderId?: string, d
     queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) });
     queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ dealId }) });
     queryClient.invalidateQueries({ queryKey: ["production-progress-by-deal", dealId] });
+  }
+  if (contactId) {
+    queryClient.invalidateQueries({ queryKey: ["production-by-contact", contactId] });
   }
   queryClient.invalidateQueries({ queryKey: ["follow-up-activities"] });
   queryClient.invalidateQueries({ queryKey: ["dashboard-recent-activities"] });
