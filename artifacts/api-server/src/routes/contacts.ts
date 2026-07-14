@@ -470,7 +470,7 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 
-    const { lostReason, otherReason, lostNotes } = req.body as { lostReason?: string; otherReason?: string; lostNotes?: string };
+    const { lostReason, otherReason, lostNotes, lostCategory } = req.body as { lostReason?: string; otherReason?: string; lostNotes?: string; lostCategory?: string };
     if (!lostReason) { res.status(400).json({ error: "Lost reason is required" }); return; }
 
     const now = new Date();
@@ -482,6 +482,28 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
       lostNotes: lostNotes || null,
       lostDate: now,
     }).where(eq(contactsTable.id, id));
+
+    // Move contact to Category A/B/C based on lostCategory
+    // EXCEPTION: My Client is permanent — they stay regardless
+    if (!contact.isMyClient && lostCategory) {
+      const prevCategory = contact.category;
+      const categoryMap: Record<string, string> = {
+        A: "Category A",
+        B: "Category B",
+        C: "Category C",
+      };
+      const newCategory = categoryMap[lostCategory] || "Category C";
+
+      await db.update(contactsTable).set({ category: newCategory }).where(eq(contactsTable.id, id));
+
+      await db.insert(categoryHistoryTable).values({
+        contactId: id,
+        previousCategory: prevCategory,
+        newCategory,
+        changedBy: user.id,
+        reason: `Deal Lost - Categorized as ${newCategory}`,
+      });
+    }
 
     // Mark all active deals as Lost
     const activeDeals = await db

@@ -7,10 +7,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { LOST_REASONS } from "@/lib/deal-stages";
 
+const CATEGORY_OPTIONS = [
+  { value: "A", label: "Category A - High Potential" },
+  { value: "B", label: "Category B - Medium Potential" },
+  { value: "C", label: "Category C - No/Low Potential" },
+];
+
 export interface LostDialogData {
   lostReason: string;
   otherReason: string;
   lostNotes: string;
+  lostCategory?: string;
 }
 
 interface MarkLostDialogProps {
@@ -18,8 +25,7 @@ interface MarkLostDialogProps {
   onOpenChange: (open: boolean) => void;
   onSave: (data: LostDialogData) => void;
   saving?: boolean;
-  title?: string;
-  description?: string;
+  hideCategory?: boolean;
 }
 
 export function MarkLostDialog({
@@ -27,19 +33,20 @@ export function MarkLostDialog({
   onOpenChange,
   onSave,
   saving,
-  title = "Mark as Lost",
-  description = "Select the reason for marking this as Lost.",
+  hideCategory,
 }: MarkLostDialogProps) {
   const { toast } = useToast();
   const [lostReason, setLostReason] = useState("");
   const [otherReason, setOtherReason] = useState("");
   const [lostNotes, setLostNotes] = useState("");
+  const [lostCategory, setLostCategory] = useState("");
 
   useEffect(() => {
     if (open) {
       setLostReason("");
       setOtherReason("");
       setLostNotes("");
+      setLostCategory("");
     }
   }, [open]);
 
@@ -56,15 +63,28 @@ export function MarkLostDialog({
       toast({ title: "Validation Error", description: "Please specify the other reason", variant: "destructive" });
       return;
     }
-    onSave({ lostReason, otherReason: otherReason.trim(), lostNotes: lostNotes.trim() });
+    if (!hideCategory && !lostCategory) {
+      toast({ title: "Validation Error", description: "Please select a category to move to", variant: "destructive" });
+      return;
+    }
+    onSave({
+      lostReason,
+      otherReason: otherReason.trim(),
+      lostNotes: lostNotes.trim(),
+      ...(hideCategory ? {} : { lostCategory }),
+    });
   };
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleCancel(); }}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription className="text-xs sm:text-sm">{description}</DialogDescription>
+          <DialogTitle>{hideCategory ? "Mark Deal as Lost" : "Mark Inquiry as Lost"}</DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm">
+            {hideCategory
+              ? "Select the reason for losing this deal. Your customer remains in My Clients."
+              : "Select the reason and category for this lost inquiry."}
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 py-1 sm:space-y-4 sm:py-2">
           <div>
@@ -80,6 +100,15 @@ export function MarkLostDialog({
               <Textarea className="mt-1 text-xs sm:text-sm" placeholder="Please specify the reason..." value={otherReason} onChange={e => setOtherReason(e.target.value)} rows={3} />
             </div>
           )}
+          {!hideCategory && (
+            <div>
+              <Label className="text-xs sm:text-sm">Move To Category <span className="text-destructive">*</span></Label>
+              <Select value={lostCategory} onValueChange={setLostCategory}>
+                <SelectTrigger className="mt-1 text-xs sm:text-sm"><SelectValue placeholder="Select category" /></SelectTrigger>
+                <SelectContent className="max-h-48">{CATEGORY_OPTIONS.map(c => <SelectItem key={c.value} value={c.value} className="text-xs sm:text-sm">{c.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          )}
           <div>
             <Label className="text-xs sm:text-sm">Notes <span className="text-muted-foreground">(optional)</span></Label>
             <Textarea className="mt-1 text-xs sm:text-sm" placeholder="Additional notes..." value={lostNotes} onChange={e => setLostNotes(e.target.value)} rows={2} />
@@ -87,7 +116,7 @@ export function MarkLostDialog({
         </div>
         <DialogFooter className="gap-2 flex-col-reverse sm:flex-row">
           <Button variant="outline" onClick={handleCancel} disabled={saving} className="w-full sm:w-auto text-xs sm:text-sm">Cancel</Button>
-          <Button onClick={handleSave} disabled={saving || !lostReason || (lostReason === "Other" && !otherReason.trim())} className="w-full sm:w-auto text-xs sm:text-sm">
+          <Button onClick={handleSave} disabled={saving || !lostReason || (!hideCategory && !lostCategory) || (lostReason === "Other" && !otherReason.trim())} className="w-full sm:w-auto text-xs sm:text-sm">
             {saving ? "Saving..." : "Save"}
           </Button>
         </DialogFooter>

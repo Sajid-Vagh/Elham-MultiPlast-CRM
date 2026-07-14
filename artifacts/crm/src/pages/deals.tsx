@@ -241,11 +241,11 @@ export default function Deals() {
     setLostDeal(null);
   };
 
-  const handleLostSave = (data: { lostReason: string; otherReason: string; lostNotes: string }) => {
+  const handleLostSave = (data: { lostReason: string; otherReason: string; lostNotes: string; lostCategory?: string }) => {
     if (!lostDeal) return;
     setLostSubmitting(true);
     updateDeal.mutate(
-      { id: lostDeal.id, data: { stage: "Lost" as DealStage, lostReason: data.lostReason, otherReason: data.otherReason, lostNotes: data.lostNotes } as any },
+      { id: lostDeal.id, data: { stage: "Lost" as DealStage, lostReason: data.lostReason, otherReason: data.otherReason, lostNotes: data.lostNotes, ...(data.lostCategory ? { lostCategory: data.lostCategory } : {}) } as any },
       {
         onSuccess: () => {
           setLostSubmitting(false);
@@ -574,6 +574,7 @@ export default function Deals() {
         onOpenChange={(open) => { if (!open) handleLostCancel(); }}
         onSave={handleLostSave}
         saving={lostSubmitting}
+        hideCategory={lostDeal?.contact?.category === "My Client"}
       />
       <DealDetailDrawer
         dealId={drawerDealId}

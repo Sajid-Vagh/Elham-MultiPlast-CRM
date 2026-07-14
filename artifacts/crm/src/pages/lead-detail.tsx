@@ -313,7 +313,7 @@ export default function LeadDetail() {
     });
   };
 
-  const handleMarkLost = (data: { lostReason: string; otherReason: string; lostNotes: string }) => {
+  const handleMarkLost = (data: { lostReason: string; otherReason: string; lostNotes: string; lostCategory?: string }) => {
     setLostSubmitting(true);
     fetch(`/api/contacts/${contactId}/mark-lost`, {
       method: "POST",
@@ -661,8 +661,7 @@ export default function LeadDetail() {
             onOpenChange={setLostOpen}
             onSave={handleMarkLost}
             saving={lostSubmitting}
-            title="Mark Inquiry as Lost"
-            description="Select the reason for marking this inquiry as Lost."
+            hideCategory={contact?.category === "My Client"}
           />
         </div>
 

@@ -240,9 +240,9 @@ export default function DealDetail() {
     });
   };
 
-  const handleLostSave = (data: { lostReason: string; otherReason: string; lostNotes: string }) => {
+  const handleLostSave = (data: { lostReason: string; otherReason: string; lostNotes: string; lostCategory?: string }) => {
     setLostSubmitting(true);
-    updateDeal.mutate({ id: dealId, data: { stage: "Lost" as any, lostReason: data.lostReason, otherReason: data.otherReason, lostNotes: data.lostNotes } as any }, {
+    updateDeal.mutate({ id: dealId, data: { stage: "Lost" as any, lostReason: data.lostReason, otherReason: data.otherReason, lostNotes: data.lostNotes, ...(data.lostCategory ? { lostCategory: data.lostCategory } : {}) } as any }, {
       onSuccess: () => {
         setLostSubmitting(false); setLostOpen(false);
         onDealChange(queryClient, dealId, contact?.id);
@@ -780,6 +780,7 @@ export default function DealDetail() {
         onOpenChange={setLostOpen}
         onSave={handleLostSave}
         saving={lostSubmitting}
+        hideCategory={contact?.category === "My Client"}
       />
 
       {/* PI Sent Confirmation Dialog */}
