@@ -930,7 +930,7 @@ export default function LeadDetail() {
                       </div>
                     </div>
                   )}
-                  <Link href={`/production-orders/${productionOrder.id}`}>
+                  <Link href={`/production/orders/${productionOrder.id}`}>
                     <Button size="sm" variant="outline" className="w-full h-7 text-xs mt-1">
                       <ExternalLink className="h-3 w-3 mr-1" /> View Production Order
                     </Button>
