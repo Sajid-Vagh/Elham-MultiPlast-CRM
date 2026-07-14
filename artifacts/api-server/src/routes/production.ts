@@ -11,6 +11,7 @@ import {
   ordersTable,
   orderItemsTable,
   dealsTable,
+  activitiesTable,
 } from "@workspace/db";
 import { eq, desc, and, SQL, sql, gte, lte, or, inArray } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
@@ -602,6 +603,19 @@ router.patch("/production/orders/:id/status", async (req, res) => {
       });
     }
 
+    // Create activity entry for deal timeline
+    if (invoice?.dealId) {
+      const statusFrom = order.status;
+      const ts = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      await db.insert(activitiesTable).values({
+        dealId: invoice.dealId,
+        contactId: invoice.contactId || null,
+        type: "Note",
+        notes: `Production Status Changed: ${statusFrom} → ${status}${notes ? `\n${notes}` : ""}\n\nBy: ${user.name}\n${ts}`,
+        createdBy: user.id,
+      });
+    }
+
     const [updated] = await db
       .select()
       .from(productionOrdersTable)
@@ -654,6 +668,21 @@ router.post("/production/orders/:id/notes", async (req, res) => {
     let createdByUser = null;
     if (user) {
       createdByUser = { id: user.id, name: user.name };
+    }
+
+    // Create activity entry for deal timeline
+    if (order.proformaInvoiceId) {
+      const [inv] = await db.select().from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, order.proformaInvoiceId));
+      if (inv?.dealId) {
+        const ts = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        await db.insert(activitiesTable).values({
+          dealId: inv.dealId,
+          contactId: inv.contactId || null,
+          type: "Note",
+          notes: `Production Note Added\n\n"${note.trim()}"\n\nBy: ${user.name}\n${ts}`,
+          createdBy: user.id,
+        });
+      }
     }
 
     res.status(201).json({ ...newNote, createdByUser });
@@ -717,6 +746,92 @@ router.get("/production/reports", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Production reports error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Production Progress by Deal ID (for Sales/Support deal detail view) ──
+router.get("/production/progress-by-deal/:dealId", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const dealId = Number(req.params.dealId);
+    if (isNaN(dealId)) { res.status(400).json({ error: "Invalid deal id" }); return; }
+
+    // Find PI for this deal
+    const [invoice] = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(eq(proformaInvoicesTable.dealId, dealId))
+      .orderBy(desc(proformaInvoicesTable.createdAt))
+      .limit(1);
+
+    if (!invoice) { res.json(null); return; }
+
+    const [po] = await db
+      .select()
+      .from(productionOrdersTable)
+      .where(eq(productionOrdersTable.proformaInvoiceId, invoice.id));
+
+    if (!po) { res.json(null); return; }
+
+    let assignedManager = null;
+    if (po.assignedProductionManagerId) {
+      const [m] = await db.select().from(usersTable).where(eq(usersTable.id, po.assignedProductionManagerId));
+      if (m) {
+        const { passwordHash: _, ...safe } = m;
+        assignedManager = safe;
+      }
+    }
+
+    let lastUpdatedBy = null;
+    if (po.updatedBy) {
+      const [u] = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, po.updatedBy));
+      if (u) lastUpdatedBy = u;
+    }
+
+    const timeline = await db
+      .select({
+        id: productionTimelineTable.id,
+        status: productionTimelineTable.status,
+        notes: productionTimelineTable.notes,
+        createdAt: productionTimelineTable.createdAt,
+        createdByName: usersTable.name,
+      })
+      .from(productionTimelineTable)
+      .leftJoin(usersTable, eq(usersTable.id, productionTimelineTable.createdBy))
+      .where(eq(productionTimelineTable.productionOrderId, po.id))
+      .orderBy(desc(productionTimelineTable.createdAt));
+
+    const notes = await db
+      .select({
+        id: productionNotesTable.id,
+        note: productionNotesTable.note,
+        createdAt: productionNotesTable.createdAt,
+        createdByName: usersTable.name,
+      })
+      .from(productionNotesTable)
+      .leftJoin(usersTable, eq(usersTable.id, productionNotesTable.createdBy))
+      .where(eq(productionNotesTable.productionOrderId, po.id))
+      .orderBy(desc(productionNotesTable.createdAt));
+
+    res.json({
+      id: po.id,
+      status: po.status,
+      priority: po.priority,
+      expectedDispatchDate: po.expectedDispatchDate,
+      assignedProductionManager: assignedManager,
+      productionUnit: po.productionUnit,
+      productionRemarks: po.productionRemarks,
+      updatedAt: po.updatedAt,
+      lastUpdatedBy,
+      timeline,
+      notes,
+      invoiceNumber: invoice.invoiceNumber,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Get production progress by deal error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

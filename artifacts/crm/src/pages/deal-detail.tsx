@@ -6,7 +6,7 @@ import {
   useGetMe,
   getGetDealQueryKey,   getListDealProductsQueryKey, getListActivitiesQueryKey
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { onDealChange, onActivityChange, onProductionChange } from "@/lib/query-invalidation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,6 +60,18 @@ export default function DealDetail() {
   const { data: dealProducts } = useListDealProducts(dealId, { query: { enabled: !!dealId, queryKey: getListDealProductsQueryKey(dealId) } });
   const { data: activities } = useListActivities({ dealId }, { query: { queryKey: getListActivitiesQueryKey({ dealId }) } });
   const { data: allProducts } = useListProducts();
+  const { data: productionProgress } = useQuery({
+    queryKey: ["production-progress-by-deal", dealId],
+    queryFn: async () => {
+      const res = await fetch(`/api/production/progress-by-deal/${dealId}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
+      });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!dealId,
+    refetchInterval: 30000,
+  });
 
   const updateDeal = useUpdateDeal();
   const addProduct = useAddDealProduct();
@@ -441,6 +453,57 @@ export default function DealDetail() {
                 {contact.companyName && <p className="text-muted-foreground">{contact.companyName}</p>}
                 <p>{contact.mobile}</p>
                 {contact.city && <p className="text-muted-foreground">{contact.city}</p>}
+              </CardContent>
+            </Card>
+          )}
+
+          {productionProgress && (
+            <Card className="border-blue-200 bg-blue-50/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                  Production Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Status</span>
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                    productionProgress.status === "Completed" ? "bg-green-100 text-green-700" :
+                    productionProgress.status === "Ready For Dispatch" ? "bg-blue-100 text-blue-700" :
+                    "bg-amber-100 text-amber-700"
+                  }`}>{productionProgress.status}</span>
+                </div>
+                {productionProgress.productionUnit && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Unit</span>
+                    <span className="font-medium">{productionProgress.productionUnit}</span>
+                  </div>
+                )}
+                {productionProgress.assignedProductionManager && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Manager</span>
+                    <span className="font-medium">{productionProgress.assignedProductionManager.name}</span>
+                  </div>
+                )}
+                {productionProgress.lastUpdatedBy && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Updated by</span>
+                    <span className="text-xs">{productionProgress.lastUpdatedBy.name}</span>
+                  </div>
+                )}
+                {productionProgress.notes?.length > 0 && (
+                  <div className="pt-2 border-t border-blue-200">
+                    <p className="text-xs text-muted-foreground mb-1">Latest Note:</p>
+                    <p className="text-xs bg-white/60 p-2 rounded">{productionProgress.notes[0].note}</p>
+                  </div>
+                )}
+                {productionProgress.invoiceNumber && (
+                  <div className="flex items-center justify-between pt-2 border-t border-blue-200">
+                    <span className="text-muted-foreground">Invoice</span>
+                    <span className="text-xs font-mono">{productionProgress.invoiceNumber}</span>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
