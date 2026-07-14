@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
 import { useParams, useLocation } from "wouter";
@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { onProductionChange } from "@/lib/query-invalidation";
-import { ArrowLeft, Plus, Clock, User } from "lucide-react";
+import { ArrowLeft, Plus, Clock, User, Send, MessageSquare } from "lucide-react";
 
 const STATUSES = [
   "Pending", "Material Ready", "Production Started", "In Process",
@@ -89,6 +89,58 @@ export default function ProductionOrderDetail() {
     },
     onError: () => toast({ title: "Failed to add note", variant: "destructive" }),
   });
+
+  // Order Conversation
+  const [messageText, setMessageText] = useState("");
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const prevMsgCountRef = useRef(0);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const { data: productionMessages, refetch: refetchMessages } = useQuery({
+    queryKey: ["production-messages", id],
+    queryFn: () => customFetch<any[]>(`/production/orders/${id}/messages`),
+    enabled: !!id,
+    staleTime: 3_000,
+    refetchInterval: id ? 5_000 : false,
+  });
+
+  const sendMessage = useMutation({
+    mutationFn: (msg: string) =>
+      customFetch<any>(`/production/orders/${id}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ message: msg }),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => {
+      setMessageText("");
+      refetchMessages();
+    },
+    onError: () => toast({ title: "Failed to send message", variant: "destructive" }),
+  });
+
+  const handleSendMessage = () => {
+    if (!messageText.trim() || sendMessage.isPending) return;
+    sendMessage.mutate(messageText.trim());
+  };
+
+  useEffect(() => {
+    if (!productionMessages) return;
+    const container = chatContainerRef.current;
+    const isAtBottom = container ? container.scrollHeight - container.scrollTop - container.clientHeight < 80 : true;
+    if (isAtBottom) {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      setUnreadCount(0);
+    } else if (productionMessages.length > prevMsgCountRef.current) {
+      setUnreadCount(c => c + (productionMessages.length - prevMsgCountRef.current));
+    }
+    prevMsgCountRef.current = productionMessages.length;
+  }, [productionMessages]);
+
+  const scrollToBottom = () => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    setUnreadCount(0);
+  };
 
   if (isLoading) {
     return (
@@ -318,6 +370,114 @@ export default function ProductionOrderDetail() {
               ) : (
                 <p className="text-sm text-muted-foreground">No notes yet</p>
               )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                    💬 Order Conversation
+                  </CardTitle>
+                  <span className="inline-flex items-center gap-1 text-[10px] text-green-600 font-medium bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                    Realtime
+                  </span>
+                </div>
+                {productionMessages && productionMessages.length > 0 && (
+                  <span className="text-[10px] text-muted-foreground">{productionMessages.length} message{productionMessages.length !== 1 ? "s" : ""}</span>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground">Communicate with the team regarding this order.</p>
+            </CardHeader>
+            <CardContent>
+              <div
+                ref={chatContainerRef}
+                className="relative rounded-xl border bg-[#fafafa] overflow-hidden"
+                style={{ height: 300 }}
+              >
+                <div className="h-full overflow-y-auto px-3 py-3 space-y-3">
+                  {!productionMessages || productionMessages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-center">
+                      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
+                        <MessageSquare className="h-5 w-5 text-muted-foreground/50" />
+                      </div>
+                      <p className="text-sm font-medium text-muted-foreground">No conversation yet.</p>
+                      <p className="text-[11px] text-muted-foreground/70 mt-1">Start a conversation with the team.</p>
+                    </div>
+                  ) : (
+                    <>
+                      {productionMessages.map((msg: any, idx: number) => {
+                        const isMe = user && msg.senderId === user.id;
+                        const showAvatar = idx === 0 || productionMessages[idx - 1].senderId !== msg.senderId;
+                        const isLastInGroup = idx === productionMessages.length - 1 || productionMessages[idx + 1].senderId !== msg.senderId;
+                        const timeStr = new Date(msg.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) === new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+                          ? new Date(msg.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
+                          : new Date(msg.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) + " • " + new Date(msg.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+                        return (
+                          <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"} animate-[fadeSlideIn_0.2s_ease-out]`}>
+                            {showAvatar && !isMe && (
+                              <div className="flex items-center gap-1.5 mb-1 ml-1">
+                                <span className="text-[11px] font-semibold text-foreground">{msg.senderName}</span>
+                                <span className="text-[9px] font-medium text-violet-600 bg-violet-50 border border-violet-200 rounded px-1.5 py-px leading-none">{msg.senderRole}</span>
+                              </div>
+                            )}
+                            {showAvatar && isMe && (
+                              <div className="flex items-center gap-1.5 mb-1 mr-1">
+                                <span className="text-[11px] font-semibold text-muted-foreground">You</span>
+                              </div>
+                            )}
+                            <div className={`max-w-[75%] px-3 py-2 text-[12.5px] leading-relaxed ${
+                              isMe
+                                ? "bg-violet-600 text-white rounded-2xl rounded-br-md shadow-sm"
+                                : "bg-white text-foreground border border-gray-200 rounded-2xl rounded-bl-md shadow-sm"
+                            }`}>
+                              <p className="whitespace-pre-wrap break-words">{msg.message}</p>
+                            </div>
+                            {isLastInGroup && (
+                              <span className={`text-[9px] text-muted-foreground/60 mt-1 ${isMe ? "mr-1" : "ml-1"}`}>
+                                {timeStr}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                      <div ref={chatEndRef} />
+                    </>
+                  )}
+                </div>
+
+                {unreadCount > 0 && (
+                  <button
+                    onClick={scrollToBottom}
+                    className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 bg-violet-600 text-white text-[11px] font-medium rounded-full px-3 py-1.5 shadow-lg hover:bg-violet-700 transition-colors cursor-pointer"
+                  >
+                    <span className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[6px] border-t-white" />
+                    {unreadCount} new message{unreadCount !== 1 ? "s" : ""}
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-end gap-2 mt-2">
+                <div className="flex-1 relative">
+                  <Textarea
+                    value={messageText}
+                    onChange={e => setMessageText(e.target.value)}
+                    placeholder="Type your message..."
+                    rows={1}
+                    className="min-h-[40px] max-h-24 text-[13px] resize-none rounded-xl border-gray-200 bg-white pr-10 focus-visible:ring-violet-500 focus-visible:border-violet-400 placeholder:text-muted-foreground/50"
+                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
+                  />
+                </div>
+                <button
+                  onClick={handleSendMessage}
+                  disabled={!messageText.trim() || sendMessage.isPending}
+                  className="shrink-0 w-10 h-10 rounded-full bg-violet-600 text-white flex items-center justify-center hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md active:scale-95"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </div>
             </CardContent>
           </Card>
         </div>
