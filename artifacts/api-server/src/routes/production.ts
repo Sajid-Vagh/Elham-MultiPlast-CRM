@@ -84,7 +84,7 @@ async function requireProductionUser(req: any, res: any): Promise<any | null> {
 function getAccessibleUnits(user: { role: string; unit?: string | null }): string[] | null {
   if (user.role === "admin") return null;
   const u = user.unit || "All";
-  if (u === "All") return null;
+  if (u === "All" || u === "Himatnagar") return null;
   return [u];
 }
 

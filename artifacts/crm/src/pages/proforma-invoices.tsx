@@ -33,6 +33,7 @@ const STATUS_COLORS: Record<string, string> = {
   "Rejected": "bg-red-100 text-red-700",
   "Expired": "bg-yellow-100 text-yellow-700",
   "Converted to Order": "bg-purple-100 text-purple-700",
+  "Converted to Production": "bg-purple-100 text-purple-700",
 };
 
 const PROD_STATUS_COLORS: Record<string, string> = {
@@ -48,7 +49,7 @@ const PROD_STATUS_COLORS: Record<string, string> = {
   "Cancelled": "bg-red-100 text-red-700",
 };
 
-const INVOICE_STATUSES = ["Draft", "Sent", "Viewed", "Approved", "Rejected", "Expired", "Converted to Order"];
+const INVOICE_STATUSES = ["Draft", "Sent", "Viewed", "Approved", "Rejected", "Expired", "Converted to Order", "Converted to Production"];
 
 function numberToWords(num: number): string {
   if (num === 0) return "Zero Rupees Only";
@@ -1956,8 +1957,8 @@ ${pagesHtml}
           }}>
             <FileText className="h-4 w-4 mr-1" /> Edit
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setStatusDialog({ open: true, invoice: inv })}>
-            Update Status
+          <Button variant="outline" size="sm" onClick={() => setStatusDialog({ open: true, invoice: inv })} disabled={!!inv.productionOrder}>
+            {inv.productionOrder ? "Production Active" : "Update Status"}
           </Button>
         </div>
         {editMode && (
@@ -2040,7 +2041,7 @@ ${pagesHtml}
           </CardContent>
         </Card>
 
-        {inv.status === "Converted to Order" && (
+        {(inv.status === "Converted to Order" || inv.status === "Converted to Production") && (
           <ProductionProgressSection invoiceId={inv.id} />
         )}
 

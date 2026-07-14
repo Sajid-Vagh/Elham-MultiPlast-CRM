@@ -6,7 +6,7 @@ import { contactsTable } from "./contacts";
 import { dealsTable } from "./deals";
 import { customerMasterTable } from "./customer_master";
 
-export const INVOICE_STATUSES = ["Draft", "Sent", "Viewed", "Approved", "Rejected", "Expired", "Converted to Order"] as const;
+export const INVOICE_STATUSES = ["Draft", "Sent", "Viewed", "Approved", "Rejected", "Expired", "Converted to Order", "Converted to Production"] as const;
 export type InvoiceStatus = typeof INVOICE_STATUSES[number];
 
 export const proformaInvoicesTable = pgTable("proforma_invoices", {

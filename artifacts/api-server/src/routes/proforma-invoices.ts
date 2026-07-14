@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable, usersTable, contactsTable, dealsTable, customerMasterTable, INVOICE_STATUSES } from "@workspace/db";
+import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable, productionNotesTable, usersTable, contactsTable, dealsTable, customerMasterTable, INVOICE_STATUSES } from "@workspace/db";
 import { eq, desc, and, or, SQL, sql, like, gte, lte, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -376,13 +376,46 @@ async function enrichInvoice(invoice: typeof proformaInvoicesTable.$inferSelect)
         assignedManager = safe;
       }
     }
+    let lastUpdatedBy = null;
+    if (po.updatedBy) {
+      const [u] = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, po.updatedBy));
+      if (u) lastUpdatedBy = u;
+    }
+    const timeline = await db
+      .select({
+        id: productionTimelineTable.id,
+        status: productionTimelineTable.status,
+        notes: productionTimelineTable.notes,
+        createdAt: productionTimelineTable.createdAt,
+        createdByName: usersTable.name,
+      })
+      .from(productionTimelineTable)
+      .leftJoin(usersTable, eq(usersTable.id, productionTimelineTable.createdBy))
+      .where(eq(productionTimelineTable.productionOrderId, po.id))
+      .orderBy(desc(productionTimelineTable.createdAt));
+    const notes = await db
+      .select({
+        id: productionNotesTable.id,
+        note: productionNotesTable.note,
+        createdAt: productionNotesTable.createdAt,
+        createdByName: usersTable.name,
+      })
+      .from(productionNotesTable)
+      .leftJoin(usersTable, eq(usersTable.id, productionNotesTable.createdBy))
+      .where(eq(productionNotesTable.productionOrderId, po.id))
+      .orderBy(desc(productionNotesTable.createdAt));
     productionOrder = {
       id: po.id,
       status: po.status,
       priority: po.priority,
       expectedDispatchDate: po.expectedDispatchDate,
       assignedProductionManager: assignedManager,
+      productionUnit: po.productionUnit,
+      productionRemarks: po.productionRemarks,
       updatedAt: po.updatedAt,
+      lastUpdatedBy,
+      timeline,
+      notes,
     };
   }
 
@@ -1054,6 +1087,24 @@ router.get("/proforma-invoices/:id/production-progress", async (req, res) => {
       .where(eq(productionTimelineTable.productionOrderId, po.id))
       .orderBy(desc(productionTimelineTable.createdAt));
 
+    const notes = await db
+      .select({
+        id: productionNotesTable.id,
+        note: productionNotesTable.note,
+        createdAt: productionNotesTable.createdAt,
+        createdByName: usersTable.name,
+      })
+      .from(productionNotesTable)
+      .leftJoin(usersTable, eq(usersTable.id, productionNotesTable.createdBy))
+      .where(eq(productionNotesTable.productionOrderId, po.id))
+      .orderBy(desc(productionNotesTable.createdAt));
+
+    let lastUpdatedBy = null;
+    if (po.updatedBy) {
+      const [u] = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, po.updatedBy));
+      if (u) lastUpdatedBy = u;
+    }
+
     res.json({
       id: po.id,
       status: po.status,
@@ -1063,7 +1114,9 @@ router.get("/proforma-invoices/:id/production-progress", async (req, res) => {
       productionUnit: po.productionUnit,
       productionRemarks: po.productionRemarks,
       updatedAt: po.updatedAt,
+      lastUpdatedBy,
       timeline,
+      notes,
     });
   } catch (err) {
     req.log.error({ err }, "Get production progress error");
@@ -1208,8 +1261,8 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
       return;
     }
 
-    if (status === "Converted to Order" && !productionUnit) {
-      res.status(400).json({ error: "Production Unit is required when converting to Order" });
+    if ((status === "Converted to Order" || status === "Converted to Production") && !productionUnit) {
+      res.status(400).json({ error: "Production Unit is required when converting to production" });
       return;
     }
 
@@ -1239,8 +1292,10 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
       notes: notes || null,
     });
 
-    // Auto-create Production Order when status changes to "Converted to Order"
-    if (status === "Converted to Order" && prevStatus !== "Converted to Order") {
+    // Auto-create Production Order when status changes to "Converted to Order" or "Converted to Production"
+    const isConversion = (status === "Converted to Order" || status === "Converted to Production")
+      && prevStatus !== "Converted to Order" && prevStatus !== "Converted to Production";
+    if (isConversion) {
       const [existing] = await db
         .select()
         .from(productionOrdersTable)
@@ -1342,13 +1397,14 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
     // Notify sales owner about status change
     const notifyUserId = invoice.salesOwnerId || invoice.createdBy;
     if (notifyUserId && notifyUserId !== user.id) {
-      const msg = status === "Converted to Order"
-        ? `Invoice #${invoice.invoiceNumber} has been converted to a Production Order.\nChanged By: ${user.name}`
+      const isConverted = status === "Converted to Order" || status === "Converted to Production";
+      const msg = isConverted
+        ? `Invoice #${invoice.invoiceNumber} has been converted to Production.\nChanged By: ${user.name}`
         : `Invoice #${invoice.invoiceNumber} status changed from "${prevStatus}" to "${status}".\nChanged By: ${user.name}`;
       await createNotification({
         userId: notifyUserId,
         type: "invoice_updated",
-        title: status === "Converted to Order" ? "Invoice Converted to Order" : "Invoice Status Updated",
+        title: isConverted ? "Invoice Converted to Production" : "Invoice Status Updated",
         message: msg,
         link: `/proforma-invoices`,
         relatedId: id,

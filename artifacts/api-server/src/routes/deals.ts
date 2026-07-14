@@ -640,10 +640,10 @@ router.post("/deals/:id/mark-won", async (req, res) => {
         }
       }
 
-      // 6. Update Proforma Invoice status → "Converted to Order"
-      if (latestPI && latestPI.status !== "Converted to Order") {
+      // 6. Update Proforma Invoice status → "Converted to Production"
+      if (latestPI && latestPI.status !== "Converted to Production" && latestPI.status !== "Converted to Order") {
         await tx.update(proformaInvoicesTable).set({
-          status: "Converted to Order",
+          status: "Converted to Production",
         }).where(eq(proformaInvoicesTable.id, latestPI.id));
       }
 
