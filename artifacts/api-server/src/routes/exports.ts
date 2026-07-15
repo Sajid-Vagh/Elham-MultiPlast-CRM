@@ -787,7 +787,7 @@ router.get("/existing-customers", async (req, res) => {
     const { format, mode, dateFrom, dateTo, ownerId, status, search } = parseQueryParams(req);
 
     const ecConditions: SQL[] = [];
-    if (user.role === "support") ecConditions.push(eq(existingCustomersTable.supportOwnerId, user.id));
+    if (user.role === "production_and_support") ecConditions.push(eq(existingCustomersTable.supportOwnerId, user.id));
 
     const ecList = ecConditions.length
       ? await db.select().from(existingCustomersTable).where(and(...ecConditions))
@@ -982,7 +982,7 @@ router.get("/production", async (req, res) => {
     const { format, mode, dateFrom, dateTo, status, search } = parseQueryParams(req);
 
     const prodConditions: SQL[] = [];
-    if (user.role === "production_manager") {
+    if (user.role === "production") {
       prodConditions.push(eq(productionOrdersTable.assignedProductionManagerId, user.id));
     }
 
@@ -1247,7 +1247,7 @@ router.get("/complaints", async (req, res) => {
 
     const compConditions: SQL[] = [];
     if (user.role === "sales") compConditions.push(eq(complaintsTable.createdBy, user.id));
-    if (user.role === "production_manager") compConditions.push(eq(complaintsTable.assignedTo, user.id));
+    if (user.role === "production") compConditions.push(eq(complaintsTable.assignedTo, user.id));
 
     const complaintsList = compConditions.length
       ? await db.select().from(complaintsTable).where(and(...compConditions))

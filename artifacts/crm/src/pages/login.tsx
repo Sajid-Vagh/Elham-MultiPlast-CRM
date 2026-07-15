@@ -28,9 +28,9 @@ export default function Login() {
         localStorage.setItem("crm_user_unit", data.user.unit || "All");
         queryClient.setQueryData(getGetMeQueryKey(), data.user);
         const isSmallUnit = data.user.unit === "Surat" || data.user.unit === "Rajkot";
-        const target = data.user.role === "production_manager" || isSmallUnit
+        const target = data.user.role === "production" || isSmallUnit
           ? "/production/dashboard"
-          : data.user.role === "support"
+          : data.user.role === "production_and_support"
             ? "/existing-customers"
             : "/dashboard";
         setLocation(target);

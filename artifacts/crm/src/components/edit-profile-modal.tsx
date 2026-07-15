@@ -455,8 +455,8 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
                       <SelectContent>
                         <SelectItem value="admin">Admin (CEO)</SelectItem>
                         <SelectItem value="sales">Sales</SelectItem>
-                        <SelectItem value="support">Support</SelectItem>
-                        <SelectItem value="production_manager">Production Manager</SelectItem>
+                        <SelectItem value="production_and_support">Production & Support</SelectItem>
+                        <SelectItem value="production">Production</SelectItem>
                       </SelectContent>
                     </Select>
                   ) : (

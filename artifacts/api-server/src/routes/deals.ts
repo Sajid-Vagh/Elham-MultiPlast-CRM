@@ -634,7 +634,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
           await tx.insert(productionTimelineTable).values({
             productionOrderId: po.id,
             status: "Pending",
-            notes: `Order received from ${user.name} (${user.role === "support" ? "Support" : "Sales"}) — Production Unit: ${productionUnit}`,
+            notes: `Order received from ${user.name} (${user.role === "production_and_support" ? "Production & Support" : "Sales"}) — Production Unit: ${productionUnit}`,
             createdBy: user.id,
           });
         }
@@ -706,7 +706,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
         .select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role })
         .from(usersTable)
         .where(and(
-          eq(usersTable.role, "production_manager"),
+          eq(usersTable.role, "production"),
         ));
       const adminUsers = await tx
         .select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role })
@@ -736,7 +736,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
           type: "production_order_created",
           title: "New Production Order (Deal Won)",
           message: [
-            `Created By: ${user.name} (${user.role === "support" ? "Support" : "Sales"})`,
+            `Created By: ${user.name} (${user.role === "production_and_support" ? "Production & Support" : "Sales"})`,
             `Production Unit: ${productionUnit}`,
             ``,
             `Customer: ${contact?.name || "Unknown"}`,

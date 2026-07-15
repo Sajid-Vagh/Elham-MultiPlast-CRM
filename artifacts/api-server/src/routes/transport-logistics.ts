@@ -58,7 +58,7 @@ router.post("/transport-logistics", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (user.role !== "admin" && user.role !== "support") {
+    if (user.role !== "admin" && user.role !== "production_and_support") {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 
@@ -88,7 +88,7 @@ router.patch("/transport-logistics/:id", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (user.role !== "admin" && user.role !== "support") {
+    if (user.role !== "admin" && user.role !== "production_and_support") {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 
@@ -116,7 +116,7 @@ router.delete("/transport-logistics/:id", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (user.role !== "admin" && user.role !== "support") {
+    if (user.role !== "admin" && user.role !== "production_and_support") {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 

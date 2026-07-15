@@ -40,8 +40,8 @@ router.get("/orders", async (req, res) => {
     const conditions: any[] = [eq(ordersTable.isDeleted, false)];
 
     if (user.role === "sales") conditions.push(eq(ordersTable.salesOwnerId, user.id));
-    if (user.role === "support") conditions.push(eq(ordersTable.supportOwnerId, user.id));
-    if (user.role === "production_manager") conditions.push(eq(ordersTable.productionOwnerId, user.id));
+    if (user.role === "production_and_support") conditions.push(eq(ordersTable.supportOwnerId, user.id));
+    if (user.role === "production") conditions.push(eq(ordersTable.productionOwnerId, user.id));
 
     if (status && status !== "All") conditions.push(eq(ordersTable.status, status));
     if (source) conditions.push(eq(ordersTable.source, source));
@@ -443,7 +443,7 @@ router.patch("/orders/:id/revisions/:revisionId/approve", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (user.role !== "admin" && user.role !== "production_manager") {
+    if (user.role !== "admin" && user.role !== "production") {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 

@@ -7,7 +7,7 @@ const router: IRouter = Router();
 
 // Helper: get visible production units for the user
 function getVisibleUnits(user: { role: string; productionUnit?: string | null }): string[] | null {
-  if (user.role === "admin" || user.role === "support") return null; // null = no filter, see all
+  if (user.role === "admin" || user.role === "production_and_support") return null; // null = no filter, see all
   if (user.productionUnit === "Himatnagar") return null; // Himatnagar sees all
   if (user.productionUnit === "Surat" || user.productionUnit === "Rajkot") return [user.productionUnit];
   return []; // unknown unit = see nothing
@@ -16,7 +16,7 @@ function getVisibleUnits(user: { role: string; productionUnit?: string | null })
 // Helper: build unit filter condition
 function unitFilter(userUnit: string | null | undefined) {
   // admin/support/Himatnagar see all (no filter)
-  if (!userUnit || userUnit === "Himatnagar" || userUnit === "admin" || userUnit === "support") return undefined;
+  if (!userUnit || userUnit === "Himatnagar" || userUnit === "admin" || userUnit === "production_and_support") return undefined;
   // Surat/Rajkot see only their own + shared (NULL = "All Units")
   return or(
     eq(productBundleMasterTable.productionUnit, userUnit),
@@ -25,7 +25,7 @@ function unitFilter(userUnit: string | null | undefined) {
 }
 
 function unitFilterDest(userUnit: string | null | undefined) {
-  if (!userUnit || userUnit === "Himatnagar" || userUnit === "admin" || userUnit === "support") return undefined;
+  if (!userUnit || userUnit === "Himatnagar" || userUnit === "admin" || userUnit === "production_and_support") return undefined;
   return or(
     eq(transportDestinationMasterTable.productionUnit, userUnit),
     isNull(transportDestinationMasterTable.productionUnit),
@@ -150,7 +150,7 @@ router.post("/transport-masters/bundles", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (user.role !== "admin" && user.role !== "support") {
+    if (user.role !== "admin" && user.role !== "production_and_support") {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 
@@ -178,7 +178,7 @@ router.patch("/transport-masters/bundles/:id", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (user.role !== "admin" && user.role !== "support") {
+    if (user.role !== "admin" && user.role !== "production_and_support") {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 
@@ -205,7 +205,7 @@ router.delete("/transport-masters/bundles/:id", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (user.role !== "admin" && user.role !== "support") {
+    if (user.role !== "admin" && user.role !== "production_and_support") {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 
@@ -337,7 +337,7 @@ router.post("/transport-masters/destinations", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (user.role !== "admin" && user.role !== "support") {
+    if (user.role !== "admin" && user.role !== "production_and_support") {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 
@@ -366,7 +366,7 @@ router.patch("/transport-masters/destinations/:id", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (user.role !== "admin" && user.role !== "support") {
+    if (user.role !== "admin" && user.role !== "production_and_support") {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 
@@ -395,7 +395,7 @@ router.delete("/transport-masters/destinations/:id", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (user.role !== "admin" && user.role !== "support") {
+    if (user.role !== "admin" && user.role !== "production_and_support") {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 

@@ -148,8 +148,8 @@ export default function ProductionOrders() {
           <SelectContent>
             <SelectItem value="all">All Users</SelectItem>
             <SelectItem value="sales">Sales Users</SelectItem>
-            <SelectItem value="support">Support Users</SelectItem>
-            {usersList?.filter((u: any) => u.role === "sales" || u.role === "support").map((u: any) => (
+            <SelectItem value="production_and_support">Prod & Support Users</SelectItem>
+            {usersList?.filter((u: any) => u.role === "sales" || u.role === "production_and_support").map((u: any) => (
               <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
             ))}
           </SelectContent>
@@ -217,7 +217,7 @@ export default function ProductionOrders() {
                             <span className="font-medium">{order.createdByName}</span>
                             {order.createdByRole && (
                               <Badge variant="outline" className="ml-1 text-[10px] py-0">
-                                {order.createdByRole === "support" ? "Support" : "Sales"}
+                                {order.createdByRole === "production_and_support" ? "Production & Support" : "Sales"}
                               </Badge>
                             )}
                           </div>

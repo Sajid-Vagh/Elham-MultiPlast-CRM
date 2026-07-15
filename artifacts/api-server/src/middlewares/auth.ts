@@ -55,14 +55,14 @@ export function requirePermission(permission: "view" | "edit" | "approve") {
     const role = req.user.role;
 
     const permissionMatrix: Record<string, Record<string, string[]>> = {
-      customers: { view: ["admin", "sales", "support", "production_manager"], edit: ["admin", "sales", "support"], approve: ["admin"] },
-      leads: { view: ["admin", "sales", "support", "production_manager"], edit: ["admin", "sales"], approve: ["admin"] },
-      pipeline: { view: ["admin", "sales", "support", "production_manager"], edit: ["admin", "sales"], approve: ["admin"] },
-      orders: { view: ["admin", "sales", "support", "production_manager"], edit: ["admin", "sales", "support"], approve: ["admin", "sales"] },
-      production: { view: ["admin", "sales", "support", "production_manager"], edit: ["admin", "production_manager", "support"], approve: ["admin", "production_manager"] },
-      dispatch: { view: ["admin", "sales", "support", "production_manager"], edit: ["admin", "support", "production_manager"], approve: ["admin"] },
-      complaints: { view: ["admin", "sales", "support", "production_manager"], edit: ["admin", "support"], approve: ["admin"] },
-      quotations: { view: ["admin", "sales", "support", "production_manager"], edit: ["admin", "sales"], approve: ["admin", "sales"] },
+      customers: { view: ["admin", "sales", "production_and_support"], edit: ["admin", "sales", "production_and_support"], approve: ["admin"] },
+      leads: { view: ["admin", "sales"], edit: ["admin", "sales"], approve: ["admin"] },
+      pipeline: { view: ["admin", "sales"], edit: ["admin", "sales"], approve: ["admin"] },
+      orders: { view: ["admin", "sales", "production_and_support"], edit: ["admin", "sales", "production_and_support"], approve: ["admin", "sales"] },
+      production: { view: ["admin", "production", "production_and_support"], edit: ["admin", "production", "production_and_support"], approve: ["admin", "production"] },
+      dispatch: { view: ["admin", "production_and_support"], edit: ["admin", "production_and_support"], approve: ["admin"] },
+      complaints: { view: ["admin", "production_and_support"], edit: ["admin", "production_and_support"], approve: ["admin"] },
+      quotations: { view: ["admin", "sales"], edit: ["admin", "sales"], approve: ["admin", "sales"] },
     };
 
     req.next?.();

@@ -15,11 +15,14 @@ import {
   orderItemsTable,
   dealsTable,
   activitiesTable,
+  dispatchTable,
+  dispatchItemsTable,
 } from "@workspace/db";
 import { eq, desc, and, SQL, sql, gte, lte, or, inArray, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { storage } from "../lib/storage";
+import { generateId } from "../lib/id-generator";
 
 const router: IRouter = Router();
 const builtyUpload = multer({
@@ -80,7 +83,7 @@ const PRODUCTION_STATUSES = [
 ] as const;
 
 function canAccessProduction(user: { role: string }): boolean {
-  return user.role === "admin" || user.role === "production_manager";
+  return user.role === "admin" || user.role === "production" || user.role === "production_and_support";
 }
 
 async function requireProductionUser(req: any, res: any): Promise<any | null> {
@@ -439,8 +442,8 @@ router.get("/production/orders", async (req, res) => {
     if (createdBy && createdBy !== "all") {
       if (createdBy === "sales") {
         conditions.push(eq(productionOrdersTable.createdByRole, "sales"));
-      } else if (createdBy === "support") {
-        conditions.push(eq(productionOrdersTable.createdByRole, "support"));
+      } else if (createdBy === "production_and_support") {
+        conditions.push(eq(productionOrdersTable.createdByRole, "production_and_support"));
       } else {
         const userId = parseInt(createdBy, 10);
         if (!isNaN(userId)) {
@@ -636,7 +639,7 @@ router.patch("/production/orders/:id/status", async (req, res) => {
       const supportUsers = await db
         .select({ id: usersTable.id })
         .from(usersTable)
-        .where(or(eq(usersTable.role, "support"), eq(usersTable.role, "admin")));
+        .where(or(eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
       for (const su of supportUsers) {
         if (su.id !== user.id) {
           await createNotification({
@@ -648,6 +651,45 @@ router.patch("/production/orders/:id/status", async (req, res) => {
             relatedId: order.id,
             relatedType: "production_order",
           });
+        }
+      }
+    }
+
+    // When status becomes "Ready For Dispatch", auto-create a dispatch record
+    if (status === "Ready For Dispatch") {
+      const [existingDispatch] = await db
+        .select()
+        .from(dispatchTable)
+        .where(eq(dispatchTable.productionOrderId, id))
+        .limit(1);
+
+      if (!existingDispatch) {
+        const dispatchNumber = await generateId("dispatch");
+
+        const [newDispatch] = await db.insert(dispatchTable).values({
+          dispatchNumber,
+          productionOrderId: id,
+          status: "Pending",
+          dispatchAddress: invoice?.address || invoice?.addressLine1 || null,
+          remarks: order.productionRemarks || null,
+          createdBy: user.id,
+        }).returning();
+
+        // Copy items from proforma invoice to dispatch items
+        if (order.proformaInvoiceId) {
+          const piItems = await db
+            .select()
+            .from(proformaInvoiceItemsTable)
+            .where(eq(proformaInvoiceItemsTable.invoiceId, order.proformaInvoiceId));
+
+          for (const item of piItems) {
+            await db.insert(dispatchItemsTable).values({
+              dispatchId: newDispatch.id,
+              productName: item.productName,
+              quantity: String(item.quantity || 0),
+              batchNumber: item.productCode || null,
+            });
+          }
         }
       }
     }
@@ -682,8 +724,8 @@ router.patch("/production/orders/:id/dispatch", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (user.role !== "admin" && user.role !== "support") {
-      res.status(403).json({ error: "Only support or admin users can complete dispatch" });
+    if (user.role !== "admin" && user.role !== "production_and_support") {
+      res.status(403).json({ error: "Only production & support or admin users can complete dispatch" });
       return;
     }
 
@@ -772,8 +814,8 @@ router.post("/production/orders/:id/builty", builtyUpload.single("file"), async 
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (user.role !== "admin" && user.role !== "support") {
-      res.status(403).json({ error: "Only support or admin users can upload builty" });
+    if (user.role !== "admin" && user.role !== "production_and_support") {
+      res.status(403).json({ error: "Only production & support or admin users can upload builty" });
       return;
     }
 
@@ -1166,7 +1208,7 @@ router.post("/production/orders/:id/messages", async (req, res) => {
     // Determine which users to notify based on sender role
     const notifyUserIds: number[] = [];
 
-    if (user.role === "sales" || user.role === "support") {
+    if (user.role === "sales" || user.role === "production_and_support") {
       // Notify the assigned production manager
       if (order.assignedProductionManagerId && order.assignedProductionManagerId !== user.id) {
         notifyUserIds.push(order.assignedProductionManagerId);
@@ -1181,7 +1223,7 @@ router.post("/production/orders/:id/messages", async (req, res) => {
           notifyUserIds.push(a.id);
         }
       }
-    } else if (user.role === "production_manager") {
+    } else if (user.role === "production") {
       // Notify the sales owner who created the PI/deal
       if (order.createdById && order.createdById !== user.id) {
         notifyUserIds.push(order.createdById);

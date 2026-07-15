@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { ordersTable } from "./orders";
 import { usersTable } from "./users";
+import { productionOrdersTable } from "./production_orders";
 
 export const DISPATCH_STATUSES = [
   "Pending",
@@ -20,7 +21,8 @@ export type DispatchStatus = typeof DISPATCH_STATUSES[number];
 export const dispatchTable = pgTable("dispatch", {
   id: serial("id").primaryKey(),
   dispatchNumber: text("dispatch_number").notNull().unique(),
-  orderId: integer("order_id").notNull().references(() => ordersTable.id, { onDelete: "restrict" }),
+  orderId: integer("order_id").references(() => ordersTable.id, { onDelete: "restrict" }),
+  productionOrderId: integer("production_order_id").references(() => productionOrdersTable.id, { onDelete: "set null" }),
   status: text("status").notNull().default("Pending"),
   vehicleNumber: text("vehicle_number"),
   driverName: text("driver_name"),

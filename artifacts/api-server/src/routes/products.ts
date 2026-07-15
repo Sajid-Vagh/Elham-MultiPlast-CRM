@@ -8,7 +8,7 @@ import { createNotification } from "./notifications";
 const router: IRouter = Router();
 
 const DUPLICATE_MSG = "Product Code already exists. Please use a different Product Code.";
-const PRODUCT_MGMT_ROLES = ["admin", "support"];
+const PRODUCT_MGMT_ROLES = ["admin", "production_and_support"];
 
 // ── SEARCH ──
 router.get("/products/search", async (req, res) => {
@@ -175,12 +175,12 @@ router.delete("/products/:id", async (req, res) => {
 });
 
 // ── MACHINE-WISE PRODUCTION REPORT ──
-// Accessible by: admin, support, production_manager
+// Accessible by: admin, production_and_support, production
 router.get("/products/machine-report", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (!["admin", "support", "production_manager"].includes(user.role)) {
+    if (!["admin", "production_and_support", "production"].includes(user.role)) {
       res.status(403).json({ error: "Permission Denied" }); return;
     }
 
@@ -193,7 +193,7 @@ router.get("/products/machine-report", async (req, res) => {
 
     // Unit-based access for production managers
     let accessibleUnits: string[] | null = null;
-    if (user.role === "production_manager") {
+    if (user.role === "production") {
       if (user.unit && user.unit !== "All") {
         accessibleUnits = [user.unit];
       }

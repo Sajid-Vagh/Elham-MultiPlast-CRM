@@ -56,13 +56,13 @@ function RoleGuard({ allowedRoles, children }: { allowedRoles: string[]; childre
   const isSmallUnit = unit === "Surat" || unit === "Rajkot";
 
   const effectiveRoles = isSmallUnit
-    ? [...new Set([...allowedRoles, "production_manager", "support"])]
+    ? [...new Set([...allowedRoles, "production", "production_and_support"])]
     : allowedRoles;
 
   if (!effectiveRoles.includes(role)) {
-    if (role === "production_manager" || isSmallUnit) {
+    if (role === "production" || isSmallUnit) {
       setLocation("/production/dashboard");
-    } else if (role === "support") {
+    } else if (role === "production_and_support") {
       setLocation("/existing-customers");
     } else {
       setLocation("/dashboard");
@@ -74,8 +74,8 @@ function RoleGuard({ allowedRoles, children }: { allowedRoles: string[]; childre
 }
 
 const SALES_ADMIN_ROLES = ["admin", "sales"];
-const PRODUCTION_ROLES = ["production_manager", "admin"];
-const SUPPORT_ROLES = ["admin", "sales", "support"];
+const PRODUCTION_ROLES = ["production", "admin"];
+const SUPPORT_ROLES = ["admin", "sales", "production_and_support"];
 
 function Router() {
   return (
@@ -89,9 +89,9 @@ function Router() {
             const unit = localStorage.getItem("crm_user_unit") ?? "";
             const isSmallUnit = unit === "Surat" || unit === "Rajkot";
             if (token) {
-              if (role === "production_manager" || isSmallUnit) {
+              if (role === "production" || isSmallUnit) {
                 window.location.replace("/production/dashboard");
-              } else if (role === "support") {
+              } else if (role === "production_and_support") {
                 window.location.replace("/existing-customers");
               } else {
                 window.location.replace("/dashboard");
@@ -169,7 +169,7 @@ function Router() {
       {/* Shared routes (all roles) */}
       <Route path="/products">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={[...SUPPORT_ROLES, "production_manager"]}><Products /></RoleGuard>
+          <RoleGuard allowedRoles={[...SUPPORT_ROLES, "production"]}><Products /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route path="/proforma-invoices">
@@ -179,12 +179,12 @@ function Router() {
       </Route>
       <Route path="/settings">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales", "production_manager", "support"]}><Settings /></RoleGuard>
+          <RoleGuard allowedRoles={["admin", "sales", "production", "production_and_support"]}><Settings /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route path="/notifications">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales", "production_manager", "support"]}><NotificationsPage /></RoleGuard>
+          <RoleGuard allowedRoles={["admin", "sales", "production", "production_and_support"]}><NotificationsPage /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route path="/search">
@@ -246,7 +246,7 @@ function Router() {
       </Route>
       <Route path="/production/orders/:id">
         {(params) => <ProtectedLayout>
-          <RoleGuard allowedRoles={[...PRODUCTION_ROLES, "support"]}><ProductionOrderDetail /></RoleGuard>
+          <RoleGuard allowedRoles={[...PRODUCTION_ROLES, "production_and_support"]}><ProductionOrderDetail /></RoleGuard>
         </ProtectedLayout>}
       </Route>
       <Route path="/production/orders">
@@ -267,7 +267,7 @@ function Router() {
 
       <Route path="/production/machine-report">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "support", "production_manager"]}><MachineReport /></RoleGuard>
+          <RoleGuard allowedRoles={["admin", "production_and_support", "production"]}><MachineReport /></RoleGuard>
         </ProtectedLayout>
       </Route>
 

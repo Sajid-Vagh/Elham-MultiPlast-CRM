@@ -434,7 +434,7 @@ function DestinationMasterTab() {
 export default function TransportLogistics() {
   const { data: user } = useGetMe();
   const [activeTab, setActiveTab] = useState<"bundles" | "destinations">("bundles");
-  const isAdminOrSupport = user?.role === "admin" || user?.role === "support";
+  const isAdminOrSupport = user?.role === "admin" || user?.role === "production_and_support";
 
   return (
     <div className="p-6 space-y-6">

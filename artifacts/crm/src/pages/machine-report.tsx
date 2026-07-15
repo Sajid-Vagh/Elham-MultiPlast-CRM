@@ -26,7 +26,7 @@ export default function MachineReport() {
   const [machineFilter, setMachineFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
 
-  const showUnitFilter = user?.role === "admin" || user?.role === "support" || user?.unit === "All";
+  const showUnitFilter = user?.role === "admin" || user?.role === "production_and_support" || user?.unit === "All";
 
   const params = new URLSearchParams();
   if (unitFilter !== "All") params.set("unit", unitFilter);

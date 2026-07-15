@@ -110,20 +110,20 @@ const SALES_PERMISSIONS: PermissionDef[] = [
 const ROLE_SUMMARIES: Record<string, { label: string; color: string; icon: React.ReactNode; bullets: string[] }> = {
   admin: { label: "Admin (CEO)", color: "bg-primary/10 text-primary border-primary/20", icon: <Shield className="h-4 w-4" />, bullets: ["Full system access", "Manage team & settings", "All reports & analytics"] },
   sales: { label: "Sales", color: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800", icon: <Users className="h-4 w-4" />, bullets: ["Existing Customers", "Activities & Deals", "Reports & Pipeline"] },
-  support: { label: "Support", color: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800", icon: <Users className="h-4 w-4" />, bullets: ["Existing Customers", "Repeat Orders", "Dispatch & Complaints", "Production Coordination"] },
-  production_manager: { label: "Production Manager", color: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800", icon: <Settings2 className="h-4 w-4" />, bullets: ["Batch Management", "Quality Control", "Production Scheduling"] },
+  production_and_support: { label: "Production & Support", color: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800", icon: <Users className="h-4 w-4" />, bullets: ["Existing Customers", "Repeat Orders", "Dispatch & Complaints", "Production Coordination"] },
+  production: { label: "Production", color: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800", icon: <Settings2 className="h-4 w-4" />, bullets: ["Batch Management", "Quality Control", "Production Scheduling"] },
 };
 
 function getDefaultPermissions(role: string): Record<string, boolean> {
   const all: Record<string, boolean> = {};
-  const cats = role === "production_manager" ? PRODUCTION_PERMISSION_CATEGORIES : SUPPORT_PERMISSION_CATEGORIES;
+  const cats = role === "production" ? PRODUCTION_PERMISSION_CATEGORIES : SUPPORT_PERMISSION_CATEGORIES;
   for (const cat of cats) for (const p of cat.permissions) all[p.key] = true;
   return all;
 }
 
 function getAllPermissionKeys(role: string): string[] {
   const keys: string[] = [];
-  const cats = role === "production_manager" ? PRODUCTION_PERMISSION_CATEGORIES : SUPPORT_PERMISSION_CATEGORIES;
+  const cats = role === "production" ? PRODUCTION_PERMISSION_CATEGORIES : SUPPORT_PERMISSION_CATEGORIES;
   for (const cat of cats) for (const p of cat.permissions) keys.push(p.key);
   return keys;
 }
@@ -186,7 +186,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me }: { initial?
 
   const handleRoleChange = (newRole: string) => {
     setForm(p => {
-      if (newRole === "support" || newRole === "production_manager") {
+      if (newRole === "production_and_support" || newRole === "production") {
         return { ...p, role: newRole, permissions: getDefaultPermissions(newRole) };
       }
       return { ...p, role: newRole, permissions: {} };
@@ -252,9 +252,9 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me }: { initial?
 
   const photoFileRef = useRef<HTMLInputElement>(null);
 
-  const hasPermissions = form.role === "support" || form.role === "production_manager";
+  const hasPermissions = form.role === "production_and_support" || form.role === "production";
   const hasSalesPerms = form.role === "sales";
-  const categories = form.role === "production_manager" ? PRODUCTION_PERMISSION_CATEGORIES : SUPPORT_PERMISSION_CATEGORIES;
+  const categories = form.role === "production" ? PRODUCTION_PERMISSION_CATEGORIES : SUPPORT_PERMISSION_CATEGORIES;
   const roleSummary = ROLE_SUMMARIES[form.role];
   const totalPerms = getAllPermissionKeys(form.role).length;
   const enabledPerms = getAllPermissionKeys(form.role).filter(k => form.permissions[k]).length;
@@ -305,8 +305,8 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me }: { initial?
                     <SelectContent>
                       <SelectItem value="admin">Admin (CEO)</SelectItem>
                       <SelectItem value="sales">Sales</SelectItem>
-                      <SelectItem value="support">Support</SelectItem>
-                      <SelectItem value="production_manager">Production Manager</SelectItem>
+                      <SelectItem value="production_and_support">Production & Support</SelectItem>
+                      <SelectItem value="production">Production</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -683,7 +683,7 @@ export default function Settings() {
                   <TableRow key={u.id}>
                     <TableCell className="font-medium">{u.name}</TableCell>
                     <TableCell className="text-muted-foreground font-mono text-sm">@{u.username}</TableCell>
-                    <TableCell><Badge variant={u.role === "admin" ? "default" : u.role === "support" ? "outline" : "secondary"}>{u.role === "production_manager" ? "Production Mgr" : u.role === "support" ? "Support" : u.role}</Badge></TableCell>
+                    <TableCell><Badge variant={u.role === "admin" ? "default" : u.role === "production_and_support" ? "outline" : "secondary"}>{u.role === "production" ? "Production" : u.role === "production_and_support" ? "Production & Support" : u.role}</Badge></TableCell>
                     <TableCell>{u.unit}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -692,10 +692,10 @@ export default function Settings() {
                       </div>
                     </TableCell>
                     <TableCell className="text-center text-sm">
-                      {u.role === "admin" || u.role === "support" || u.role === "production_manager" ? <span className="text-muted-foreground">\u2014</span> : (u.canViewAllReports ? <span className="text-green-600 font-medium">Yes</span> : <span className="text-red-500">No</span>)}
+                      {u.role === "admin" || u.role === "production_and_support" || u.role === "production" ? <span className="text-muted-foreground">\u2014</span> : (u.canViewAllReports ? <span className="text-green-600 font-medium">Yes</span> : <span className="text-red-500">No</span>)}
                     </TableCell>
                     <TableCell className="text-center text-sm">
-                      {u.role === "admin" || u.role === "support" || u.role === "production_manager" ? <span className="text-muted-foreground">\u2014</span> : (u.canAssignLeads ? <span className="text-green-600 font-medium">Yes</span> : <span className="text-red-500">No</span>)}
+                      {u.role === "admin" || u.role === "production_and_support" || u.role === "production" ? <span className="text-muted-foreground">\u2014</span> : (u.canAssignLeads ? <span className="text-green-600 font-medium">Yes</span> : <span className="text-red-500">No</span>)}
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">

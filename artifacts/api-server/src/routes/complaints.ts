@@ -36,7 +36,7 @@ router.get("/complaints", async (req, res) => {
     const { status, search, assignedTo, page = "1", limit = "50" } = req.query as Record<string, string>;
     const conditions: any[] = [eq(complaintsTable.isDeleted, false)];
 
-    if (user.role === "support") conditions.push(eq(complaintsTable.assignedTo, user.id));
+    if (user.role === "production_and_support") conditions.push(eq(complaintsTable.assignedTo, user.id));
     if (status && status !== "All") conditions.push(eq(complaintsTable.status, status));
     if (assignedTo) conditions.push(eq(complaintsTable.assignedTo, Number(assignedTo)));
     if (search) conditions.push(sql`${complaintsTable.complaintNumber} ILIKE ${`%${search}%`} OR ${complaintsTable.customerName} ILIKE ${`%${search}%`}`);

@@ -189,8 +189,8 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     );
   }, [updateActivity, markAsSeenByRelated]);
 
-  const isProductionOnly = user.role === "production_manager";
-  const isSupport = user.role === "support";
+  const isProductionOnly = user.role === "production";
+  const isSupport = user.role === "production_and_support";
   const isAdmin = user.role === "admin";
   const isSmallUnit = user.unit === "Surat" || user.unit === "Rajkot";
 
@@ -304,7 +304,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
             <UserAvatar profilePhoto={user.profilePhoto} name={user.name} className="w-8 h-8 shadow-sm" />
             <div className="flex-1 overflow-hidden">
               <p className="text-sm font-semibold truncate text-[hsl(245_30%_20%)]">{user.name}</p>
-              <p className="text-xs truncate text-[hsl(248_16%_55%)]">{user.unit || (user.role === "production_manager" ? "Production" : user.role)}</p>
+              <p className="text-xs truncate text-[hsl(248_16%_55%)]">{user.unit || (user.role === "production" ? "Production" : user.role === "production_and_support" ? "Production & Support" : user.role)}</p>
             </div>
           </div>
           <Button

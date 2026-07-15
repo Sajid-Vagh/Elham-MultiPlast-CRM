@@ -212,8 +212,8 @@ export default function ProductionOrderDetail() {
     );
   }
 
-  const isProductionUser = user?.role === "production_manager" || user?.role === "admin";
-  const isSupportUser = user?.role === "support" || user?.role === "admin";
+  const isProductionUser = user?.role === "production" || user?.role === "admin";
+  const isSupportUser = user?.role === "production_and_support" || user?.role === "admin";
   const isReadyForDispatch = order.status === "Ready For Dispatch";
   const hasDispatch = order.transportName || order.builtyUrl;
 
@@ -280,7 +280,7 @@ export default function ProductionOrderDetail() {
                     {order.createdByName || "-"}
                     {order.createdByRole && (
                       <Badge variant="outline" className="ml-2 text-[10px] py-0">
-                        {order.createdByRole === "support" ? "Support" : "Sales"}
+                        {order.createdByRole === "production_and_support" ? "Production & Support" : "Sales"}
                       </Badge>
                     )}
                   </p>

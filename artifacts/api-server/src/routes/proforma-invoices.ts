@@ -1303,7 +1303,7 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
         .limit(1);
 
       if (!existing) {
-        const creatorRoleLabel = user.role === "support" ? "Support" : "Sales";
+        const creatorRoleLabel = user.role === "production_and_support" ? "Production & Support" : "Sales";
 
         await db.insert(productionOrdersTable).values({
           proformaInvoiceId: id,
@@ -1349,7 +1349,7 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
             .select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role })
             .from(usersTable)
             .where(or(
-              eq(usersTable.role, "production_manager"),
+              eq(usersTable.role, "production"),
               eq(usersTable.role, "admin"),
             ));
 

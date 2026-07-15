@@ -205,7 +205,7 @@ router.get("/existing-customers", async (req, res) => {
     if (user.role === "sales") conditions.push(eq(existingCustomersTable.salesOwnerId, user.id));
 
     if (status && status !== "All") conditions.push(eq(existingCustomersTable.status, status));
-    if (salesOwner && (user.role === "admin" || user.role === "support")) conditions.push(eq(existingCustomersTable.salesOwnerId, Number(salesOwner)));
+    if (salesOwner && (user.role === "admin" || user.role === "production_and_support")) conditions.push(eq(existingCustomersTable.salesOwnerId, Number(salesOwner)));
     if (productionStatus) conditions.push(eq(existingCustomersTable.currentProductionStatus, productionStatus));
     if (dispatchStatus) conditions.push(eq(existingCustomersTable.currentDispatchStatus, dispatchStatus));
     if (complaintStatus === "Open") conditions.push(eq(existingCustomersTable.status, "Complaint Open"));
@@ -754,7 +754,7 @@ router.post("/existing-customers/:id/repeat-order", async (req, res) => {
       customerType: "Existing Customer",
       status: "Draft",
       salesOwnerId: sourceOrder.salesOwnerId,
-      supportOwnerId: user.role === "support" ? user.id : sourceOrder.supportOwnerId,
+      supportOwnerId: user.role === "production_and_support" ? user.id : sourceOrder.supportOwnerId,
       createdBy: user.id,
       previousOrderId: sourceOrder.id,
       isRepeatOrder: true,
@@ -821,7 +821,7 @@ router.post("/existing-customers/:id/repeat-order", async (req, res) => {
     const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
     for (const admin of admins) { if (admin.id !== user.id) notifyUsers.add(admin.id); }
 
-    const productionUsers = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "production_manager"));
+    const productionUsers = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "production"));
     for (const pu of productionUsers) { if (pu.id !== user.id) notifyUsers.add(pu.id); }
 
     for (const uid of notifyUsers) {
