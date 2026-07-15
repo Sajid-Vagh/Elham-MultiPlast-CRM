@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { ExportDropdown } from "@/components/export-dropdown";
+import { useUserUnits } from "@/lib/use-user-units";
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
@@ -41,6 +42,7 @@ export default function ProductionOrders() {
   const { data: user } = useGetMe();
   const [, setLocation] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
+  const { units: accessibleUnits, locked: unitLocked } = useUserUnits();
 
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all");
   const [priorityFilter, setPriorityFilter] = useState(searchParams.get("priority") || "all");
@@ -49,17 +51,11 @@ export default function ProductionOrders() {
   const [search, setSearch] = useState(searchParams.get("search") || "");
   const [page, setPage] = useState(1);
 
-  const showUnitFilter = true;
-  const canSeeAll = user?.role === "admin" || user?.unit === "All";
-  const PRODUCTION_UNITS = canSeeAll
-    ? ["All", "Himatnagar", "Surat", "Rajkot"]
-    : ["Himatnagar", "Surat", "Rajkot"];
-
   useEffect(() => {
-    if (user && user.unit && user.unit !== "All" && user.role !== "admin") {
-      setUnitFilter(user.unit.toLowerCase());
+    if (unitLocked && accessibleUnits.length === 1) {
+      setUnitFilter(accessibleUnits[0].toLowerCase());
     }
-  }, [user]);
+  }, [unitLocked, accessibleUnits]);
 
   const { data: usersList } = useQuery({
     queryKey: ["users-list"],
@@ -132,16 +128,17 @@ export default function ProductionOrders() {
           </SelectContent>
         </Select>
 
-        {showUnitFilter && (
-          <Select value={unitFilter} onValueChange={(v) => { setUnitFilter(v); setPage(1); }}>
+        <div className="flex items-center gap-2">
+          <Select value={unitFilter} onValueChange={(v) => { setUnitFilter(v); setPage(1); }} disabled={unitLocked}>
             <SelectTrigger className="w-[160px]"><SelectValue placeholder="Select Unit" /></SelectTrigger>
             <SelectContent>
-              {PRODUCTION_UNITS.map((u) => (
+              {accessibleUnits.map((u) => (
                 <SelectItem key={u} value={u.toLowerCase()}>{u}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-        )}
+          {unitLocked && <span className="text-xs text-muted-foreground">Locked</span>}
+        </div>
 
         <Select value={createdByFilter} onValueChange={(v) => { setCreatedByFilter(v); setPage(1); }}>
           <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Users" /></SelectTrigger>

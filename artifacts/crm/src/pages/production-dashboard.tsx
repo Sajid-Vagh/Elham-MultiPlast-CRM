@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { Factory, PackageCheck, Settings2, ShieldCheck, Package, Truck, CheckCircle2, Clock, AlertTriangle, ListOrdered, BoxSelect } from "lucide-react";
+import { useUserUnits } from "@/lib/use-user-units";
 
 const STATUS_CARDS = [
   { key: "pendingCount", label: "Pending Orders", icon: Clock, color: "bg-gray-100 text-gray-700 border-gray-300", hoverStatus: "Pending" },
@@ -24,19 +25,14 @@ const STATUS_CARDS = [
 export default function ProductionDashboard() {
   const { data: user, isLoading: userLoading } = useGetMe();
   const [, setLocation] = useLocation();
+  const { units: accessibleUnits, locked: unitLocked } = useUserUnits();
   const [unitFilter, setUnitFilter] = useState("all");
 
-  const showUnitFilter = true;
-  const canSeeAll = user?.role === "admin" || user?.unit === "All";
-  const PRODUCTION_UNITS = canSeeAll
-    ? ["All", "Himatnagar", "Surat", "Rajkot"]
-    : ["Himatnagar", "Surat", "Rajkot"];
-
   useEffect(() => {
-    if (user && user.unit && user.unit !== "All" && user.role !== "admin") {
-      setUnitFilter(user.unit.toLowerCase());
+    if (unitLocked && accessibleUnits.length === 1) {
+      setUnitFilter(accessibleUnits[0].toLowerCase());
     }
-  }, [user]);
+  }, [unitLocked, accessibleUnits]);
 
   const { data: kpi, isLoading } = useQuery({
     queryKey: ["production-dashboard", unitFilter],
@@ -76,16 +72,17 @@ export default function ProductionDashboard() {
           <h1 className="text-2xl font-bold tracking-tight">Production Dashboard</h1>
           <p className="text-sm text-muted-foreground mt-1">Overview of all production orders</p>
         </div>
-        {showUnitFilter && (
-          <Select value={unitFilter} onValueChange={setUnitFilter}>
+        <div className="flex items-center gap-2">
+          <Select value={unitFilter} onValueChange={setUnitFilter} disabled={unitLocked}>
             <SelectTrigger className="w-[160px]"><SelectValue placeholder="Select Unit" /></SelectTrigger>
             <SelectContent>
-              {PRODUCTION_UNITS.map((u) => (
+              {accessibleUnits.map((u) => (
                 <SelectItem key={u} value={u.toLowerCase()}>{u}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-        )}
+          {unitLocked && <span className="text-xs text-muted-foreground">Locked to {accessibleUnits[0]}</span>}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

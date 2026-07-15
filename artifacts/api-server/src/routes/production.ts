@@ -278,11 +278,12 @@ router.get("/production/pending-summary", async (req, res) => {
     if (!user) return;
 
     const { unit: unitFilter } = req.query as Record<string, string | undefined>;
+    const effectiveUnitFilter = (user.unit === "All" || user.role === "admin") ? unitFilter : (user.unit || undefined);
     const accessibleUnits = getAccessibleUnits(user);
     const unitConditions: SQL[] = [];
 
-    if (unitFilter && unitFilter !== "all") {
-      unitConditions.push(eq(productionOrdersTable.productionUnit, unitFilter));
+    if (effectiveUnitFilter && effectiveUnitFilter !== "all") {
+      unitConditions.push(eq(productionOrdersTable.productionUnit, effectiveUnitFilter));
     } else if (accessibleUnits) {
       unitConditions.push(or(
         inArray(productionOrdersTable.productionUnit, accessibleUnits),
@@ -316,8 +317,8 @@ router.get("/production/pending-summary", async (req, res) => {
       JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
       WHERE ri.resolved_invoice_id IS NOT NULL
         AND pi.is_deleted = false
-        ${unitFilter && unitFilter !== "all" ? sql`AND EXISTS (SELECT 1 FROM production_orders po WHERE po.id = ri.po_id AND po.production_unit = ${unitFilter})` : sql``}
-        ${accessibleUnits && !(unitFilter && unitFilter !== "all") ? sql`AND EXISTS (SELECT 1 FROM production_orders po WHERE po.id = ri.po_id AND (po.production_unit IN (${sql.join(accessibleUnits.map(u => sql`${u}`), sql`, `)}) OR po.production_unit IS NULL))` : sql``}
+        ${effectiveUnitFilter && effectiveUnitFilter !== "all" ? sql`AND EXISTS (SELECT 1 FROM production_orders po WHERE po.id = ri.po_id AND po.production_unit = ${effectiveUnitFilter})` : sql``}
+        ${accessibleUnits && !(effectiveUnitFilter && effectiveUnitFilter !== "all") ? sql`AND EXISTS (SELECT 1 FROM production_orders po WHERE po.id = ri.po_id AND (po.production_unit IN (${sql.join(accessibleUnits.map(u => sql`${u}`), sql`, `)}) OR po.production_unit IS NULL))` : sql``}
       GROUP BY pii.product_name
       HAVING SUM(pii.quantity::numeric) > 0
       ORDER BY SUM(pii.quantity::numeric) DESC
@@ -347,6 +348,7 @@ router.get("/production/dashboard", async (req, res) => {
     if (!user) return;
 
     const { unit: unitFilter } = req.query as Record<string, string | undefined>;
+    const effectiveUnitFilter = (user.unit === "All" || user.role === "admin") ? unitFilter : (user.unit || undefined);
     const accessibleUnits = getAccessibleUnits(user);
     const conditions: SQL[] = [];
 
@@ -359,9 +361,9 @@ router.get("/production/dashboard", async (req, res) => {
     }
 
     // Explicit unit filter (from UI dropdown)
-    if (unitFilter && unitFilter !== "all") {
+    if (effectiveUnitFilter && effectiveUnitFilter !== "all") {
       conditions.length = 0;
-      conditions.push(eq(productionOrdersTable.productionUnit, unitFilter));
+      conditions.push(eq(productionOrdersTable.productionUnit, effectiveUnitFilter));
     }
 
     const allOrders = await db
@@ -420,6 +422,7 @@ router.get("/production/orders", async (req, res) => {
       string,
       string | undefined
     >;
+    const effectiveUnitFilter = (user.unit === "All" || user.role === "admin") ? unitFilter : (user.unit || undefined);
     const conditions: SQL[] = [];
 
     // Unit-based access control
@@ -432,8 +435,8 @@ router.get("/production/orders", async (req, res) => {
     }
 
     // Explicit unit filter overrides access control
-    if (unitFilter && unitFilter !== "all") {
-      conditions.push(eq(productionOrdersTable.productionUnit, unitFilter));
+    if (effectiveUnitFilter && effectiveUnitFilter !== "all") {
+      conditions.push(eq(productionOrdersTable.productionUnit, effectiveUnitFilter));
     }
 
     if (status && status !== "all") {
@@ -1034,12 +1037,13 @@ router.get("/production/reports", async (req, res) => {
     if (!user) return;
 
     const { unit: unitFilter, status, dateFrom, dateTo } = req.query as Record<string, string | undefined>;
+    const effectiveUnitFilter = (user.unit === "All" || user.role === "admin") ? unitFilter : (user.unit || undefined);
     const conditions: SQL[] = [];
 
     // Unit-based access control
     const accessibleUnits = getAccessibleUnits(user);
-    if (unitFilter && unitFilter !== "all") {
-      conditions.push(eq(productionOrdersTable.productionUnit, unitFilter));
+    if (effectiveUnitFilter && effectiveUnitFilter !== "all") {
+      conditions.push(eq(productionOrdersTable.productionUnit, effectiveUnitFilter));
     } else if (accessibleUnits) {
       conditions.push(or(
         inArray(productionOrdersTable.productionUnit, accessibleUnits),

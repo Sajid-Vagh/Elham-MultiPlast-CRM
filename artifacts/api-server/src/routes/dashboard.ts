@@ -21,7 +21,8 @@ async function getUser(req: any) {
   if (!user) return null;
 
   const ownerId = req.query.ownerId ? Number(req.query.ownerId) : undefined;
-  const unitFilter = req.query.unit as string | undefined;
+  const requestedUnit = req.query.unit as string | undefined;
+  const unitFilter = (user.unit === "All" || user.role === "admin") ? requestedUnit : user.unit;
 
   // Admin with specific owner filter
   let effectiveOwnerId: number | undefined;

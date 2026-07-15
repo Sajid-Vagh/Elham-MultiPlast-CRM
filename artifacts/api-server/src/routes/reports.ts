@@ -34,7 +34,8 @@ router.get("/reports/summary", async (req, res) => {
 
     // Apply role-based scoping + query filters
     const ownerId = req.query.ownerId ? Number(req.query.ownerId) : undefined;
-    const unitFilter = req.query.unit as string | undefined;
+    const requestedUnit = req.query.unit as string | undefined;
+    const unitFilter = (user.unit === "All" || user.role === "admin") ? requestedUnit : user.unit;
 
     if (user && user.role === "sales" && !user.canViewAllReports) {
       contacts = contacts.filter(c => c.salesOwnerId === user.id);

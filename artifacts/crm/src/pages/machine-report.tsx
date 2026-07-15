@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,10 +8,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { BarChart3, Package, Clock, Settings2, CheckCircle2, Factory } from "lucide-react";
-import { UNITS } from "@/lib/units";
+import { useUserUnits } from "@/lib/use-user-units";
 
 const MACHINE_TYPES = ["All", "250ml Machine", "1L Machine", "5L Machine"];
-const PRODUCTION_UNITS = ["All", ...UNITS];
 const STATUS_OPTIONS = ["All", "Pending", "Material Ready", "Production Started", "In Process", "Quality Check", "Packing", "Ready For Dispatch", "Completed", "On Hold", "Cancelled"];
 
 interface ReportData {
@@ -22,11 +21,18 @@ interface ReportData {
 
 export default function MachineReport() {
   const { data: user } = useGetMe();
+  const { units: accessibleUnits, locked: unitLocked } = useUserUnits();
   const [unitFilter, setUnitFilter] = useState("All");
   const [machineFilter, setMachineFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
 
   const showUnitFilter = user?.role === "admin" || user?.role === "production_and_support" || user?.unit === "All";
+
+  useEffect(() => {
+    if (unitLocked && accessibleUnits.length === 1) {
+      setUnitFilter(accessibleUnits[0]);
+    }
+  }, [unitLocked, accessibleUnits]);
 
   const params = new URLSearchParams();
   if (unitFilter !== "All") params.set("unit", unitFilter);
@@ -71,12 +77,15 @@ export default function MachineReport() {
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         {showUnitFilter && (
-          <Select value={unitFilter} onValueChange={setUnitFilter}>
-            <SelectTrigger className="w-44"><SelectValue placeholder="Unit" /></SelectTrigger>
-            <SelectContent>
-              {PRODUCTION_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Select value={unitFilter} onValueChange={setUnitFilter} disabled={unitLocked}>
+              <SelectTrigger className="w-44"><SelectValue placeholder="Unit" /></SelectTrigger>
+              <SelectContent>
+                {accessibleUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {unitLocked && <span className="text-xs text-muted-foreground">Locked</span>}
+          </div>
         )}
         <Select value={machineFilter} onValueChange={setMachineFilter}>
           <SelectTrigger className="w-44"><SelectValue placeholder="Machine Type" /></SelectTrigger>

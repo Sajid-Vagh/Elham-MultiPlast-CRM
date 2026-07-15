@@ -235,7 +235,12 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   } else if (isProductionOnly) {
     navItems = productionNavItems;
   } else if (isSupport) {
-    navItems = [...productionNavItems, ...supportNavItems];
+    const seen = new Set<string>();
+    navItems = [...productionNavItems, ...supportNavItems].filter(item => {
+      if (seen.has(item.href)) return false;
+      seen.add(item.href);
+      return true;
+    });
   } else {
     navItems = salesNavItems;
   }

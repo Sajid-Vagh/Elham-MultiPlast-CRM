@@ -11,7 +11,8 @@ router.get("/categories/counts", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
     const isAdmin = user.role === "admin";
-    const unit = req.query.unit as string | undefined;
+    const requestedUnit = req.query.unit as string | undefined;
+    const unit = (user.unit === "All" || user.role === "admin") ? requestedUnit : user.unit;
 
     let conditions: SQL[] = [];
     if (!isAdmin) {
@@ -56,7 +57,8 @@ router.get("/categories/:category/contacts", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
     const isAdmin = user.role === "admin";
     const { category } = req.params;
-    const unit = req.query.unit as string | undefined;
+    const requestedUnit = req.query.unit as string | undefined;
+    const unit = (user.unit === "All" || user.role === "admin") ? requestedUnit : user.unit;
 
     if (!CATEGORIES.includes(category as any)) {
       res.status(400).json({ error: "Invalid category" });

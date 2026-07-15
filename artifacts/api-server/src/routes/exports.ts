@@ -266,7 +266,8 @@ router.get("/contacts", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { format, mode, dateFrom, dateTo, ownerId, unit, status, search, category } = parseQueryParams(req);
+    const { format, mode, dateFrom, dateTo, ownerId, unit: requestedUnit, status, search, category } = parseQueryParams(req);
+    const unit = (user.unit === "All" || user.role === "admin") ? requestedUnit : user.unit;
 
     const contactConditions: SQL[] = [];
     if (user.role === "sales") contactConditions.push(eq(contactsTable.salesOwnerId, user.id));

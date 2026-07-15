@@ -184,7 +184,8 @@ router.get("/products/machine-report", async (req, res) => {
       res.status(403).json({ error: "Permission Denied" }); return;
     }
 
-    const unitFilter = req.query.unit as string | undefined;
+    const requestedUnit = req.query.unit as string | undefined;
+    const unitFilter = (user.unit === "All" || user.role === "admin") ? requestedUnit : user.unit;
     const machineTypeFilter = req.query.machineType as string | undefined;
     const productFilter = req.query.product as string | undefined;
     const statusFilter = req.query.status as string | undefined;
