@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { onProductionChange } from "@/lib/query-invalidation";
-import { ArrowLeft, Plus, Clock, User, Send, MessageSquare } from "lucide-react";
+import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Upload, CheckCircle } from "lucide-react";
 
 const STATUSES = [
   "Pending", "Material Ready", "Production Started", "In Process",
@@ -50,6 +50,11 @@ export default function ProductionOrderDetail() {
   const [statusNotes, setStatusNotes] = useState("");
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [newNote, setNewNote] = useState("");
+  const [dispatchDialogOpen, setDispatchDialogOpen] = useState(false);
+  const [transportName, setTransportName] = useState("");
+  const [transportDetails, setTransportDetails] = useState("");
+  const [builtyFile, setBuiltyFile] = useState<File | null>(null);
+  const [builtyPreview, setBuiltyPreview] = useState<string | null>(null);
 
   const { data: order, isLoading } = useQuery({
     queryKey: PRODUCTION_ORDER_QUERY_KEY(id),
@@ -90,6 +95,37 @@ export default function ProductionOrderDetail() {
     onError: () => toast({ title: "Failed to add note", variant: "destructive" }),
   });
 
+  const completeDispatch = useMutation({
+    mutationFn: async (data: { transportName: string; transportDetails: string; builtyUrl?: string }) => {
+      return customFetch<any>(`/production/orders/${id}/dispatch`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+    onSuccess: () => {
+      onProductionChange(queryClient, id);
+      setDispatchDialogOpen(false);
+      setTransportName("");
+      setTransportDetails("");
+      setBuiltyFile(null);
+      setBuiltyPreview(null);
+      toast({ title: "Dispatch completed! Sales team notified." });
+    },
+    onError: () => toast({ title: "Failed to complete dispatch", variant: "destructive" }),
+  });
+
+  const uploadBuilty = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return customFetch<{ url: string }>(`/production/orders/${id}/builty`, {
+        method: "POST",
+        body: formData,
+      });
+    },
+  });
+
   // Order Conversation
   const [messageText, setMessageText] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -122,6 +158,19 @@ export default function ProductionOrderDetail() {
   const handleSendMessage = () => {
     if (!messageText.trim() || sendMessage.isPending) return;
     sendMessage.mutate(messageText.trim());
+  };
+
+  const handleDispatchSubmit = async () => {
+    if (!transportName.trim()) {
+      toast({ title: "Transport name is required", variant: "destructive" });
+      return;
+    }
+    let builtyUrl: string | undefined;
+    if (builtyFile) {
+      const result = await uploadBuilty.mutateAsync(builtyFile);
+      builtyUrl = result.url;
+    }
+    completeDispatch.mutate({ transportName: transportName.trim(), transportDetails: transportDetails.trim(), builtyUrl });
   };
 
   useEffect(() => {
@@ -164,6 +213,9 @@ export default function ProductionOrderDetail() {
   }
 
   const isProductionUser = user?.role === "production_manager" || user?.role === "admin";
+  const isSupportUser = user?.role === "support" || user?.role === "admin";
+  const isReadyForDispatch = order.status === "Ready For Dispatch";
+  const hasDispatch = order.transportName || order.builtyUrl;
 
   return (
     <div className="p-6 space-y-6">
@@ -496,6 +548,56 @@ export default function ProductionOrderDetail() {
             </Card>
           )}
 
+          {isSupportUser && isReadyForDispatch && (
+            <Card className="border-green-200 bg-green-50/50">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-green-700">
+                  <Truck className="h-5 w-5" /> Dispatch Action
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-green-600">This order is ready for dispatch. Fill transport details and mark as complete.</p>
+                <Button className="w-full bg-green-600 hover:bg-green-700" onClick={() => setDispatchDialogOpen(true)}>
+                  <Truck className="h-4 w-4 mr-2" /> Complete Dispatch
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {hasDispatch && (
+            <Card className="border-blue-200 bg-blue-50/50">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-blue-700">
+                  <CheckCircle className="h-5 w-5" /> Dispatch Details
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                {order.transportName && (
+                  <div><span className="text-muted-foreground">Transport</span><p className="font-medium">{order.transportName}</p></div>
+                )}
+                {order.transportDetails && (
+                  <div><span className="text-muted-foreground">Details</span><p className="font-medium">{order.transportDetails}</p></div>
+                )}
+                {order.builtyUrl && (
+                  <div>
+                    <span className="text-muted-foreground">Builty</span>
+                    <p className="mt-1">
+                      <a href={order.builtyUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
+                        View Builty Document
+                      </a>
+                    </p>
+                  </div>
+                )}
+                {order.dispatchCompletedAt && (
+                  <div><span className="text-muted-foreground">Completed</span><p className="font-medium">{new Date(order.dispatchCompletedAt).toLocaleString("en-IN")}</p></div>
+                )}
+                {order.dispatchCompletedByUser && (
+                  <div><span className="text-muted-foreground">Dispatched By</span><p className="font-medium">{order.dispatchCompletedByUser.name}</p></div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle>Status Info</CardTitle>
@@ -578,6 +680,82 @@ export default function ProductionOrderDetail() {
               onClick={() => addNote.mutate({ note: newNote.trim() })}
             >
               {addNote.isPending ? "Adding..." : "Add Note"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dispatchDialogOpen} onOpenChange={setDispatchDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Truck className="h-5 w-5 text-green-600" /> Complete Dispatch
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Transport Name *</label>
+              <input
+                type="text"
+                className="w-full mt-1 px-3 py-2 border rounded-md text-sm"
+                placeholder="e.g. Rajdhani Transport, Self Delivery..."
+                value={transportName}
+                onChange={(e) => setTransportName(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Transport Details</label>
+              <Textarea
+                placeholder="Vehicle number, driver name, LR number, etc."
+                value={transportDetails}
+                onChange={(e) => setTransportDetails(e.target.value)}
+                rows={3}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Builty (Transport Receipt)</label>
+              <div className="mt-1 flex items-center gap-3">
+                <label className="flex items-center gap-2 px-3 py-2 border rounded-md cursor-pointer hover:bg-muted/50 text-sm">
+                  <Upload className="h-4 w-4" />
+                  {builtyFile ? builtyFile.name : "Choose file (PDF, JPG, PNG)"}
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setBuiltyFile(file);
+                        if (file.type.startsWith("image/")) {
+                          const reader = new FileReader();
+                          reader.onload = (ev) => setBuiltyPreview(ev.target?.result as string);
+                          reader.readAsDataURL(file);
+                        } else {
+                          setBuiltyPreview(null);
+                        }
+                      }
+                    }}
+                  />
+                </label>
+                {builtyFile && (
+                  <Button variant="ghost" size="sm" onClick={() => { setBuiltyFile(null); setBuiltyPreview(null); }}>
+                    Remove
+                  </Button>
+                )}
+              </div>
+              {builtyPreview && (
+                <img src={builtyPreview} alt="Builty preview" className="mt-2 h-24 rounded border" />
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDispatchDialogOpen(false); setBuiltyFile(null); setBuiltyPreview(null); }}>Cancel</Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700"
+              disabled={!transportName.trim() || completeDispatch.isPending || uploadBuilty.isPending}
+              onClick={handleDispatchSubmit}
+            >
+              {completeDispatch.isPending || uploadBuilty.isPending ? "Processing..." : "Complete Dispatch"}
             </Button>
           </DialogFooter>
         </DialogContent>

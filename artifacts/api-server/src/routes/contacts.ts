@@ -285,6 +285,31 @@ router.patch("/contacts/:id", async (req, res) => {
       }
     }
 
+    // Validate category BEFORE any DB write (prevents silent corruption)
+    const newCategory = parsed.data.category;
+    if (newCategory !== undefined && newCategory !== oldContact.category) {
+      const VALID_CATEGORIES = ["Regular Follow up", "Category A", "Category B", "Category C", "My Client"];
+      if (!VALID_CATEGORIES.includes(newCategory)) {
+        res.status(400).json({ error: `Invalid category. Must be one of: ${VALID_CATEGORIES.join(", ")}` });
+        return;
+      }
+      // My Clients is permanent: customers with isMyClient=true can never be moved out
+      if (oldContact.isMyClient && newCategory !== "My Client") {
+        res.status(400).json({ error: "Cannot move a customer with isMyClient=true out of My Clients. My Clients is permanent." });
+        return;
+      }
+      // Block manual assignment to "My Client" (only allowed via deal WON flow)
+      if (newCategory === "My Client") {
+        const [wonDeal] = await db.select().from(dealsTable).where(
+          and(eq(dealsTable.contactId, oldContact.id), eq(dealsTable.stage, "Won"))
+        ).limit(1);
+        if (!wonDeal) {
+          res.status(400).json({ error: "Cannot manually set category to My Client. A deal must be Won first." });
+          return;
+        }
+      }
+    }
+
     const [contact] = await db.update(contactsTable).set(updatePayload).where(eq(contactsTable.id, params.data.id)).returning();
     if (!contact) { res.status(404).json({ error: "Not found" }); return; }
 
@@ -322,23 +347,9 @@ router.patch("/contacts/:id", async (req, res) => {
     }
 
     // Track category changes in category_history
+    // Record category history (guards already passed above)
     const newCategory = parsed.data.category;
     if (newCategory !== undefined && newCategory !== oldContact.category) {
-      // My Clients is permanent: customers with isMyClient=true can never be moved out
-      if (oldContact.isMyClient && newCategory !== "My Client") {
-        res.status(400).json({ error: "Cannot move a customer with isMyClient=true out of My Clients. My Clients is permanent." });
-        return;
-      }
-      // Block manual assignment to "My Client" (only allowed via deal WON flow)
-      if (newCategory === "My Client") {
-        const [wonDeal] = await db.select().from(dealsTable).where(
-          and(eq(dealsTable.contactId, contact.id), eq(dealsTable.stage, "Won"))
-        ).limit(1);
-        if (!wonDeal) {
-          res.status(400).json({ error: "Cannot manually set category to My Client. A deal must be Won first." });
-          return;
-        }
-      }
       await db.insert(categoryHistoryTable).values({
         contactId: params.data.id,
         previousCategory: oldContact.category,

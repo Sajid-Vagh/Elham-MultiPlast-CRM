@@ -39,6 +39,11 @@ export const productionOrdersTable = pgTable("production_orders", {
   createdById: integer("created_by_id").references(() => usersTable.id, { onDelete: "set null" }),
   createdByName: text("created_by_name"),
   createdByRole: text("created_by_role"),
+  transportName: text("transport_name"),
+  transportDetails: text("transport_details"),
+  builtyUrl: text("builty_url"),
+  dispatchCompletedAt: timestamp("dispatch_completed_at", { withTimezone: true }),
+  dispatchCompletedBy: integer("dispatch_completed_by").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

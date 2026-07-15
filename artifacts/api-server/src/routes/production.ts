@@ -1,4 +1,6 @@
 import { Router, type IRouter } from "express";
+import multer from "multer";
+import path from "node:path";
 import {
   db,
   productionOrdersTable,
@@ -14,11 +16,22 @@ import {
   dealsTable,
   activitiesTable,
 } from "@workspace/db";
-import { eq, desc, and, SQL, sql, gte, lte, or, inArray } from "drizzle-orm";
+import { eq, desc, and, SQL, sql, gte, lte, or, inArray, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
+import { storage } from "../lib/storage";
 
 const router: IRouter = Router();
+const builtyUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = [".pdf", ".jpg", ".jpeg", ".png", ".webp"];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) cb(null, true);
+    else cb(new Error("Only PDF, JPG, PNG, WEBP files allowed"));
+  },
+});
 
 // --- Pending Production Requirements (aggregated by product + gramage) ---
 router.get("/production/pending-requirements", async (req, res) => {
@@ -86,7 +99,7 @@ async function requireProductionUser(req: any, res: any): Promise<any | null> {
 function getAccessibleUnits(user: { role: string; unit?: string | null }): string[] | null {
   if (user.role === "admin") return null;
   const u = user.unit || "All";
-  if (u === "All" || u === "Himatnagar") return null;
+  if (u === "All") return null;
   return [u];
 }
 
@@ -162,6 +175,15 @@ async function enrichProductionOrder(order: any) {
     if (u) lastUpdatedBy = u;
   }
 
+  let dispatchCompletedByUser = null;
+  if (order.dispatchCompletedBy) {
+    const [u] = await db
+      .select({ id: usersTable.id, name: usersTable.name })
+      .from(usersTable)
+      .where(eq(usersTable.id, order.dispatchCompletedBy));
+    if (u) dispatchCompletedByUser = u;
+  }
+
   const timeline = await db
     .select()
     .from(productionTimelineTable)
@@ -228,6 +250,7 @@ async function enrichProductionOrder(order: any) {
     contact,
     assignedManager,
     lastUpdatedBy,
+    dispatchCompletedByUser,
     timeline: timelineWithUsers,
     notes: notesWithUsers,
     createdById: order.createdById,
@@ -235,6 +258,10 @@ async function enrichProductionOrder(order: any) {
     createdByRole: order.createdByRole,
     productionUnit: order.productionUnit,
     productionRemarks: order.productionRemarks,
+    transportName: order.transportName,
+    transportDetails: order.transportDetails,
+    builtyUrl: order.builtyUrl,
+    dispatchCompletedAt: order.dispatchCompletedAt,
   };
 }
 
@@ -604,6 +631,27 @@ router.patch("/production/orders/:id/status", async (req, res) => {
       });
     }
 
+    // When status becomes "Ready For Dispatch", notify all support + admin users
+    if (status === "Ready For Dispatch") {
+      const supportUsers = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(or(eq(usersTable.role, "support"), eq(usersTable.role, "admin")));
+      for (const su of supportUsers) {
+        if (su.id !== user.id) {
+          await createNotification({
+            userId: su.id,
+            type: "production_status",
+            title: "Order Ready for Dispatch",
+            message: `Order #${invoice?.invoiceNumber || order.id} is ready for dispatch.\nCustomer: ${invoice?.customerName || "-"}\nProduct: ${invoice?.companyName || "-"}\nUnit: ${order.productionUnit || "-"}`,
+            link: `/production/orders/${order.id}`,
+            relatedId: order.id,
+            relatedType: "production_order",
+          });
+        }
+      }
+    }
+
     // Create activity entry for deal timeline
     if (invoice?.dealId) {
       const statusFrom = order.status;
@@ -625,6 +673,133 @@ router.patch("/production/orders/:id/status", async (req, res) => {
     res.json(await enrichProductionOrder(updated!));
   } catch (err) {
     req.log.error({ err }, "Update production status error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Complete Dispatch (Support team) ──
+router.patch("/production/orders/:id/dispatch", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (user.role !== "admin" && user.role !== "support") {
+      res.status(403).json({ error: "Only support or admin users can complete dispatch" });
+      return;
+    }
+
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const [order] = await db
+      .select()
+      .from(productionOrdersTable)
+      .where(eq(productionOrdersTable.id, id));
+    if (!order) { res.status(404).json({ error: "Production order not found" }); return; }
+    if (order.status !== "Ready For Dispatch") {
+      res.status(400).json({ error: "Order must be in 'Ready For Dispatch' status to complete dispatch" });
+      return;
+    }
+
+    const { transportName, transportDetails, builtyUrl } = req.body;
+
+    const now = new Date();
+    await db
+      .update(productionOrdersTable)
+      .set({
+        status: "Completed",
+        transportName: transportName || null,
+        transportDetails: transportDetails || null,
+        builtyUrl: builtyUrl || null,
+        dispatchCompletedAt: now,
+        dispatchCompletedBy: user.id,
+        updatedBy: user.id,
+        updatedAt: now,
+      })
+      .where(eq(productionOrdersTable.id, id));
+
+    // Record timeline entry
+    await db.insert(productionTimelineTable).values({
+      productionOrderId: id,
+      status: "Completed",
+      notes: `Dispatch completed by ${user.name}${transportName ? `. Transport: ${transportName}` : ""}`,
+      createdBy: user.id,
+    });
+
+    // Notify the sales owner (PI creator) that dispatch is complete
+    const [invoice] = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(eq(proformaInvoicesTable.id, order.proformaInvoiceId));
+
+    if (invoice?.createdBy && invoice.createdBy !== user.id) {
+      await createNotification({
+        userId: invoice.createdBy,
+        type: "production_status",
+        title: "Dispatch Completed",
+        message: `Order #${invoice.invoiceNumber} has been dispatched.\nTransport: ${transportName || "-"}\nCustomer: ${invoice.customerName || "-"}${transportDetails ? `\nDetails: ${transportDetails}` : ""}`,
+        link: `/proforma-invoices`,
+        relatedId: order.proformaInvoiceId,
+        relatedType: "proforma_invoice",
+      });
+    }
+
+    // Create activity entry for deal timeline
+    if (invoice?.dealId) {
+      const ts = now.toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      await db.insert(activitiesTable).values({
+        dealId: invoice.dealId,
+        contactId: invoice.contactId || null,
+        type: "Note",
+        notes: `Dispatch Completed\nTransport: ${transportName || "-"}\nDetails: ${transportDetails || "-"}\n\nBy: ${user.name}\n${ts}`,
+        createdBy: user.id,
+      });
+    }
+
+    const [updated] = await db
+      .select()
+      .from(productionOrdersTable)
+      .where(eq(productionOrdersTable.id, id));
+
+    res.json(await enrichProductionOrder(updated!));
+  } catch (err) {
+    req.log.error({ err }, "Complete dispatch error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Upload Builty (Transport Receipt) ──
+router.post("/production/orders/:id/builty", builtyUpload.single("file"), async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (user.role !== "admin" && user.role !== "support") {
+      res.status(403).json({ error: "Only support or admin users can upload builty" });
+      return;
+    }
+
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const file = req.file;
+    if (!file) { res.status(400).json({ error: "No file provided" }); return; }
+
+    const [order] = await db
+      .select()
+      .from(productionOrdersTable)
+      .where(eq(productionOrdersTable.id, id));
+    if (!order) { res.status(404).json({ error: "Production order not found" }); return; }
+
+    const storagePath = await storage.save(file.originalname, file.buffer, "builty");
+    const fileUrl = `/uploads/builty/${path.basename(storagePath)}`;
+
+    await db
+      .update(productionOrdersTable)
+      .set({ builtyUrl: fileUrl, updatedAt: new Date() })
+      .where(eq(productionOrdersTable.id, id));
+
+    res.json({ url: fileUrl, originalName: file.originalname });
+  } catch (err) {
+    req.log.error({ err }, "Builty upload error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

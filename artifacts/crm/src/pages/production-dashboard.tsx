@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
@@ -9,9 +9,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { Factory, PackageCheck, Settings2, ShieldCheck, Package, Truck, CheckCircle2, Clock, AlertTriangle, ListOrdered, BoxSelect } from "lucide-react";
-import { UNITS } from "@/lib/units";
-
-const PRODUCTION_UNITS = ["All", ...UNITS];
 
 const STATUS_CARDS = [
   { key: "pendingCount", label: "Pending Orders", icon: Clock, color: "bg-gray-100 text-gray-700 border-gray-300", hoverStatus: "Pending" },
@@ -29,7 +26,17 @@ export default function ProductionDashboard() {
   const [, setLocation] = useLocation();
   const [unitFilter, setUnitFilter] = useState("all");
 
-  const showUnitFilter = user?.role === "admin" || user?.unit === "All";
+  const showUnitFilter = true;
+  const canSeeAll = user?.role === "admin" || user?.unit === "All";
+  const PRODUCTION_UNITS = canSeeAll
+    ? ["All", "Himatnagar", "Surat", "Rajkot"]
+    : ["Himatnagar", "Surat", "Rajkot"];
+
+  useEffect(() => {
+    if (user && user.unit && user.unit !== "All" && user.role !== "admin") {
+      setUnitFilter(user.unit.toLowerCase());
+    }
+  }, [user]);
 
   const { data: kpi, isLoading } = useQuery({
     queryKey: ["production-dashboard", unitFilter],
@@ -71,7 +78,7 @@ export default function ProductionDashboard() {
         </div>
         {showUnitFilter && (
           <Select value={unitFilter} onValueChange={setUnitFilter}>
-            <SelectTrigger className="w-[160px]"><SelectValue placeholder="All Units" /></SelectTrigger>
+            <SelectTrigger className="w-[160px]"><SelectValue placeholder="Select Unit" /></SelectTrigger>
             <SelectContent>
               {PRODUCTION_UNITS.map((u) => (
                 <SelectItem key={u} value={u.toLowerCase()}>{u}</SelectItem>

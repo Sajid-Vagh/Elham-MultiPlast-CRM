@@ -52,9 +52,15 @@ function ProtectedLayout({ children }: { children: React.ReactNode }) {
 function RoleGuard({ allowedRoles, children }: { allowedRoles: string[]; children: React.ReactNode }) {
   const [, setLocation] = useLocation();
   const role = localStorage.getItem("crm_user_role") ?? "";
+  const unit = localStorage.getItem("crm_user_unit") ?? "";
+  const isSmallUnit = unit === "Surat" || unit === "Rajkot";
 
-  if (!allowedRoles.includes(role)) {
-    if (role === "production_manager") {
+  const effectiveRoles = isSmallUnit
+    ? [...new Set([...allowedRoles, "production_manager", "support"])]
+    : allowedRoles;
+
+  if (!effectiveRoles.includes(role)) {
+    if (role === "production_manager" || isSmallUnit) {
       setLocation("/production/dashboard");
     } else if (role === "support") {
       setLocation("/existing-customers");
@@ -80,8 +86,10 @@ function Router() {
           if (typeof window !== "undefined") {
             const token = localStorage.getItem("crm_token");
             const role = localStorage.getItem("crm_user_role");
+            const unit = localStorage.getItem("crm_user_unit") ?? "";
+            const isSmallUnit = unit === "Surat" || unit === "Rajkot";
             if (token) {
-              if (role === "production_manager") {
+              if (role === "production_manager" || isSmallUnit) {
                 window.location.replace("/production/dashboard");
               } else if (role === "support") {
                 window.location.replace("/existing-customers");
@@ -238,7 +246,7 @@ function Router() {
       </Route>
       <Route path="/production/orders/:id">
         {(params) => <ProtectedLayout>
-          <RoleGuard allowedRoles={PRODUCTION_ROLES}><ProductionOrderDetail /></RoleGuard>
+          <RoleGuard allowedRoles={[...PRODUCTION_ROLES, "support"]}><ProductionOrderDetail /></RoleGuard>
         </ProtectedLayout>}
       </Route>
       <Route path="/production/orders">

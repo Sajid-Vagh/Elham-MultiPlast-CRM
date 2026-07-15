@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
 import { useLocation, Link } from "wouter";
@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/select";
 import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { ExportDropdown } from "@/components/export-dropdown";
-import { UNITS } from "@/lib/units";
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
@@ -38,8 +37,6 @@ const PRIORITY_COLORS: Record<string, string> = {
   Urgent: "bg-red-100 text-red-700",
 };
 
-const PRODUCTION_UNITS = ["All", ...UNITS];
-
 export default function ProductionOrders() {
   const { data: user } = useGetMe();
   const [, setLocation] = useLocation();
@@ -52,7 +49,17 @@ export default function ProductionOrders() {
   const [search, setSearch] = useState(searchParams.get("search") || "");
   const [page, setPage] = useState(1);
 
-  const showUnitFilter = user?.role === "admin" || user?.unit === "All";
+  const showUnitFilter = true;
+  const canSeeAll = user?.role === "admin" || user?.unit === "All";
+  const PRODUCTION_UNITS = canSeeAll
+    ? ["All", "Himatnagar", "Surat", "Rajkot"]
+    : ["Himatnagar", "Surat", "Rajkot"];
+
+  useEffect(() => {
+    if (user && user.unit && user.unit !== "All" && user.role !== "admin") {
+      setUnitFilter(user.unit.toLowerCase());
+    }
+  }, [user]);
 
   const { data: usersList } = useQuery({
     queryKey: ["users-list"],
@@ -127,7 +134,7 @@ export default function ProductionOrders() {
 
         {showUnitFilter && (
           <Select value={unitFilter} onValueChange={(v) => { setUnitFilter(v); setPage(1); }}>
-            <SelectTrigger className="w-[160px]"><SelectValue placeholder="All Units" /></SelectTrigger>
+            <SelectTrigger className="w-[160px]"><SelectValue placeholder="Select Unit" /></SelectTrigger>
             <SelectContent>
               {PRODUCTION_UNITS.map((u) => (
                 <SelectItem key={u} value={u.toLowerCase()}>{u}</SelectItem>

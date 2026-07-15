@@ -25,8 +25,15 @@ export default function Login() {
       onSuccess: (data) => {
         localStorage.setItem("crm_token", data.token);
         localStorage.setItem("crm_user_role", data.user.role);
+        localStorage.setItem("crm_user_unit", data.user.unit || "All");
         queryClient.setQueryData(getGetMeQueryKey(), data.user);
-        setLocation(data.user.role === "production_manager" ? "/production/dashboard" : data.user.role === "support" ? "/existing-customers" : "/dashboard");
+        const isSmallUnit = data.user.unit === "Surat" || data.user.unit === "Rajkot";
+        const target = data.user.role === "production_manager" || isSmallUnit
+          ? "/production/dashboard"
+          : data.user.role === "support"
+            ? "/existing-customers"
+            : "/dashboard";
+        setLocation(target);
       },
       onError: (err) => {
         toast({

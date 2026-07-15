@@ -147,6 +147,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   useEffect(() => {
     if (user) {
       localStorage.setItem("crm_user_role", user.role);
+      localStorage.setItem("crm_user_unit", user.unit || "All");
     }
   }, [user]);
 
@@ -191,6 +192,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   const isProductionOnly = user.role === "production_manager";
   const isSupport = user.role === "support";
   const isAdmin = user.role === "admin";
+  const isSmallUnit = user.unit === "Surat" || user.unit === "Rajkot";
 
   const salesNavItems = [
     { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", color: "#a78bfa" },
@@ -229,12 +231,14 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   ];
 
   let navItems: typeof salesNavItems;
-  if (isProductionOnly) {
+  if (isAdmin) {
+    navItems = [...salesNavItems, ...productionNavItems, { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" }];
+  } else if (isSmallUnit) {
+    navItems = [...productionNavItems, ...supportNavItems];
+  } else if (isProductionOnly) {
     navItems = productionNavItems;
   } else if (isSupport) {
     navItems = supportNavItems;
-  } else if (isAdmin) {
-    navItems = [...salesNavItems, ...productionNavItems, { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" }];
   } else {
     navItems = salesNavItems;
   }
@@ -491,6 +495,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
                   onSuccess: () => {
                     localStorage.removeItem("crm_token");
                     localStorage.removeItem("crm_user_role");
+                    localStorage.removeItem("crm_user_unit");
                     sessionStorage.removeItem("crm_notif_since");
                     setShowLogoutConfirm(false);
                     setLocation("/login");
