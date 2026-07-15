@@ -6,6 +6,7 @@ import { createNotification } from "./notifications";
 import { generateId } from "../lib/id-generator";
 import { logAudit } from "../middlewares/auth";
 import { promoteToExistingCustomer } from "./existing-customers";
+import { getAccessibleUnits } from "../lib/unit-filter";
 
 const PRODUCTION_UNITS = ["Himatnagar", "Surat", "Rajkot"] as const;
 
@@ -56,6 +57,11 @@ router.get("/orders", async (req, res) => {
       )!);
     }
 
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits) {
+      conditions.push(inArray(ordersTable.productionUnit, accessibleUnits));
+    }
+
     const pageNum = Math.max(1, Number(page));
     const limitNum = Math.min(100, Math.max(1, Number(limit)));
     const offset = (pageNum - 1) * limitNum;
@@ -89,6 +95,11 @@ router.get("/orders/:id", async (req, res) => {
     const id = Number(req.params.id);
     const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
     if (!order) { res.status(404).json({ error: "Not found" }); return; }
+
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits && !accessibleUnits.includes(order.productionUnit)) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
 
     res.json(await enrichOrder(order));
   } catch (err) {

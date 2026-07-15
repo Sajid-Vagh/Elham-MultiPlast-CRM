@@ -192,7 +192,6 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   const isProductionOnly = user.role === "production";
   const isSupport = user.role === "production_and_support";
   const isAdmin = user.role === "admin";
-  const isSmallUnit = user.unit === "Surat" || user.unit === "Rajkot";
 
   const salesNavItems = [
     { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", color: "#a78bfa" },
@@ -233,12 +232,10 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   let navItems: typeof salesNavItems;
   if (isAdmin) {
     navItems = [...salesNavItems, ...productionNavItems, { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" }];
-  } else if (isSmallUnit) {
-    navItems = [...productionNavItems, ...supportNavItems];
   } else if (isProductionOnly) {
     navItems = productionNavItems;
   } else if (isSupport) {
-    navItems = supportNavItems;
+    navItems = [...productionNavItems, ...supportNavItems];
   } else {
     navItems = salesNavItems;
   }

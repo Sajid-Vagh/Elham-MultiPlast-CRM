@@ -6,6 +6,7 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { generateId } from "../lib/id-generator";
+import { getAccessibleUnits } from "../lib/unit-filter";
 import { storage } from "../lib/storage";
 
 const router: IRouter = Router();
@@ -57,6 +58,15 @@ router.get("/dispatch", async (req, res) => {
       conditions.push(sql`(${dispatchTable.dispatchNumber} ILIKE ${`%${search}%`} OR ${dispatchTable.remarks} ILIKE ${`%${search}%`})`);
     }
 
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits) {
+      conditions.push(sql`(
+        EXISTS (SELECT 1 FROM production_orders po WHERE po.id = ${dispatchTable.productionOrderId} AND po.production_unit IN (${sql.join(accessibleUnits.map(u => sql`${u}`), sql`, `)}))
+        OR EXISTS (SELECT 1 FROM orders o WHERE o.id = ${dispatchTable.orderId} AND o.production_unit IN (${sql.join(accessibleUnits.map(u => sql`${u}`), sql`, `)}))
+        OR (${dispatchTable.productionOrderId} IS NULL AND ${dispatchTable.orderId} IS NULL)
+      )`);
+    }
+
     const where = conditions.length ? and(...conditions) : undefined;
     const pageNum = Math.max(1, Number(page));
     const limitNum = Math.min(100, Math.max(1, Number(limit)));
@@ -79,6 +89,22 @@ router.get("/dispatch/:id", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
     const [d] = await db.select().from(dispatchTable).where(eq(dispatchTable.id, Number(req.params.id)));
     if (!d) { res.status(404).json({ error: "Not found" }); return; }
+
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits) {
+      let dispatchUnit: string | null = null;
+      if (d.productionOrderId) {
+        const [po] = await db.select({ productionUnit: productionOrdersTable.productionUnit }).from(productionOrdersTable).where(eq(productionOrdersTable.id, d.productionOrderId));
+        dispatchUnit = po?.productionUnit ?? null;
+      } else if (d.orderId) {
+        const [o] = await db.select({ productionUnit: ordersTable.productionUnit }).from(ordersTable).where(eq(ordersTable.id, d.orderId));
+        dispatchUnit = o?.productionUnit ?? null;
+      }
+      if (dispatchUnit && !accessibleUnits.includes(dispatchUnit)) {
+        res.status(403).json({ error: "Access denied: unit mismatch" }); return;
+      }
+    }
+
     res.json(await enrichDispatch(d));
   } catch (err) {
     console.error("Get dispatch error:", err);

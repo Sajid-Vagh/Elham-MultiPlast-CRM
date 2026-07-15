@@ -42,6 +42,8 @@ router.get("/production/pending-requirements", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
+    const accessibleUnits = getAccessibleUnits(user);
+
     const results = await db.execute(sql`
       SELECT
         oi.product_name AS "productName",
@@ -55,6 +57,7 @@ router.get("/production/pending-requirements", async (req, res) => {
       WHERE o.is_deleted = false
         AND oi.status NOT IN ('Completed', 'Cancelled', 'Dispatched')
         AND o.status NOT IN ('Cancelled', 'Completed')
+        ${accessibleUnits ? sql`AND o.production_unit IN (${sql.join(accessibleUnits.map(u => sql`${u}`), sql`, `)})` : sql``}
       GROUP BY oi.product_name, oi.gramage
       HAVING SUM(oi.quantity::numeric) - SUM(oi.dispatched_quantity::numeric) > 0
       ORDER BY (SUM(oi.quantity::numeric) - SUM(oi.dispatched_quantity::numeric)) DESC
@@ -536,6 +539,12 @@ router.get("/production/orders/:id", async (req, res) => {
       return;
     }
 
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits && order.productionUnit && !accessibleUnits.includes(order.productionUnit)) {
+      res.status(403).json({ error: "Forbidden: production unit not accessible" });
+      return;
+    }
+
     res.json(await enrichProductionOrder(order));
   } catch (err) {
     req.log.error({ err }, "Get production order error");
@@ -565,6 +574,12 @@ router.get("/production/by-invoice/:invoiceId", async (req, res) => {
 
     if (!order) {
       res.json(null);
+      return;
+    }
+
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits && order.productionUnit && !accessibleUnits.includes(order.productionUnit)) {
+      res.status(403).json({ error: "Forbidden: production unit not accessible" });
       return;
     }
 
@@ -939,8 +954,15 @@ router.get("/production/by-contact/:contactId", async (req, res) => {
 
     if (orders.length === 0) { res.json(null); return; }
 
+    const accessibleUnits = getAccessibleUnits(user);
+    const filteredOrders = accessibleUnits
+      ? orders.filter(o => !o.productionUnit || accessibleUnits.includes(o.productionUnit))
+      : orders;
+
+    if (filteredOrders.length === 0) { res.json(null); return; }
+
     // Use the most recent production order
-    const po = orders[0];
+    const po = filteredOrders[0];
 
     let lastUpdatedBy = null;
     if (po.updatedBy) {
@@ -1088,6 +1110,12 @@ router.get("/production/progress-by-deal/:dealId", async (req, res) => {
       .where(eq(productionOrdersTable.proformaInvoiceId, invoice.id));
 
     if (!po) { res.json(null); return; }
+
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits && po.productionUnit && !accessibleUnits.includes(po.productionUnit)) {
+      res.status(403).json({ error: "Forbidden: production unit not accessible" });
+      return;
+    }
 
     let assignedManager = null;
     if (po.assignedProductionManagerId) {

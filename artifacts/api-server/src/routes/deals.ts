@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable, activitiesTable, DEAL_STAGES, STAGE_PROBS, ordersTable, orderItemsTable, proformaInvoicesTable, proformaInvoiceItemsTable, productionOrdersTable, productionTimelineTable } from "@workspace/db";
-import { eq, and, SQL, desc } from "drizzle-orm";
+import { eq, and, SQL, sql, desc } from "drizzle-orm";
+import { getAccessibleUnits } from "../lib/unit-filter";
 import {
   CreateDealBody, UpdateDealBody, GetDealParams, UpdateDealParams, DeleteDealParams,
   ListDealsQueryParams, AddDealProductBody, AddDealProductParams, RemoveDealProductParams
@@ -93,9 +94,15 @@ router.get("/deals", async (req, res) => {
 
     if (params.success && params.data.unit) {
       const unitContacts = new Set(contacts.filter(c => c.unit === params.data.unit).map(c => c.id));
-      const filtered = resultDeals.filter(d => unitContacts.has(d.contactId));
-      res.json(filtered.map(d => ({ ...d, contact: contactMap.get(d.contactId) ?? null, salesOwner: d.salesOwnerId ? userMap.get(d.salesOwnerId) ?? null : null })));
-      return;
+      resultDeals = resultDeals.filter(d => unitContacts.has(d.contactId));
+    }
+
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits) {
+      const allowedContactIds = new Set(
+        contacts.filter(c => accessibleUnits.includes(c.unit)).map(c => c.id)
+      );
+      resultDeals = resultDeals.filter(d => allowedContactIds.has(d.contactId));
     }
 
     res.json(resultDeals.map(d => ({ ...d, contact: contactMap.get(d.contactId) ?? null, salesOwner: d.salesOwnerId ? userMap.get(d.salesOwnerId) ?? null : null })));
@@ -163,6 +170,14 @@ router.get("/deals/:id", async (req, res) => {
     if (user.role === "sales" && deal.salesOwnerId !== user.id) {
       res.status(403).json({ error: "Forbidden" });
       return;
+    }
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits) {
+      const [contact] = await db.select({ unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+      if (!contact || !accessibleUnits.includes(contact.unit)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
     }
     res.json(await enrichDeal(deal));
   } catch (err) {

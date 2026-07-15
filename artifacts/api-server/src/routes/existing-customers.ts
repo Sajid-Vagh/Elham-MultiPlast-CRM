@@ -8,6 +8,7 @@ import { eq, and, or, ilike, desc, sql, inArray, isNull, asc } from "drizzle-orm
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { generateId } from "../lib/id-generator";
+import { getAccessibleUnits } from "../lib/unit-filter";
 
 const router: IRouter = Router();
 
@@ -151,6 +152,13 @@ router.get("/existing-customers/dashboard", async (req, res) => {
     const conditions: any[] = [eq(existingCustomersTable.isActive, true)];
     if (user.role === "sales") conditions.push(eq(existingCustomersTable.salesOwnerId, user.id));
 
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits) {
+      conditions.push(sql`EXISTS (
+        SELECT 1 FROM contacts c WHERE c.id = ${existingCustomersTable.contactId} AND c.unit IN (${sql.join(accessibleUnits.map(u => sql`${u}`), sql`, `)})
+      )`);
+    }
+
     const all = await db.select().from(existingCustomersTable).where(and(...conditions));
 
     const today = new Date().toISOString().split("T")[0];
@@ -217,6 +225,13 @@ router.get("/existing-customers", async (req, res) => {
       )!);
     }
 
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits) {
+      conditions.push(sql`EXISTS (
+        SELECT 1 FROM contacts c WHERE c.id = ${existingCustomersTable.contactId} AND c.unit IN (${sql.join(accessibleUnits.map(u => sql`${u}`), sql`, `)})
+      )`);
+    }
+
     const pageNum = Math.max(1, Number(page));
     const limitNum = Math.min(100, Math.max(1, Number(limit)));
     const offset = (pageNum - 1) * limitNum;
@@ -278,6 +293,15 @@ router.get("/existing-customers/:id", async (req, res) => {
     // Sales can only see their own
     if (user.role === "sales" && ec.salesOwnerId !== user.id) {
       res.status(403).json({ error: "Forbidden" }); return;
+    }
+
+    // Unit-based access control
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits) {
+      const [contact] = await db.select({ unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, ec.contactId)).limit(1);
+      if (!contact || !accessibleUnits.includes(contact.unit ?? "All")) {
+        res.status(403).json({ error: "Forbidden" }); return;
+      }
     }
 
     res.json(await enrichExistingCustomer(ec));

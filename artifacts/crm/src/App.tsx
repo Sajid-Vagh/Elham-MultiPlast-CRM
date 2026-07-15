@@ -52,18 +52,12 @@ function ProtectedLayout({ children }: { children: React.ReactNode }) {
 function RoleGuard({ allowedRoles, children }: { allowedRoles: string[]; children: React.ReactNode }) {
   const [, setLocation] = useLocation();
   const role = localStorage.getItem("crm_user_role") ?? "";
-  const unit = localStorage.getItem("crm_user_unit") ?? "";
-  const isSmallUnit = unit === "Surat" || unit === "Rajkot";
 
-  const effectiveRoles = isSmallUnit
-    ? [...new Set([...allowedRoles, "production", "production_and_support"])]
-    : allowedRoles;
-
-  if (!effectiveRoles.includes(role)) {
-    if (role === "production" || isSmallUnit) {
+  if (!allowedRoles.includes(role)) {
+    if (role === "production") {
       setLocation("/production/dashboard");
     } else if (role === "production_and_support") {
-      setLocation("/existing-customers");
+      setLocation("/production/dashboard");
     } else {
       setLocation("/dashboard");
     }
@@ -74,7 +68,7 @@ function RoleGuard({ allowedRoles, children }: { allowedRoles: string[]; childre
 }
 
 const SALES_ADMIN_ROLES = ["admin", "sales"];
-const PRODUCTION_ROLES = ["production", "admin"];
+const PRODUCTION_ROLES = ["production", "production_and_support", "admin"];
 const SUPPORT_ROLES = ["admin", "sales", "production_and_support"];
 
 function Router() {
@@ -86,13 +80,9 @@ function Router() {
           if (typeof window !== "undefined") {
             const token = localStorage.getItem("crm_token");
             const role = localStorage.getItem("crm_user_role");
-            const unit = localStorage.getItem("crm_user_unit") ?? "";
-            const isSmallUnit = unit === "Surat" || unit === "Rajkot";
             if (token) {
-              if (role === "production" || isSmallUnit) {
+              if (role === "production" || role === "production_and_support") {
                 window.location.replace("/production/dashboard");
-              } else if (role === "production_and_support") {
-                window.location.replace("/existing-customers");
               } else {
                 window.location.replace("/dashboard");
               }
@@ -246,7 +236,7 @@ function Router() {
       </Route>
       <Route path="/production/orders/:id">
         {(params) => <ProtectedLayout>
-          <RoleGuard allowedRoles={[...PRODUCTION_ROLES, "production_and_support"]}><ProductionOrderDetail /></RoleGuard>
+          <RoleGuard allowedRoles={PRODUCTION_ROLES}><ProductionOrderDetail /></RoleGuard>
         </ProtectedLayout>}
       </Route>
       <Route path="/production/orders">

@@ -5,6 +5,7 @@ import { CreateContactBody, UpdateContactBody, GetContactParams, UpdateContactPa
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
+import { getAccessibleUnits } from "../lib/unit-filter";
 
 const router: IRouter = Router();
 
@@ -29,6 +30,11 @@ router.get("/contacts", async (req, res) => {
 
     if (user.role === "sales") {
       conditions.push(eq(contactsTable.salesOwnerId, user.id));
+    }
+
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits) {
+      conditions.push(inArray(contactsTable.unit, accessibleUnits));
     }
 
     const isAdmin = user.role === "admin";
@@ -208,6 +214,11 @@ router.get("/contacts/:id", async (req, res) => {
     const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, parsed.data.id));
     if (!contact) { res.status(404).json({ error: "Not found" }); return; }
     if (user.role === "sales" && contact.salesOwnerId !== user.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits && !accessibleUnits.includes(contact.unit)) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
