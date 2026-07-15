@@ -23,7 +23,7 @@ import { onDealChange, onProductionChange } from "@/lib/query-invalidation";
 import { UserAvatar } from "@/components/user-avatar";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
-import { UNITS } from "@/lib/units";
+import { useActiveUnits } from "@/lib/use-active-units";
 
 function DraggableCard({ deal, children }: { deal: Deal; children: ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -114,6 +114,7 @@ export default function Deals() {
   const isAdmin = me?.role === "admin";
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { units: activeUnits } = useActiveUnits();
 
   // Completed deal visibility preference (from localStorage)
   const completedDealVisibility = (() => {
@@ -156,7 +157,7 @@ export default function Deals() {
   const [piSentLoading, setPiSentLoading] = useState(false);
   const [piSentExistingPi, setPiSentExistingPi] = useState(false);
 
-  const WON_UNITS = useMemo(() => UNITS.filter(u => u !== "Not Sure"), []);
+  const WON_UNITS = useMemo(() => activeUnits.filter(u => u !== "Not Sure"), [activeUnits]);
 
   if (isLoading) return <div className="p-8">Loading...</div>;
 
@@ -376,9 +377,7 @@ export default function Deals() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Units</SelectItem>
-            <SelectItem value="Himatnagar">Himatnagar</SelectItem>
-            <SelectItem value="Rajkot">Rajkot</SelectItem>
-            <SelectItem value="Surat">Surat</SelectItem>
+            {activeUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>

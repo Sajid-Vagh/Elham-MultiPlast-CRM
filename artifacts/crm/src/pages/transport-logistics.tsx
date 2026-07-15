@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Search, Plus, Pencil, Trash2, Package, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useGetMe } from "@workspace/api-client-react";
+import { useActiveUnits } from "@/lib/use-active-units";
 
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("crm_token")}`, "Content-Type": "application/json" });
 
@@ -22,12 +23,12 @@ type Destination = { id: number; state: string; city: string; transportType: str
 type DestinationForm = { state: string; city: string; transportType: string; transportCharge: string; productionUnit: string };
 const EMPTY_DEST_FORM: DestinationForm = { state: "", city: "", transportType: "Bundle Wise", transportCharge: "", productionUnit: "all" };
 
-const PRODUCTION_UNITS = ["all", "Himatnagar", "Surat", "Rajkot"] as const;
 const unitLabel = (u: string | null) => u || "All Units";
 
 function BundleMasterTab() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { units: activeUnits } = useActiveUnits();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
@@ -100,9 +101,7 @@ function BundleMasterTab() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Units</SelectItem>
-            <SelectItem value="Himatnagar">Himatnagar</SelectItem>
-            <SelectItem value="Surat">Surat</SelectItem>
-            <SelectItem value="Rajkot">Rajkot</SelectItem>
+            {activeUnits.filter(u => u !== "Not Sure").map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
@@ -182,9 +181,7 @@ function BundleMasterTab() {
                 <SelectTrigger><SelectValue placeholder="All Units (Shared)" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Units (Shared)</SelectItem>
-                  <SelectItem value="Himatnagar">Himatnagar</SelectItem>
-                  <SelectItem value="Surat">Surat</SelectItem>
-                  <SelectItem value="Rajkot">Rajkot</SelectItem>
+                  {activeUnits.filter(u => u !== "Not Sure").map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -210,9 +207,7 @@ function BundleMasterTab() {
                 <SelectTrigger><SelectValue placeholder="All Units (Shared)" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Units (Shared)</SelectItem>
-                  <SelectItem value="Himatnagar">Himatnagar</SelectItem>
-                  <SelectItem value="Surat">Surat</SelectItem>
-                  <SelectItem value="Rajkot">Rajkot</SelectItem>
+                  {activeUnits.filter(u => u !== "Not Sure").map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -232,6 +227,7 @@ function BundleMasterTab() {
 function DestinationMasterTab() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { units: activeUnits } = useActiveUnits();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
@@ -309,9 +305,7 @@ function DestinationMasterTab() {
           <SelectTrigger><SelectValue placeholder="All Units (Shared)" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Units (Shared)</SelectItem>
-            <SelectItem value="Himatnagar">Himatnagar</SelectItem>
-            <SelectItem value="Surat">Surat</SelectItem>
-            <SelectItem value="Rajkot">Rajkot</SelectItem>
+            {activeUnits.filter(u => u !== "Not Sure").map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
@@ -334,9 +328,7 @@ function DestinationMasterTab() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Units</SelectItem>
-            <SelectItem value="Himatnagar">Himatnagar</SelectItem>
-            <SelectItem value="Surat">Surat</SelectItem>
-            <SelectItem value="Rajkot">Rajkot</SelectItem>
+            {activeUnits.filter(u => u !== "Not Sure").map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>

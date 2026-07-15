@@ -1325,4 +1325,94 @@ router.post("/production/orders/:id/messages", async (req, res) => {
   }
 });
 
+// ── Transfer Production Order to Another Unit ──
+router.patch("/production/orders/:id/transfer", async (req, res) => {
+  try {
+    const user = await requireProductionUser(req, res);
+    if (!user) return;
+
+    const id = Number(req.params.id);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    const { targetUnit, reason } = req.body;
+    if (!targetUnit || typeof targetUnit !== "string") {
+      res.status(400).json({ error: "Target unit is required" });
+      return;
+    }
+
+    const [order] = await db
+      .select()
+      .from(productionOrdersTable)
+      .where(eq(productionOrdersTable.id, id));
+
+    if (!order) {
+      res.status(404).json({ error: "Production order not found" });
+      return;
+    }
+
+    // Only admin or production managers of the current unit can transfer
+    if (user.role !== "admin") {
+      res.status(403).json({ error: "Only admin users can transfer production orders" });
+      return;
+    }
+
+    const previousUnit = order.productionUnit || "Unassigned";
+
+    // Update production unit
+    await db
+      .update(productionOrdersTable)
+      .set({ productionUnit: targetUnit, updatedBy: user.id, updatedAt: new Date() })
+      .where(eq(productionOrdersTable.id, id));
+
+    // Record timeline entry
+    await db.insert(productionTimelineTable).values({
+      productionOrderId: id,
+      status: order.status,
+      notes: `Transferred from ${previousUnit} to ${targetUnit} by ${user.name}${reason ? `. Reason: ${reason}` : ""}`,
+      createdBy: user.id,
+    });
+
+    // Notify production managers of the target unit
+    const targetUnitUsers = await db
+      .select({ id: usersTable.id, role: usersTable.role })
+      .from(usersTable)
+      .where(or(
+        and(eq(usersTable.unit, targetUnit), eq(usersTable.role, "production")),
+        and(eq(usersTable.unit, targetUnit), eq(usersTable.role, "production_and_support")),
+        eq(usersTable.role, "admin"),
+      ));
+
+    for (const tu of targetUnitUsers) {
+      if (tu.id !== user.id) {
+        const [inv] = order.proformaInvoiceId
+          ? await db.select({ invoiceNumber: proformaInvoicesTable.invoiceNumber, customerName: proformaInvoicesTable.customerName })
+              .from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, order.proformaInvoiceId))
+          : [];
+        await createNotification({
+          userId: tu.id,
+          type: "production_unit_transfer",
+          title: "Production Order Transferred",
+          message: `Order ${inv?.invoiceNumber || `#${order.id}`} transferred from ${previousUnit} to ${targetUnit} by ${user.name}${reason ? `\nReason: ${reason}` : ""}`,
+          link: `/production/orders/${order.id}`,
+          relatedId: order.id,
+          relatedType: "production_order",
+        });
+      }
+    }
+
+    const [updated] = await db
+      .select()
+      .from(productionOrdersTable)
+      .where(eq(productionOrdersTable.id, id));
+
+    res.json(await enrichProductionOrder(updated!));
+  } catch (err) {
+    console.error("Transfer production order error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default router;

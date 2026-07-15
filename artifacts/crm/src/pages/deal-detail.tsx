@@ -25,7 +25,7 @@ import { CategoryBadge } from "@/components/category-badge";
 import { MoveCategoryDialog } from "@/components/move-category-dialog";
 import { DEAL_STAGES, STAGE_PROBS, STAGE_BADGE_COLORS } from "@/lib/deal-stages";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
-import { UNITS } from "@/lib/units";
+import { useActiveUnits } from "@/lib/use-active-units";
 
 const ACT_STYLE: Record<string, { bg: string; fg: string; icon: string }> = {
   "Call":     { bg: "#dcfce7", fg: "#15803d", icon: "\u{1F4DE}" },
@@ -55,6 +55,7 @@ export default function DealDetail() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
+  const { units: activeUnits } = useActiveUnits();
 
   const { data: deal, isLoading } = useGetDeal(dealId, { query: { enabled: !!dealId, queryKey: getGetDealQueryKey(dealId) } });
   const { data: dealProducts } = useListDealProducts(dealId, { query: { enabled: !!dealId, queryKey: getListDealProductsQueryKey(dealId) } });
@@ -155,7 +156,7 @@ export default function DealDetail() {
   if (isLoading) return <div className="p-8">Loading...</div>;
   if (!deal) return <div className="p-8">Deal not found.</div>;
 
-  const WON_UNITS = useMemo(() => UNITS.filter(u => u !== "Not Sure"), []);
+  const WON_UNITS = useMemo(() => activeUnits.filter(u => u !== "Not Sure"), [activeUnits]);
 
   const handleStageSelect = (newStage: string) => {
     if (newStage === deal.stage) return;

@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { onActivityChange } from "@/lib/query-invalidation";
 import { CategoryBadge } from "@/components/category-badge";
 import { ExportDropdown } from "@/components/export-dropdown";
-import { UNITS } from "@/lib/units";
+import { useActiveUnits } from "@/lib/use-active-units";
 
 const PAGE_SIZE = 15;
 
@@ -92,6 +92,7 @@ export default function FollowUps() {
   const { data: me } = useGetMe();
   const { data: users } = useListUsers();
   const isAdmin = me?.role === "admin";
+  const { units: activeUnits } = useActiveUnits();
   const [, setLocation] = useLocation();
 
   const activeDate = useMemo(() => {
@@ -368,7 +369,7 @@ export default function FollowUps() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Units</SelectItem>
-                  {UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                  {activeUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                 </SelectContent>
               </Select>
               {isAdmin && (

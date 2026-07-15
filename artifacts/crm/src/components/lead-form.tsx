@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { AlertTriangle, ExternalLink } from "lucide-react";
 import { Link } from "wouter";
-import { UNITS } from "@/lib/units";
+import { useActiveUnits } from "@/lib/use-active-units";
 import { UserAvatar } from "@/components/user-avatar";
 
 const schema = z.object({
@@ -57,6 +57,7 @@ export default function LeadForm({
 }: LeadFormProps) {
   const queryClient = useQueryClient();
   const canAssign = me?.role === "admin";
+  const { units: activeUnits } = useActiveUnits();
 
   const [reEnquiryOpen, setReEnquiryOpen] = useState(false);
   const [blurCheck, setBlurCheck] = useState("");
@@ -235,7 +236,7 @@ export default function LeadForm({
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl><SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger></FormControl>
                     <SelectContent>
-                      {UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                      {activeUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   <FormMessage />

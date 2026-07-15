@@ -16,7 +16,8 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { onProductionChange } from "@/lib/query-invalidation";
-import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Upload, CheckCircle } from "lucide-react";
+import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Upload, CheckCircle, ArrowRightLeft } from "lucide-react";
+import { useActiveUnits } from "@/lib/use-active-units";
 
 const STATUSES = [
   "Pending", "Material Ready", "Production Started", "In Process",
@@ -55,6 +56,10 @@ export default function ProductionOrderDetail() {
   const [transportDetails, setTransportDetails] = useState("");
   const [builtyFile, setBuiltyFile] = useState<File | null>(null);
   const [builtyPreview, setBuiltyPreview] = useState<string | null>(null);
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [transferUnit, setTransferUnit] = useState("");
+  const [transferReason, setTransferReason] = useState("");
+  const { units: activeUnits } = useActiveUnits();
 
   const { data: order, isLoading } = useQuery({
     queryKey: PRODUCTION_ORDER_QUERY_KEY(id),
@@ -124,6 +129,23 @@ export default function ProductionOrderDetail() {
         body: formData,
       });
     },
+  });
+
+  const transferOrder = useMutation({
+    mutationFn: (data: { targetUnit: string; reason?: string }) =>
+      customFetch<any>(`/production/orders/${id}/transfer`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => {
+      onProductionChange(queryClient, id);
+      setTransferDialogOpen(false);
+      setTransferUnit("");
+      setTransferReason("");
+      toast({ title: "Production order transferred successfully" });
+    },
+    onError: () => toast({ title: "Failed to transfer order", variant: "destructive" }),
   });
 
   // Order Conversation
@@ -544,6 +566,11 @@ export default function ProductionOrderDetail() {
                 <Button className="w-full" onClick={() => setStatusDialogOpen(true)}>
                   Update Status
                 </Button>
+                {user?.role === "admin" && (
+                  <Button className="w-full" variant="outline" onClick={() => setTransferDialogOpen(true)}>
+                    <ArrowRightLeft className="h-4 w-4 mr-2" /> Transfer Unit
+                  </Button>
+                )}
               </CardContent>
             </Card>
           )}
@@ -756,6 +783,53 @@ export default function ProductionOrderDetail() {
               onClick={handleDispatchSubmit}
             >
               {completeDispatch.isPending || uploadBuilty.isPending ? "Processing..." : "Complete Dispatch"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowRightLeft className="h-5 w-5" /> Transfer to Another Unit
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Current Unit</label>
+              <p className="text-sm text-muted-foreground mt-1">
+                {order.productionUnit || "Unassigned"}
+              </p>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Target Unit *</label>
+              <Select value={transferUnit} onValueChange={setTransferUnit}>
+                <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
+                <SelectContent>
+                  {activeUnits.filter(u => u !== order.productionUnit).map((u) => (
+                    <SelectItem key={u} value={u}>{u}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Reason (optional)</label>
+              <Textarea
+                placeholder="Reason for transfer..."
+                value={transferReason}
+                onChange={(e) => setTransferReason(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>Cancel</Button>
+            <Button
+              disabled={!transferUnit || transferOrder.isPending}
+              onClick={() => transferOrder.mutate({ targetUnit: transferUnit, reason: transferReason || undefined })}
+            >
+              {transferOrder.isPending ? "Transferring..." : "Transfer Order"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -18,7 +18,7 @@ import { TrendingUp, Users, Briefcase, DollarSign, XCircle, Download, Search, Ph
 import { useToast } from "@/hooks/use-toast";
 import { UserAvatar } from "@/components/user-avatar";
 import { STAGE_CHART_COLORS } from "@/lib/deal-stages";
-import { UNITS } from "@/lib/units";
+import { useActiveUnits } from "@/lib/use-active-units";
 import { ExportDropdown } from "@/components/export-dropdown";
 
 function MonthPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -26,12 +26,13 @@ function MonthPicker({ value, onChange }: { value: string; onChange: (v: string)
 }
 
 function UnitPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { units: activeUnits } = useActiveUnits();
   return (
     <Select value={value || "all"} onValueChange={v => onChange(v === "all" ? "" : v)}>
       <SelectTrigger className="w-36"><SelectValue placeholder="All Units" /></SelectTrigger>
       <SelectContent>
         <SelectItem value="all">All Units</SelectItem>
-        {UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+        {activeUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
       </SelectContent>
     </Select>
   );

@@ -13,7 +13,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserAvatar } from "@/components/user-avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { UNITS } from "@/lib/units";
+import { useActiveUnits } from "@/lib/use-active-units";
 
 function daysDiff(dateStr: string): number {
   const today = new Date();
@@ -37,6 +37,7 @@ export default function Dashboard() {
   const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
+  const { units: activeUnits } = useActiveUnits();
 
   const token = typeof window !== "undefined" ? localStorage.getItem("crm_token") : null;
   const authHeaders = { Authorization: `Bearer ${token}` };
@@ -185,7 +186,7 @@ export default function Dashboard() {
               <SelectTrigger className="w-36 h-8 text-sm"><SelectValue placeholder="All Units" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Units</SelectItem>
-                {UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                {activeUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

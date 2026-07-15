@@ -12,6 +12,50 @@ import { getAccessibleUnits } from "../lib/unit-filter";
 
 const router: IRouter = Router();
 
+// ── Helper: enforce unit-based access on existing customer ──
+async function enforceExistingCustomerAccess(
+  req: any,
+  res: any,
+  ecId: number
+): Promise<any | null> {
+  const user = await getUserFromRequest(req);
+  if (!user) {
+    res.status(401).json({ error: "Unauthorized" });
+    return null;
+  }
+
+  const [ec] = await db
+    .select()
+    .from(existingCustomersTable)
+    .where(eq(existingCustomersTable.id, ecId));
+  if (!ec) {
+    res.status(404).json({ error: "Not found" });
+    return null;
+  }
+
+  // Sales can only see their own
+  if (user.role === "sales" && ec.salesOwnerId !== user.id) {
+    res.status(403).json({ error: "Forbidden" });
+    return null;
+  }
+
+  // Unit-based access control
+  const accessibleUnits = getAccessibleUnits(user);
+  if (accessibleUnits) {
+    const [contact] = await db
+      .select({ unit: contactsTable.unit })
+      .from(contactsTable)
+      .where(eq(contactsTable.id, ec.contactId))
+      .limit(1);
+    if (!contact || !accessibleUnits.includes(contact.unit ?? "All")) {
+      res.status(403).json({ error: "Forbidden" });
+      return null;
+    }
+  }
+
+  return { user, ec };
+}
+
 // ── Helper: promote contact to existing customer ──
 export async function promoteToExistingCustomer(order: typeof ordersTable.$inferSelect) {
   const existing = await db.select().from(existingCustomersTable)
@@ -314,12 +358,10 @@ router.get("/existing-customers/:id", async (req, res) => {
 // ── Get order history for existing customer ──
 router.get("/existing-customers/:id/orders", async (req, res) => {
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
     const id = Number(req.params.id);
-    const [ec] = await db.select().from(existingCustomersTable).where(eq(existingCustomersTable.id, id));
-    if (!ec) { res.status(404).json({ error: "Not found" }); return; }
+    const access = await enforceExistingCustomerAccess(req, res, id);
+    if (!access) return;
+    const { ec } = access;
 
     const orders = await db.select().from(ordersTable)
       .where(and(eq(ordersTable.contactId, ec.contactId), eq(ordersTable.isDeleted, false)))
@@ -342,12 +384,10 @@ router.get("/existing-customers/:id/orders", async (req, res) => {
 // ── Get communications for existing customer ──
 router.get("/existing-customers/:id/communications", async (req, res) => {
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
     const id = Number(req.params.id);
-    const [ec] = await db.select().from(existingCustomersTable).where(eq(existingCustomersTable.id, id));
-    if (!ec) { res.status(404).json({ error: "Not found" }); return; }
+    const access = await enforceExistingCustomerAccess(req, res, id);
+    if (!access) return;
+    const { ec } = access;
 
     const comms = await db.select({
       id: customerCommunicationsTable.id,
@@ -374,12 +414,10 @@ router.get("/existing-customers/:id/communications", async (req, res) => {
 // ── Log communication for existing customer ──
 router.post("/existing-customers/:id/communications", async (req, res) => {
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
     const id = Number(req.params.id);
-    const [ec] = await db.select().from(existingCustomersTable).where(eq(existingCustomersTable.id, id));
-    if (!ec) { res.status(404).json({ error: "Not found" }); return; }
+    const access = await enforceExistingCustomerAccess(req, res, id);
+    if (!access) return;
+    const { user, ec } = access;
 
     const [comm] = await db.insert(customerCommunicationsTable).values({
       contactId: ec.contactId,
@@ -402,12 +440,10 @@ router.post("/existing-customers/:id/communications", async (req, res) => {
 // ── Get notes for existing customer ──
 router.get("/existing-customers/:id/notes", async (req, res) => {
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
     const id = Number(req.params.id);
-    const [ec] = await db.select().from(existingCustomersTable).where(eq(existingCustomersTable.id, id));
-    if (!ec) { res.status(404).json({ error: "Not found" }); return; }
+    const access = await enforceExistingCustomerAccess(req, res, id);
+    if (!access) return;
+    const { ec } = access;
 
     const notes = await db.select({
       id: internalNotesTable.id,
@@ -432,12 +468,10 @@ router.get("/existing-customers/:id/notes", async (req, res) => {
 // ── Add note for existing customer ──
 router.post("/existing-customers/:id/notes", async (req, res) => {
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
     const id = Number(req.params.id);
-    const [ec] = await db.select().from(existingCustomersTable).where(eq(existingCustomersTable.id, id));
-    if (!ec) { res.status(404).json({ error: "Not found" }); return; }
+    const access = await enforceExistingCustomerAccess(req, res, id);
+    if (!access) return;
+    const { user, ec } = access;
 
     const [note] = await db.insert(internalNotesTable).values({
       contactId: ec.contactId,
@@ -457,12 +491,9 @@ router.post("/existing-customers/:id/notes", async (req, res) => {
 // ── Update existing customer (support owner, status, repeat order due date) ──
 router.patch("/existing-customers/:id", async (req, res) => {
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
     const id = Number(req.params.id);
-    const [existing] = await db.select().from(existingCustomersTable).where(eq(existingCustomersTable.id, id));
-    if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+    const access = await enforceExistingCustomerAccess(req, res, id);
+    if (!access) return;
 
     const updateFields: any = { updatedAt: new Date() };
     if (req.body.supportOwnerId !== undefined) updateFields.supportOwnerId = req.body.supportOwnerId;
@@ -483,12 +514,10 @@ router.patch("/existing-customers/:id", async (req, res) => {
 // ── Get complaint history for existing customer ──
 router.get("/existing-customers/:id/complaints", async (req, res) => {
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
     const id = Number(req.params.id);
-    const [ec] = await db.select().from(existingCustomersTable).where(eq(existingCustomersTable.id, id));
-    if (!ec) { res.status(404).json({ error: "Not found" }); return; }
+    const access = await enforceExistingCustomerAccess(req, res, id);
+    if (!access) return;
+    const { ec } = access;
 
     const complaints = await db.select({
       id: complaintsTable.id,
@@ -517,12 +546,10 @@ router.get("/existing-customers/:id/complaints", async (req, res) => {
 // ── Get repeat orders for existing customer ──
 router.get("/existing-customers/:id/repeat-orders", async (req, res) => {
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
     const id = Number(req.params.id);
-    const [ec] = await db.select().from(existingCustomersTable).where(eq(existingCustomersTable.id, id));
-    if (!ec) { res.status(404).json({ error: "Not found" }); return; }
+    const access = await enforceExistingCustomerAccess(req, res, id);
+    if (!access) return;
+    const { ec } = access;
 
     const repeatOrders = await db.select().from(ordersTable)
       .where(and(eq(ordersTable.contactId, ec.contactId), eq(ordersTable.isDeleted, false), eq(ordersTable.isRepeatOrder, true)))
@@ -545,12 +572,10 @@ router.get("/existing-customers/:id/repeat-orders", async (req, res) => {
 // ── Get timeline for existing customer ──
 router.get("/existing-customers/:id/timeline", async (req, res) => {
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
     const id = Number(req.params.id);
-    const [ec] = await db.select().from(existingCustomersTable).where(eq(existingCustomersTable.id, id));
-    if (!ec) { res.status(404).json({ error: "Not found" }); return; }
+    const access = await enforceExistingCustomerAccess(req, res, id);
+    if (!access) return;
+    const { ec } = access;
 
     const contactId = ec.contactId;
     const events: any[] = [];
@@ -682,12 +707,10 @@ router.get("/existing-customers/:id/timeline", async (req, res) => {
 // ── Create follow-up for existing customer ──
 router.post("/existing-customers/:id/follow-ups", async (req, res) => {
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
     const id = Number(req.params.id);
-    const [ec] = await db.select().from(existingCustomersTable).where(eq(existingCustomersTable.id, id));
-    if (!ec) { res.status(404).json({ error: "Not found" }); return; }
+    const access = await enforceExistingCustomerAccess(req, res, id);
+    if (!access) return;
+    const { user, ec } = access;
 
     // Find or create a deal for the contact to link the activity
     let [deal] = await db.select().from(dealsTable).where(eq(dealsTable.contactId, ec.contactId)).limit(1);
@@ -741,12 +764,10 @@ router.post("/existing-customers/:id/follow-ups", async (req, res) => {
 // ── Create repeat order ──
 router.post("/existing-customers/:id/repeat-order", async (req, res) => {
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
     const id = Number(req.params.id);
-    const [ec] = await db.select().from(existingCustomersTable).where(eq(existingCustomersTable.id, id));
-    if (!ec) { res.status(404).json({ error: "Not found" }); return; }
+    const access = await enforceExistingCustomerAccess(req, res, id);
+    if (!access) return;
+    const { user, ec } = access;
 
     // Get the source order (last order or first order)
     const sourceOrderId = ec.lastOrderId || ec.firstOrderId;

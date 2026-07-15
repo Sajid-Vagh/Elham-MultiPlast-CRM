@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Download, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
+import { useActiveUnits } from "@/lib/use-active-units";
 
 function CategoryCard({ name, count, color, onClick }: { name: string; count: number; color: string; onClick: () => void }) {
   return (
@@ -58,6 +59,7 @@ export default function CategoriesPage() {
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
   const activeUnit = unitFilter;
+  const { units: activeUnits } = useActiveUnits();
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -311,9 +313,7 @@ export default function CategoriesPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Units</SelectItem>
-            <SelectItem value="Himatnagar">Himatnagar</SelectItem>
-            <SelectItem value="Rajkot">Rajkot</SelectItem>
-            <SelectItem value="Surat">Surat</SelectItem>
+            {activeUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>

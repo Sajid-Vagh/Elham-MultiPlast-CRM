@@ -325,3 +325,56 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `artifacts/crm/src/pages/existing-customer-detail.tsx`: detail page (fully rewritten with 6 tabs, 5 dialogs, extended info)
 - `artifacts/crm/src/App.tsx`: routes for existing customers
 - `artifacts/crm/src/components/layout.tsx`: sidebar navigation item
+
+---
+
+# Dynamic Units System
+
+## Goal
+- Replace all hardcoded unit strings across the CRM with a fully dynamic, admin-manageable units system.
+- Admin can add new units, activate/deactivate units, and delete units from the Settings page.
+- All dropdowns across the CRM automatically reflect the active units from the database.
+
+## Constraints & Preferences
+- Admin-only access for unit management (POST, PATCH, DELETE restricted to admin role).
+- GET /units returns only active units by default (used for dropdowns).
+- GET /units?all=true returns all units (active + inactive) for admin management.
+- "Not Sure" unit excluded from production unit dropdowns but available for contact units.
+- Default units seeded: Himatnagar, Surat, Rajkot, Not Sure.
+- All unit columns in the DB are already `text()` type (no pgEnum conversion needed).
+
+## Progress
+### Done
+- DB schema: `units` table in `lib/db/src/schema/units.ts` (id, name, isActive, timestamps)
+- Migration `035_add_units_table.sql` — creates units table + seeds default 4 units
+- Backend `artifacts/api-server/src/routes/units.ts` — CRUD endpoints:
+  - `GET /units` — returns active units (default) or all units (`?all=true`)
+  - `POST /units` — create unit (admin only, unique name check)
+  - `PATCH /units/:id` — update unit name/isActive (admin only)
+  - `DELETE /units/:id` — hard delete unit (admin only)
+- Route registered in `artifacts/api-server/src/routes/index.ts`
+- Frontend hooks:
+  - `artifacts/crm/src/lib/use-active-units.ts` — `useActiveUnits()` (active units for dropdowns) + `useAllUnits()` (admin management)
+  - `artifacts/crm/src/lib/use-user-units.ts` — updated to use `useActiveUnits()` instead of hardcoded array
+- Settings page: "Manage Units" admin section with add/toggle/delete UI + unit dropdown in user form now dynamic
+- All 12+ frontend files refactored to use `useActiveUnits()`:
+  - `lead-form.tsx`, `dashboard.tsx`, `deals.tsx`, `deal-detail.tsx`, `follow-ups.tsx`, `import.tsx`, `reports.tsx`, `leads.tsx`, `categories.tsx`, `transport-logistics.tsx`, `transport-logistics-readonly.tsx`
+  - `use-user-units.ts` (used by production-dashboard, production-orders, machine-report)
+- Legacy `UNITS` constant in `@/lib/units` marked as deprecated but kept for backward compat
+
+## Key Decisions
+- `useActiveUnits()` hook fetches from `/api/units` with 5-min stale time — minimal network overhead.
+- Production unit dropdowns filter out "Not Sure" via `.filter(u => u !== "Not Sure")`.
+- User form unit dropdown prepends "All" option: `["All", ...activeUnits]`.
+- `useUserUnits()` now derives its list from `useActiveUnits()` instead of a static array.
+- Unit names stored as plain `text` in all tables — no enum constraints at DB level.
+
+## Relevant Files
+- `lib/db/src/schema/units.ts`: Drizzle ORM table schema
+- `lib/db/migrations/035_add_units_table.sql`: migration + seed
+- `artifacts/api-server/src/routes/units.ts`: CRUD API
+- `artifacts/crm/src/lib/use-active-units.ts`: React Query hooks for units
+- `artifacts/crm/src/lib/use-user-units.ts`: updated user units hook
+- `artifacts/crm/src/lib/units.ts`: legacy (deprecated)
+- `artifacts/crm/src/pages/settings.tsx`: Manage Units admin UI + dynamic user form dropdown
+- All frontend pages with unit dropdowns (see Progress section above)

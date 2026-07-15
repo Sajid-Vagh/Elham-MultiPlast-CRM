@@ -17,6 +17,7 @@ import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
 import { onContactChange, onDealChange } from "@/lib/query-invalidation";
 import { UserAvatar } from "@/components/user-avatar";
 import { ExportDropdown } from "@/components/export-dropdown";
+import { useActiveUnits } from "@/lib/use-active-units";
 
 export default function Leads() {
   const [search, setSearch] = useState("");
@@ -46,6 +47,7 @@ export default function Leads() {
 
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
+  const { units: activeUnits } = useActiveUnits();
 
   // Fetch category counts
   const { data: categoryCounts } = useQuery({
@@ -207,9 +209,7 @@ export default function Leads() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Units</SelectItem>
-            <SelectItem value="Himatnagar">Himatnagar</SelectItem>
-            <SelectItem value="Rajkot">Rajkot</SelectItem>
-            <SelectItem value="Surat">Surat</SelectItem>
+            {activeUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>

@@ -8,13 +8,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Pencil, Trash2, SlidersHorizontal, Users, Camera, X as XIcon, CheckCircle2, ArrowLeft, Settings2, Truck, AlertTriangle, BarChart3, Shield } from "lucide-react";
+import { Plus, Pencil, Trash2, SlidersHorizontal, Users, Camera, X as XIcon, CheckCircle2, ArrowLeft, Settings2, Truck, AlertTriangle, BarChart3, Shield, Building2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { onUserChange } from "@/lib/query-invalidation";
 import { UserAvatar } from "@/components/user-avatar";
 import { EditProfileModal } from "@/components/edit-profile-modal";
+import { useActiveUnits, useAllUnits } from "@/lib/use-active-units";
 
 const COLOR_PALETTE = ["#6366f1","#ec4899","#f59e0b","#10b981","#3b82f6","#ef4444","#8b5cf6","#14b8a6","#f97316","#84cc16"];
 
@@ -164,7 +165,7 @@ function CategoryCard({ cat, permStates, onToggle }: { cat: PermissionCategory; 
   );
 }
 
-function UserForm({ initial, onSave, onCancel, loading, isEdit, me }: { initial?: Partial<User>; onSave: (d: any) => void; onCancel: () => void; loading: boolean; isEdit?: boolean; me?: User | null }) {
+function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNames }: { initial?: Partial<User>; onSave: (d: any) => void; onCancel: () => void; loading: boolean; isEdit?: boolean; me?: User | null; activeUnitNames: string[] }) {
   const [form, setForm] = useState({
     name: initial?.name || "", username: initial?.username || "", password: "",
     role: initial?.role || "sales", colorCode: initial?.colorCode || COLOR_PALETTE[0], unit: initial?.unit || "All",
@@ -313,7 +314,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me }: { initial?
                 <div><Label className="text-sm">Unit</Label>
                   <Select value={form.unit} onValueChange={v => setForm(p => ({ ...p, unit: v }))}>
                     <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
-                    <SelectContent>{["All","Himatnagar","Surat","Rajkot"].map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                    <SelectContent>{["All", ...activeUnitNames].map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
               </div>
@@ -467,9 +468,12 @@ export default function Settings() {
   const deleteUser = useDeleteUser();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { units: activeUnitNames } = useActiveUnits();
+  const { units: allUnits, refetch: refetchUnits } = useAllUnits();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
+  const [newUnitName, setNewUnitName] = useState("");
 
   const [autoCap, setAutoCap] = useState(() => localStorage.getItem("crm_autocap") !== "off");
   const handleAutoCapToggle = (val: boolean) => {
@@ -531,6 +535,65 @@ export default function Settings() {
     });
   };
 
+  const handleCreateUnit = async () => {
+    const name = newUnitName.trim();
+    if (!name) return;
+    const token = localStorage.getItem("crm_token");
+    try {
+      const res = await fetch("/api/units", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        toast({ title: data.error || "Failed to create unit", variant: "destructive" });
+        return;
+      }
+      toast({ title: `Unit "${name}" created` });
+      setNewUnitName("");
+      refetchUnits();
+    } catch {
+      toast({ title: "Error creating unit", variant: "destructive" });
+    }
+  };
+
+  const handleToggleUnit = async (id: string, currentActive: boolean) => {
+    const token = localStorage.getItem("crm_token");
+    try {
+      const res = await fetch(`/api/units/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ isActive: !currentActive }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      toast({ title: currentActive ? "Unit deactivated" : "Unit activated" });
+      refetchUnits();
+    } catch {
+      toast({ title: "Error updating unit", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteUnit = async (id: string, name: string) => {
+    if (!confirm(`Delete unit "${name}"? This cannot be undone.`)) return;
+    const token = localStorage.getItem("crm_token");
+    try {
+      const res = await fetch(`/api/units/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        toast({ title: data.error || "Failed to delete unit", variant: "destructive" });
+        return;
+      }
+      toast({ title: `Unit "${name}" deleted` });
+      refetchUnits();
+    } catch {
+      toast({ title: "Error deleting unit", variant: "destructive" });
+    }
+  };
+
   const isAdmin = me?.role === "admin";
   const isSalesOrAdmin = me?.role === "sales" || me?.role === "admin";
   const [profileEditOpen, setProfileEditOpen] = useState(false);
@@ -546,6 +609,7 @@ export default function Settings() {
           loading={createUser.isPending || updateUser.isPending}
           isEdit={!!editUser}
           me={me}
+          activeUnitNames={activeUnitNames}
         />
       </div>
     );
@@ -650,6 +714,66 @@ export default function Settings() {
           )}
         </CardContent>
       </Card>
+
+      {/* Manage Units (Admin only) */}
+      {isAdmin && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Building2 className="h-4 w-4 text-primary" />
+              Manage Units
+            </CardTitle>
+            <CardDescription>Add, activate, or deactivate business units used across the CRM.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                value={newUnitName}
+                onChange={e => setNewUnitName(e.target.value)}
+                placeholder="New unit name (e.g., Indore)"
+                onKeyDown={e => { if (e.key === "Enter") handleCreateUnit(); }}
+                className="max-w-xs"
+              />
+              <Button size="sm" onClick={handleCreateUnit} disabled={!newUnitName.trim()}>
+                <Plus className="h-4 w-4 mr-1" /> Add Unit
+              </Button>
+            </div>
+            <div className="bg-card border rounded-lg shadow-sm overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Unit Name</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-28">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {allUnits.map(u => (
+                    <TableRow key={u.id}>
+                      <TableCell className="font-medium">{u.name}</TableCell>
+                      <TableCell>
+                        <Badge variant={u.isActive ? "default" : "outline"} className={u.isActive ? "bg-green-100 text-green-700 border-green-200" : "bg-gray-100 text-gray-500"}>
+                          {u.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleToggleUnit(u.id, u.isActive)}>
+                            <Switch checked={u.isActive} className="scale-75" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDeleteUnit(u.id, u.name)}>
+                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Team Management */}
       {isAdmin && (

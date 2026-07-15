@@ -15,7 +15,7 @@ import { onContactChange } from "@/lib/query-invalidation";
 import { CheckCircle, AlertCircle, Upload, FileSpreadsheet, X, Sparkles, ClipboardPaste } from "lucide-react";
 import { UserAvatar } from "@/components/user-avatar";
 import { Link } from "wouter";
-import { UNITS } from "@/lib/units";
+import { useActiveUnits } from "@/lib/use-active-units";
 
 // ── IndiaMart multi-format parser ────────────────────────────────────────────
 interface ParsedLead {
@@ -526,6 +526,7 @@ export default function ImportPage() {
   const { data: me } = useGetMe();
   const importIndiaMart = useImportIndiaMart();
   const importExcel = useImportExcel();
+  const { units: activeUnits } = useActiveUnits();
 
   // ── Unit state (persisted per user) ──
   const unitStorageKey = `crm_import_unit_${me?.id ?? "anon"}`;
@@ -864,7 +865,7 @@ export default function ImportPage() {
                   <Select value={unit} onValueChange={setUnit}>
                     <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
                     <SelectContent>
-                      {UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                      {activeUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1029,7 +1030,7 @@ export default function ImportPage() {
                       <Select value={unit} onValueChange={setUnit}>
                         <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
                         <SelectContent>
-                          {UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                      {activeUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1156,9 +1157,7 @@ export default function ImportPage() {
                 <Select value={unit} onValueChange={setUnit}>
                   <SelectTrigger><SelectValue placeholder="Unit" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Himatnagar">Himatnagar</SelectItem>
-                    <SelectItem value="Rajkot">Rajkot</SelectItem>
-                    <SelectItem value="Surat">Surat</SelectItem>
+                    {activeUnits.filter(u => u !== "Not Sure").map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                   </SelectContent>
                 </Select>
                 <Select value={importCategory} onValueChange={setImportCategory}>

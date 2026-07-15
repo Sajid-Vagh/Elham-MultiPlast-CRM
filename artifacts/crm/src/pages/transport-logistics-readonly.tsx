@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, MapPin, Package } from "lucide-react";
+import { useActiveUnits } from "@/lib/use-active-units";
 
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("crm_token")}` });
 
@@ -14,6 +15,7 @@ export default function TransportLogisticsLookup() {
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("destinations");
   const [unitFilter, setUnitFilter] = useState<string>("all");
+  const { units: activeUnits } = useActiveUnits();
 
   const { data: destData, isLoading: destLoading } = useQuery({
     queryKey: ["transport-destinations-lookup", { search, unit: unitFilter }],
@@ -65,9 +67,7 @@ export default function TransportLogisticsLookup() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Units</SelectItem>
-            <SelectItem value="Himatnagar">Himatnagar</SelectItem>
-            <SelectItem value="Surat">Surat</SelectItem>
-            <SelectItem value="Rajkot">Rajkot</SelectItem>
+            {activeUnits.filter(u => u !== "Not Sure").map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
