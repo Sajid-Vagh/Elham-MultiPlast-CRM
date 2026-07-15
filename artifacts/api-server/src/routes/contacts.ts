@@ -346,9 +346,7 @@ router.patch("/contacts/:id", async (req, res) => {
       }
     }
 
-    // Track category changes in category_history
     // Record category history (guards already passed above)
-    const newCategory = parsed.data.category;
     if (newCategory !== undefined && newCategory !== oldContact.category) {
       await db.insert(categoryHistoryTable).values({
         contactId: params.data.id,
