@@ -1,13 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -16,27 +13,30 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveUnits } from "@/lib/use-active-units";
-import { Package, Plus, Minus, Search, History, ArrowUpDown } from "lucide-react";
+import { Package, Plus, Check, Trash2, Save, RotateCcw, History } from "lucide-react";
 
-type InventoryRow = {
+type ServerRow = {
   id: number;
-  productId: number;
+  productId: number | null;
+  productName: string;
   unitName: string;
   currentStock: number;
+  createdAt: string;
   updatedAt: string;
+};
+
+type LedgerRow = {
+  _key: string;
+  id: number | null;
   productName: string;
-  category: string | null;
-  productCode: string | null;
-  bottleWeight: string | null;
-  bottleColour: string | null;
-  capColour: string | null;
-  hsnCode: string | null;
-  pricePerUnit: string | null;
+  oldQty: number;
+  newQty: string;
+  dirty: boolean;
 };
 
 type InventoryLog = {
   id: number;
-  productId: number;
+  productName: string;
   unitName: string;
   adjustmentType: string;
   quantity: number;
@@ -45,8 +45,28 @@ type InventoryLog = {
   notes: string | null;
   createdBy: number | null;
   createdAt: string;
-  productName: string;
 };
+
+let rowCounter = 0;
+function newKey(): string {
+  return `new-${++rowCounter}-${Date.now()}`;
+}
+
+function buildLedgerRows(server: ServerRow[]): LedgerRow[] {
+  return server.map((r) => ({
+    _key: `server-${r.id}`,
+    id: r.id,
+    productName: r.productName,
+    oldQty: r.currentStock,
+    newQty: "",
+    dirty: false,
+  }));
+}
+
+function calcFinalQty(row: LedgerRow): number {
+  const adj = row.newQty === "" ? 0 : Number(row.newQty);
+  return row.oldQty + (isNaN(adj) ? 0 : adj);
+}
 
 export default function Inventory() {
   const { data: user } = useGetMe();
@@ -54,109 +74,164 @@ export default function Inventory() {
   const queryClient = useQueryClient();
   const { units: activeUnits } = useActiveUnits();
 
-  const [unitFilter, setUnitFilter] = useState<string>("all");
-  const [search, setSearch] = useState("");
-  const [adjustDialogOpen, setAdjustDialogOpen] = useState(false);
-  const [adjustTarget, setAdjustTarget] = useState<InventoryRow | null>(null);
-  const [adjustType, setAdjustType] = useState<"add" | "subtract">("add");
-  const [adjustQty, setAdjustQty] = useState("");
-  const [adjustNotes, setAdjustNotes] = useState("");
-  const [logsDialogOpen, setLogsDialogOpen] = useState(false);
-  const [logsTarget, setLogsTarget] = useState<InventoryRow | null>(null);
-
   const canEdit = (user as any)?.role === "admin" || (user as any)?.role === "inventory";
 
-  const effectiveUnit = useMemo(() => {
-    if ((user as any)?.role === "admin" || (user as any)?.role === "inventory") {
-      if ((user as any).unit !== "All" && unitFilter === "all") return (user as any).unit;
-      if (unitFilter !== "all") return unitFilter;
-      return undefined;
-    }
-    return undefined;
-  }, [user, unitFilter]);
+  // Unit filter
+  const [unitFilter, setUnitFilter] = useState<string>("all");
 
-  const { data: inventory, isLoading } = useQuery<InventoryRow[]>({
+  // Resolve which unit to actually use for queries
+  const effectiveUnit = useMemo(() => {
+    if (!canEdit) return undefined;
+    if ((user as any)?.unit !== "All" && unitFilter === "all") return (user as any)?.unit;
+    if (unitFilter !== "all") return unitFilter;
+    return undefined;
+  }, [user, unitFilter, canEdit]);
+
+  // Ledger rows (local editable state)
+  const [rows, setRows] = useState<LedgerRow[]>([]);
+  const [initialized, setInitialized] = useState(false);
+
+  // Fetch server data
+  const { data: serverData, isLoading } = useQuery<ServerRow[]>({
     queryKey: ["inventory", effectiveUnit],
     queryFn: () => customFetch<any>(`/inventory${effectiveUnit ? `?unit=${encodeURIComponent(effectiveUnit)}` : ""}`),
     enabled: !!user,
   });
 
-  const filteredInventory = useMemo(() => {
-    if (!inventory) return [];
-    let rows = inventory;
-    if (search) {
-      const s = search.toLowerCase();
-      rows = rows.filter(r =>
-        r.productName?.toLowerCase().includes(s) ||
-        r.productCode?.toLowerCase().includes(s) ||
-        r.category?.toLowerCase().includes(s)
-      );
-    }
-    return rows;
-  }, [inventory, search]);
+  // Sync server data into local ledger rows (once per fetch)
+  const lastServerKey = useRef("");
+  const serverKey = useMemo(() => {
+    return JSON.stringify(serverData?.map((r: ServerRow) => r.id).sort());
+  }, [serverData]);
 
-  const adjustStock = useMutation({
-    mutationFn: (data: { productId: number; unitName: string; adjustmentType: string; quantity: number; notes?: string }) =>
-      customFetch<any>("/inventory/adjust", {
-        method: "PATCH",
+  if (serverData && serverKey !== lastServerKey.current) {
+    lastServerKey.current = serverKey;
+    const fresh = buildLedgerRows(serverData);
+    setRows(fresh);
+    setInitialized(true);
+  }
+
+  // Save mutation
+  const saveRow = useMutation({
+    mutationFn: (data: { id?: number | null; productName: string; unitName: string; quantity: number }) =>
+      customFetch<any>("/inventory/save", {
+        method: "POST",
         body: JSON.stringify(data),
         headers: { "Content-Type": "application/json" },
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
-      setAdjustDialogOpen(false);
-      setAdjustTarget(null);
-      setAdjustQty("");
-      setAdjustNotes("");
-      toast({ title: "Stock adjusted successfully" });
+      toast({ title: "Row saved" });
     },
-    onError: (err: any) => toast({ title: err.message || "Failed to adjust stock", variant: "destructive" }),
+    onError: (err: any) => toast({ title: err.message || "Save failed", variant: "destructive" }),
   });
 
-  const { data: logs, isLoading: logsLoading } = useQuery<InventoryLog[]>({
-    queryKey: ["inventory-logs", logsTarget?.productId, logsTarget?.unitName],
-    queryFn: () => customFetch<any>(`/inventory/logs?productId=${logsTarget?.productId}&unit=${logsTarget?.unitName || ""}`),
-    enabled: logsDialogOpen && !!logsTarget,
+  // Delete mutation
+  const deleteRow = useMutation({
+    mutationFn: (id: number) =>
+      customFetch<any>(`/inventory/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      toast({ title: "Row deleted" });
+    },
+    onError: (err: any) => toast({ title: err.message || "Delete failed", variant: "destructive" }),
   });
 
-  const openAdjustDialog = (row: InventoryRow, type: "add" | "subtract") => {
-    setAdjustTarget(row);
-    setAdjustType(type);
-    setAdjustQty("");
-    setAdjustNotes("");
-    setAdjustDialogOpen(true);
-  };
-
-  const handleAdjustSubmit = () => {
-    if (!adjustTarget || !adjustQty) return;
-    const qty = Number(adjustQty);
-    if (isNaN(qty) || qty <= 0) {
-      toast({ title: "Please enter a valid positive number", variant: "destructive" });
+  // Add new blank row
+  const addRow = useCallback(() => {
+    if (!effectiveUnit && (user as any)?.unit === "All" && unitFilter === "all") {
+      toast({ title: "Please select a unit first", variant: "destructive" });
       return;
     }
-    adjustStock.mutate({
-      productId: adjustTarget.productId,
-      unitName: adjustTarget.unitName,
-      adjustmentType: adjustType,
-      quantity: qty,
-      notes: adjustNotes || undefined,
-    });
+    const newRow: LedgerRow = {
+      _key: newKey(),
+      id: null,
+      productName: "",
+      oldQty: 0,
+      newQty: "",
+      dirty: true,
+    };
+    setRows((prev) => [newRow, ...prev]);
+  }, [effectiveUnit, unitFilter, user, toast, canEdit]);
+
+  // Update a cell in a row
+  const updateCell = useCallback((key: string, field: "productName" | "newQty", value: string) => {
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r._key !== key) return r;
+        const updated = { ...r, [field]: value, dirty: true };
+        return updated;
+      })
+    );
+  }, []);
+
+  // Save a single row
+  const handleSaveRow = useCallback(
+    (row: LedgerRow) => {
+      const unitName = effectiveUnit || (user as any)?.unit || unitFilter;
+      if (!unitName || unitName === "all") {
+        toast({ title: "Please select a unit first", variant: "destructive" });
+        return;
+      }
+      if (!row.productName.trim()) {
+        toast({ title: "Product name is required", variant: "destructive" });
+        return;
+      }
+      const finalQty = calcFinalQty(row);
+      if (finalQty < 0) {
+        toast({ title: "Final quantity cannot be negative", variant: "destructive" });
+        return;
+      }
+      saveRow.mutate({
+        id: row.id,
+        productName: row.productName.trim(),
+        unitName,
+        quantity: finalQty,
+      });
+    },
+    [effectiveUnit, unitFilter, user, saveRow, toast]
+  );
+
+  // Delete a row
+  const handleDeleteRow = useCallback(
+    (row: LedgerRow) => {
+      if (!row.id) {
+        // New unsaved row — just remove from local state
+        setRows((prev) => prev.filter((r) => r._key !== row._key));
+        return;
+      }
+      deleteRow.mutate(row.id);
+    },
+    [deleteRow]
+  );
+
+  // Discard local changes (revert to server state)
+  const handleDiscard = useCallback(() => {
+    if (serverData) {
+      setRows(buildLedgerRows(serverData));
+    }
+  }, [serverData]);
+
+  // Logs dialog
+  const [logsOpen, setLogsOpen] = useState(false);
+  const [logsProductName, setLogsProductName] = useState<string | null>(null);
+
+  const { data: logs, isLoading: logsLoading } = useQuery<InventoryLog[]>({
+    queryKey: ["inventory-logs", logsProductName],
+    queryFn: () =>
+      customFetch<any>(`/inventory/logs?productName=${encodeURIComponent(logsProductName || "")}&unit=${effectiveUnit || ""}`),
+    enabled: logsOpen && !!logsProductName,
+  });
+
+  const openLogs = (productName: string) => {
+    setLogsProductName(productName);
+    setLogsOpen(true);
   };
 
-  const openLogsDialog = (row: InventoryRow) => {
-    setLogsTarget(row);
-    setLogsDialogOpen(true);
-  };
+  const dirtyCount = rows.filter((r) => r.dirty).length;
 
-  const summaryStats = useMemo(() => {
-    if (!filteredInventory) return { totalProducts: 0, totalStock: 0, lowStock: 0 };
-    const totalProducts = filteredInventory.length;
-    const totalStock = filteredInventory.reduce((sum, r) => sum + r.currentStock, 0);
-    const lowStock = filteredInventory.filter(r => r.currentStock <= 10).length;
-    return { totalProducts, totalStock, lowStock };
-  }, [filteredInventory]);
-
-  if (isLoading) {
+  // ─── Loading skeleton ───
+  if (isLoading || !initialized) {
     return (
       <div className="p-6 space-y-6">
         <Skeleton className="h-8 w-48" />
@@ -167,237 +242,211 @@ export default function Inventory() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-6 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Package className="h-6 w-6" /> Inventory Management
+            <Package className="h-6 w-6" /> Inventory Ledger
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage stock levels across units
+            {canEdit ? "Type product name, enter NEW QTY, then save each row" : "Read-only view of inventory"}
           </p>
         </div>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-sm text-muted-foreground">Total Products</div>
-            <div className="text-2xl font-bold mt-1">{summaryStats.totalProducts}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-sm text-muted-foreground">Total Stock Units</div>
-            <div className="text-2xl font-bold mt-1">{summaryStats.totalStock.toLocaleString()}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-sm text-muted-foreground">Low Stock Items</div>
-            <div className="text-2xl font-bold mt-1 text-amber-600">{summaryStats.lowStock}</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search products..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Unit filter */}
+          {canEdit && (
+            <Select value={unitFilter} onValueChange={setUnitFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="Select Unit" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Units</SelectItem>
+                {activeUnits.filter((u) => u !== "Not Sure").map((u) => (
+                  <SelectItem key={u} value={u}>{u}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {canEdit && (
+            <>
+              <Button size="sm" onClick={addRow}>
+                <Plus className="h-4 w-4 mr-1" /> Add Row
+              </Button>
+              {dirtyCount > 0 && (
+                <Button size="sm" variant="outline" onClick={handleDiscard}>
+                  <RotateCcw className="h-4 w-4 mr-1" /> Discard ({dirtyCount})
+                </Button>
+              )}
+            </>
+          )}
         </div>
-        {(user as any)?.role === "admin" || (user as any)?.role === "inventory" ? (
-          <Select value={unitFilter} onValueChange={setUnitFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by unit" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Units</SelectItem>
-              {activeUnits.filter(u => u !== "Not Sure").map((u) => (
-                <SelectItem key={u} value={u}>{u}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : null}
       </div>
 
-      {/* Excel-like Data Grid */}
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/30">
-                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">#</th>
-                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Product Name</th>
-                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Category / Size</th>
-                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Product Code</th>
-                  <th className="text-center py-3 px-4 font-medium text-muted-foreground">
-                    <span className="flex items-center justify-center gap-1">
-                      <ArrowUpDown className="h-3 w-3" /> Current Stock
-                    </span>
-                  </th>
-                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Unit</th>
-                  {canEdit && (
-                    <th className="text-center py-3 px-4 font-medium text-muted-foreground">Actions</th>
-                  )}
-                  <th className="text-center py-3 px-4 font-medium text-muted-foreground">Log</th>
+      {/* Ledger Table */}
+      <div className="border rounded-lg overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-muted/40 border-b">
+                <th className="w-14 text-center py-2.5 px-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider">NO</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider">PRODUCT NAME</th>
+                <th className="w-28 text-right py-2.5 px-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider">OLD QTY</th>
+                <th className="w-28 text-right py-2.5 px-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider">NEW QTY</th>
+                <th className="w-28 text-right py-2.5 px-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider">FINAL QTY</th>
+                {canEdit && <th className="w-24 text-center py-2.5 px-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider">ACTIONS</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={canEdit ? 6 : 5} className="py-16 text-center text-muted-foreground">
+                    {canEdit ? (
+                      <div className="space-y-2">
+                        <p className="text-sm">No inventory entries yet.</p>
+                        <p className="text-xs">Click <strong>"Add Row"</strong> to start entering stock data.</p>
+                      </div>
+                    ) : (
+                      "No inventory data available."
+                    )}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {filteredInventory.length === 0 ? (
-                  <tr>
-                    <td colSpan={canEdit ? 8 : 7} className="py-12 text-center text-muted-foreground">
-                      {search ? "No products match your search." : "No inventory records found. Stock entries will appear here once products are added to inventory."}
-                    </td>
-                  </tr>
-                ) : (
-                  filteredInventory.map((row, idx) => (
-                    <tr key={row.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                      <td className="py-2.5 px-4 text-muted-foreground">{idx + 1}</td>
-                      <td className="py-2.5 px-4 font-medium">{row.productName}</td>
-                      <td className="py-2.5 px-4 text-muted-foreground">
-                        {[row.category, row.bottleWeight, row.bottleColour].filter(Boolean).join(" / ") || "-"}
+              ) : (
+                rows.map((row, idx) => {
+                  const finalQty = calcFinalQty(row);
+                  const isNegative = finalQty < 0;
+                  return (
+                    <tr
+                      key={row._key}
+                      className={`border-b last:border-0 transition-colors ${
+                        row.dirty ? "bg-amber-50/50" : "hover:bg-muted/10"
+                      }`}
+                    >
+                      {/* NO */}
+                      <td className="py-1.5 px-3 text-center text-muted-foreground text-xs font-mono">
+                        {idx + 1}
                       </td>
-                      <td className="py-2.5 px-4 text-muted-foreground font-mono text-xs">{row.productCode || "-"}</td>
-                      <td className="py-2.5 px-4 text-center">
-                        <Badge
-                          variant="outline"
-                          className={`text-sm font-bold px-3 py-1 ${
-                            row.currentStock <= 0
-                              ? "bg-red-50 text-red-700 border-red-200"
-                              : row.currentStock <= 10
-                              ? "bg-amber-50 text-amber-700 border-amber-200"
-                              : "bg-green-50 text-green-700 border-green-200"
-                          }`}
-                        >
-                          {row.currentStock.toLocaleString()}
-                        </Badge>
+
+                      {/* PRODUCT NAME */}
+                      <td className="py-1.5 px-3">
+                        {canEdit ? (
+                          <Input
+                            value={row.productName}
+                            onChange={(e) => updateCell(row._key, "productName", e.target.value)}
+                            placeholder="Type product name..."
+                            className="h-8 text-sm border-dashed focus:border-solid bg-transparent"
+                            tabIndex={0}
+                          />
+                        ) : (
+                          <span className="font-medium">{row.productName}</span>
+                        )}
                       </td>
-                      <td className="py-2.5 px-4">
-                        <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-xs">
-                          {row.unitName}
-                        </Badge>
+
+                      {/* OLD QTY (read-only) */}
+                      <td className="py-1.5 px-3 text-right">
+                        <span className={`font-mono text-sm font-semibold ${
+                          row.oldQty > 0 ? "text-green-700" : "text-muted-foreground"
+                        }`}>
+                          {row.oldQty.toLocaleString()}
+                        </span>
                       </td>
+
+                      {/* NEW QTY (input) */}
+                      <td className="py-1.5 px-3">
+                        {canEdit ? (
+                          <Input
+                            type="number"
+                            value={row.newQty}
+                            onChange={(e) => updateCell(row._key, "newQty", e.target.value)}
+                            placeholder="0"
+                            className="h-8 text-sm text-right font-mono border-dashed focus:border-solid bg-transparent"
+                            tabIndex={0}
+                          />
+                        ) : (
+                          <span className="font-mono text-sm text-muted-foreground">
+                            {row.newQty || "-"}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* FINAL QTY (auto-calculated, read-only) */}
+                      <td className="py-1.5 px-3 text-right">
+                        <span className={`font-mono text-sm font-bold ${
+                          isNegative ? "text-red-600" : finalQty > 0 ? "text-green-700" : "text-muted-foreground"
+                        }`}>
+                          {finalQty.toLocaleString()}
+                        </span>
+                      </td>
+
+                      {/* ACTIONS */}
                       {canEdit && (
-                        <td className="py-2.5 px-4">
+                        <td className="py-1.5 px-3">
                           <div className="flex items-center justify-center gap-1">
+                            {/* Save button */}
                             <Button
                               size="sm"
-                              variant="outline"
-                              className="h-7 px-2 text-green-600 border-green-200 hover:bg-green-50"
-                              onClick={() => openAdjustDialog(row, "add")}
-                              title="Add stock"
+                              variant={row.dirty ? "default" : "ghost"}
+                              className={`h-7 w-7 p-0 ${row.dirty ? "bg-green-600 hover:bg-green-700 text-white" : "text-green-600"}`}
+                              onClick={() => handleSaveRow(row)}
+                              disabled={!row.dirty || saveRow.isPending}
+                              title="Save row"
                             >
-                              <Plus className="h-3 w-3" />
+                              <Check className="h-3.5 w-3.5" />
                             </Button>
+
+                            {/* History button (only for existing rows) */}
+                            {row.id && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0 text-muted-foreground"
+                                onClick={() => openLogs(row.productName)}
+                                title="View history"
+                              >
+                                <History className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+
+                            {/* Delete button */}
                             <Button
                               size="sm"
-                              variant="outline"
-                              className="h-7 px-2 text-red-600 border-red-200 hover:bg-red-50"
-                              onClick={() => openAdjustDialog(row, "subtract")}
-                              title="Subtract stock"
-                              disabled={row.currentStock <= 0}
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => handleDeleteRow(row)}
+                              title={row.id ? "Delete from database" : "Remove row"}
                             >
-                              <Minus className="h-3 w-3" />
+                              <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           </div>
                         </td>
                       )}
-                      <td className="py-2.5 px-4 text-center">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 px-2 text-muted-foreground"
-                          onClick={() => openLogsDialog(row)}
-                          title="View history"
-                        >
-                          <History className="h-3 w-3" />
-                        </Button>
-                      </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Adjust Stock Dialog */}
-      <Dialog open={adjustDialogOpen} onOpenChange={setAdjustDialogOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {adjustType === "add" ? (
-                <><Plus className="h-5 w-5 text-green-600" /> Add Stock</>
-              ) : (
-                <><Minus className="h-5 w-5 text-red-600" /> Subtract Stock</>
+                  );
+                })
               )}
-            </DialogTitle>
-          </DialogHeader>
-          {adjustTarget && (
-            <div className="space-y-4">
-              <div className="p-3 bg-muted/30 rounded-lg text-sm">
-                <div className="font-medium">{adjustTarget.productName}</div>
-                <div className="text-muted-foreground mt-0.5">
-                  Unit: {adjustTarget.unitName} | Current Stock: <span className="font-bold">{adjustTarget.currentStock}</span>
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Quantity *</label>
-                <Input
-                  type="number"
-                  min="1"
-                  placeholder="Enter quantity"
-                  value={adjustQty}
-                  onChange={(e) => setAdjustQty(e.target.value)}
-                  className="mt-1"
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Notes (optional)</label>
-                <Textarea
-                  placeholder="Reason for adjustment..."
-                  value={adjustNotes}
-                  onChange={(e) => setAdjustNotes(e.target.value)}
-                  rows={2}
-                  className="mt-1"
-                />
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAdjustDialogOpen(false)}>Cancel</Button>
-            <Button
-              disabled={!adjustQty || adjustStock.isPending}
-              onClick={handleAdjustSubmit}
-              className={adjustType === "add" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}
-            >
-              {adjustStock.isPending ? "Processing..." : adjustType === "add" ? "Add Stock" : "Subtract Stock"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Footer info */}
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>
+          {rows.length} product{rows.length !== 1 ? "s" : ""}
+          {dirtyCount > 0 && <span className="ml-2 text-amber-600 font-medium">({dirtyCount} unsaved)</span>}
+        </span>
+        <span>Enter NEW QTY: positive = add, negative = subtract</span>
+      </div>
 
       {/* Stock History Dialog */}
-      <Dialog open={logsDialogOpen} onOpenChange={setLogsDialogOpen}>
+      <Dialog open={logsOpen} onOpenChange={setLogsOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <History className="h-5 w-5" /> Stock History
             </DialogTitle>
-            {logsTarget && (
-              <p className="text-sm text-muted-foreground">
-                {logsTarget.productName} — {logsTarget.unitName}
-              </p>
+            {logsProductName && (
+              <p className="text-sm text-muted-foreground">{logsProductName}</p>
             )}
           </DialogHeader>
           <div className="max-h-[400px] overflow-y-auto">
@@ -407,32 +456,25 @@ export default function Inventory() {
                 <Skeleton className="h-12 w-full" />
               </div>
             ) : !logs || logs.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">No adjustment history yet.</p>
+              <p className="text-sm text-muted-foreground text-center py-8">No history yet.</p>
             ) : (
               <div className="space-y-2">
                 {logs.map((log) => (
                   <div key={log.id} className="flex items-center gap-3 p-3 bg-muted/20 rounded-lg text-sm">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      log.adjustmentType === "add" ? "bg-green-100 text-green-600" :
-                      log.adjustmentType === "subtract" ? "bg-red-100 text-red-600" :
-                      "bg-blue-100 text-blue-600"
-                    }`}>
-                      {log.adjustmentType === "add" ? <Plus className="h-4 w-4" /> :
-                       log.adjustmentType === "subtract" ? <Minus className="h-4 w-4" /> :
-                       <ArrowUpDown className="h-4 w-4" />}
-                    </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium">
-                        {log.adjustmentType === "add" ? "+" : log.adjustmentType === "subtract" ? "-" : "="}
-                        {" "}{log.quantity.toLocaleString()}
-                        <span className="text-muted-foreground font-normal ml-2">
-                          ({log.previousStock} → {log.newStock})
+                      <div className="font-medium font-mono">
+                        {log.previousStock.toLocaleString()} → {log.newStock.toLocaleString()}
+                        <span className="text-muted-foreground font-normal ml-2 text-xs">
+                          ({log.adjustmentType})
                         </span>
                       </div>
                       {log.notes && <div className="text-xs text-muted-foreground mt-0.5 truncate">{log.notes}</div>}
                     </div>
                     <div className="text-xs text-muted-foreground flex-shrink-0">
-                      {new Date(log.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                      {new Date(log.createdAt).toLocaleDateString("en-IN", {
+                        day: "2-digit", month: "short", year: "numeric",
+                        hour: "2-digit", minute: "2-digit",
+                      })}
                     </div>
                   </div>
                 ))}

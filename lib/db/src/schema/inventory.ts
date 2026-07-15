@@ -1,24 +1,25 @@
 import { pgTable, text, serial, integer, timestamp, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
-import { productsTable } from "./products";
 
 export const inventoryTable = pgTable("inventory", {
   id: serial("id").primaryKey(),
-  productId: integer("product_id").notNull().references(() => productsTable.id, { onDelete: "cascade" }),
+  productId: integer("product_id"),
+  productName: text("product_name").notNull(),
   unitName: text("unit_name").notNull(),
   currentStock: integer("current_stock").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
-  index("idx_inventory_product_id").on(t.productId),
+  index("idx_inventory_product_name").on(t.productName),
   index("idx_inventory_unit_name").on(t.unitName),
-  index("idx_inventory_product_unit").on(t.productId, t.unitName),
+  index("idx_inventory_name_unit").on(t.productName, t.unitName),
 ]);
 
 export const inventoryLogsTable = pgTable("inventory_logs", {
   id: serial("id").primaryKey(),
-  productId: integer("product_id").notNull().references(() => productsTable.id, { onDelete: "cascade" }),
+  productId: integer("product_id"),
+  productName: text("product_name").notNull(),
   unitName: text("unit_name").notNull(),
   adjustmentType: text("adjustment_type").notNull(),
   quantity: integer("quantity").notNull(),
@@ -28,7 +29,7 @@ export const inventoryLogsTable = pgTable("inventory_logs", {
   createdBy: integer("created_by"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
-  index("idx_inventory_logs_product_id").on(t.productId),
+  index("idx_inventory_logs_product_name").on(t.productName),
   index("idx_inventory_logs_unit_name").on(t.unitName),
   index("idx_inventory_logs_created_at").on(t.createdAt),
 ]);
