@@ -22,6 +22,7 @@ export const UserRole = {
   sales: 'sales',
   production: 'production',
   production_and_support: 'production_and_support',
+  inventory: 'inventory',
 } as const;
 
 export type UserUnit = typeof UserUnit[keyof typeof UserUnit];
@@ -62,6 +63,7 @@ export const UserInputRole = {
   sales: 'sales',
   production: 'production',
   production_and_support: 'production_and_support',
+  inventory: 'inventory',
 } as const;
 
 export type UserInputUnit = typeof UserInputUnit[keyof typeof UserInputUnit];
@@ -94,6 +96,7 @@ export const UserUpdateRole = {
   sales: 'sales',
   production: 'production',
   production_and_support: 'production_and_support',
+  inventory: 'inventory',
 } as const;
 
 export interface UserUpdate {

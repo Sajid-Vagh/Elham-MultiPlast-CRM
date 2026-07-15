@@ -38,6 +38,7 @@ import ExistingCustomerDetail from "@/pages/existing-customer-detail";
 import GlobalSearch from "@/pages/global-search";
 import TransportLogistics from "@/pages/transport-logistics";
 import TransportLogisticsLookup from "@/pages/transport-logistics-readonly";
+import Inventory from "@/pages/inventory";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -54,10 +55,10 @@ function RoleGuard({ allowedRoles, children }: { allowedRoles: string[]; childre
   const role = localStorage.getItem("crm_user_role") ?? "";
 
   if (!allowedRoles.includes(role)) {
-    if (role === "production") {
+    if (role === "production" || role === "production_and_support") {
       setLocation("/production/dashboard");
-    } else if (role === "production_and_support") {
-      setLocation("/production/dashboard");
+    } else if (role === "inventory") {
+      setLocation("/inventory");
     } else {
       setLocation("/dashboard");
     }
@@ -70,6 +71,7 @@ function RoleGuard({ allowedRoles, children }: { allowedRoles: string[]; childre
 const SALES_ADMIN_ROLES = ["admin", "sales"];
 const PRODUCTION_ROLES = ["production", "production_and_support", "admin"];
 const SUPPORT_ROLES = ["admin", "sales", "production_and_support"];
+const INVENTORY_ROLES = ["admin", "inventory"];
 
 function Router() {
   return (
@@ -83,6 +85,8 @@ function Router() {
             if (token) {
               if (role === "production" || role === "production_and_support") {
                 window.location.replace("/production/dashboard");
+              } else if (role === "inventory") {
+                window.location.replace("/inventory");
               } else {
                 window.location.replace("/dashboard");
               }
@@ -169,12 +173,12 @@ function Router() {
       </Route>
       <Route path="/settings">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales", "production", "production_and_support"]}><Settings /></RoleGuard>
+          <RoleGuard allowedRoles={["admin", "sales", "production", "production_and_support", "inventory"]}><Settings /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route path="/notifications">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={["admin", "sales", "production", "production_and_support"]}><NotificationsPage /></RoleGuard>
+          <RoleGuard allowedRoles={["admin", "sales", "production", "production_and_support", "inventory"]}><NotificationsPage /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route path="/search">
@@ -258,6 +262,13 @@ function Router() {
       <Route path="/production/machine-report">
         <ProtectedLayout>
           <RoleGuard allowedRoles={["admin", "production_and_support", "production"]}><MachineReport /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+
+      {/* Inventory routes */}
+      <Route path="/inventory">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={INVENTORY_ROLES}><Inventory /></RoleGuard>
         </ProtectedLayout>
       </Route>
 

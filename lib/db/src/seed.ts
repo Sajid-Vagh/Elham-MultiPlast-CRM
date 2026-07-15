@@ -10,6 +10,7 @@ const userSeeds = [
   { name: "Priya", username: "priya", password: "elham2024", role: "sales", colorCode: "#3b82f6", unit: "Himatnagar", canViewAllReports: false, canAssignLeads: false },
   { name: "Deepak", username: "deepak", password: "elham2024", role: "sales", colorCode: "#8b5cf6", unit: "Surat", canViewAllReports: false, canAssignLeads: false },
   { name: "Kavita", username: "kavita", password: "elham2024", role: "sales", colorCode: "#ec4899", unit: "Rajkot", canViewAllReports: false, canAssignLeads: false },
+  { name: "Inventory Manager", username: "inventory", password: "elham2024", role: "inventory", colorCode: "#0ea5e9", unit: "All", canViewAllReports: false, canAssignLeads: false },
 ];
 
 for (const u of userSeeds) {

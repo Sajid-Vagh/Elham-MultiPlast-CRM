@@ -14,4 +14,5 @@ export const UserUpdateRole = {
   sales: 'sales',
   production: 'production',
   production_and_support: 'production_and_support',
+  inventory: 'inventory',
 } as const;

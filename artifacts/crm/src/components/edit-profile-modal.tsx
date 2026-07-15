@@ -457,6 +457,7 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
                         <SelectItem value="sales">Sales</SelectItem>
                         <SelectItem value="production_and_support">Production & Support</SelectItem>
                         <SelectItem value="production">Production</SelectItem>
+                        <SelectItem value="inventory">Inventory</SelectItem>
                       </SelectContent>
                     </Select>
                   ) : (

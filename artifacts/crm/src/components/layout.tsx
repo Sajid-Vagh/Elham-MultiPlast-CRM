@@ -192,6 +192,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   const isProductionOnly = user.role === "production";
   const isSupport = user.role === "production_and_support";
   const isAdmin = user.role === "admin";
+  const isInventory = user.role === "inventory";
 
   const salesNavItems = [
     { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", color: "#a78bfa" },
@@ -205,6 +206,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
     { icon: MapPin, label: "Transport Lookup", href: "/transport-logistics/lookup", color: "#14b8a6" },
     { icon: BarChart, label: "Reports", href: "/reports", color: "#f472b6" },
+    { icon: Package, label: "Inventory", href: "/inventory", color: "#0ea5e9" },
     { icon: Download, label: "Import", href: "/import", color: "#fbbf24" },
     { icon: Copy, label: "Duplicates", href: "/duplicates", color: "#f87171" },
     { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
@@ -229,9 +231,16 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: BarChart, label: "Machine Report", href: "/production/machine-report", color: "#7c3aed" },
   ];
 
+  const inventoryNavItems = [
+    { icon: Package, label: "Inventory", href: "/inventory", color: "#0ea5e9" },
+    { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
+  ];
+
   let navItems: typeof salesNavItems;
   if (isAdmin) {
     navItems = [...salesNavItems, ...productionNavItems, { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" }];
+  } else if (isInventory) {
+    navItems = inventoryNavItems;
   } else if (isProductionOnly) {
     navItems = productionNavItems;
   } else if (isSupport) {
@@ -306,7 +315,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
             <UserAvatar profilePhoto={user.profilePhoto} name={user.name} className="w-8 h-8 shadow-sm" />
             <div className="flex-1 overflow-hidden">
               <p className="text-sm font-semibold truncate text-[hsl(245_30%_20%)]">{user.name}</p>
-              <p className="text-xs truncate text-[hsl(248_16%_55%)]">{user.unit || (user.role === "production" ? "Production" : user.role === "production_and_support" ? "Production & Support" : user.role)}</p>
+              <p className="text-xs truncate text-[hsl(248_16%_55%)]">{user.unit || (user.role === "production" ? "Production" : user.role === "production_and_support" ? "Production & Support" : user.role === "inventory" ? "Inventory" : user.role)}</p>
             </div>
           </div>
           <Button

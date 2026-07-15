@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Pencil, Trash2, SlidersHorizontal, Users, Camera, X as XIcon, CheckCircle2, ArrowLeft, Settings2, Truck, AlertTriangle, BarChart3, Shield, Building2 } from "lucide-react";
+import { Plus, Pencil, Trash2, SlidersHorizontal, Users, Camera, X as XIcon, CheckCircle2, ArrowLeft, Settings2, Truck, AlertTriangle, BarChart3, Shield, Building2, Package } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -113,10 +113,12 @@ const ROLE_SUMMARIES: Record<string, { label: string; color: string; icon: React
   sales: { label: "Sales", color: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800", icon: <Users className="h-4 w-4" />, bullets: ["Existing Customers", "Activities & Deals", "Reports & Pipeline"] },
   production_and_support: { label: "Production & Support", color: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800", icon: <Users className="h-4 w-4" />, bullets: ["Existing Customers", "Repeat Orders", "Dispatch & Complaints", "Production Coordination"] },
   production: { label: "Production", color: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800", icon: <Settings2 className="h-4 w-4" />, bullets: ["Batch Management", "Quality Control", "Production Scheduling"] },
+  inventory: { label: "Inventory", color: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950 dark:text-sky-300 dark:border-sky-800", icon: <Package className="h-4 w-4" />, bullets: ["Stock Management", "Inventory Adjustments", "Stock Reports"] },
 };
 
 function getDefaultPermissions(role: string): Record<string, boolean> {
   const all: Record<string, boolean> = {};
+  if (role === "inventory") return all;
   const cats = role === "production" ? PRODUCTION_PERMISSION_CATEGORIES : SUPPORT_PERMISSION_CATEGORIES;
   for (const cat of cats) for (const p of cat.permissions) all[p.key] = true;
   return all;
@@ -124,6 +126,7 @@ function getDefaultPermissions(role: string): Record<string, boolean> {
 
 function getAllPermissionKeys(role: string): string[] {
   const keys: string[] = [];
+  if (role === "inventory") return keys;
   const cats = role === "production" ? PRODUCTION_PERMISSION_CATEGORIES : SUPPORT_PERMISSION_CATEGORIES;
   for (const cat of cats) for (const p of cat.permissions) keys.push(p.key);
   return keys;
@@ -187,7 +190,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
 
   const handleRoleChange = (newRole: string) => {
     setForm(p => {
-      if (newRole === "production_and_support" || newRole === "production") {
+      if (newRole === "production_and_support" || newRole === "production" || newRole === "inventory") {
         return { ...p, role: newRole, permissions: getDefaultPermissions(newRole) };
       }
       return { ...p, role: newRole, permissions: {} };
@@ -304,10 +307,11 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
                   <Select value={form.role} onValueChange={handleRoleChange}>
                     <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="admin">Admin (CEO)</SelectItem>
-                      <SelectItem value="sales">Sales</SelectItem>
-                      <SelectItem value="production_and_support">Production & Support</SelectItem>
-                      <SelectItem value="production">Production</SelectItem>
+                <SelectItem value="admin">Admin (CEO)</SelectItem>
+                <SelectItem value="sales">Sales</SelectItem>
+                <SelectItem value="production_and_support">Production & Support</SelectItem>
+                <SelectItem value="production">Production</SelectItem>
+                <SelectItem value="inventory">Inventory</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

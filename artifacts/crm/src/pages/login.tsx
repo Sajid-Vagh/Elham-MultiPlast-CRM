@@ -29,6 +29,8 @@ export default function Login() {
         queryClient.setQueryData(getGetMeQueryKey(), data.user);
         const target = data.user.role === "production" || data.user.role === "production_and_support"
           ? "/production/dashboard"
+          : (data.user.role as string) === "inventory"
+          ? "/inventory"
           : "/dashboard";
         setLocation(target);
       },

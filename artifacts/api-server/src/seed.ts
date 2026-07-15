@@ -11,6 +11,7 @@ const users = [
   { name: "Kavita", username: "kavita", password: "elham2024", role: "sales", colorCode: "#ec4899", unit: "Rajkot", canViewAllReports: false, canAssignLeads: false },
   { name: "Production Manager", username: "production", password: "elham2024", role: "production", colorCode: "#7c3aed", unit: "All", canViewAllReports: false, canAssignLeads: false },
   { name: "Support Team", username: "support", password: "elham2024", role: "production_and_support", colorCode: "#0ea5e9", unit: "All", canViewAllReports: false, canAssignLeads: false },
+  { name: "Inventory Manager", username: "inventory", password: "elham2024", role: "inventory", colorCode: "#0ea5e9", unit: "All", canViewAllReports: false, canAssignLeads: false },
 ];
 
 for (const u of users) {
