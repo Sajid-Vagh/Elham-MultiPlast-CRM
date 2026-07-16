@@ -5,6 +5,7 @@ import { z } from "zod/v4";
 export interface InventoryFormatting {
   isBold?: boolean;
   highlightColor?: string;
+  textColor?: string;
 }
 
 export const inventoryTable = pgTable("inventory", {

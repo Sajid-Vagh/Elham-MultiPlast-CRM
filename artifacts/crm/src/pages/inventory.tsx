@@ -30,7 +30,7 @@ type ServerRow = {
   stock: number;
   clientOrder: number;
   sortOrder: number | null;
-  formatting: { isBold?: boolean; highlightColor?: string } | null;
+  formatting: { isBold?: boolean; highlightColor?: string; textColor?: string } | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -47,7 +47,7 @@ type GridRow = {
   clientOrder: string;
   sortOrder: number | null;
   dirty: boolean;
-  formatting: { isBold?: boolean; highlightColor?: string } | null;
+  formatting: { isBold?: boolean; highlightColor?: string; textColor?: string } | null;
 };
 
 type InventoryLog = {
@@ -65,13 +65,48 @@ type InventoryLog = {
 
 const HIGHLIGHT_COLORS = [
   { label: "None", value: "" },
+  { label: "Black", value: "#000000" },
+  { label: "Dark Red", value: "#991b1b" },
+  { label: "Red", value: "#ef4444" },
+  { label: "Orange", value: "#f97316" },
+  { label: "Gold", value: "#eab308" },
   { label: "Yellow", value: "#fef08a" },
-  { label: "Green", value: "#bbf7d0" },
-  { label: "Blue", value: "#bfdbfe" },
-  { label: "Red", value: "#fecaca" },
-  { label: "Orange", value: "#fed7aa" },
-  { label: "Purple", value: "#e9d5ff" },
-  { label: "Pink", value: "#fbcfe8" },
+  { label: "Lime", value: "#bef264" },
+  { label: "Green", value: "#22c55e" },
+  { label: "Teal", value: "#14b8a6" },
+  { label: "Cyan", value: "#67e8f9" },
+  { label: "Sky", value: "#7dd3fc" },
+  { label: "Blue", value: "#3b82f6" },
+  { label: "Indigo", value: "#6366f1" },
+  { label: "Purple", value: "#a855f7" },
+  { label: "Pink", value: "#ec4899" },
+  { label: "Rose", value: "#fda4af" },
+  { label: "Lavender", value: "#e9d5ff" },
+  { label: "Light Blue", value: "#bfdbfe" },
+  { label: "Mint", value: "#bbf7d0" },
+  { label: "Peach", value: "#fed7aa" },
+  { label: "Light Gray", value: "#e5e7eb" },
+  { label: "Gray", value: "#9ca3af" },
+  { label: "Dark Gray", value: "#4b5563" },
+  { label: "White", value: "#ffffff" },
+];
+
+const TEXT_COLORS = [
+  { label: "Default", value: "" },
+  { label: "Black", value: "#000000" },
+  { label: "Dark Red", value: "#991b1b" },
+  { label: "Red", value: "#dc2626" },
+  { label: "Orange", value: "#ea580c" },
+  { label: "Gold", value: "#ca8a04" },
+  { label: "Green", value: "#16a34a" },
+  { label: "Teal", value: "#0d9488" },
+  { label: "Blue", value: "#2563eb" },
+  { label: "Indigo", value: "#4f46e5" },
+  { label: "Purple", value: "#9333ea" },
+  { label: "Pink", value: "#db2777" },
+  { label: "Brown", value: "#78350f" },
+  { label: "Gray", value: "#6b7280" },
+  { label: "White", value: "#ffffff" },
 ];
 
 let rowCounter = 0;
@@ -228,7 +263,7 @@ export default function Inventory() {
 
   // Format mutation
   const formatMutation = useMutation({
-    mutationFn: ({ id, formatting }: { id: number; formatting: { isBold?: boolean; highlightColor?: string } | null }) =>
+    mutationFn: ({ id, formatting }: { id: number; formatting: { isBold?: boolean; highlightColor?: string; textColor?: string } | null }) =>
       customFetch<any>(`/inventory/${id}/formatting`, {
         method: "PATCH",
         body: JSON.stringify({ formatting }),
@@ -378,6 +413,22 @@ export default function Inventory() {
         if (!selectedRows.has(r._key)) return r;
         const formatting = { ...r.formatting, highlightColor: color || undefined };
         if (!color) delete formatting.highlightColor;
+        if (Object.keys(formatting).length === 0) {
+          if (r.id) formatMutation.mutate({ id: r.id, formatting: null });
+          return { ...r, formatting: null, dirty: r.id ? false : r.dirty };
+        }
+        if (r.id) formatMutation.mutate({ id: r.id, formatting });
+        return { ...r, formatting: Object.keys(formatting).length ? formatting : null, dirty: r.id ? false : r.dirty };
+      })
+    );
+  }, [selectedRows, formatMutation]);
+
+  const applyTextColor = useCallback((color: string) => {
+    setRows((prev) =>
+      prev.map((r) => {
+        if (!selectedRows.has(r._key)) return r;
+        const formatting = { ...r.formatting, textColor: color || undefined };
+        if (!color) delete formatting.textColor;
         if (Object.keys(formatting).length === 0) {
           if (r.id) formatMutation.mutate({ id: r.id, formatting: null });
           return { ...r, formatting: null, dirty: r.id ? false : r.dirty };
@@ -553,7 +604,7 @@ export default function Inventory() {
 
       {/* Formatting Toolbar */}
       {canEdit && selectedRows.size > 0 && (
-        <div className="flex items-center gap-2 p-2 bg-muted/30 border rounded-lg">
+        <div className="flex items-center gap-3 p-2 bg-muted/30 border rounded-lg flex-wrap">
           <span className="text-xs text-muted-foreground mr-1">{selectedRows.size} selected</span>
           <Button
             size="sm"
@@ -564,18 +615,85 @@ export default function Inventory() {
           >
             <Bold className="h-3.5 w-3.5" />
           </Button>
-          <div className="flex items-center gap-1 ml-2">
-            <Highlighter className="h-3.5 w-3.5 text-muted-foreground" />
-            {HIGHLIGHT_COLORS.map((c) => (
-              <button
-                key={c.value}
-                className="w-5 h-5 rounded border border-gray-300 cursor-pointer hover:scale-110 transition-transform"
-                style={{ backgroundColor: c.value || "#fff" }}
-                title={c.label}
-                onClick={() => applyHighlight(c.value)}
-              />
-            ))}
+
+          {/* Background Color Picker */}
+          <div className="flex items-center gap-1 ml-1 border-l pl-3">
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] text-muted-foreground leading-none mb-0.5">BG</span>
+              <div className="relative">
+                <Highlighter className="h-3.5 w-3.5 text-muted-foreground absolute top-0.5 left-0.5 pointer-events-none z-10" />
+                <input
+                  type="color"
+                  className="w-6 h-6 rounded border border-gray-300 cursor-pointer p-0 opacity-0 absolute inset-0"
+                  value={(() => {
+                    const sel = rows.find(r => selectedRows.has(r._key));
+                    return sel?.formatting?.highlightColor || "#ffffff";
+                  })()}
+                  onChange={(e) => applyHighlight(e.target.value)}
+                  title="Custom background color"
+                />
+                <div
+                  className="w-6 h-6 rounded border border-gray-300 pointer-events-none"
+                  style={{ backgroundColor: (() => {
+                    const sel = rows.find(r => selectedRows.has(r._key));
+                    return sel?.formatting?.highlightColor || "#ffffff";
+                  })() }}
+                />
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-0.5 max-w-[200px]">
+              {HIGHLIGHT_COLORS.map((c) => (
+                <button
+                  key={c.value}
+                  className="w-4 h-4 rounded-sm border border-gray-300 cursor-pointer hover:scale-125 transition-transform"
+                  style={{ backgroundColor: c.value || "#fff" }}
+                  title={c.label}
+                  onClick={() => applyHighlight(c.value)}
+                />
+              ))}
+            </div>
           </div>
+
+          {/* Text Color Picker */}
+          <div className="flex items-center gap-1 ml-1 border-l pl-3">
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] text-muted-foreground leading-none mb-0.5">A</span>
+              <div className="relative">
+                <span className="text-xs font-bold absolute top-0.5 left-0.5 pointer-events-none z-10 leading-none">A</span>
+                <input
+                  type="color"
+                  className="w-6 h-6 rounded border border-gray-300 cursor-pointer p-0 opacity-0 absolute inset-0"
+                  value={(() => {
+                    const sel = rows.find(r => selectedRows.has(r._key));
+                    return sel?.formatting?.textColor || "#000000";
+                  })()}
+                  onChange={(e) => applyTextColor(e.target.value)}
+                  title="Custom text color"
+                />
+                <div
+                  className="w-6 h-6 rounded border border-gray-300 pointer-events-none"
+                  style={{ backgroundColor: (() => {
+                    const sel = rows.find(r => selectedRows.has(r._key));
+                    return sel?.formatting?.textColor || "#ffffff";
+                  })() }}
+                />
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-0.5 max-w-[160px]">
+              {TEXT_COLORS.map((c) => (
+                <button
+                  key={c.value}
+                  className="w-4 h-4 rounded-sm border border-gray-300 cursor-pointer hover:scale-125 transition-transform flex items-center justify-center"
+                  style={{ backgroundColor: c.value || "#fff" }}
+                  title={c.label}
+                  onClick={() => applyTextColor(c.value)}
+                >
+                  {c.value && <span className="text-[6px] font-bold" style={{ color: c.value === "#ffffff" ? "#000" : c.value === "#000000" ? "#fff" : c.value }}>A</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <Button
             size="sm"
             variant="ghost"
@@ -630,9 +748,14 @@ export default function Inventory() {
                   const isNegative = additionalQty < 0;
                   const isSelected = selectedRows.has(row._key);
                   const bgColor = row.formatting?.highlightColor || (isSelected ? "#f0f9ff" : undefined);
+                  const txtColor = row.formatting?.textColor || undefined;
                   const isBold = row.formatting?.isBold;
                   const titleRow = isTitleRow(row);
                   const blank = isBlankRow(row);
+
+                  const rowStyle: React.CSSProperties = {};
+                  if (bgColor) rowStyle.backgroundColor = bgColor;
+                  if (txtColor) rowStyle.color = txtColor;
 
                   return (
                     <tr
@@ -640,7 +763,7 @@ export default function Inventory() {
                       className={`border-b last:border-0 transition-colors ${
                         titleRow ? "bg-blue-50/60" : blank ? "bg-gray-50/40" : row.dirty ? "bg-amber-50/50" : "hover:bg-muted/10"
                       }`}
-                      style={bgColor ? { backgroundColor: bgColor } : undefined}
+                      style={Object.keys(rowStyle).length ? rowStyle : undefined}
                     >
                       {/* Checkbox */}
                       {canEdit && (
