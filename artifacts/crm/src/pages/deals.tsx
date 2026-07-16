@@ -281,14 +281,31 @@ export default function Deals() {
     const oldStage = deal?.stage as string | undefined;
     if (!newStage || !deal || !oldStage || oldStage === newStage) return;
 
-    // Intercept WON drops — show Mark Won dialog directly
+    // Intercept WON drops — check for Proforma Invoice first (hard block if missing)
     if (newStage === "Won") {
       setOptimisticStages(prev => ({ ...prev, [dealId]: "Won" }));
-      setMarkWonDeal({ deal, oldStage });
-      setWonAmount(deal.totalValue ? String(deal.totalValue) : "");
-      setWonProductionUnit("");
-      setWonProductionNotes("");
-      setWonSalesNotes("");
+      const token = localStorage.getItem("crm_token");
+      fetch(`/api/proforma-invoices`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then(res => res.ok ? res.json() : [])
+        .then((allPIs: any[]) => {
+          const hasPI = Array.isArray(allPIs) && allPIs.some((pi: any) => pi.dealId === dealId);
+          if (!hasPI) {
+            setOptimisticStages(prev => { const n = { ...prev }; delete n[dealId]; return n; });
+            toast({ title: "Action Denied", description: "Please create a Proforma Invoice before marking this deal as Won.", variant: "destructive" });
+            return;
+          }
+          setMarkWonDeal({ deal, oldStage });
+          setWonAmount(deal.totalValue ? String(deal.totalValue) : "");
+          setWonProductionUnit("");
+          setWonProductionNotes("");
+          setWonSalesNotes("");
+        })
+        .catch(() => {
+          setOptimisticStages(prev => { const n = { ...prev }; delete n[dealId]; return n; });
+          toast({ title: "Error", description: "Could not verify Proforma Invoice.", variant: "destructive" });
+        });
       return;
     }
 
@@ -611,10 +628,36 @@ export default function Deals() {
               <Button variant="outline" disabled><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Checking...</Button>
             ) : piSentExistingPi ? (
               <>
-                <Button variant="outline" onClick={() => { setPiSentDeal(null); setOptimisticStages(prev => { const n = { ...prev }; delete n[piSentDeal!.id]; return n; }); }}>No</Button>
-                <Button onClick={() => {
+                <Button variant="outline" onClick={() => {
+                  if (!piSentDeal) return;
+                  const contactId = piSentDeal.contactId || piSentDeal.contact?.id;
+                  setPiSentDeal(null);
+                  setOptimisticStages(prev => { const n = { ...prev }; delete n[piSentDeal!.id]; return n; });
+                  navigate(`/proforma-invoices${contactId ? `?contactId=${contactId}` : ""}`);
+                }}>No</Button>
+                <Button onClick={async () => {
                   if (!piSentDeal) return;
                   const dealId = piSentDeal.id;
+                  // Re-verify PI exists for THIS specific deal before proceeding
+                  try {
+                    const token = localStorage.getItem("crm_token");
+                    const res = await fetch(`/api/proforma-invoices`, {
+                      headers: { Authorization: `Bearer ${token}` },
+                    });
+                    const allPIs = res.ok ? await res.json() : [];
+                    const hasPI = Array.isArray(allPIs) && allPIs.some((pi: any) => pi.dealId === dealId);
+                    if (!hasPI) {
+                      setPiSentDeal(null);
+                      setOptimisticStages(prev => { const n = { ...prev }; delete n[dealId]; return n; });
+                      toast({ title: "No Proforma Invoice found for this specific deal. Please create one.", variant: "destructive" });
+                      return;
+                    }
+                  } catch {
+                    setPiSentDeal(null);
+                    setOptimisticStages(prev => { const n = { ...prev }; delete n[dealId]; return n; });
+                    toast({ title: "Could not verify Proforma Invoice.", variant: "destructive" });
+                    return;
+                  }
                   setPiSentDeal(null);
                   updateDeal.mutate(
                     { id: dealId, data: { stage: "PI Sent" as DealStage } },

@@ -436,6 +436,17 @@ export default function ProformaInvoicesPage() {
       try {
         const contact = await searchContactByMobile({ mobile: m });
         setSelectedLead({ id: contact.id, name: contact.name, companyName: contact.companyName, mobile: contact.mobile });
+        // Auto-fill party details from existing contact
+        setCustomerName(contact.name || "");
+        setCompanyName(contact.companyName || "");
+        setCity(contact.city || "");
+        setAddress(contact.address || "");
+        setState(contact.state || "");
+        const gst = (contact as any).gstNumber;
+        if (gst) {
+          setGstNumber(gst);
+          setCustomerType("GST");
+        }
       } catch {
         setSelectedLead(null);
       }
@@ -447,6 +458,14 @@ export default function ProformaInvoicesPage() {
     setCustomerName(contact.name || "");
     setCompanyName(contact.companyName || "");
     setMobile(contact.mobile || "");
+    setCity(contact.city || "");
+    setAddress(contact.address || "");
+    setState(contact.state || "");
+    const gst = contact.gstNumber;
+    if (gst) {
+      setGstNumber(gst);
+      setCustomerType("GST");
+    }
     setSelectedLead({ id: contact.id, name: contact.name, companyName: contact.companyName, mobile: contact.mobile });
     setMobileSearchResult(null);
     setMobileSearchError("");
