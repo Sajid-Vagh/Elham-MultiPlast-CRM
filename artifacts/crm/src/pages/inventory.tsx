@@ -132,11 +132,25 @@ function buildGridRows(server: ServerRow[]): GridRow[] {
 }
 
 function isTitleRow(row: GridRow): boolean {
-  return !!row.productName.trim() && !row.size && !row.bottleColor && !row.weight && !row.stock && !row.clientOrder;
+  return (
+    !!row.productName.trim() &&
+    !row.size &&
+    !row.bottleColor &&
+    !row.weight &&
+    !(Number(row.stock)) &&
+    !(Number(row.clientOrder))
+  );
 }
 
 function isBlankRow(row: GridRow): boolean {
-  return !row.productName.trim() && !row.size && !row.bottleColor && !row.weight && !row.stock && !row.clientOrder;
+  return (
+    !row.productName.trim() &&
+    !row.size &&
+    !row.bottleColor &&
+    !row.weight &&
+    !(Number(row.stock)) &&
+    !(Number(row.clientOrder))
+  );
 }
 
 function calcAdditionalQty(row: GridRow): number {
@@ -602,16 +616,19 @@ export default function Inventory() {
         </div>
       </div>
 
-      {/* Formatting Toolbar */}
-      {canEdit && selectedRows.size > 0 && (
-        <div className="flex items-center gap-3 p-2 bg-muted/30 border rounded-lg flex-wrap">
-          <span className="text-xs text-muted-foreground mr-1">{selectedRows.size} selected</span>
+      {/* Formatting Toolbar — always visible when rows exist */}
+      {canEdit && rows.length > 0 && (
+        <div className={`flex items-center gap-3 p-2 border rounded-lg flex-wrap transition-opacity ${selectedRows.size === 0 ? "opacity-50 pointer-events-none" : "bg-muted/30"}`}>
+          <span className="text-xs text-muted-foreground mr-1">
+            {selectedRows.size > 0 ? `${selectedRows.size} selected` : "Select rows to format"}
+          </span>
           <Button
             size="sm"
             variant="outline"
             className="h-7 px-2"
             onClick={applyBold}
             title="Toggle Bold"
+            disabled={selectedRows.size === 0}
           >
             <Bold className="h-3.5 w-3.5" />
           </Button>
@@ -624,13 +641,14 @@ export default function Inventory() {
                 <Highlighter className="h-3.5 w-3.5 text-muted-foreground absolute top-0.5 left-0.5 pointer-events-none z-10" />
                 <input
                   type="color"
-                  className="w-6 h-6 rounded border border-gray-300 cursor-pointer p-0 opacity-0 absolute inset-0"
+                  className="w-6 h-6 rounded border border-gray-300 cursor-pointer p-0 opacity-0 absolute inset-0 disabled:cursor-not-allowed"
                   value={(() => {
                     const sel = rows.find(r => selectedRows.has(r._key));
                     return sel?.formatting?.highlightColor || "#ffffff";
                   })()}
                   onChange={(e) => applyHighlight(e.target.value)}
                   title="Custom background color"
+                  disabled={selectedRows.size === 0}
                 />
                 <div
                   className="w-6 h-6 rounded border border-gray-300 pointer-events-none"
@@ -645,10 +663,11 @@ export default function Inventory() {
               {HIGHLIGHT_COLORS.map((c) => (
                 <button
                   key={c.value}
-                  className="w-4 h-4 rounded-sm border border-gray-300 cursor-pointer hover:scale-125 transition-transform"
+                  className="w-4 h-4 rounded-sm border border-gray-300 cursor-pointer hover:scale-125 transition-transform disabled:cursor-not-allowed disabled:opacity-40"
                   style={{ backgroundColor: c.value || "#fff" }}
                   title={c.label}
                   onClick={() => applyHighlight(c.value)}
+                  disabled={selectedRows.size === 0}
                 />
               ))}
             </div>
@@ -662,13 +681,14 @@ export default function Inventory() {
                 <span className="text-xs font-bold absolute top-0.5 left-0.5 pointer-events-none z-10 leading-none">A</span>
                 <input
                   type="color"
-                  className="w-6 h-6 rounded border border-gray-300 cursor-pointer p-0 opacity-0 absolute inset-0"
+                  className="w-6 h-6 rounded border border-gray-300 cursor-pointer p-0 opacity-0 absolute inset-0 disabled:cursor-not-allowed"
                   value={(() => {
                     const sel = rows.find(r => selectedRows.has(r._key));
                     return sel?.formatting?.textColor || "#000000";
                   })()}
                   onChange={(e) => applyTextColor(e.target.value)}
                   title="Custom text color"
+                  disabled={selectedRows.size === 0}
                 />
                 <div
                   className="w-6 h-6 rounded border border-gray-300 pointer-events-none"
@@ -683,10 +703,11 @@ export default function Inventory() {
               {TEXT_COLORS.map((c) => (
                 <button
                   key={c.value}
-                  className="w-4 h-4 rounded-sm border border-gray-300 cursor-pointer hover:scale-125 transition-transform flex items-center justify-center"
+                  className="w-4 h-4 rounded-sm border border-gray-300 cursor-pointer hover:scale-125 transition-transform flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-40"
                   style={{ backgroundColor: c.value || "#fff" }}
                   title={c.label}
                   onClick={() => applyTextColor(c.value)}
+                  disabled={selectedRows.size === 0}
                 >
                   {c.value && <span className="text-[6px] font-bold" style={{ color: c.value === "#ffffff" ? "#000" : c.value === "#000000" ? "#fff" : c.value }}>A</span>}
                 </button>
@@ -699,6 +720,7 @@ export default function Inventory() {
             variant="ghost"
             className="h-7 ml-2 text-muted-foreground"
             onClick={() => setSelectedRows(new Set())}
+            disabled={selectedRows.size === 0}
           >
             Clear selection
           </Button>
@@ -723,9 +745,9 @@ export default function Inventory() {
                 </th>
                 <th className="w-12 text-center py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">NO</th>
                 <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[300px]">PRODUCT NAME</th>
-                <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[100px]">SIZE</th>
-                <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[100px]">COLOUR</th>
-                <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[100px]">WEIGHT</th>
+                <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[140px]">SIZE</th>
+                <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[140px]">COLOUR</th>
+                <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[140px]">WEIGHT</th>
                 <th className="w-24 text-right py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">STOCK</th>
                 <th className="w-28 text-right py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">CLIENT ORDER</th>
                 <th className="w-28 text-right py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">ADDITIONAL QTY</th>
@@ -761,7 +783,7 @@ export default function Inventory() {
                     <tr
                       key={row._key}
                       className={`border-b last:border-0 transition-colors ${
-                        titleRow ? "bg-blue-50/60" : blank ? "bg-gray-50/40" : row.dirty ? "bg-amber-50/50" : "hover:bg-muted/10"
+                        titleRow ? "bg-blue-50/80 border-l-4 border-l-blue-400" : blank ? "bg-gray-50/40" : row.dirty ? "bg-amber-50/50" : "hover:bg-muted/10"
                       }`}
                       style={Object.keys(rowStyle).length ? rowStyle : undefined}
                     >
@@ -789,10 +811,16 @@ export default function Inventory() {
                             value={row.productName}
                             onChange={(e) => updateCell(row._key, "productName", e.target.value)}
                             placeholder="Product name..."
-                            className={`h-7 text-sm border-dashed focus:border-solid bg-transparent min-w-[280px] ${titleRow ? "font-bold" : ""}`}
+                            className={`h-7 text-sm bg-transparent min-w-[280px] ${
+                              titleRow
+                                ? "font-bold text-blue-800 border-none bg-transparent text-base"
+                                : "border-dashed focus:border-solid"
+                            } ${isBold && !titleRow ? "font-bold" : ""}`}
                           />
                         ) : (
-                          <span className={`font-medium whitespace-nowrap ${titleRow ? "font-bold text-blue-800" : ""}`}>{row.productName || ""}</span>
+                          <span className={`font-medium whitespace-nowrap ${
+                            titleRow ? "font-bold text-base text-blue-800" : ""
+                          }`}>{row.productName || ""}</span>
                         )}
                       </td>
 
@@ -803,10 +831,10 @@ export default function Inventory() {
                             value={row.size}
                             onChange={(e) => updateCell(row._key, "size", e.target.value)}
                             placeholder="-"
-                            className="h-7 text-sm border-dashed focus:border-solid bg-transparent"
+                            className="h-7 text-sm border-dashed focus:border-solid bg-transparent min-w-[120px]"
                           />
                         ) : (
-                          <span>{row.size || "-"}</span>
+                          <span className="whitespace-nowrap">{row.size || "-"}</span>
                         )}
                       </td>
 
@@ -817,10 +845,10 @@ export default function Inventory() {
                             value={row.bottleColor}
                             onChange={(e) => updateCell(row._key, "bottleColor", e.target.value)}
                             placeholder="-"
-                            className="h-7 text-sm border-dashed focus:border-solid bg-transparent"
+                            className="h-7 text-sm border-dashed focus:border-solid bg-transparent min-w-[120px]"
                           />
                         ) : (
-                          <span>{row.bottleColor || "-"}</span>
+                          <span className="whitespace-nowrap">{row.bottleColor || "-"}</span>
                         )}
                       </td>
 
@@ -831,10 +859,10 @@ export default function Inventory() {
                             value={row.weight}
                             onChange={(e) => updateCell(row._key, "weight", e.target.value)}
                             placeholder="-"
-                            className="h-7 text-sm border-dashed focus:border-solid bg-transparent"
+                            className="h-7 text-sm border-dashed focus:border-solid bg-transparent min-w-[120px]"
                           />
                         ) : (
-                          <span>{row.weight || "-"}</span>
+                          <span className="whitespace-nowrap">{row.weight || "-"}</span>
                         )}
                       </td>
 
