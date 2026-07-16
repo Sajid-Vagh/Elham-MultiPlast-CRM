@@ -71,7 +71,7 @@ function RoleGuard({ allowedRoles, children }: { allowedRoles: string[]; childre
 const SALES_ADMIN_ROLES = ["admin", "sales"];
 const PRODUCTION_ROLES = ["production", "production_and_support", "admin"];
 const SUPPORT_ROLES = ["admin", "sales", "production_and_support"];
-const INVENTORY_ROLES = ["admin", "inventory"];
+const INVENTORY_ROLES = ["admin", "sales", "inventory"];
 
 function Router() {
   return (
@@ -96,6 +96,13 @@ function Router() {
           }
           return null;
         }}
+      </Route>
+
+      {/* Inventory routes (before parametrised routes to avoid conflicts) */}
+      <Route path="/inventory">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={INVENTORY_ROLES}><Inventory /></RoleGuard>
+        </ProtectedLayout>
       </Route>
 
       {/* Sales & Admin routes */}
@@ -262,13 +269,6 @@ function Router() {
       <Route path="/production/machine-report">
         <ProtectedLayout>
           <RoleGuard allowedRoles={["admin", "production_and_support", "production"]}><MachineReport /></RoleGuard>
-        </ProtectedLayout>
-      </Route>
-
-      {/* Inventory routes */}
-      <Route path="/inventory">
-        <ProtectedLayout>
-          <RoleGuard allowedRoles={INVENTORY_ROLES}><Inventory /></RoleGuard>
         </ProtectedLayout>
       </Route>
 

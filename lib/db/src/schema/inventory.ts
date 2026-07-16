@@ -1,24 +1,32 @@
-import { pgTable, text, serial, integer, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
+export interface InventoryFormatting {
+  isBold?: boolean;
+  highlightColor?: string;
+}
+
 export const inventoryTable = pgTable("inventory", {
   id: serial("id").primaryKey(),
-  productId: integer("product_id"),
   productName: text("product_name").notNull(),
   unitName: text("unit_name").notNull(),
-  currentStock: integer("current_stock").notNull().default(0),
+  size: text("size"),
+  bottleColor: text("bottle_color"),
+  weight: text("weight"),
+  stock: integer("stock").notNull().default(0),
+  orderQty: integer("order_qty").notNull().default(0),
+  formatting: jsonb("formatting").$type<InventoryFormatting>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("idx_inventory_product_name").on(t.productName),
   index("idx_inventory_unit_name").on(t.unitName),
-  index("idx_inventory_name_unit").on(t.productName, t.unitName),
+  uniqueIndex("idx_inventory_name_unit").on(t.productName, t.unitName),
 ]);
 
 export const inventoryLogsTable = pgTable("inventory_logs", {
   id: serial("id").primaryKey(),
-  productId: integer("product_id"),
   productName: text("product_name").notNull(),
   unitName: text("unit_name").notNull(),
   adjustmentType: text("adjustment_type").notNull(),
