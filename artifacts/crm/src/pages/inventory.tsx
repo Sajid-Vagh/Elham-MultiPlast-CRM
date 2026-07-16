@@ -728,9 +728,9 @@ export default function Inventory() {
       )}
 
       {/* Spreadsheet Grid */}
-      <div className="border rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
+      <div className="border rounded-lg">
+        <div className="overflow-x-auto max-w-full">
+          <table className="w-max text-sm border-collapse">
             <thead>
               <tr className="bg-muted/40 border-b">
                 <th className="w-10 text-center py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
@@ -748,10 +748,10 @@ export default function Inventory() {
                 <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[140px]">SIZE</th>
                 <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[140px]">COLOUR</th>
                 <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[140px]">WEIGHT</th>
-                <th className="w-24 text-right py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">STOCK</th>
-                <th className="w-28 text-right py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">CLIENT ORDER</th>
-                <th className="w-28 text-right py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">ADDITIONAL QTY</th>
-                {canEdit && <th className="w-28 text-center py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">ACTIONS</th>}
+                <th className="text-right py-2 px-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[100px]">STOCK</th>
+                <th className="text-right py-2 px-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[120px]">CLIENT ORDER</th>
+                <th className="text-right py-2 px-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[110px]">ADDITIONAL QTY</th>
+                {canEdit && <th className="text-center py-2 px-3 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[100px]">ACTIONS</th>}
               </tr>
             </thead>
             <tbody>
@@ -867,41 +867,41 @@ export default function Inventory() {
                       </td>
 
                       {/* STOCK */}
-                      <td className={`py-1 px-2 text-right ${isBold ? "font-bold" : ""}`}>
+                      <td className={`py-1 px-3 text-right ${isBold ? "font-bold" : ""}`}>
                         {canEdit ? (
                           <Input
                             type="number"
                             value={row.stock}
                             onChange={(e) => updateCell(row._key, "stock", e.target.value)}
-                            className="h-7 text-sm text-right font-mono border-dashed focus:border-solid bg-transparent"
+                            className="h-7 text-sm text-right font-mono border-dashed focus:border-solid bg-transparent min-w-[100px]"
                           />
                         ) : (
-                          <span className={`font-mono text-sm font-semibold ${(Number(row.stock) || 0) > 0 ? "text-green-700" : "text-muted-foreground"}`}>
+                          <span className={`font-mono text-sm font-semibold whitespace-nowrap ${(Number(row.stock) || 0) > 0 ? "text-green-700" : "text-muted-foreground"}`}>
                             {(Number(row.stock) || 0).toLocaleString()}
                           </span>
                         )}
                       </td>
 
                       {/* CLIENT ORDER */}
-                      <td className={`py-1 px-2 text-right ${isBold ? "font-bold" : ""}`}>
+                      <td className={`py-1 px-3 text-right ${isBold ? "font-bold" : ""}`}>
                         {canEdit ? (
                           <Input
                             type="number"
                             value={row.clientOrder}
                             onChange={(e) => updateCell(row._key, "clientOrder", e.target.value)}
                             placeholder="0"
-                            className="h-7 text-sm text-right font-mono border-dashed focus:border-solid bg-transparent"
+                            className="h-7 text-sm text-right font-mono border-dashed focus:border-solid bg-transparent min-w-[100px]"
                           />
                         ) : (
-                          <span className="font-mono text-sm">
+                          <span className="font-mono text-sm whitespace-nowrap">
                             {row.clientOrder ? (Number(row.clientOrder) || 0).toLocaleString() : "-"}
                           </span>
                         )}
                       </td>
 
                       {/* ADDITIONAL QTY (auto-calculated: Stock - Client Order) */}
-                      <td className={`py-1 px-2 text-right ${isBold ? "font-bold" : ""}`}>
-                        <span className={`font-mono text-sm font-bold ${
+                      <td className={`py-1 px-3 text-right ${isBold ? "font-bold" : ""}`}>
+                        <span className={`font-mono text-sm font-bold whitespace-nowrap ${
                           isNegative ? "text-red-600" : additionalQty > 0 ? "text-green-700" : "text-muted-foreground"
                         }`}>
                           {additionalQty.toLocaleString()}
