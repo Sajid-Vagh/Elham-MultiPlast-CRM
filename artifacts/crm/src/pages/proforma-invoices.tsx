@@ -454,6 +454,44 @@ export default function ProformaInvoicesPage() {
     return () => clearTimeout(timer);
   }, [mobile]);
 
+  // Auto-fill party details from most recent PI when mobile field loses focus (create mode only)
+  const handleMobileBlur = async () => {
+    if (editMode) return;
+    const phone = mobile.replace(/\s/g, "").trim();
+    if (phone.length < 10) return;
+    try {
+      const res = await fetch(`/api/proforma-invoices/last-by-phone/${encodeURIComponent(phone)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.found) return;
+      // Only auto-fill if party name is still empty (debounced contact lookup may have run first)
+      if (!customerName.trim()) {
+        setCustomerName(data.customerName || "");
+      }
+      if (!companyName.trim()) {
+        setCompanyName(data.companyName || "");
+      }
+      setTradeName(data.tradeName || "");
+      if (!addressLine1.trim()) setAddressLine1(data.addressLine1 || "");
+      if (!addressLine2.trim()) setAddressLine2(data.addressLine2 || "");
+      if (!addressLine3.trim()) setAddressLine3(data.addressLine3 || "");
+      if (!city.trim()) setCity(data.city || "");
+      setDistrict(data.district || "");
+      if (!state.trim()) setState(data.state || "");
+      setPincode(data.pincode || "");
+      if (!address.trim()) setAddress(data.address || "");
+      if (!gstNumber.trim()) {
+        setGstNumber(data.gstNumber || "");
+        if (data.gstStatus) setGstStatus(data.gstStatus);
+        if (data.customerType) setCustomerType(data.customerType);
+      }
+    } catch {
+      // Silently ignore — auto-fill is best-effort
+    }
+  };
+
   const applyMobileSearchResult = (contact: any) => {
     setCustomerName(contact.name || "");
     setCompanyName(contact.companyName || "");
@@ -1631,7 +1669,7 @@ ${pagesHtml}
             )}
             <div>
               <Label>Mobile Number <span className="text-destructive">*</span></Label>
-              <Input value={mobile} onChange={(e) => { setMobile(e.target.value); setMobileError(""); }} placeholder="Mobile number" className={mobileError ? "border-destructive" : ""} />
+              <Input value={mobile} onChange={(e) => { setMobile(e.target.value); setMobileError(""); }} onBlur={handleMobileBlur} placeholder="Mobile number" className={mobileError ? "border-destructive" : ""} />
               {mobileError && <p className="text-xs text-destructive mt-1">{mobileError}</p>}
             </div>
             <div>

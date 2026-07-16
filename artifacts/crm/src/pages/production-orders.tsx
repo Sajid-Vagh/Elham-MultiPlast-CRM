@@ -17,6 +17,7 @@ import {
 import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { useUserUnits } from "@/lib/use-user-units";
+import { useProductionSyncAlert } from "@/lib/use-production-sync-alert";
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
@@ -43,6 +44,8 @@ export default function ProductionOrders() {
   const [, setLocation] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
   const { units: accessibleUnits, locked: unitLocked } = useUserUnits();
+
+  useProductionSyncAlert(!!user);
 
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all");
   const [priorityFilter, setPriorityFilter] = useState(searchParams.get("priority") || "all");
@@ -77,6 +80,7 @@ export default function ProductionOrders() {
     queryKey: ["production-orders", queryParams],
     queryFn: () => customFetch<any>(`/production/orders?${new URLSearchParams(queryParams)}`),
     enabled: !!user,
+    refetchInterval: 10_000,
   });
 
   const orders = data?.data ?? [];

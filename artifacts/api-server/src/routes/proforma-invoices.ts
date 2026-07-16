@@ -1237,6 +1237,113 @@ async function updateInvoiceHandler(req: any, res: any) {
       }
     }
 
+    // ── Auto-sync: push PI changes to linked production order ──
+    try {
+      const currentInvoice = invoice!;
+      const piId = currentInvoice.id;
+      const piDealId = currentInvoice.dealId;
+
+      let linkedOrder: any = null;
+
+      // Direct link by proformaInvoiceId
+      const [byPi] = await db
+        .select()
+        .from(productionOrdersTable)
+        .where(eq(productionOrdersTable.proformaInvoiceId, piId))
+        .limit(1);
+      if (byPi) {
+        linkedOrder = byPi;
+      }
+
+      // Fallback: link by dealId
+      if (!linkedOrder && piDealId) {
+        const [byDeal] = await db
+          .select()
+          .from(productionOrdersTable)
+          .where(eq(productionOrdersTable.dealId, piDealId))
+          .orderBy(desc(productionOrdersTable.createdAt))
+          .limit(1);
+        if (byDeal) {
+          linkedOrder = byDeal;
+          // Strengthen the direct link so future lookups are faster
+          await db
+            .update(productionOrdersTable)
+            .set({ proformaInvoiceId: piId })
+            .where(eq(productionOrdersTable.id, byDeal.id));
+        }
+      }
+
+      if (linkedOrder) {
+        const now = new Date();
+        const hasItemChanges = !!items;
+
+        // Bump updated_at + optionally updatedBy to signal a modification
+        await db
+          .update(productionOrdersTable)
+          .set({
+            updatedAt: now,
+            updatedBy: user.id,
+          })
+          .where(eq(productionOrdersTable.id, linkedOrder.id));
+
+        // Build a descriptive timeline note
+        const changedFields: string[] = [];
+        if (updateData.customerName) changedFields.push("Customer Name");
+        if (updateData.companyName) changedFields.push("Company Name");
+        if (updateData.mobile) changedFields.push("Mobile");
+        if (updateData.gstNumber) changedFields.push("GST Number");
+        if (updateData.address || updateData.addressLine1 || updateData.addressLine2 || updateData.addressLine3) changedFields.push("Address");
+        if (updateData.city || updateData.district || updateData.state || updateData.pincode) changedFields.push("Location");
+        if (updateData.grandTotal) changedFields.push("Grand Total");
+        if (updateData.notes) changedFields.push("Notes");
+        if (hasItemChanges) changedFields.push("Line Items");
+
+        const summary = changedFields.length > 0
+          ? `PI updated — ${changedFields.join(", ")}`
+          : "PI updated";
+
+        await db.insert(productionTimelineTable).values({
+          productionOrderId: linkedOrder.id,
+          status: linkedOrder.status,
+          notes: `${summary} by ${user.name}`,
+          createdBy: user.id,
+        });
+
+        // Notify production users about the PI modification
+        const prodUsers = await db
+          .select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role, name: usersTable.name })
+          .from(usersTable)
+          .where(or(eq(usersTable.role, "production"), eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
+
+        const orderUnit = linkedOrder.productionUnit || "Himatnagar";
+        const invoiceNum = currentInvoice.invoiceNumber || `#${piId}`;
+
+        for (const pu of prodUsers) {
+          if (pu.id === user.id) continue;
+          const userUnit = pu.unit || "All";
+          const shouldNotify = pu.role === "admin" || userUnit === "All" || userUnit === orderUnit || orderUnit === "Himatnagar";
+          if (!shouldNotify) continue;
+
+          await createNotification({
+            userId: pu.id,
+            type: "production_order_updated",
+            title: "Production Order Modified",
+            message: [
+              `Invoice ${invoiceNum} was updated by ${user.name}`,
+              hasItemChanges ? "Line items have changed" : null,
+              changedFields.length > 0 ? `Changes: ${changedFields.join(", ")}` : null,
+            ].filter(Boolean).join("\n"),
+            link: `/production/orders/${linkedOrder.id}`,
+            relatedId: linkedOrder.id,
+            relatedType: "production_order",
+          });
+        }
+      }
+    } catch (syncErr) {
+      // Don't let production sync failures break the PI update
+      req.log.warn({ err: syncErr }, "Production auto-sync failed for PI update");
+    }
+
     res.json(await enrichInvoice(invoice!));
   } catch (err) {
     req.log.error({ err }, "Update proforma invoice error");
@@ -1246,6 +1353,54 @@ async function updateInvoiceHandler(req: any, res: any) {
 
 router.patch("/proforma-invoices/:id", updateInvoiceHandler);
 router.put("/proforma-invoices/:id", updateInvoiceHandler);
+
+// ── Last PI by phone (auto-fill party details from history) ──
+router.get("/proforma-invoices/last-by-phone/:phone", async (req, res) => {
+  try {
+    const phone = (req.params.phone || "").replace(/\s/g, "").trim();
+    if (phone.length < 10) {
+      res.json({ found: false });
+      return;
+    }
+
+    // Match against the mobile column (primary number)
+    const [match] = await db
+      .select({
+        customerName: proformaInvoicesTable.customerName,
+        companyName: proformaInvoicesTable.companyName,
+        tradeName: proformaInvoicesTable.tradeName,
+        address: proformaInvoicesTable.address,
+        addressLine1: proformaInvoicesTable.addressLine1,
+        addressLine2: proformaInvoicesTable.addressLine2,
+        addressLine3: proformaInvoicesTable.addressLine3,
+        city: proformaInvoicesTable.city,
+        district: proformaInvoicesTable.district,
+        state: proformaInvoicesTable.state,
+        pincode: proformaInvoicesTable.pincode,
+        gstNumber: proformaInvoicesTable.gstNumber,
+        gstStatus: proformaInvoicesTable.gstStatus,
+        customerType: proformaInvoicesTable.customerType,
+        mobile: proformaInvoicesTable.mobile,
+      })
+      .from(proformaInvoicesTable)
+      .where(and(
+        eq(proformaInvoicesTable.mobile, phone),
+        eq(proformaInvoicesTable.isDeleted, false),
+      ))
+      .orderBy(desc(proformaInvoicesTable.createdAt))
+      .limit(1);
+
+    if (!match) {
+      res.json({ found: false });
+      return;
+    }
+
+    res.json({ found: true, ...match });
+  } catch (err) {
+    console.error("Last-by-phone lookup error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 router.post("/proforma-invoices/:id/status", async (req, res) => {
   try {

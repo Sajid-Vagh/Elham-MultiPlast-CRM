@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { Factory, PackageCheck, Settings2, ShieldCheck, Package, Truck, CheckCircle2, Clock, AlertTriangle, ListOrdered, BoxSelect } from "lucide-react";
 import { useUserUnits } from "@/lib/use-user-units";
+import { useProductionSyncAlert } from "@/lib/use-production-sync-alert";
 
 const STATUS_CARDS = [
   { key: "pendingCount", label: "Pending Orders", icon: Clock, color: "bg-gray-100 text-gray-700 border-gray-300", hoverStatus: "Pending" },
@@ -28,6 +29,8 @@ export default function ProductionDashboard() {
   const { units: accessibleUnits, locked: unitLocked } = useUserUnits();
   const [unitFilter, setUnitFilter] = useState("all");
 
+  useProductionSyncAlert(!!user);
+
   useEffect(() => {
     if (unitLocked && accessibleUnits.length === 1) {
       setUnitFilter(accessibleUnits[0].toLowerCase());
@@ -38,6 +41,7 @@ export default function ProductionDashboard() {
     queryKey: ["production-dashboard", unitFilter],
     queryFn: () => customFetch<any>(`/production/dashboard${unitFilter !== "all" ? `?unit=${unitFilter}` : ""}`),
     enabled: !!user,
+    refetchInterval: 10_000,
   });
 
   const { data: pendingReqs, isLoading: reqsLoading } = useQuery({

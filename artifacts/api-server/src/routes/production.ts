@@ -1415,4 +1415,42 @@ router.patch("/production/orders/:id/transfer", async (req, res) => {
   }
 });
 
+// ── Modification detection (lightweight, for frontend polling) ──
+router.get("/production/modified-since", async (req, res) => {
+  try {
+    const user = await requireProductionUser(req, res);
+    if (!user) return;
+
+    const { since } = req.query as Record<string, string | undefined>;
+    const sinceDate = since ? new Date(since) : new Date(0);
+
+    const [latest] = await db
+      .select({ updatedAt: productionOrdersTable.updatedAt })
+      .from(productionOrdersTable)
+      .where(and(
+        gte(productionOrdersTable.updatedAt, sinceDate),
+        eq(productionOrdersTable.status, "Pending")
+      ))
+      .orderBy(desc(productionOrdersTable.updatedAt))
+      .limit(1);
+
+    // Count of modified orders since the given timestamp
+    const [{ count }] = await db
+      .select({ count: sql`count(*)::int` })
+      .from(productionOrdersTable)
+      .where(and(
+        gte(productionOrdersTable.updatedAt, sinceDate),
+        eq(productionOrdersTable.status, "Pending")
+      ));
+
+    res.json({
+      latestModifiedAt: latest?.updatedAt?.toISOString() || null,
+      modifiedCount: count || 0,
+    });
+  } catch (err) {
+    console.error("Modified-since check error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default router;
