@@ -281,6 +281,119 @@ router.post("/inventory/save-bulk", async (req, res) => {
   }
 });
 
+// ── POST /inventory/bulk-save — Save all grid rows at once (upsert) ──
+// Body: { items: [{ id?, productName, unitName, size?, bottleColor?, weight?, stock, clientOrder, sortOrder?, formatting? }] }
+router.post("/inventory/bulk-save", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    if (!canManageInventory(user)) {
+      res.status(403).json({ error: "Only inventory, sales, or admin users can modify stock" });
+      return;
+    }
+
+    const { items } = req.body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      res.status(400).json({ error: "items array is required" });
+      return;
+    }
+
+    const results = await db.transaction(async (tx) => {
+      const saved: { id: number | null; productName: string; action: string }[] = [];
+
+      for (const item of items) {
+        const { id, productName, unitName, size, bottleColor, weight, stock, clientOrder, sortOrder, formatting } = item;
+        const trimmedName = String(productName || "").trim();
+        const newStock = Math.max(0, Number(stock) || 0);
+        const newClientOrder = Number(clientOrder) || 0;
+        const newSortOrder = sortOrder != null ? Number(sortOrder) : null;
+
+        if (!unitName) continue;
+
+        let existing = null;
+        if (id) {
+          const [row] = await tx.select().from(inventoryTable).where(eq(inventoryTable.id, Number(id)));
+          existing = row || null;
+        }
+
+        const previousStock = existing?.stock ?? 0;
+
+        if (existing) {
+          await tx
+            .update(inventoryTable)
+            .set({
+              productName: trimmedName || existing.productName,
+              unitName,
+              size: size !== undefined ? (size || null) : existing.size,
+              bottleColor: bottleColor !== undefined ? (bottleColor || null) : existing.bottleColor,
+              weight: weight !== undefined ? (weight || null) : existing.weight,
+              stock: newStock,
+              clientOrder: newClientOrder,
+              sortOrder: newSortOrder !== null ? newSortOrder : existing.sortOrder,
+              formatting: formatting !== undefined ? (formatting || null) : existing.formatting,
+              updatedAt: new Date(),
+            })
+            .where(eq(inventoryTable.id, existing.id));
+
+          if (trimmedName && newStock !== previousStock) {
+            await tx.insert(inventoryLogsTable).values({
+              productName: trimmedName,
+              unitName,
+              adjustmentType: newStock > previousStock ? "add" : "set",
+              quantity: Math.abs(newStock - previousStock),
+              previousStock,
+              newStock,
+              notes: "Bulk save",
+              createdBy: user.id,
+            });
+          }
+
+          saved.push({ id: existing.id, productName: trimmedName, action: "updated" });
+        } else {
+          const [inserted] = await tx
+            .insert(inventoryTable)
+            .values({
+              productName: trimmedName,
+              unitName,
+              size: size || null,
+              bottleColor: bottleColor || null,
+              weight: weight || null,
+              stock: newStock,
+              clientOrder: newClientOrder,
+              sortOrder: newSortOrder,
+              formatting: formatting || null,
+            })
+            .returning({ id: inventoryTable.id });
+
+          if (trimmedName && newStock > 0) {
+            await tx.insert(inventoryLogsTable).values({
+              productName: trimmedName,
+              unitName,
+              adjustmentType: "import",
+              quantity: newStock,
+              previousStock: 0,
+              newStock,
+              notes: "Bulk save",
+              createdBy: user.id,
+            });
+          }
+
+          saved.push({ id: inserted.id, productName: trimmedName, action: "inserted" });
+        }
+      }
+
+      return saved;
+    });
+
+    res.json({ saved: results.length, results });
+  } catch (err) {
+    console.error("Bulk save inventory error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ── PATCH /inventory/:id/formatting — Save row formatting ──
 router.patch("/inventory/:id/formatting", async (req, res) => {
   try {

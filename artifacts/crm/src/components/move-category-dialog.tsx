@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
+import { MOVE_REASONS } from "@/lib/deal-stages";
 import {
   Dialog,
   DialogContent,
@@ -10,6 +11,13 @@ import {
 } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
@@ -36,6 +44,7 @@ export function MoveCategoryDialog({
 }: MoveCategoryDialogProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [reason, setReason] = useState("");
+  const [otherReason, setOtherReason] = useState("");
   const [reasonError, setReasonError] = useState("");
   const [loading, setLoading] = useState(false);
   const reasonRef = useRef<HTMLTextAreaElement>(null);
@@ -46,6 +55,7 @@ export function MoveCategoryDialog({
     if (!open) {
       setSelectedCategory("");
       setReason("");
+      setOtherReason("");
       setReasonError("");
       setLoading(false);
     }
@@ -57,13 +67,15 @@ export function MoveCategoryDialog({
     }
   }, [reasonError]);
 
+  const finalReason = reason === "Other" ? otherReason.trim() : reason;
+
   const handleMove = async () => {
     if (!selectedCategory) return;
 
-    const trimmed = reason.trim();
+    const trimmed = finalReason;
     if (!isValidReason(trimmed)) {
       setReasonError("Reason is required.");
-      if (reasonRef.current) reasonRef.current.focus();
+      if (reason === "Other" && reasonRef.current) reasonRef.current.focus();
       return;
     }
     setReasonError("");
@@ -136,19 +148,37 @@ export function MoveCategoryDialog({
           ))}
           <div>
             <label className="text-sm font-medium text-muted-foreground">
-              Reason / Notes <span className="text-destructive">*</span>
+              Reason <span className="text-destructive">*</span>
             </label>
-            <Textarea
-              ref={reasonRef}
+            <Select
               value={reason}
-              onChange={(e) => {
-                setReason(e.target.value);
+              onValueChange={(val) => {
+                setReason(val);
                 if (reasonError) setReasonError("");
               }}
-              placeholder="Please enter the reason for this action..."
-              className={`mt-1 ${reasonError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
-              rows={3}
-            />
+            >
+              <SelectTrigger className={`mt-1 ${reasonError ? "border-red-500 focus-visible:ring-red-500" : ""}`}>
+                <SelectValue placeholder="Select a reason..." />
+              </SelectTrigger>
+              <SelectContent>
+                {MOVE_REASONS.map((r) => (
+                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {reason === "Other" && (
+              <Textarea
+                ref={reasonRef}
+                value={otherReason}
+                onChange={(e) => {
+                  setOtherReason(e.target.value);
+                  if (reasonError) setReasonError("");
+                }}
+                placeholder="Please specify the reason..."
+                className={`mt-2 ${reasonError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                rows={3}
+              />
+            )}
             {reasonError && (
               <p className="text-xs text-red-500 mt-1">{reasonError}</p>
             )}
@@ -156,7 +186,7 @@ export function MoveCategoryDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleMove} disabled={!selectedCategory || loading}>
+          <Button onClick={handleMove} disabled={!selectedCategory || !reason || loading}>
             {loading ? "Moving..." : "Move"}
           </Button>
         </DialogFooter>

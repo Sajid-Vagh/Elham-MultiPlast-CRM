@@ -871,7 +871,11 @@ export default function DealDetail() {
             ) : (
               <>
                 <Button variant="outline" onClick={() => setPiSentDialogOpen(false)}>Cancel</Button>
-                <Button onClick={() => { setPiSentDialogOpen(false); setLocation(`/proforma-invoices${contact?.id ? `?contactId=${contact.id}` : ""}`); }}>Create Proforma</Button>
+                <Button onClick={() => {
+                  setPiSentDialogOpen(false);
+                  doStageUpdate("PI Sent", null, null);
+                  setLocation(`/proforma-invoices${contact?.id ? `?contactId=${contact.id}` : ""}`);
+                }}>Create Proforma</Button>
               </>
             )}
           </DialogFooter>

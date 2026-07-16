@@ -22,6 +22,19 @@ export const STAGE_CHART_COLORS: Record<string, string> = {
 
 export const LOST_REASONS = [
   "Price High",
+  "Low Quantity",
+  "Need Different Shape",
+  "No Requirement Now",
+  "Quality Problem",
+  "Transport Concern",
+  "Need in Future",
+  "Not Responded",
+  "Other",
+] as const;
+
+export const MOVE_REASONS = [
+  "Price High",
+  "Low Quantity",
   "Need Different Shape",
   "No Requirement Now",
   "Quality Problem",

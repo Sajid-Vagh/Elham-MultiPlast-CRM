@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveUnits } from "@/lib/use-active-units";
-import { Package, Plus, Check, Trash2, RotateCcw, History, Upload, Bold, Highlighter, Eraser } from "lucide-react";
+import { Package, Plus, Check, Trash2, RotateCcw, History, Upload, Bold, Highlighter, Eraser, Loader2 } from "lucide-react";
 import * as XLSX from "xlsx";
 
 type ServerRow = {
@@ -250,6 +250,21 @@ export default function Inventory() {
     onError: (err: any) => toast({ title: err.message || "Import failed", variant: "destructive" }),
   });
 
+  // Save All mutation (saves entire grid state)
+  const saveAll = useMutation({
+    mutationFn: (data: { items: { id?: number | null; productName: string; unitName: string; size?: string; bottleColor?: string; weight?: string; stock: number; clientOrder: number; sortOrder?: number | null; formatting?: { isBold?: boolean; highlightColor?: string; textColor?: string } | null }[] }) =>
+      customFetch<any>("/inventory/bulk-save", {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      toast({ title: `All changes saved (${data.saved} rows)` });
+    },
+    onError: (err: any) => toast({ title: err.message || "Save all failed", variant: "destructive" }),
+  });
+
   // Delete mutation
   const deleteRow = useMutation({
     mutationFn: (id: number) =>
@@ -388,6 +403,27 @@ export default function Inventory() {
   const handleClearAll = useCallback(() => {
     clearAll.mutate(effectiveUnit);
   }, [clearAll, effectiveUnit]);
+
+  const handleSaveAll = useCallback(() => {
+    const unitName = effectiveUnit || (user as any)?.unit || unitFilter;
+    if (!unitName || unitName === "all") {
+      toast({ title: "Please select a unit first", variant: "destructive" });
+      return;
+    }
+    const items = rows.map((r) => ({
+      id: r.id,
+      productName: r.productName.trim(),
+      unitName,
+      size: r.size || undefined,
+      bottleColor: r.bottleColor || undefined,
+      weight: r.weight || undefined,
+      stock: Number(r.stock) || 0,
+      clientOrder: Number(r.clientOrder) || 0,
+      sortOrder: r.sortOrder,
+      formatting: r.formatting,
+    }));
+    saveAll.mutate({ items });
+  }, [rows, saveAll, effectiveUnit, unitFilter, user, toast]);
 
   // ─── Selection & formatting ───
   const toggleSelectRow = useCallback((key: string) => {
@@ -607,9 +643,24 @@ export default function Inventory() {
                 <Plus className="h-4 w-4 mr-1" /> Add Row
               </Button>
               {dirtyCount > 0 && (
-                <Button size="sm" variant="outline" onClick={handleDiscard}>
-                  <RotateCcw className="h-4 w-4 mr-1" /> Discard ({dirtyCount})
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                    onClick={handleSaveAll}
+                    disabled={saveAll.isPending}
+                  >
+                    {saveAll.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    ) : (
+                      <Check className="h-4 w-4 mr-1" />
+                    )}
+                    {saveAll.isPending ? "Saving..." : `Save All (${dirtyCount})`}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handleDiscard}>
+                    <RotateCcw className="h-4 w-4 mr-1" /> Discard
+                  </Button>
+                </>
               )}
             </>
           )}
