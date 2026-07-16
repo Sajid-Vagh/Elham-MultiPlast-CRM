@@ -638,23 +638,8 @@ export default function Deals() {
                 <Button onClick={() => {
                   if (!piSentDeal) return;
                   const contactId = piSentDeal.contactId || piSentDeal.contact?.id;
-                  const dealId = piSentDeal.id;
                   setPiSentDeal(null);
-                  updateDeal.mutate(
-                    { id: dealId, data: { stage: "PI Sent" as DealStage } },
-                    {
-                      onSuccess: () => {
-                        queryClient.invalidateQueries({ queryKey: ["deals"] });
-                        onDealChange(queryClient);
-                        onProductionChange(queryClient);
-                        navigate(`/proforma-invoices${contactId ? `?contactId=${contactId}` : ""}`);
-                      },
-                      onError: () => {
-                        setOptimisticStages(prev => { const n = { ...prev }; delete n[dealId]; return n; });
-                        toast({ title: "Failed to update deal stage", variant: "destructive" });
-                      },
-                    },
-                  );
+                  navigate(`/proforma-invoices${contactId ? `?contactId=${contactId}` : ""}`);
                 }}>Create Proforma</Button>
               </>
             )}
