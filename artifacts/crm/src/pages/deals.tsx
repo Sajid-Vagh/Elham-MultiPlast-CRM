@@ -147,6 +147,7 @@ export default function Deals() {
   const [wonSalesNotes, setWonSalesNotes] = useState("");
   const [wonSubmitting, setWonSubmitting] = useState(false);
   const [wonDealForCelebration, setWonDealForCelebration] = useState<Deal | null>(null);
+  const [wonTodayCount, setWonTodayCount] = useState(1);
 
   // Lost reason flow
   const [lostDeal, setLostDeal] = useState<Deal | null>(null);
@@ -227,6 +228,7 @@ export default function Deals() {
       const celebKey = `deal_won_celebrated_${markWonDeal.deal.id}`;
       if (!sessionStorage.getItem(celebKey) && localStorage.getItem("crm_dealWonCelebration") !== "off") {
         sessionStorage.setItem(celebKey, "true");
+        setWonTodayCount(result.todayWonCount ?? 1);
         setWonDealForCelebration(markWonDeal.deal);
       }
     } catch (err: any) {
@@ -584,6 +586,7 @@ export default function Deals() {
         <DealWonCelebration
           deal={wonDealForCelebration}
           open
+          todayWonCount={wonTodayCount}
           onClose={() => setWonDealForCelebration(null)}
           onViewOrder={() => { navigate(`/deals/${wonDealForCelebration.id}`); setWonDealForCelebration(null); }}
           onGoToProduction={() => { navigate("/production/orders"); setWonDealForCelebration(null); }}

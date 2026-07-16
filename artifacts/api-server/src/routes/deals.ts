@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable, activitiesTable, DEAL_STAGES, STAGE_PROBS, ordersTable, orderItemsTable, proformaInvoicesTable, proformaInvoiceItemsTable, productionOrdersTable, productionTimelineTable } from "@workspace/db";
-import { eq, and, SQL, sql, desc } from "drizzle-orm";
+import { eq, and, SQL, sql, desc, gte, between } from "drizzle-orm";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import {
   CreateDealBody, UpdateDealBody, GetDealParams, UpdateDealParams, DeleteDealParams,
@@ -781,6 +781,22 @@ router.post("/deals/:id/mark-won", async (req, res) => {
 
     // ── END TRANSACTION ──
 
+    // Count how many deals this user has won today (server local timezone)
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayEnd = new Date(todayStart.getTime() + 86400000);
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(dealsTable)
+      .where(
+        and(
+          eq(dealsTable.salesOwnerId, user.id),
+          eq(dealsTable.stage, "Won"),
+          gte(dealsTable.completedAt, todayStart),
+        )
+      );
+    const todayWonCount = countResult?.count ?? 1;
+
     res.json({
       success: true,
       message: "Deal marked as Won successfully",
@@ -788,6 +804,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
       orderId: result.order.id,
       productionOrderId: result.productionOrder?.id || null,
       deal: await enrichDeal(deal),
+      todayWonCount,
     });
   } catch (err) {
     req.log.error({ err }, "Mark deal as Won error");
