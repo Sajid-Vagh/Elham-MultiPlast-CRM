@@ -15,7 +15,7 @@ export const inventoryTable = pgTable("inventory", {
   bottleColor: text("bottle_color"),
   weight: text("weight"),
   stock: integer("stock").notNull().default(0),
-  orderQty: integer("order_qty").notNull().default(0),
+  clientOrder: integer("client_order").notNull().default(0),
   formatting: jsonb("formatting").$type<InventoryFormatting>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

@@ -92,7 +92,7 @@ router.get("/inventory/logs", async (req, res) => {
 });
 
 // ── POST /inventory/save — Save a single row ──
-// Body: { id?, productName, unitName, size?, bottleColor?, weight?, adjustment }
+// Body: { id?, productName, unitName, size?, bottleColor?, weight?, stock?, clientOrder? }
 router.post("/inventory/save", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
@@ -103,7 +103,7 @@ router.post("/inventory/save", async (req, res) => {
       return;
     }
 
-    const { id, productName, unitName, size, bottleColor, weight, adjustment } = req.body;
+    const { id, productName, unitName, size, bottleColor, weight, stock, clientOrder } = req.body;
 
     if (!productName || !unitName) {
       res.status(400).json({ error: "productName and unitName are required" });
@@ -116,7 +116,8 @@ router.post("/inventory/save", async (req, res) => {
       return;
     }
 
-    const adj = Number(adjustment) || 0;
+    const newStock = Math.max(0, Number(stock) || 0);
+    const newClientOrder = Number(clientOrder) || 0;
 
     // Find existing record: by ID if provided, else by (productName, unitName)
     let existing = null;
@@ -137,12 +138,6 @@ router.post("/inventory/save", async (req, res) => {
     }
 
     const previousStock = existing?.stock ?? 0;
-    const newStock = previousStock + adj;
-
-    if (newStock < 0) {
-      res.status(400).json({ error: "Stock cannot go below zero" });
-      return;
-    }
 
     if (existing) {
       await db
@@ -153,7 +148,7 @@ router.post("/inventory/save", async (req, res) => {
           bottleColor: bottleColor !== undefined ? bottleColor : existing.bottleColor,
           weight: weight !== undefined ? weight : existing.weight,
           stock: newStock,
-          orderQty: 0,
+          clientOrder: newClientOrder,
           updatedAt: new Date(),
         })
         .where(eq(inventoryTable.id, existing.id));
@@ -165,17 +160,17 @@ router.post("/inventory/save", async (req, res) => {
         bottleColor: bottleColor || null,
         weight: weight || null,
         stock: newStock,
-        orderQty: 0,
+        clientOrder: newClientOrder,
       });
     }
 
     // Log the adjustment
-    if (adj !== 0) {
+    if (newStock !== previousStock) {
       await db.insert(inventoryLogsTable).values({
         productName: trimmedName,
         unitName,
-        adjustmentType: adj > 0 ? "add" : "subtract",
-        quantity: Math.abs(adj),
+        adjustmentType: newStock > previousStock ? "add" : "set",
+        quantity: Math.abs(newStock - previousStock),
         previousStock,
         newStock,
         notes: null,
@@ -191,7 +186,7 @@ router.post("/inventory/save", async (req, res) => {
 });
 
 // ── POST /inventory/save-bulk — Bulk save (for Excel import + row saves) ──
-// Body: { unitName, items: [{ id?, productName, size?, bottleColor?, weight?, stock, adjustment? }] }
+// Body: { unitName, items: [{ id?, productName, size?, bottleColor?, weight?, stock, clientOrder? }] }
 router.post("/inventory/save-bulk", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
@@ -212,7 +207,7 @@ router.post("/inventory/save-bulk", async (req, res) => {
     const results: { productName: string; previousStock: number; newStock: number }[] = [];
 
     for (const item of items) {
-      const { id, productName, size, bottleColor, weight, stock, adjustment } = item;
+      const { id, productName, size, bottleColor, weight, stock, clientOrder } = item;
       if (!productName) continue;
 
       const trimmedName = String(productName).trim();
@@ -237,16 +232,8 @@ router.post("/inventory/save-bulk", async (req, res) => {
       }
 
       const previousStock = existing?.stock ?? 0;
-
-      let newStock: number;
-      if (stock !== undefined && adjustment === undefined) {
-        // Direct stock set (from import)
-        newStock = Math.max(0, Number(stock) || 0);
-      } else {
-        // Adjustment mode
-        const adj = Number(adjustment) || 0;
-        newStock = Math.max(0, previousStock + adj);
-      }
+      const newStock = Math.max(0, Number(stock) || 0);
+      const newClientOrder = Number(clientOrder) || 0;
 
       if (existing) {
         await db
@@ -257,7 +244,7 @@ router.post("/inventory/save-bulk", async (req, res) => {
             bottleColor: bottleColor !== undefined ? (bottleColor || null) : existing.bottleColor,
             weight: weight !== undefined ? (weight || null) : existing.weight,
             stock: newStock,
-            orderQty: 0,
+            clientOrder: newClientOrder,
             updatedAt: new Date(),
           })
           .where(eq(inventoryTable.id, existing.id));
@@ -269,7 +256,7 @@ router.post("/inventory/save-bulk", async (req, res) => {
           bottleColor: bottleColor || null,
           weight: weight || null,
           stock: newStock,
-          orderQty: 0,
+          clientOrder: newClientOrder,
         });
       }
 
@@ -323,6 +310,38 @@ router.patch("/inventory/:id/formatting", async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error("Update formatting error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── DELETE /inventory/clear-all — Delete all rows for a unit (or all units) ──
+// Body: { unitName? } — if unitName is provided, only deletes that unit's rows
+router.delete("/inventory/clear-all", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    if (!canManageInventory(user)) {
+      res.status(403).json({ error: "Only inventory, sales, or admin users can clear inventory" });
+      return;
+    }
+
+    const { unitName } = req.query as Record<string, string | undefined>;
+
+    if (unitName) {
+      const deleted = await db
+        .delete(inventoryTable)
+        .where(eq(inventoryTable.unitName, unitName))
+        .returning({ id: inventoryTable.id });
+      res.json({ success: true, deleted: deleted.length });
+    } else {
+      const deleted = await db
+        .delete(inventoryTable)
+        .returning({ id: inventoryTable.id });
+      res.json({ success: true, deleted: deleted.length });
+    }
+  } catch (err) {
+    console.error("Clear all inventory error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

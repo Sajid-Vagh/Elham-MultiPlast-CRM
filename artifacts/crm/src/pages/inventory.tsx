@@ -11,9 +11,13 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveUnits } from "@/lib/use-active-units";
-import { Package, Plus, Check, Trash2, RotateCcw, History, Upload, Bold, Highlighter } from "lucide-react";
+import { Package, Plus, Check, Trash2, RotateCcw, History, Upload, Bold, Highlighter, Eraser } from "lucide-react";
 import * as XLSX from "xlsx";
 
 type ServerRow = {
@@ -24,7 +28,7 @@ type ServerRow = {
   bottleColor: string | null;
   weight: string | null;
   stock: number;
-  orderQty: number;
+  clientOrder: number;
   formatting: { isBold?: boolean; highlightColor?: string } | null;
   createdAt: string;
   updatedAt: string;
@@ -38,8 +42,8 @@ type GridRow = {
   size: string;
   bottleColor: string;
   weight: string;
-  stock: number;
-  order: string;
+  stock: string;
+  clientOrder: string;
   dirty: boolean;
   formatting: { isBold?: boolean; highlightColor?: string } | null;
 };
@@ -82,16 +86,17 @@ function buildGridRows(server: ServerRow[]): GridRow[] {
     size: r.size || "",
     bottleColor: r.bottleColor || "",
     weight: r.weight || "",
-    stock: r.stock,
-    order: "",
+    stock: String(r.stock),
+    clientOrder: String(r.clientOrder || ""),
     dirty: false,
     formatting: r.formatting || null,
   }));
 }
 
-function calcFinal(row: GridRow): number {
-  const adj = row.order === "" ? 0 : Number(row.order);
-  return row.stock + (isNaN(adj) ? 0 : adj);
+function calcAdditionalQty(row: GridRow): number {
+  const s = Number(row.stock) || 0;
+  const c = Number(row.clientOrder) || 0;
+  return s - c;
 }
 
 export default function Inventory() {
@@ -124,6 +129,9 @@ export default function Inventory() {
   const [importData, setImportData] = useState<GridRow[]>([]);
   const [importFileName, setImportFileName] = useState("");
 
+  // Clear All dialog
+  const [clearAllOpen, setClearAllOpen] = useState(false);
+
   // Fetch server data (filtered by unit)
   const { data: serverData, isLoading } = useQuery<ServerRow[]>({
     queryKey: ["inventory", effectiveUnit, search],
@@ -151,7 +159,7 @@ export default function Inventory() {
 
   // Save mutation
   const saveRow = useMutation({
-    mutationFn: (data: { id?: number | null; productName: string; unitName: string; size?: string; bottleColor?: string; weight?: string; adjustment: number }) =>
+    mutationFn: (data: { id?: number | null; productName: string; unitName: string; size?: string; bottleColor?: string; weight?: string; stock: number; clientOrder: number }) =>
       customFetch<any>("/inventory/save", {
         method: "POST",
         body: JSON.stringify(data),
@@ -166,7 +174,7 @@ export default function Inventory() {
 
   // Bulk save mutation (for import)
   const bulkSave = useMutation({
-    mutationFn: (data: { unitName: string; items: { productName: string; size?: string; bottleColor?: string; weight?: string; stock: number }[] }) =>
+    mutationFn: (data: { unitName: string; items: { productName: string; size?: string; bottleColor?: string; weight?: string; stock: number; clientOrder: number }[] }) =>
       customFetch<any>("/inventory/save-bulk", {
         method: "POST",
         body: JSON.stringify(data),
@@ -191,6 +199,20 @@ export default function Inventory() {
       toast({ title: "Row deleted" });
     },
     onError: (err: any) => toast({ title: err.message || "Delete failed", variant: "destructive" }),
+  });
+
+  // Clear All mutation
+  const clearAll = useMutation({
+    mutationFn: (unitName?: string) => {
+      const qs = unitName ? `?unitName=${encodeURIComponent(unitName)}` : "";
+      return customFetch<any>(`/inventory/clear-all${qs}`, { method: "DELETE" });
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      toast({ title: `Deleted ${data.deleted} records` });
+      setClearAllOpen(false);
+    },
+    onError: (err: any) => toast({ title: err.message || "Clear failed", variant: "destructive" }),
   });
 
   // Format mutation
@@ -222,15 +244,15 @@ export default function Inventory() {
       size: "",
       bottleColor: "",
       weight: "",
-      stock: 0,
-      order: "",
+      stock: "0",
+      clientOrder: "",
       dirty: true,
       formatting: null,
     };
     setRows((prev) => [newRow, ...prev]);
   }, [effectiveUnit, unitFilter, user, toast]);
 
-  const updateCell = useCallback((key: string, field: "productName" | "size" | "bottleColor" | "weight" | "stock" | "order", value: string) => {
+  const updateCell = useCallback((key: string, field: "productName" | "size" | "bottleColor" | "weight" | "stock" | "clientOrder", value: string) => {
     setRows((prev) =>
       prev.map((r) => {
         if (r._key !== key) return r;
@@ -250,11 +272,6 @@ export default function Inventory() {
         toast({ title: "Product name is required", variant: "destructive" });
         return;
       }
-      const finalVal = calcFinal(row);
-      if (finalVal < 0) {
-        toast({ title: "Final stock cannot be negative", variant: "destructive" });
-        return;
-      }
       saveRow.mutate({
         id: row.id,
         productName: row.productName.trim(),
@@ -262,7 +279,8 @@ export default function Inventory() {
         size: row.size || undefined,
         bottleColor: row.bottleColor || undefined,
         weight: row.weight || undefined,
-        adjustment: row.order === "" ? 0 : Number(row.order) || 0,
+        stock: Number(row.stock) || 0,
+        clientOrder: Number(row.clientOrder) || 0,
       });
     },
     [effectiveUnit, unitFilter, user, saveRow, toast]
@@ -284,6 +302,10 @@ export default function Inventory() {
       setRows(buildGridRows(serverData));
     }
   }, [serverData]);
+
+  const handleClearAll = useCallback(() => {
+    clearAll.mutate(effectiveUnit);
+  }, [clearAll, effectiveUnit]);
 
   // ─── Selection & formatting ───
   const toggleSelectRow = useCallback((key: string) => {
@@ -355,6 +377,7 @@ export default function Inventory() {
         const unitForRow = effectiveUnit || (user as any)?.unit || "all";
         setImportFileName(file.name);
 
+        // Map Excel columns — match exact headers from user's Excel sheet
         const mapped: GridRow[] = json.map((row, idx) => {
           const find = (...keys: string[]) => {
             for (const k of keys) {
@@ -370,10 +393,10 @@ export default function Inventory() {
             productName: find("productname", "product", "name", "item"),
             unitName: unitForRow,
             size: find("size", "sz"),
-            bottleColor: find("bottlecolor", "bottle", "color", "colour"),
+            bottleColor: find("colour", "color", "bottlecolor", "bottle"),
             weight: find("weight", "wt"),
-            stock: Number(find("stock", "qty", "quantity", "currentstock")) || 0,
-            order: "",
+            stock: find("stock", "qty", "quantity", "currentstock") || "0",
+            clientOrder: find("clientorder", "clientorder", "order", "orderqty", "orderqty") || "",
             dirty: false,
             formatting: null,
           };
@@ -406,7 +429,8 @@ export default function Inventory() {
         size: r.size || undefined,
         bottleColor: r.bottleColor || undefined,
         weight: r.weight || undefined,
-        stock: r.stock,
+        stock: Number(r.stock) || 0,
+        clientOrder: Number(r.clientOrder) || 0,
       }));
     bulkSave.mutate({ unitName: unitForRow, items });
   }, [importData, bulkSave, effectiveUnit, unitFilter, user, toast]);
@@ -478,6 +502,9 @@ export default function Inventory() {
               <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
                 <Upload className="h-4 w-4 mr-1" /> Import Excel
               </Button>
+              <Button size="sm" variant="destructive" onClick={() => setClearAllOpen(true)}>
+                <Eraser className="h-4 w-4 mr-1" /> Clear All Data
+              </Button>
               <Button size="sm" onClick={addRow}>
                 <Plus className="h-4 w-4 mr-1" /> Add Row
               </Button>
@@ -546,11 +573,11 @@ export default function Inventory() {
                 <th className="w-12 text-center py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">NO</th>
                 <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[180px]">PRODUCT NAME</th>
                 <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[100px]">SIZE</th>
-                <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[120px]">BOTTLE COLOR</th>
+                <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[100px]">COLOUR</th>
                 <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[100px]">WEIGHT</th>
                 <th className="w-24 text-right py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">STOCK</th>
-                <th className="w-24 text-right py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">ORDER</th>
-                <th className="w-24 text-right py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">FINAL</th>
+                <th className="w-28 text-right py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">CLIENT ORDER</th>
+                <th className="w-28 text-right py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">ADDITIONAL QTY</th>
                 {canEdit && <th className="w-20 text-center py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">ACTIONS</th>}
               </tr>
             </thead>
@@ -566,8 +593,8 @@ export default function Inventory() {
                 </tr>
               ) : (
                 rows.map((row, idx) => {
-                  const finalVal = calcFinal(row);
-                  const isNegative = finalVal < 0;
+                  const additionalQty = calcAdditionalQty(row);
+                  const isNegative = additionalQty < 0;
                   const isSelected = selectedRows.has(row._key);
                   const bgColor = row.formatting?.highlightColor || (isSelected ? "#f0f9ff" : undefined);
                   const isBold = row.formatting?.isBold;
@@ -625,7 +652,7 @@ export default function Inventory() {
                         )}
                       </td>
 
-                      {/* BOTTLE COLOR */}
+                      {/* COLOUR */}
                       <td className={`py-1 px-2 ${isBold ? "font-bold" : ""}`}>
                         {canEdit ? (
                           <Input
@@ -663,35 +690,35 @@ export default function Inventory() {
                             className="h-7 text-sm text-right font-mono border-dashed focus:border-solid bg-transparent"
                           />
                         ) : (
-                          <span className={`font-mono text-sm font-semibold ${row.stock > 0 ? "text-green-700" : "text-muted-foreground"}`}>
-                            {row.stock.toLocaleString()}
+                          <span className={`font-mono text-sm font-semibold ${(Number(row.stock) || 0) > 0 ? "text-green-700" : "text-muted-foreground"}`}>
+                            {(Number(row.stock) || 0).toLocaleString()}
                           </span>
                         )}
                       </td>
 
-                      {/* ORDER (adjustment) */}
-                      <td className={`py-1 px-2 ${isBold ? "font-bold" : ""}`}>
+                      {/* CLIENT ORDER */}
+                      <td className={`py-1 px-2 text-right ${isBold ? "font-bold" : ""}`}>
                         {canEdit ? (
                           <Input
                             type="number"
-                            value={row.order}
-                            onChange={(e) => updateCell(row._key, "order", e.target.value)}
+                            value={row.clientOrder}
+                            onChange={(e) => updateCell(row._key, "clientOrder", e.target.value)}
                             placeholder="0"
                             className="h-7 text-sm text-right font-mono border-dashed focus:border-solid bg-transparent"
                           />
                         ) : (
-                          <span className="font-mono text-sm text-muted-foreground">
-                            {row.order || "-"}
+                          <span className="font-mono text-sm">
+                            {row.clientOrder ? (Number(row.clientOrder) || 0).toLocaleString() : "-"}
                           </span>
                         )}
                       </td>
 
-                      {/* FINAL (auto-calculated) */}
+                      {/* ADDITIONAL QTY (auto-calculated: Stock - Client Order) */}
                       <td className={`py-1 px-2 text-right ${isBold ? "font-bold" : ""}`}>
                         <span className={`font-mono text-sm font-bold ${
-                          isNegative ? "text-red-600" : finalVal > 0 ? "text-green-700" : "text-muted-foreground"
+                          isNegative ? "text-red-600" : additionalQty > 0 ? "text-green-700" : "text-muted-foreground"
                         }`}>
-                          {finalVal.toLocaleString()}
+                          {additionalQty.toLocaleString()}
                         </span>
                       </td>
 
@@ -747,8 +774,29 @@ export default function Inventory() {
           {rows.length} product{rows.length !== 1 ? "s" : ""}
           {dirtyCount > 0 && <span className="ml-2 text-amber-600 font-medium">({dirtyCount} unsaved)</span>}
         </span>
-        <span>ORDER: enter positive to add, negative to subtract — FINAL = STOCK + ORDER</span>
+        <span>ADDITIONAL QTY = STOCK − CLIENT ORDER</span>
       </div>
+
+      {/* ─── Clear All Data AlertDialog ─── */}
+      <AlertDialog open={clearAllOpen} onOpenChange={setClearAllOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will delete ALL inventory records{effectiveUnit ? ` for "${effectiveUnit}"` : ""}. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleClearAll}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {clearAll.isPending ? "Deleting..." : "Confirm Delete All"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ─── Import Excel Dialog ─── */}
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
@@ -764,7 +812,7 @@ export default function Inventory() {
                 Upload an Excel file (.xlsx, .xls, .csv). Columns will be auto-mapped by name.
               </p>
               <p className="text-xs text-muted-foreground">
-                Expected columns: <strong>PRODUCT NAME</strong>, SIZE, BOTTLE COLOR, WEIGHT, STOCK
+                Expected columns: <strong>Product Name</strong>, Size, Colour, Weight, Stock, <strong>Client Order</strong>
               </p>
               <label className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md cursor-pointer hover:bg-primary/90 transition">
                 <Upload className="h-4 w-4" />
@@ -781,11 +829,12 @@ export default function Inventory() {
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-muted/40 border-b">
-                      <th className="py-1.5 px-2 text-left">PRODUCT NAME</th>
-                      <th className="py-1.5 px-2 text-left">SIZE</th>
-                      <th className="py-1.5 px-2 text-left">BOTTLE COLOR</th>
-                      <th className="py-1.5 px-2 text-left">WEIGHT</th>
-                      <th className="py-1.5 px-2 text-right">STOCK</th>
+                      <th className="py-1.5 px-2 text-left">Product Name</th>
+                      <th className="py-1.5 px-2 text-left">Size</th>
+                      <th className="py-1.5 px-2 text-left">Colour</th>
+                      <th className="py-1.5 px-2 text-left">Weight</th>
+                      <th className="py-1.5 px-2 text-right">Stock</th>
+                      <th className="py-1.5 px-2 text-right">Client Order</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -795,7 +844,8 @@ export default function Inventory() {
                         <td className="py-1 px-2">{row.size || "-"}</td>
                         <td className="py-1 px-2">{row.bottleColor || "-"}</td>
                         <td className="py-1 px-2">{row.weight || "-"}</td>
-                        <td className="py-1 px-2 text-right font-mono">{row.stock.toLocaleString()}</td>
+                        <td className="py-1 px-2 text-right font-mono">{(Number(row.stock) || 0).toLocaleString()}</td>
+                        <td className="py-1 px-2 text-right font-mono">{row.clientOrder ? (Number(row.clientOrder) || 0).toLocaleString() : "-"}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -6,7 +6,7 @@ ALTER TABLE inventory ADD COLUMN IF NOT EXISTS size TEXT;
 ALTER TABLE inventory ADD COLUMN IF NOT EXISTS bottle_color TEXT;
 ALTER TABLE inventory ADD COLUMN IF NOT EXISTS weight TEXT;
 ALTER TABLE inventory ADD COLUMN IF NOT EXISTS stock INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE inventory ADD COLUMN IF NOT EXISTS order_qty INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE inventory ADD COLUMN IF NOT EXISTS client_order INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE inventory ADD COLUMN IF NOT EXISTS formatting JSONB;
 
 -- Backfill stock from current_stock if the column exists
@@ -15,6 +15,14 @@ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'inventory' AND column_name = 'current_stock') THEN
     UPDATE inventory SET stock = current_stock;
     ALTER TABLE inventory DROP COLUMN current_stock;
+  END IF;
+END $$;
+
+-- Drop old order_qty column if it exists
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'inventory' AND column_name = 'order_qty') THEN
+    ALTER TABLE inventory DROP COLUMN order_qty;
   END IF;
 END $$;
 
