@@ -29,6 +29,7 @@ type ServerRow = {
   weight: string | null;
   stock: number;
   clientOrder: number;
+  sortOrder: number | null;
   formatting: { isBold?: boolean; highlightColor?: string } | null;
   createdAt: string;
   updatedAt: string;
@@ -44,6 +45,7 @@ type GridRow = {
   weight: string;
   stock: string;
   clientOrder: string;
+  sortOrder: number | null;
   dirty: boolean;
   formatting: { isBold?: boolean; highlightColor?: string } | null;
 };
@@ -88,9 +90,18 @@ function buildGridRows(server: ServerRow[]): GridRow[] {
     weight: r.weight || "",
     stock: String(r.stock),
     clientOrder: String(r.clientOrder || ""),
+    sortOrder: r.sortOrder ?? null,
     dirty: false,
     formatting: r.formatting || null,
   }));
+}
+
+function isTitleRow(row: GridRow): boolean {
+  return !!row.productName.trim() && !row.size && !row.bottleColor && !row.weight && !row.stock && !row.clientOrder;
+}
+
+function isBlankRow(row: GridRow): boolean {
+  return !row.productName.trim() && !row.size && !row.bottleColor && !row.weight && !row.stock && !row.clientOrder;
 }
 
 function calcAdditionalQty(row: GridRow): number {
@@ -159,7 +170,7 @@ export default function Inventory() {
 
   // Save mutation
   const saveRow = useMutation({
-    mutationFn: (data: { id?: number | null; productName: string; unitName: string; size?: string; bottleColor?: string; weight?: string; stock: number; clientOrder: number }) =>
+    mutationFn: (data: { id?: number | null; productName: string; unitName: string; size?: string; bottleColor?: string; weight?: string; stock: number; clientOrder: number; sortOrder?: number | null }) =>
       customFetch<any>("/inventory/save", {
         method: "POST",
         body: JSON.stringify(data),
@@ -174,7 +185,7 @@ export default function Inventory() {
 
   // Bulk save mutation (for import)
   const bulkSave = useMutation({
-    mutationFn: (data: { unitName: string; items: { productName: string; size?: string; bottleColor?: string; weight?: string; stock: number; clientOrder: number }[] }) =>
+    mutationFn: (data: { unitName: string; items: { productName: string; size?: string; bottleColor?: string; weight?: string; stock: number; clientOrder: number; sortOrder?: number | null }[] }) =>
       customFetch<any>("/inventory/save-bulk", {
         method: "POST",
         body: JSON.stringify(data),
@@ -229,6 +240,29 @@ export default function Inventory() {
     onError: (err: any) => toast({ title: err.message || "Format save failed", variant: "destructive" }),
   });
 
+  // Insert row below mutation
+  const insertRow = useMutation({
+    mutationFn: (data: { afterId?: number | null; unitName: string }) =>
+      customFetch<any>("/inventory/insert-row", {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+    },
+    onError: (err: any) => toast({ title: err.message || "Insert row failed", variant: "destructive" }),
+  });
+
+  const insertRowBelow = useCallback((row: GridRow) => {
+    const unitName = effectiveUnit || (user as any)?.unit || unitFilter;
+    if (!unitName || unitName === "all") {
+      toast({ title: "Please select a unit first", variant: "destructive" });
+      return;
+    }
+    insertRow.mutate({ afterId: row.id, unitName });
+  }, [effectiveUnit, unitFilter, user, insertRow, toast]);
+
   // ─── Row operations ───
   const addRow = useCallback(() => {
     if (!effectiveUnit && (user as any)?.unit === "All" && unitFilter === "all") {
@@ -236,6 +270,7 @@ export default function Inventory() {
       return;
     }
     const unitForRow = effectiveUnit || (user as any)?.unit || unitFilter;
+    const maxSort = rows.length > 0 ? Math.max(...rows.map((r) => r.sortOrder ?? 0)) : 0;
     const newRow: GridRow = {
       _key: newKey(),
       id: null,
@@ -246,11 +281,12 @@ export default function Inventory() {
       weight: "",
       stock: "0",
       clientOrder: "",
+      sortOrder: maxSort + 1,
       dirty: true,
       formatting: null,
     };
-    setRows((prev) => [newRow, ...prev]);
-  }, [effectiveUnit, unitFilter, user, toast]);
+    setRows((prev) => [...prev, newRow]);
+  }, [effectiveUnit, unitFilter, user, toast, rows]);
 
   const updateCell = useCallback((key: string, field: "productName" | "size" | "bottleColor" | "weight" | "stock" | "clientOrder", value: string) => {
     setRows((prev) =>
@@ -268,10 +304,6 @@ export default function Inventory() {
         toast({ title: "Please select a unit first", variant: "destructive" });
         return;
       }
-      if (!row.productName.trim()) {
-        toast({ title: "Product name is required", variant: "destructive" });
-        return;
-      }
       saveRow.mutate({
         id: row.id,
         productName: row.productName.trim(),
@@ -281,6 +313,7 @@ export default function Inventory() {
         weight: row.weight || undefined,
         stock: Number(row.stock) || 0,
         clientOrder: Number(row.clientOrder) || 0,
+        sortOrder: row.sortOrder,
       });
     },
     [effectiveUnit, unitFilter, user, saveRow, toast]
@@ -397,13 +430,14 @@ export default function Inventory() {
             weight: find("weight", "wt"),
             stock: find("stock", "qty", "quantity", "currentstock") || "0",
             clientOrder: find("clientorder", "clientorder", "order", "orderqty", "orderqty") || "",
+            sortOrder: idx,
             dirty: false,
             formatting: null,
           };
-        }).filter((r) => r.productName.trim());
+        });
 
         if (mapped.length === 0) {
-          toast({ title: "No valid product names found in Excel", variant: "destructive" });
+          toast({ title: "Excel file is empty", variant: "destructive" });
           return;
         }
 
@@ -422,16 +456,15 @@ export default function Inventory() {
       toast({ title: "Please select a unit first", variant: "destructive" });
       return;
     }
-    const items = importData
-      .filter((r) => r.productName.trim())
-      .map((r) => ({
-        productName: r.productName.trim(),
-        size: r.size || undefined,
-        bottleColor: r.bottleColor || undefined,
-        weight: r.weight || undefined,
-        stock: Number(r.stock) || 0,
-        clientOrder: Number(r.clientOrder) || 0,
-      }));
+    const items = importData.map((r) => ({
+      productName: r.productName.trim(),
+      size: r.size || undefined,
+      bottleColor: r.bottleColor || undefined,
+      weight: r.weight || undefined,
+      stock: Number(r.stock) || 0,
+      clientOrder: Number(r.clientOrder) || 0,
+      sortOrder: r.sortOrder,
+    }));
     bulkSave.mutate({ unitName: unitForRow, items });
   }, [importData, bulkSave, effectiveUnit, unitFilter, user, toast]);
 
@@ -571,14 +604,14 @@ export default function Inventory() {
                   )}
                 </th>
                 <th className="w-12 text-center py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">NO</th>
-                <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[180px]">PRODUCT NAME</th>
+                <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[300px]">PRODUCT NAME</th>
                 <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[100px]">SIZE</th>
                 <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[100px]">COLOUR</th>
                 <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[100px]">WEIGHT</th>
                 <th className="w-24 text-right py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">STOCK</th>
                 <th className="w-28 text-right py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">CLIENT ORDER</th>
                 <th className="w-28 text-right py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">ADDITIONAL QTY</th>
-                {canEdit && <th className="w-20 text-center py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">ACTIONS</th>}
+                {canEdit && <th className="w-28 text-center py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">ACTIONS</th>}
               </tr>
             </thead>
             <tbody>
@@ -598,12 +631,14 @@ export default function Inventory() {
                   const isSelected = selectedRows.has(row._key);
                   const bgColor = row.formatting?.highlightColor || (isSelected ? "#f0f9ff" : undefined);
                   const isBold = row.formatting?.isBold;
+                  const titleRow = isTitleRow(row);
+                  const blank = isBlankRow(row);
 
                   return (
                     <tr
                       key={row._key}
                       className={`border-b last:border-0 transition-colors ${
-                        row.dirty ? "bg-amber-50/50" : "hover:bg-muted/10"
+                        titleRow ? "bg-blue-50/60" : blank ? "bg-gray-50/40" : row.dirty ? "bg-amber-50/50" : "hover:bg-muted/10"
                       }`}
                       style={bgColor ? { backgroundColor: bgColor } : undefined}
                     >
@@ -625,16 +660,16 @@ export default function Inventory() {
                       </td>
 
                       {/* PRODUCT NAME */}
-                      <td className={`py-1 px-2 ${isBold ? "font-bold" : ""}`}>
+                      <td className={`py-1 px-2 ${isBold || titleRow ? "font-bold" : ""}`}>
                         {canEdit ? (
                           <Input
                             value={row.productName}
                             onChange={(e) => updateCell(row._key, "productName", e.target.value)}
                             placeholder="Product name..."
-                            className="h-7 text-sm border-dashed focus:border-solid bg-transparent"
+                            className={`h-7 text-sm border-dashed focus:border-solid bg-transparent min-w-[280px] ${titleRow ? "font-bold" : ""}`}
                           />
                         ) : (
-                          <span className="font-medium">{row.productName}</span>
+                          <span className={`font-medium whitespace-nowrap ${titleRow ? "font-bold text-blue-800" : ""}`}>{row.productName || ""}</span>
                         )}
                       </td>
 
@@ -736,6 +771,16 @@ export default function Inventory() {
                             >
                               <Check className="h-3 w-3" />
                             </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
+                              onClick={() => insertRowBelow(row)}
+                              disabled={insertRow.isPending}
+                              title="Insert row below"
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
                             {row.id && (
                               <Button
                                 size="sm"
@@ -771,7 +816,7 @@ export default function Inventory() {
       {/* Footer */}
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span>
-          {rows.length} product{rows.length !== 1 ? "s" : ""}
+          {rows.length} row{rows.length !== 1 ? "s" : ""}
           {dirtyCount > 0 && <span className="ml-2 text-amber-600 font-medium">({dirtyCount} unsaved)</span>}
         </span>
         <span>ADDITIONAL QTY = STOCK − CLIENT ORDER</span>
@@ -823,12 +868,13 @@ export default function Inventory() {
           ) : (
             <>
               <div className="text-xs text-muted-foreground mb-2">
-                File: <strong>{importFileName}</strong> — {importData.length} products found
+                File: <strong>{importFileName}</strong> — {importData.length} rows found ({importData.filter(r => r.productName.trim()).length} products, {importData.filter(r => !r.productName.trim()).length} blank/title rows)
               </div>
               <div className="max-h-[300px] overflow-auto border rounded">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-muted/40 border-b">
+                      <th className="py-1.5 px-2 text-left w-10">#</th>
                       <th className="py-1.5 px-2 text-left">Product Name</th>
                       <th className="py-1.5 px-2 text-left">Size</th>
                       <th className="py-1.5 px-2 text-left">Colour</th>
@@ -838,16 +884,21 @@ export default function Inventory() {
                     </tr>
                   </thead>
                   <tbody>
-                    {importData.map((row, idx) => (
-                      <tr key={idx} className="border-b last:border-0 hover:bg-muted/10">
-                        <td className="py-1 px-2 font-medium">{row.productName}</td>
-                        <td className="py-1 px-2">{row.size || "-"}</td>
-                        <td className="py-1 px-2">{row.bottleColor || "-"}</td>
-                        <td className="py-1 px-2">{row.weight || "-"}</td>
-                        <td className="py-1 px-2 text-right font-mono">{(Number(row.stock) || 0).toLocaleString()}</td>
-                        <td className="py-1 px-2 text-right font-mono">{row.clientOrder ? (Number(row.clientOrder) || 0).toLocaleString() : "-"}</td>
-                      </tr>
-                    ))}
+                    {importData.map((row, idx) => {
+                      const titleRow = isTitleRow(row);
+                      const blank = isBlankRow(row);
+                      return (
+                        <tr key={idx} className={`border-b last:border-0 ${titleRow ? "bg-blue-50/60 font-bold" : blank ? "bg-gray-50/40" : "hover:bg-muted/10"}`}>
+                          <td className="py-1 px-2 text-muted-foreground">{idx + 1}</td>
+                          <td className="py-1 px-2 font-medium">{row.productName || "(blank)"}</td>
+                          <td className="py-1 px-2">{row.size || "-"}</td>
+                          <td className="py-1 px-2">{row.bottleColor || "-"}</td>
+                          <td className="py-1 px-2">{row.weight || "-"}</td>
+                          <td className="py-1 px-2 text-right font-mono">{(Number(row.stock) || 0).toLocaleString()}</td>
+                          <td className="py-1 px-2 text-right font-mono">{row.clientOrder ? (Number(row.clientOrder) || 0).toLocaleString() : "-"}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -856,7 +907,7 @@ export default function Inventory() {
                   Cancel
                 </Button>
                 <Button size="sm" onClick={confirmImport} disabled={bulkSave.isPending}>
-                  {bulkSave.isPending ? "Importing..." : `Import ${importData.length} Products`}
+                  {bulkSave.isPending ? "Importing..." : `Import ${importData.length} Rows`}
                 </Button>
               </DialogFooter>
             </>

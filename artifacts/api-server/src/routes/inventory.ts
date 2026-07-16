@@ -45,7 +45,7 @@ router.get("/inventory", async (req, res) => {
       .select()
       .from(inventoryTable)
       .where(conditions.length ? and(...conditions) : undefined)
-      .orderBy(inventoryTable.productName);
+      .orderBy(inventoryTable.sortOrder, inventoryTable.id);
 
     // Search filter (post-query)
     if (search) {
@@ -92,7 +92,7 @@ router.get("/inventory/logs", async (req, res) => {
 });
 
 // ── POST /inventory/save — Save a single row ──
-// Body: { id?, productName, unitName, size?, bottleColor?, weight?, stock?, clientOrder? }
+// Body: { id?, productName, unitName, size?, bottleColor?, weight?, stock?, clientOrder?, sortOrder? }
 router.post("/inventory/save", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
@@ -103,28 +103,24 @@ router.post("/inventory/save", async (req, res) => {
       return;
     }
 
-    const { id, productName, unitName, size, bottleColor, weight, stock, clientOrder } = req.body;
+    const { id, productName, unitName, size, bottleColor, weight, stock, clientOrder, sortOrder } = req.body;
 
-    if (!productName || !unitName) {
-      res.status(400).json({ error: "productName and unitName are required" });
+    if (!unitName) {
+      res.status(400).json({ error: "unitName is required" });
       return;
     }
 
-    const trimmedName = String(productName).trim();
-    if (!trimmedName) {
-      res.status(400).json({ error: "productName cannot be empty" });
-      return;
-    }
-
+    const trimmedName = String(productName || "").trim();
     const newStock = Math.max(0, Number(stock) || 0);
     const newClientOrder = Number(clientOrder) || 0;
+    const newSortOrder = sortOrder != null ? Number(sortOrder) : null;
 
-    // Find existing record: by ID if provided, else by (productName, unitName)
+    // Find existing record: by ID if provided, else by (productName, unitName) — only if productName is non-empty
     let existing = null;
     if (id) {
       const [row] = await db.select().from(inventoryTable).where(eq(inventoryTable.id, Number(id)));
       existing = row || null;
-    } else {
+    } else if (trimmedName) {
       const [row] = await db
         .select()
         .from(inventoryTable)
@@ -143,12 +139,13 @@ router.post("/inventory/save", async (req, res) => {
       await db
         .update(inventoryTable)
         .set({
-          productName: trimmedName,
+          productName: trimmedName || existing.productName,
           size: size !== undefined ? size : existing.size,
           bottleColor: bottleColor !== undefined ? bottleColor : existing.bottleColor,
           weight: weight !== undefined ? weight : existing.weight,
           stock: newStock,
           clientOrder: newClientOrder,
+          sortOrder: newSortOrder !== null ? newSortOrder : existing.sortOrder,
           updatedAt: new Date(),
         })
         .where(eq(inventoryTable.id, existing.id));
@@ -161,11 +158,12 @@ router.post("/inventory/save", async (req, res) => {
         weight: weight || null,
         stock: newStock,
         clientOrder: newClientOrder,
+        sortOrder: newSortOrder,
       });
     }
 
-    // Log the adjustment
-    if (newStock !== previousStock) {
+    // Log the adjustment (skip for blank rows)
+    if (trimmedName && newStock !== previousStock) {
       await db.insert(inventoryLogsTable).values({
         productName: trimmedName,
         unitName,
@@ -186,7 +184,7 @@ router.post("/inventory/save", async (req, res) => {
 });
 
 // ── POST /inventory/save-bulk — Bulk save (for Excel import + row saves) ──
-// Body: { unitName, items: [{ id?, productName, size?, bottleColor?, weight?, stock, clientOrder? }] }
+// Body: { unitName, items: [{ id?, productName, size?, bottleColor?, weight?, stock, clientOrder?, sortOrder? }] }
 router.post("/inventory/save-bulk", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
@@ -207,18 +205,18 @@ router.post("/inventory/save-bulk", async (req, res) => {
     const results: { productName: string; previousStock: number; newStock: number }[] = [];
 
     for (const item of items) {
-      const { id, productName, size, bottleColor, weight, stock, clientOrder } = item;
-      if (!productName) continue;
+      const { id, productName, size, bottleColor, weight, stock, clientOrder, sortOrder } = item;
+      const trimmedName = String(productName || "").trim();
+      const newStock = Math.max(0, Number(stock) || 0);
+      const newClientOrder = Number(clientOrder) || 0;
+      const newSortOrder = sortOrder != null ? Number(sortOrder) : null;
 
-      const trimmedName = String(productName).trim();
-      if (!trimmedName) continue;
-
-      // Find existing: by ID or by (productName, unitName)
+      // Find existing: by ID or by (productName, unitName) — only if productName is non-empty
       let existing = null;
       if (id) {
         const [row] = await db.select().from(inventoryTable).where(eq(inventoryTable.id, Number(id)));
         existing = row || null;
-      } else {
+      } else if (trimmedName) {
         const [row] = await db
           .select()
           .from(inventoryTable)
@@ -232,19 +230,18 @@ router.post("/inventory/save-bulk", async (req, res) => {
       }
 
       const previousStock = existing?.stock ?? 0;
-      const newStock = Math.max(0, Number(stock) || 0);
-      const newClientOrder = Number(clientOrder) || 0;
 
       if (existing) {
         await db
           .update(inventoryTable)
           .set({
-            productName: trimmedName,
+            productName: trimmedName || existing.productName,
             size: size !== undefined ? (size || null) : existing.size,
             bottleColor: bottleColor !== undefined ? (bottleColor || null) : existing.bottleColor,
             weight: weight !== undefined ? (weight || null) : existing.weight,
             stock: newStock,
             clientOrder: newClientOrder,
+            sortOrder: newSortOrder !== null ? newSortOrder : existing.sortOrder,
             updatedAt: new Date(),
           })
           .where(eq(inventoryTable.id, existing.id));
@@ -257,10 +254,11 @@ router.post("/inventory/save-bulk", async (req, res) => {
           weight: weight || null,
           stock: newStock,
           clientOrder: newClientOrder,
+          sortOrder: newSortOrder,
         });
       }
 
-      if (newStock !== previousStock) {
+      if (trimmedName && newStock !== previousStock) {
         await db.insert(inventoryLogsTable).values({
           productName: trimmedName,
           unitName,
@@ -273,7 +271,7 @@ router.post("/inventory/save-bulk", async (req, res) => {
         });
       }
 
-      results.push({ productName: trimmedName, previousStock, newStock });
+      results.push({ productName: trimmedName || "(blank row)", previousStock, newStock });
     }
 
     res.json({ saved: results.length, results });
@@ -367,6 +365,79 @@ router.delete("/inventory/:id", async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error("Delete inventory error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── POST /inventory/insert-row — Insert a blank row below a given row ──
+// Body: { afterId?: number, unitName: string } — if afterId is null, inserts at top
+router.post("/inventory/insert-row", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    if (!canManageInventory(user)) {
+      res.status(403).json({ error: "Only inventory, sales, or admin users can insert rows" });
+      return;
+    }
+
+    const { afterId, unitName } = req.body;
+    if (!unitName) {
+      res.status(400).json({ error: "unitName is required" });
+      return;
+    }
+
+    // Get all rows for this unit ordered by sort_order, id
+    const allRows = await db
+      .select({ id: inventoryTable.id, sortOrder: inventoryTable.sortOrder })
+      .from(inventoryTable)
+      .where(eq(inventoryTable.unitName, unitName))
+      .orderBy(inventoryTable.sortOrder, inventoryTable.id);
+
+    // Determine the sort_order for the new row
+    let newSortOrder: number;
+    if (!afterId) {
+      // Insert at top
+      const minSort = allRows.length > 0 ? (allRows[0].sortOrder ?? allRows[0].id) : 0;
+      newSortOrder = minSort - 1;
+    } else {
+      // Insert after the given row
+      const afterRow = allRows.find((r) => r.id === afterId);
+      const afterIdx = allRows.findIndex((r) => r.id === afterId);
+      if (afterIdx === -1) {
+        res.status(404).json({ error: "Row not found" });
+        return;
+      }
+      if (afterIdx === allRows.length - 1) {
+        // Insert at end
+        const maxSort = Math.max(...allRows.map((r) => r.sortOrder ?? r.id));
+        newSortOrder = maxSort + 1;
+      } else {
+        // Insert between two rows
+        const currentSort = afterRow.sortOrder ?? afterRow.id;
+        const nextSort = allRows[afterIdx + 1].sortOrder ?? allRows[afterIdx + 1].id;
+        newSortOrder = Math.floor((currentSort + nextSort) / 2);
+      }
+    }
+
+    // Insert the blank row
+    const [inserted] = await db
+      .insert(inventoryTable)
+      .values({
+        productName: "",
+        unitName,
+        size: null,
+        bottleColor: null,
+        weight: null,
+        stock: 0,
+        clientOrder: 0,
+        sortOrder: newSortOrder,
+      })
+      .returning({ id: inventoryTable.id });
+
+    res.json({ success: true, id: inserted.id, sortOrder: newSortOrder });
+  } catch (err) {
+    console.error("Insert row error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

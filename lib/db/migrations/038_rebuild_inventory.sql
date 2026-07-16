@@ -7,7 +7,11 @@ ALTER TABLE inventory ADD COLUMN IF NOT EXISTS bottle_color TEXT;
 ALTER TABLE inventory ADD COLUMN IF NOT EXISTS weight TEXT;
 ALTER TABLE inventory ADD COLUMN IF NOT EXISTS stock INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE inventory ADD COLUMN IF NOT EXISTS client_order INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE inventory ADD COLUMN IF NOT EXISTS sort_order INTEGER;
 ALTER TABLE inventory ADD COLUMN IF NOT EXISTS formatting JSONB;
+
+-- Backfill sort_order from id so existing rows have an initial order
+UPDATE inventory SET sort_order = id WHERE sort_order IS NULL;
 
 -- Backfill stock from current_stock if the column exists
 DO $$
@@ -26,7 +30,10 @@ BEGIN
   END IF;
 END $$;
 
--- Ensure the composite unique index on (product_name, unit_name) exists
-CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_name_unit ON inventory(product_name, unit_name);
+-- Drop the unique index on (product_name, unit_name) — blank rows and title rows break uniqueness
+DROP INDEX IF EXISTS idx_inventory_name_unit;
+
+-- Ensure indexes exist
 CREATE INDEX IF NOT EXISTS idx_inventory_product_name ON inventory(product_name);
 CREATE INDEX IF NOT EXISTS idx_inventory_unit_name ON inventory(unit_name);
+CREATE INDEX IF NOT EXISTS idx_inventory_sort_order ON inventory(sort_order);

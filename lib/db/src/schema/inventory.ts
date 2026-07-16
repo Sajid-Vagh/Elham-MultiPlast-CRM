@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, jsonb, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -16,13 +16,14 @@ export const inventoryTable = pgTable("inventory", {
   weight: text("weight"),
   stock: integer("stock").notNull().default(0),
   clientOrder: integer("client_order").notNull().default(0),
+  sortOrder: integer("sort_order"),
   formatting: jsonb("formatting").$type<InventoryFormatting>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("idx_inventory_product_name").on(t.productName),
   index("idx_inventory_unit_name").on(t.unitName),
-  uniqueIndex("idx_inventory_name_unit").on(t.productName, t.unitName),
+  index("idx_inventory_sort_order").on(t.sortOrder),
 ]);
 
 export const inventoryLogsTable = pgTable("inventory_logs", {
