@@ -19,7 +19,7 @@ router.get("/search", async (req, res) => {
     const [contacts, orders, products, complaints] = await Promise.all([
       db.select({ id: contactsTable.id, name: contactsTable.name, companyName: contactsTable.companyName, mobile: contactsTable.mobile, type: contactsTable.category })
         .from(contactsTable)
-        .where(or(ilike(contactsTable.name, s), ilike(contactsTable.companyName, s), ilike(contactsTable.mobile, s), ilike(contactsTable.email, s)))
+        .where(or(ilike(contactsTable.name, s), ilike(contactsTable.companyName, s), ilike(contactsTable.mobile, s), ilike(contactsTable.email, s), ilike(contactsTable.otherPhone, s)))
         .limit(10),
       db.select({ id: ordersTable.id, orderNumber: ordersTable.orderNumber, customerName: ordersTable.customerName, status: ordersTable.status })
         .from(ordersTable)

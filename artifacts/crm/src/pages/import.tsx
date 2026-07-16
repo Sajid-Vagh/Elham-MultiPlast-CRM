@@ -464,6 +464,8 @@ const COLUMN_MAP: Record<string, string> = {
   "customer name": "name", "customername": "name", "party name": "name", "partyname": "name",
   "mobile": "mobile", "mobile number": "mobile", "phone": "mobile", "contact number": "mobile",
   "mobilenumber": "mobile", "contact": "mobile", "phone number": "mobile", "phonenumber": "mobile",
+  "alternate phone": "otherPhone", "alt phone": "otherPhone", "other phone": "otherPhone",
+  "mobile 2": "otherPhone", "mobile2": "otherPhone", "second mobile": "otherPhone", "alt mobile": "otherPhone",
   "email": "email", "email id": "email", "emailid": "email",
   "company": "companyName", "company name": "companyName", "companyname": "companyName", "firm": "companyName",
   "city": "city", "location": "city",

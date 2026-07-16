@@ -13,6 +13,7 @@ type Category = (typeof CATEGORY_VALUES)[number];
 const ImportExcelRowSchema = z.object({
   name: z.string().nullish(),
   mobile: z.string().nullish(),
+  otherPhone: z.string().nullish(),
   email: z.string().nullish(),
   companyName: z.string().nullish(),
   city: z.string().nullish(),
@@ -121,6 +122,9 @@ router.post("/import/excel", async (req, res) => {
     }
 
     const conditions = [eq(contactsTable.mobile, contactMobile)];
+    if (row.otherPhone?.trim()) {
+      conditions.push(eq(contactsTable.otherPhone, row.otherPhone.trim()));
+    }
     if (row.email?.trim()) {
       conditions.push(eq(contactsTable.email, row.email.trim()));
     }
@@ -150,6 +154,7 @@ router.post("/import/excel", async (req, res) => {
             address: row.address?.trim() ?? null,
             tags: row.tags?.trim() ?? null,
             customerComments: row.comments?.trim() ?? null,
+            otherPhone: row.otherPhone?.trim() ?? null,
           })
             .where(eq(contactsTable.id, existing[0]!.id));
           updated++;
@@ -193,6 +198,7 @@ router.post("/import/excel", async (req, res) => {
         address: row.address?.trim() ?? null,
         tags: row.tags?.trim() ?? null,
         customerComments: row.comments?.trim() ?? null,
+        otherPhone: row.otherPhone?.trim() ?? null,
       });
       imported++;
     } catch (err: any) {

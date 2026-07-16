@@ -18,6 +18,7 @@ import { UserAvatar } from "@/components/user-avatar";
 const schema = z.object({
   name: z.string().min(1, "Required"),
   mobile: z.string().min(10, "Enter valid mobile"),
+  otherPhone: z.string().optional(),
   email: z.string().email().optional().or(z.literal("")),
   companyName: z.string().optional(),
   salesOwnerId: z.string().min(1, "Required"),
@@ -82,7 +83,7 @@ export default function LeadForm({
   const form = useForm<LeadFormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      name: "", mobile: "", email: "", companyName: "", salesOwnerId: "",
+      name: "", mobile: "", otherPhone: "", email: "", companyName: "", salesOwnerId: "",
       leadSource: "", city: "", unit: "", industry: "", tags: "", address: "",
       ...initialData,
     },
@@ -91,7 +92,7 @@ export default function LeadForm({
   useEffect(() => {
     if (initialData) {
       form.reset({
-        name: "", mobile: "", email: "", companyName: "", salesOwnerId: "",
+        name: "", mobile: "", otherPhone: "", email: "", companyName: "", salesOwnerId: "",
         leadSource: "", city: "", unit: "", industry: "", tags: "", address: "",
         ...initialData,
       });
@@ -145,6 +146,13 @@ export default function LeadForm({
                       }}
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="otherPhone" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Alternate Mobile</FormLabel>
+                  <FormControl><Input placeholder="Alternate mobile (optional)" {...field} data-no-cap="1" /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />

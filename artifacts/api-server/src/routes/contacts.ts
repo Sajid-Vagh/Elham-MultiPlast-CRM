@@ -57,6 +57,7 @@ router.get("/contacts", async (req, res) => {
           or(
             ilike(contactsTable.name, s),
             ilike(contactsTable.mobile, s),
+            ilike(contactsTable.otherPhone, s),
             ilike(contactsTable.companyName, s),
             ilike(contactsTable.city, s),
             ilike(contactsTable.customerComments, s)
@@ -886,7 +887,7 @@ router.get("/contacts/search/mobile", async (req, res) => {
     const [contact] = await db
       .select()
       .from(contactsTable)
-      .where(eq(contactsTable.mobile, mobile))
+      .where(or(eq(contactsTable.mobile, mobile), eq(contactsTable.otherPhone, mobile)))
       .limit(1);
 
     if (!contact) {
