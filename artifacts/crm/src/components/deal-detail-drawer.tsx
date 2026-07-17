@@ -115,7 +115,14 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
 
   const handleStageChange = () => {
     if (!selectedStage || selectedStage === deal?.stage) { setStageOpen(false); return; }
-    if (selectedStage === "Won") { setStageOpen(false); setWonAmount(""); setWonOpen(true); return; }
+    if (selectedStage === "Won") {
+      setStageOpen(false);
+      const activePI = (deal as any).activeProformaInvoice;
+      const piSubtotal = activePI?.taxableAmount ?? activePI?.subtotal;
+      setWonAmount(piSubtotal ? String(piSubtotal) : deal?.totalValue ? String(deal.totalValue) : "");
+      setWonOpen(true);
+      return;
+    }
     if (selectedStage === "Lost") { setStageOpen(false); setLostOpen(true); return; }
     if (selectedStage === "PI Sent") {
       setStageOpen(false);

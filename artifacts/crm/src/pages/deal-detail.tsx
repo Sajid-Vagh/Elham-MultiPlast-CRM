@@ -170,7 +170,9 @@ export default function DealDetail() {
   const handleStageSelect = (newStage: string) => {
     if (newStage === deal.stage) return;
     if (newStage === "Won") {
-      setWonAmount(deal.totalValue ? String(deal.totalValue) : "");
+      const activePI = (deal as any).activeProformaInvoice;
+      const piSubtotal = activePI?.taxableAmount ?? activePI?.subtotal;
+      setWonAmount(piSubtotal ? String(piSubtotal) : deal.totalValue ? String(deal.totalValue) : "");
       setWonProductionUnit("");
       setWonProductionNotes("");
       setWonSalesNotes("");
@@ -831,7 +833,7 @@ export default function DealDetail() {
                 className="mt-1"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Auto-filled from deal value. Edit if needed.
+                Auto-filled from Proforma Invoice subtotal (GST/freight excluded).
               </p>
             </div>
             <div>

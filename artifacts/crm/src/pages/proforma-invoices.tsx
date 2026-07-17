@@ -21,7 +21,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import {
   Plus, Download, Printer, Share2, Mail, Eye, FileText, Save, ArrowLeft, Trash2, Search,
   ChevronLeft, ChevronRight, Send, Loader2, CheckCircle2, RefreshCw, Building2, Calendar, Clock,
-  Shield, Store, MapPin, Verified,
+  Shield, Store, MapPin, Verified, History, GitBranch, ArrowRight,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ProductionProgressSection } from "@/components/production-progress";
@@ -118,6 +118,9 @@ export default function ProformaInvoicesPage() {
 
   const [mode, setMode] = useState<"list" | "create" | "detail">("list");
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  const [versionHistory, setVersionHistory] = useState<any[]>([]);
+  const [versionLoading, setVersionLoading] = useState(false);
+  const [revisionReason, setRevisionReason] = useState("");
 
   const [customerName, setCustomerName] = useState("");
   const [companyName, setCompanyName] = useState("");
@@ -307,6 +310,7 @@ export default function ProformaInvoicesPage() {
     setItems([{ productName: "", hsnCode: "", quantity: 1, unit: "Pcs", rate: 0, gstPercent: 0, amount: 0 }]);
     setEditMode(false);
     setCustomerMasterId(null);
+    setRevisionReason("");
     setExistingCustomer(null);
     setGstinNotFound(false);
     setGstVerified(false);
@@ -904,6 +908,21 @@ export default function ProformaInvoicesPage() {
     return;
   }, [gstNumber]);
 
+  useEffect(() => {
+    if (mode === "detail" && selectedInvoice?.id) {
+      setVersionLoading(true);
+      const token = localStorage.getItem("crm_token");
+      fetch(`/api/proforma-invoices/${selectedInvoice.id}/versions`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then(r => r.json())
+        .then(data => { setVersionHistory(Array.isArray(data) ? data : []); setVersionLoading(false); })
+        .catch(() => { setVersionHistory([]); setVersionLoading(false); });
+    } else {
+      setVersionHistory([]);
+    }
+  }, [mode, selectedInvoice?.id]);
+
   const handleSave = async (status: string) => {
     let hasError = false;
     if (!customerName) {
@@ -967,6 +986,9 @@ export default function ProformaInvoicesPage() {
       if (selectedLead?.id) body.contactId = selectedLead.id;
       else if (urlContactId) body.contactId = urlContactId;
       if (invoiceNumber) body.invoiceNumber = invoiceNumber;
+      if (editMode && selectedInvoice?.id && selectedInvoice.status !== "Draft" && revisionReason) {
+        body.revisionReason = revisionReason;
+      }
 
       let res: Response;
       if (editMode && selectedInvoice?.id) {
@@ -1452,6 +1474,24 @@ ${pagesHtml}
           </Button>
           <h1 className="text-2xl font-bold">{editMode ? `Edit Invoice - ${selectedInvoice?.invoiceNumber || ""}` : "New Proforma Invoice"}</h1>
         </div>
+
+        {editMode && selectedInvoice?.status && selectedInvoice.status !== "Draft" && (
+          <Card className="border-amber-200 bg-amber-50">
+            <CardContent className="py-3">
+              <div className="flex items-center gap-2 mb-1">
+                <GitBranch className="h-4 w-4 text-amber-600" />
+                <Label className="text-sm font-medium text-amber-800">Editing a {selectedInvoice.status} invoice — a new version will be created</Label>
+              </div>
+              <Input
+                value={revisionReason}
+                onChange={(e) => setRevisionReason(e.target.value)}
+                placeholder="Reason for revision (e.g., quantity change, price update)"
+                className="mt-1 bg-white"
+              />
+              <p className="text-xs text-amber-600 mt-1">The current version will remain in history. A new Draft version will be created.</p>
+            </CardContent>
+          </Card>
+        )}
 
           <Card>
             <CardHeader><CardTitle>Party Details</CardTitle></CardHeader>
@@ -1970,6 +2010,14 @@ ${pagesHtml}
             <p className="text-sm text-muted-foreground">{inv.customerName}</p>
           </div>
           <Badge className={`text-xs px-3 py-1 ${STATUS_COLORS[inv.status] || ""}`}>{inv.status}</Badge>
+          {inv.version && inv.version > 1 && (
+            <Badge variant="outline" className="text-xs px-2 py-1">
+              <GitBranch className="h-3 w-3 mr-1" /> Version {inv.version}
+            </Badge>
+          )}
+          {inv.isActive && (
+            <Badge className="bg-green-100 text-green-700 text-xs px-2 py-1">Active</Badge>
+          )}
           <Button variant="outline" size="sm" onClick={() => {
             setSelectedInvoice(inv);
             setCustomerName(inv.customerName || "");
@@ -2097,6 +2145,51 @@ ${pagesHtml}
             </Table>
           </CardContent>
         </Card>
+
+        {versionHistory.length > 1 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <History className="h-4 w-4" /> Version History ({versionHistory.length} versions)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {versionLoading ? (
+                <p className="text-sm text-muted-foreground">Loading version history...</p>
+              ) : (
+                <div className="space-y-3">
+                  {versionHistory.map((v: any, idx: number) => (
+                    <div key={v.id} className={`flex items-start gap-3 p-3 rounded-lg border ${v.isActive ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"}`}>
+                      <div className="flex-shrink-0 mt-0.5">
+                        <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold ${v.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                          v{v.version}
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-sm">{v.invoiceNumber}</span>
+                          {v.isActive && <Badge className="bg-green-100 text-green-700 text-xs">Active</Badge>}
+                          <Badge variant="outline" className="text-xs">{v.status}</Badge>
+                          {v.id === inv.id && <Badge className="bg-blue-100 text-blue-700 text-xs">Current</Badge>}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Subtotal: ₹{Number(v.taxableAmount).toLocaleString("en-IN", { minimumFractionDigits: 2 })} | Total: ₹{Number(v.grandTotal).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {v.createdByName ? `By ${v.createdByName}` : ""} {v.createdAt ? `on ${new Date(v.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}` : ""}
+                        </p>
+                        {v.revisionReason && <p className="text-xs text-amber-600 mt-1 italic">Reason: {v.revisionReason}</p>}
+                      </div>
+                      {idx < versionHistory.length - 1 && (
+                        <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-2 hidden sm:block" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {(inv.status === "Converted to Order" || inv.status === "Converted to Production") && (
           <ProductionProgressSection invoiceId={inv.id} />
@@ -2245,7 +2338,10 @@ ${pagesHtml}
                   return (
                   <TableRow key={inv.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleViewInvoice(inv)}>
                     <TableCell className="font-medium">{inv.companyName || inv.customerName || "-"}</TableCell>
-                    <TableCell className="text-muted-foreground text-xs">{inv.invoiceNumber}</TableCell>
+                    <TableCell className="text-muted-foreground text-xs">
+                      {inv.invoiceNumber}
+                      {inv.version && inv.version > 1 && <span className="ml-1 text-[10px] bg-blue-100 text-blue-600 px-1 py-0.5 rounded">v{inv.version}</span>}
+                    </TableCell>
                     <TableCell className="font-medium">₹{Number(inv.grandTotal).toLocaleString()}</TableCell>
                     <TableCell>
                       <Badge className={`text-xs ${STATUS_COLORS[inv.status] || ""}`}>{inv.status}</Badge>

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable, activitiesTable, DEAL_STAGES, STAGE_PROBS, ordersTable, orderItemsTable, proformaInvoicesTable, proformaInvoiceItemsTable, productionOrdersTable, productionTimelineTable } from "@workspace/db";
+import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable, activitiesTable, DEAL_STAGES, STAGE_PROBS, ordersTable, orderItemsTable, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable } from "@workspace/db";
 import { eq, and, SQL, sql, desc, gte, between, isNull } from "drizzle-orm";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import {
@@ -27,6 +27,7 @@ async function enrichDeal(deal: typeof dealsTable.$inferSelect) {
       id: proformaInvoicesTable.id,
       invoiceNumber: proformaInvoicesTable.invoiceNumber,
       status: proformaInvoicesTable.status,
+      taxableAmount: proformaInvoicesTable.taxableAmount,
       grandTotal: proformaInvoicesTable.grandTotal,
       version: proformaInvoicesTable.version,
       isActive: proformaInvoicesTable.isActive,
@@ -226,13 +227,28 @@ router.patch("/deals/:id", async (req, res) => {
       delete updateData.salesOwnerId;
     }
 
-    // Validate Won: wonAmount is mandatory and must be > 0
+    // Validate Won: Active PI must exist, status must be Sent/Approved, taxableAmount used as Won Value
     if (updateData.stage === "Won") {
-      const value = updateData.wonAmount ?? oldDeal.wonAmount;
-      if (value == null || Number(value) <= 0) {
-        res.status(400).json({ error: "Won Amount is required and must be greater than 0 before marking as Won." });
+      const [activePI] = await db.select().from(proformaInvoicesTable).where(and(
+        eq(proformaInvoicesTable.dealId, params.data.id),
+        eq(proformaInvoicesTable.isActive, true),
+        eq(proformaInvoicesTable.isDeleted, false),
+      )).limit(1);
+      if (!activePI) {
+        res.status(400).json({ error: "No active Proforma Invoice found. Create and send a PI before marking as Won." });
         return;
       }
+      if (activePI.status !== "Sent" && activePI.status !== "Approved") {
+        res.status(400).json({ error: `Proforma Invoice must be "Sent" or "Approved" before marking as Won. Current status: "${activePI.status}". Send the PI to the customer first.` });
+        return;
+      }
+      const piTaxableAmount = Number(activePI.taxableAmount || 0);
+      if (piTaxableAmount <= 0) {
+        res.status(400).json({ error: "Proforma Invoice has no subtotal (taxable amount). Update the PI before marking as Won." });
+        return;
+      }
+      // Won Value = PI Subtotal only — never GST, freight, or other charges
+      updateData.wonAmount = String(piTaxableAmount);
     }
     // Validate PI Sent: Active Proforma Invoice must exist for this deal
     if (updateData.stage === "PI Sent") {
@@ -269,6 +285,25 @@ router.patch("/deals/:id", async (req, res) => {
 
     const [deal] = await db.update(dealsTable).set(updateData).where(eq(dealsTable.id, params.data.id)).returning();
     if (!deal) { res.status(404).json({ error: "Not found" }); return; }
+
+    // Auto-update active PI status to "Sent" when deal moves to PI Sent
+    if (deal.stage === "PI Sent" && oldDeal.stage !== "PI Sent") {
+      const [activePI] = await db.select().from(proformaInvoicesTable).where(and(
+        eq(proformaInvoicesTable.dealId, deal.id),
+        eq(proformaInvoicesTable.isActive, true),
+        eq(proformaInvoicesTable.isDeleted, false),
+      )).limit(1);
+      if (activePI && activePI.status === "Draft") {
+        await db.update(proformaInvoicesTable).set({ status: "Sent" }).where(eq(proformaInvoicesTable.id, activePI.id));
+        await db.insert(proformaInvoiceHistoryTable).values({
+          invoiceId: activePI.id,
+          statusFrom: "Draft",
+          statusTo: "Sent",
+          changedBy: user.id,
+          notes: "Auto-set: Deal moved to PI Sent",
+        });
+      }
+    }
 
     // Auto-set contact category when deal is Won
     if (deal.stage === "Won" && !deal.convertedToClient) {
@@ -499,6 +534,36 @@ router.post("/deals/:id/mark-won", async (req, res) => {
       res.status(400).json({ error: "This deal is already marked as Won" }); return;
     }
 
+    // Fetch ACTIVE proforma invoice for this deal (single source of truth)
+    let [latestPI] = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(and(
+        eq(proformaInvoicesTable.dealId, dealId),
+        eq(proformaInvoicesTable.isActive, true),
+        eq(proformaInvoicesTable.isDeleted, false),
+      ))
+      .limit(1);
+
+    // Validate: Active PI must exist
+    if (!latestPI) {
+      res.status(400).json({ error: "No active Proforma Invoice found. Create and send a PI before marking as Won." });
+      return;
+    }
+
+    // Validate: PI status must be Sent or Approved
+    if (latestPI.status !== "Sent" && latestPI.status !== "Approved") {
+      res.status(400).json({ error: `Proforma Invoice must be "Sent" or "Approved" before marking as Won. Current status: "${latestPI.status}". Send the PI to the customer first.` });
+      return;
+    }
+
+    // Validate: Subtotal (taxableAmount) must be available
+    const piTaxableAmount = Number(latestPI.taxableAmount || 0);
+    if (piTaxableAmount <= 0) {
+      res.status(400).json({ error: "Proforma Invoice has no subtotal (taxable amount). Update the PI before marking as Won." });
+      return;
+    }
+
     // Check for existing order from this deal
     const [existingOrder] = await db
       .select({ id: ordersTable.id })
@@ -512,27 +577,8 @@ router.post("/deals/:id/mark-won", async (req, res) => {
     // Fetch contact
     const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
 
-    // Fetch latest proforma invoice for this deal (fallback: by contact_id)
-    let [latestPI] = await db
-      .select()
-      .from(proformaInvoicesTable)
-      .where(eq(proformaInvoicesTable.dealId, dealId))
-      .orderBy(desc(proformaInvoicesTable.createdAt))
-      .limit(1);
-
-    if (!latestPI && deal.contactId) {
-      const [contactPI] = await db
-        .select()
-        .from(proformaInvoicesTable)
-        .where(eq(proformaInvoicesTable.contactId, deal.contactId))
-        .orderBy(desc(proformaInvoicesTable.createdAt))
-        .limit(1);
-      if (contactPI) {
-        latestPI = contactPI;
-        // Link the PI to this deal for future lookups
-        await db.update(proformaInvoicesTable).set({ dealId: dealId }).where(eq(proformaInvoicesTable.id, contactPI.id));
-      }
-    }
+    // Won Value = PI Subtotal (taxableAmount) only — never GST, freight, or other charges
+    const effectiveWonAmount = piTaxableAmount;
 
     // Fetch proforma invoice items (if PI exists)
     let piItems: any[] = [];
@@ -547,10 +593,10 @@ router.post("/deals/:id/mark-won", async (req, res) => {
     const result = await db.transaction(async (tx) => {
       const now = new Date();
 
-      // 1. Update Deal → Won
+      // 1. Update Deal → Won (Won Value = PI Subtotal only)
       await tx.update(dealsTable).set({
         stage: "Won",
-        wonAmount: String(Number(wonAmount)),
+        wonAmount: String(effectiveWonAmount),
         probability: 100,
         completedAt: now,
         notes: salesNotes || deal.notes,
@@ -687,7 +733,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
       // 7. Activity Log entries
       const ts = now.toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
       const activityEntries = [
-        `Deal Won — ₹${Number(wonAmount).toLocaleString("en-IN")}\n\nBy: ${user.name}\n${ts}`,
+        `Deal Won — ₹${effectiveWonAmount.toLocaleString("en-IN")}\n\nBy: ${user.name}\n${ts}`,
         `Order Created — ${orderNumber}\n\nAuto-created from Deal Won\n${ts}`,
         productionOrder ? `Production Order Created — Unit: ${productionUnit}\n\nBy: ${user.name}\n${ts}` : null,
         `Production Unit Assigned — ${productionUnit}\n\nBy: ${user.name}\n${ts}`,
@@ -715,7 +761,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
           userId: notifyUserId,
           type: "deal_won",
           title: "Deal Won! 🎉",
-          message: `Deal "${deal.title || `#${deal.id}`}" has been marked as Won.\nWon Amount: ₹${Number(wonAmount).toLocaleString("en-IN")}\nOrder: ${orderNumber}\nBy: ${user.name}`,
+            message: `Deal "${deal.title || `#${deal.id}`}" has been marked as Won.\nWon Amount: ₹${effectiveWonAmount.toLocaleString("en-IN")}\nOrder: ${orderNumber}\nBy: ${user.name}`,
           link: `/deals/${deal.id}`,
           relatedId: deal.id,
           relatedType: "deal",
@@ -730,7 +776,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
             userId: admin.id,
             type: "deal_won",
             title: "Deal Won",
-            message: `Deal "${deal.title || `#${deal.id}`}" won for ${contact?.name || "Unknown"}\nWon Amount: ₹${Number(wonAmount).toLocaleString("en-IN")}\nOrder: ${orderNumber}\nBy: ${user.name}`,
+            message: `Deal "${deal.title || `#${deal.id}`}" won for ${contact?.name || "Unknown"}\nWon Amount: ₹${effectiveWonAmount.toLocaleString("en-IN")}\nOrder: ${orderNumber}\nBy: ${user.name}`,
             link: `/deals/${deal.id}`,
             relatedId: deal.id,
             relatedType: "deal",
@@ -781,7 +827,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
             `Product: ${firstProduct}`,
             totalQty > 0 ? `Quantity: ${totalQty.toLocaleString("en-IN")} ${unit}` : null,
             `Order No: ${orderNumber}`,
-            `Won Amount: ₹${Number(wonAmount).toLocaleString("en-IN")}`,
+            `Won Amount: ₹${effectiveWonAmount.toLocaleString("en-IN")}`,
             remarksLine,
           ].filter(Boolean).join("\n"),
           link: `/production/orders/${productionOrder?.id || ""}`,

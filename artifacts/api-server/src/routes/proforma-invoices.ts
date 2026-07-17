@@ -1161,6 +1161,31 @@ router.get("/proforma-invoices/:id/production-progress", async (req, res) => {
   }
 });
 
+function buildItemDiff(oldItems: any[], newItems: any[]): string[] {
+  const changes: string[] = [];
+  const oldMap = new Map(oldItems.map((it: any) => [it.productName, it]));
+  const newMap = new Map(newItems.map((it: any) => [it.productName, it]));
+
+  for (const [name, newItem] of newMap) {
+    const oldItem = oldMap.get(name);
+    if (!oldItem) {
+      changes.push(`+ Added: ${name} (qty: ${newItem.quantity}, rate: ${newItem.rate})`);
+    } else {
+      const fieldChanges: string[] = [];
+      if (Number(oldItem.quantity) !== Number(newItem.quantity)) fieldChanges.push(`qty: ${oldItem.quantity} → ${newItem.quantity}`);
+      if (Number(oldItem.rate) !== Number(newItem.rate)) fieldChanges.push(`rate: ${oldItem.rate} → ${newItem.rate}`);
+      if (Number(oldItem.discount || 0) !== Number(newItem.discount || 0)) fieldChanges.push(`discount: ${oldItem.discount || 0} → ${newItem.discount || 0}`);
+      if (Number(oldItem.gstPercent || 0) !== Number(newItem.gstPercent || 0)) fieldChanges.push(`GST: ${oldItem.gstPercent || 0}% → ${newItem.gstPercent || 0}%`);
+      if (fieldChanges.length > 0) changes.push(`~ ${name}: ${fieldChanges.join(", ")}`);
+    }
+  }
+
+  for (const [name] of oldMap) {
+    if (!newMap.has(name)) changes.push(`- Removed: ${name}`);
+  }
+  return changes;
+}
+
 async function updateInvoiceHandler(req: any, res: any) {
   try {
     const user = await getUserFromRequest(req);
@@ -1175,22 +1200,140 @@ async function updateInvoiceHandler(req: any, res: any) {
       .where(and(eq(proformaInvoicesTable.id, id), eq(proformaInvoicesTable.isDeleted, false)));
     if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
-    if (user.role === "sales") {
-      if (existing.createdBy !== user.id) {
-        res.status(403).json({ error: "Forbidden" });
-        return;
-      }
-      if (existing.status !== "Draft") {
-        res.status(403).json({ error: "Only draft invoices can be edited" });
-        return;
-      }
+    if (user.role === "sales" && existing.createdBy !== user.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
     }
 
-    const { customerName, companyName, tradeName, contactId, dealId, address, addressLine1, addressLine2, addressLine3, city, district, state, pincode, gstNumber, gstStatus, mobile, taxableAmount, freight, cgst, sgst, igst, cgstPercent, sgstPercent, igstPercent, grandTotal, amountInWords, notes, items, customerType, idProofType, idProofNumber, invoiceNumber, terms, companyGstin, companyAddress, companyEmail, bankDetails, disclaimer, customerMasterId } = req.body;
+    const { customerName, companyName, tradeName, contactId, dealId, address, addressLine1, addressLine2, addressLine3, city, district, state, pincode, gstNumber, gstStatus, mobile, taxableAmount, freight, cgst, sgst, igst, cgstPercent, sgstPercent, igstPercent, grandTotal, amountInWords, notes, items, customerType, idProofType, idProofNumber, invoiceNumber, terms, companyGstin, companyAddress, companyEmail, bankDetails, disclaimer, customerMasterId, revisionReason } = req.body;
 
     if (mobile !== undefined && !mobile.trim()) {
       res.status(400).json({ error: "Mobile number is required" });
       return;
+    }
+
+    const isDraft = existing.status === "Draft";
+
+    if (!isDraft) {
+      const oldItems = await db.select().from(proformaInvoiceItemsTable).where(eq(proformaInvoiceItemsTable.invoiceId, id));
+
+      const nextVersion = (existing.version || 1) + 1;
+      const newInvoiceNumber = await getNextInvoiceNumber();
+
+      if (existing.dealId) {
+        await db.update(proformaInvoicesTable).set({ isActive: false }).where(and(
+          eq(proformaInvoicesTable.dealId, existing.dealId),
+          eq(proformaInvoicesTable.isActive, true),
+          eq(proformaInvoicesTable.isDeleted, false),
+        ));
+      }
+
+      const merged = {
+        invoiceNumber: newInvoiceNumber,
+        customerName: customerName ?? existing.customerName,
+        companyName: companyName !== undefined ? companyName : existing.companyName,
+        tradeName: tradeName !== undefined ? tradeName : existing.tradeName,
+        contactId: contactId !== undefined ? contactId : existing.contactId,
+        dealId: dealId !== undefined ? dealId : existing.dealId,
+        salesOwnerId: existing.salesOwnerId,
+        customerMasterId: customerMasterId !== undefined ? customerMasterId : existing.customerMasterId,
+        address: address !== undefined ? address : existing.address,
+        addressLine1: addressLine1 !== undefined ? addressLine1 : existing.addressLine1,
+        addressLine2: addressLine2 !== undefined ? addressLine2 : existing.addressLine2,
+        addressLine3: addressLine3 !== undefined ? addressLine3 : existing.addressLine3,
+        city: city !== undefined ? city : existing.city,
+        district: district !== undefined ? district : existing.district,
+        state: state !== undefined ? state : existing.state,
+        pincode: pincode !== undefined ? pincode : existing.pincode,
+        customerType: customerType !== undefined ? customerType : existing.customerType,
+        gstNumber: gstNumber !== undefined ? gstNumber : existing.gstNumber,
+        gstStatus: gstStatus !== undefined ? gstStatus : existing.gstStatus,
+        idProofType: idProofType !== undefined ? idProofType : existing.idProofType,
+        idProofNumber: idProofNumber !== undefined ? idProofNumber : existing.idProofNumber,
+        mobile: mobile !== undefined ? mobile : existing.mobile,
+        taxableAmount: String(taxableAmount ?? existing.taxableAmount ?? 0),
+        freight: String(freight ?? existing.freight ?? 0),
+        cgst: String(cgst ?? existing.cgst ?? 0),
+        sgst: String(sgst ?? existing.sgst ?? 0),
+        igst: String(igst ?? existing.igst ?? 0),
+        cgstPercent: String(cgstPercent ?? existing.cgstPercent ?? 0),
+        sgstPercent: String(sgstPercent ?? existing.sgstPercent ?? 0),
+        igstPercent: String(igstPercent ?? existing.igstPercent ?? 0),
+        grandTotal: String(grandTotal ?? existing.grandTotal ?? 0),
+        amountInWords: amountInWords || existing.amountInWords || "",
+        notes: notes !== undefined ? notes : existing.notes,
+        status: "Draft" as const,
+        version: nextVersion,
+        isActive: true,
+        revisionReason: revisionReason || null,
+        createdBy: user.id,
+      };
+
+      const [newInvoice] = await db.insert(proformaInvoicesTable).values(merged).returning();
+
+      const newItems = items || oldItems.map((it: any) => ({
+        productName: it.productName, hsnCode: it.hsnCode, bottleType: it.bottleType,
+        capacity: it.capacity, weight: it.weight, quantity: Number(it.quantity),
+        unit: it.unit, rate: Number(it.rate), discountPercent: Number(it.discountPercent || 0),
+        discount: Number(it.discount || 0), gstPercent: Number(it.gstPercent || 0), amount: Number(it.amount),
+      }));
+
+      await db.delete(proformaInvoiceItemsTable).where(eq(proformaInvoiceItemsTable.invoiceId, newInvoice!.id));
+      for (const item of newItems) {
+        await db.insert(proformaInvoiceItemsTable).values({
+          invoiceId: newInvoice!.id,
+          productName: item.productName,
+          hsnCode: item.hsnCode || null,
+          bottleType: item.bottleType || null,
+          capacity: item.capacity || null,
+          weight: item.weight || null,
+          quantity: String(item.quantity),
+          unit: item.unit || "Pcs",
+          rate: String(item.rate),
+          discountPercent: String(item.discountPercent || 0),
+          discount: String(item.discount || 0),
+          gstPercent: String(item.gstPercent || 0),
+          amount: String(item.amount),
+        });
+      }
+
+      const diffLines = buildItemDiff(oldItems, newItems);
+      if (taxableAmount !== undefined && Number(taxableAmount) !== Number(existing.taxableAmount || 0)) {
+        diffLines.unshift(`~ Subtotal: ${existing.taxableAmount} → ${taxableAmount}`);
+      }
+      if (grandTotal !== undefined && Number(grandTotal) !== Number(existing.grandTotal || 0)) {
+        diffLines.unshift(`~ Grand Total: ${existing.grandTotal} → ${grandTotal}`);
+      }
+      if (customerName !== undefined && customerName !== existing.customerName) {
+        diffLines.unshift(`~ Customer: ${existing.customerName} → ${customerName}`);
+      }
+      if (gstNumber !== undefined && gstNumber !== existing.gstNumber) {
+        diffLines.unshift(`~ GSTIN: ${existing.gstNumber || "N/A"} → ${gstNumber || "N/A"}`);
+      }
+
+      const ts = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      const reasonNote = revisionReason ? `\nReason: ${revisionReason}` : "";
+      const diffNote = diffLines.length > 0 ? `\n\nChanges:\n${diffLines.join("\n")}` : "";
+
+      if (existing.dealId) {
+        await db.insert(activitiesTable).values({
+          dealId: existing.dealId,
+          contactId: existing.contactId,
+          type: "Note",
+          notes: `Proforma Invoice Revised — ${newInvoiceNumber} (Version ${nextVersion})\n\nModified from: ${existing.invoiceNumber} (Version ${existing.version || 1}, status: ${existing.status})${reasonNote}${diffNote}\nBy: ${user.name}\n${ts}`,
+          createdBy: user.id,
+        });
+      }
+
+      await db.insert(proformaInvoiceHistoryTable).values({
+        invoiceId: existing.id,
+        statusFrom: existing.status,
+        statusTo: existing.status,
+        changedBy: user.id,
+        notes: `Version ${nextVersion} created as ${newInvoiceNumber}${reasonNote}`,
+      });
+
+      return res.status(201).json(await enrichInvoice(newInvoice!));
     }
 
     const updateData: any = {};
@@ -1267,7 +1410,6 @@ async function updateInvoiceHandler(req: any, res: any) {
       .from(proformaInvoicesTable)
       .where(eq(proformaInvoicesTable.id, id));
 
-    // Auto-create activity: PI Updated (only if meaningful fields changed)
     if (existing.dealId && Object.keys(updateData).length > 0) {
       const changedFields: string[] = [];
       if (updateData.customerName) changedFields.push("Customer Name");
@@ -1295,7 +1437,6 @@ async function updateInvoiceHandler(req: any, res: any) {
       }
     }
 
-    // ── Auto-sync: push PI changes to linked production order ──
     try {
       const currentInvoice = invoice!;
       const piId = currentInvoice.id;
@@ -1303,7 +1444,6 @@ async function updateInvoiceHandler(req: any, res: any) {
 
       let linkedOrder: any = null;
 
-      // Direct link by proformaInvoiceId
       const [byPi] = await db
         .select()
         .from(productionOrdersTable)
@@ -1313,7 +1453,6 @@ async function updateInvoiceHandler(req: any, res: any) {
         linkedOrder = byPi;
       }
 
-      // Fallback: link by dealId
       if (!linkedOrder && piDealId) {
         const [byDeal] = await db
           .select()
@@ -1323,7 +1462,6 @@ async function updateInvoiceHandler(req: any, res: any) {
           .limit(1);
         if (byDeal) {
           linkedOrder = byDeal;
-          // Strengthen the direct link so future lookups are faster
           await db
             .update(productionOrdersTable)
             .set({ proformaInvoiceId: piId })
@@ -1332,73 +1470,133 @@ async function updateInvoiceHandler(req: any, res: any) {
       }
 
       if (linkedOrder) {
-        const now = new Date();
+        const prodStatus = linkedOrder.status;
         const hasItemChanges = !!items;
 
-        // Bump updated_at + optionally updatedBy to signal a modification
-        await db
-          .update(productionOrdersTable)
-          .set({
-            updatedAt: now,
-            updatedBy: user.id,
-          })
-          .where(eq(productionOrdersTable.id, linkedOrder.id));
-
-        // Build a descriptive timeline note
-        const changedFields: string[] = [];
-        if (updateData.customerName) changedFields.push("Customer Name");
-        if (updateData.companyName) changedFields.push("Company Name");
-        if (updateData.mobile) changedFields.push("Mobile");
-        if (updateData.gstNumber) changedFields.push("GST Number");
-        if (updateData.address || updateData.addressLine1 || updateData.addressLine2 || updateData.addressLine3) changedFields.push("Address");
-        if (updateData.city || updateData.district || updateData.state || updateData.pincode) changedFields.push("Location");
-        if (updateData.grandTotal) changedFields.push("Grand Total");
-        if (updateData.notes) changedFields.push("Notes");
-        if (hasItemChanges) changedFields.push("Line Items");
-
-        const summary = changedFields.length > 0
-          ? `PI updated — ${changedFields.join(", ")}`
-          : "PI updated";
-
-        await db.insert(productionTimelineTable).values({
-          productionOrderId: linkedOrder.id,
-          status: linkedOrder.status,
-          notes: `${summary} by ${user.name}`,
-          createdBy: user.id,
-        });
-
-        // Notify production users about the PI modification
-        const prodUsers = await db
-          .select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role, name: usersTable.name })
-          .from(usersTable)
-          .where(or(eq(usersTable.role, "production"), eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
-
-        const orderUnit = linkedOrder.productionUnit || "Himatnagar";
-        const invoiceNum = currentInvoice.invoiceNumber || `#${piId}`;
-
-        for (const pu of prodUsers) {
-          if (pu.id === user.id) continue;
-          const userUnit = pu.unit || "All";
-          const shouldNotify = pu.role === "admin" || userUnit === "All" || userUnit === orderUnit || orderUnit === "Himatnagar";
-          if (!shouldNotify) continue;
-
-          await createNotification({
-            userId: pu.id,
-            type: "production_order_updated",
-            title: "Production Order Modified",
-            message: [
-              `Invoice ${invoiceNum} was updated by ${user.name}`,
-              hasItemChanges ? "Line items have changed" : null,
-              changedFields.length > 0 ? `Changes: ${changedFields.join(", ")}` : null,
-            ].filter(Boolean).join("\n"),
-            link: `/production/orders/${linkedOrder.id}`,
-            relatedId: linkedOrder.id,
-            relatedType: "production_order",
+        if (prodStatus === "Completed" || prodStatus === "Ready for Dispatch" || prodStatus === "Dispatched") {
+          const ts = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+          await db.insert(activitiesTable).values({
+            dealId: existing.dealId!,
+            contactId: existing.contactId!,
+            type: "Note",
+            notes: `PI Modified After Production Complete — ${existing.invoiceNumber}\n\nProduction Order #${linkedOrder.id} is "${prodStatus}". Changes cannot be auto-synced.\nBy: ${user.name}\n${ts}`,
+            createdBy: user.id,
           });
+
+          const prodUsers = await db
+            .select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role, name: usersTable.name })
+            .from(usersTable)
+            .where(or(eq(usersTable.role, "production"), eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
+
+          const orderUnit = linkedOrder.productionUnit || "Himatnagar";
+          const invoiceNum = currentInvoice.invoiceNumber || `#${piId}`;
+
+          for (const pu of prodUsers) {
+            if (pu.id === user.id) continue;
+            const userUnit = pu.unit || "All";
+            const shouldNotify = pu.role === "admin" || userUnit === "All" || userUnit === orderUnit || orderUnit === "Himatnagar";
+            if (!shouldNotify) continue;
+
+            await createNotification({
+              userId: pu.id,
+              type: "production_order_updated",
+              title: "PI Modified After Production Complete",
+              message: [
+                `Invoice ${invoiceNum} was modified by ${user.name} AFTER production was ${prodStatus}.`,
+                `Changes are NOT auto-synced to production.`,
+                `Please review and create a new Production Order if needed.`,
+              ].join("\n"),
+              link: `/production/orders/${linkedOrder.id}`,
+              relatedId: linkedOrder.id,
+              relatedType: "production_order",
+            });
+          }
+        } else if (prodStatus === "Production Started" || prodStatus === "In Production" || prodStatus === "Quality Check" || prodStatus === "Packing") {
+          const prodUsers = await db
+            .select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role, name: usersTable.name })
+            .from(usersTable)
+            .where(or(eq(usersTable.role, "production"), eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
+
+          const orderUnit = linkedOrder.productionUnit || "Himatnagar";
+          const invoiceNum = currentInvoice.invoiceNumber || `#${piId}`;
+
+          for (const pu of prodUsers) {
+            if (pu.id === user.id) continue;
+            const userUnit = pu.unit || "All";
+            const shouldNotify = pu.role === "admin" || userUnit === "All" || userUnit === orderUnit || orderUnit === "Himatnagar";
+            if (!shouldNotify) continue;
+
+            await createNotification({
+              userId: pu.id,
+              type: "production_order_updated",
+              title: "PI Modified During Production",
+              message: [
+                `Invoice ${invoiceNum} was modified by ${user.name} while production is "${prodStatus}".`,
+                `Changes are NOT auto-synced.`,
+                `Production Order #${linkedOrder.id} continues with original specs.`,
+              ].join("\n"),
+              link: `/production/orders/${linkedOrder.id}`,
+              relatedId: linkedOrder.id,
+              relatedType: "production_order",
+            });
+          }
+        } else {
+          const now = new Date();
+          await db.update(productionOrdersTable).set({ updatedAt: now, updatedBy: user.id }).where(eq(productionOrdersTable.id, linkedOrder.id));
+
+          const changedFields: string[] = [];
+          if (updateData.customerName) changedFields.push("Customer Name");
+          if (updateData.companyName) changedFields.push("Company Name");
+          if (updateData.mobile) changedFields.push("Mobile");
+          if (updateData.gstNumber) changedFields.push("GST Number");
+          if (updateData.address || updateData.addressLine1 || updateData.addressLine2 || updateData.addressLine3) changedFields.push("Address");
+          if (updateData.city || updateData.district || updateData.state || updateData.pincode) changedFields.push("Location");
+          if (updateData.grandTotal) changedFields.push("Grand Total");
+          if (updateData.notes) changedFields.push("Notes");
+          if (hasItemChanges) changedFields.push("Line Items");
+
+          const summary = changedFields.length > 0
+            ? `PI updated — ${changedFields.join(", ")}`
+            : "PI updated";
+
+          await db.insert(productionTimelineTable).values({
+            productionOrderId: linkedOrder.id,
+            status: linkedOrder.status,
+            notes: `${summary} by ${user.name}`,
+            createdBy: user.id,
+          });
+
+          const prodUsers = await db
+            .select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role, name: usersTable.name })
+            .from(usersTable)
+            .where(or(eq(usersTable.role, "production"), eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
+
+          const orderUnit = linkedOrder.productionUnit || "Himatnagar";
+          const invoiceNum = currentInvoice.invoiceNumber || `#${piId}`;
+
+          for (const pu of prodUsers) {
+            if (pu.id === user.id) continue;
+            const userUnit = pu.unit || "All";
+            const shouldNotify = pu.role === "admin" || userUnit === "All" || userUnit === orderUnit || orderUnit === "Himatnagar";
+            if (!shouldNotify) continue;
+
+            await createNotification({
+              userId: pu.id,
+              type: "production_order_updated",
+              title: "Production Order Modified",
+              message: [
+                `Invoice ${invoiceNum} was updated by ${user.name}`,
+                hasItemChanges ? "Line items have changed" : null,
+                changedFields.length > 0 ? `Changes: ${changedFields.join(", ")}` : null,
+              ].filter(Boolean).join("\n"),
+              link: `/production/orders/${linkedOrder.id}`,
+              relatedId: linkedOrder.id,
+              relatedType: "production_order",
+            });
+          }
         }
       }
     } catch (syncErr) {
-      // Don't let production sync failures break the PI update
       req.log.warn({ err: syncErr }, "Production auto-sync failed for PI update");
     }
 
@@ -1906,6 +2104,156 @@ router.get("/proforma-invoices/:id/pdf", async (req, res) => {
     }
   } catch (err) {
     req.log.error({ err }, "Get proforma invoice PDF error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Version history: all versions for a deal ──
+router.get("/proforma-invoices/:id/versions", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const [invoice] = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(and(eq(proformaInvoicesTable.id, id), eq(proformaInvoicesTable.isDeleted, false)));
+    if (!invoice) { res.status(404).json({ error: "Not found" }); return; }
+
+    if (user.role === "sales" && invoice.createdBy !== user.id) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+
+    if (!invoice.dealId) {
+      res.json([]); return;
+    }
+
+    const versions = await db
+      .select({
+        id: proformaInvoicesTable.id,
+        invoiceNumber: proformaInvoicesTable.invoiceNumber,
+        version: proformaInvoicesTable.version,
+        isActive: proformaInvoicesTable.isActive,
+        status: proformaInvoicesTable.status,
+        taxableAmount: proformaInvoicesTable.taxableAmount,
+        grandTotal: proformaInvoicesTable.grandTotal,
+        revisionReason: proformaInvoicesTable.revisionReason,
+        createdAt: proformaInvoicesTable.createdAt,
+        createdBy: proformaInvoicesTable.createdBy,
+        isDeleted: proformaInvoicesTable.isDeleted,
+      })
+      .from(proformaInvoicesTable)
+      .where(and(
+        eq(proformaInvoicesTable.dealId, invoice.dealId),
+        eq(proformaInvoicesTable.isDeleted, false),
+      ))
+      .orderBy(desc(proformaInvoicesTable.version));
+
+    const creatorIds = [...new Set(versions.map(v => v.createdBy).filter(Boolean))];
+    let creatorMap = new Map<number, string>();
+    if (creatorIds.length > 0) {
+      const creators = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(sql`${usersTable.id} IN ${creatorIds}`);
+      creatorMap = new Map(creators.map(c => [c.id, c.name]));
+    }
+
+    const result = versions.map(v => ({
+      ...v,
+      taxableAmount: Number(v.taxableAmount),
+      grandTotal: Number(v.grandTotal),
+      createdByName: creatorMap.get(v.createdBy) || null,
+    }));
+
+    res.json(result);
+  } catch (err) {
+    req.log.error({ err }, "Get version history error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Diff: compare two versions of a PI ──
+router.get("/proforma-invoices/:id/diff", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const compareVersion = Number(req.query.compareVersion);
+    if (isNaN(compareVersion) || compareVersion < 1) {
+      res.status(400).json({ error: "compareVersion query parameter required" }); return;
+    }
+
+    const [current] = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(and(eq(proformaInvoicesTable.id, id), eq(proformaInvoicesTable.isDeleted, false)));
+    if (!current) { res.status(404).json({ error: "Not found" }); return; }
+
+    if (user.role === "sales" && current.createdBy !== user.id) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+
+    if (!current.dealId) {
+      res.status(400).json({ error: "Invoice has no linked deal" }); return;
+    }
+
+    const [older] = await db
+      .select()
+      .from(proformaInvoicesTable)
+      .where(and(
+        eq(proformaInvoicesTable.dealId, current.dealId),
+        eq(proformaInvoicesTable.version, compareVersion),
+        eq(proformaInvoicesTable.isDeleted, false),
+      ))
+      .limit(1);
+    if (!older) { res.status(404).json({ error: `Version ${compareVersion} not found` }); return; }
+
+    const [currentItems, olderItems] = await Promise.all([
+      db.select().from(proformaInvoiceItemsTable).where(eq(proformaInvoiceItemsTable.invoiceId, current.id)),
+      db.select().from(proformaInvoiceItemsTable).where(eq(proformaInvoiceItemsTable.invoiceId, older.id)),
+    ]);
+
+    const fieldChanges: { field: string; oldValue: any; newValue: any }[] = [];
+    const compareFields: [string, any, any][] = [
+      ["customerName", older.customerName, current.customerName],
+      ["companyName", older.companyName, current.companyName],
+      ["mobile", older.mobile, current.mobile],
+      ["gstNumber", older.gstNumber, current.gstNumber],
+      ["taxableAmount", older.taxableAmount, current.taxableAmount],
+      ["freight", older.freight, current.freight],
+      ["cgst", older.cgst, current.cgst],
+      ["sgst", older.sgst, current.sgst],
+      ["igst", older.igst, current.igst],
+      ["grandTotal", older.grandTotal, current.grandTotal],
+      ["notes", older.notes, current.notes],
+    ];
+
+    for (const [field, oldVal, newVal] of compareFields) {
+      const ov = String(oldVal ?? "");
+      const nv = String(newVal ?? "");
+      if (ov !== nv) fieldChanges.push({ field, oldValue: oldVal, newValue: newVal });
+    }
+
+    const itemChanges = buildItemDiff(olderItems, currentItems);
+
+    res.json({
+      currentVersion: current.version,
+      compareVersion,
+      currentInvoiceNumber: current.invoiceNumber,
+      compareInvoiceNumber: older.invoiceNumber,
+      fieldChanges,
+      itemChanges,
+      summary: [
+        ...fieldChanges.map(c => `~ ${c.field}: ${c.oldValue ?? "N/A"} → ${c.newValue ?? "N/A"}`),
+        ...itemChanges,
+      ],
+    });
+  } catch (err) {
+    req.log.error({ err }, "Get diff error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

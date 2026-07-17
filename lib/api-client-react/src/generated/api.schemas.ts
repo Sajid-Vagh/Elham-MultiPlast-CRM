@@ -449,6 +449,7 @@ export interface Deal {
     id: number;
     invoiceNumber: string;
     status: string;
+    taxableAmount?: number | string;
     grandTotal: number | string;
     version: number;
     isActive: boolean;
