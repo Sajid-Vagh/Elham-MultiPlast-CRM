@@ -8,16 +8,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
-import { Factory, PackageCheck, Settings2, ShieldCheck, Package, Truck, CheckCircle2, Clock, AlertTriangle, ListOrdered, BoxSelect } from "lucide-react";
+import { Factory, PackageCheck, Settings2, ShieldCheck, Truck, CheckCircle2, Clock, AlertTriangle, ListOrdered, BoxSelect } from "lucide-react";
 import { useUserUnits } from "@/lib/use-user-units";
 import { useProductionSyncAlert } from "@/lib/use-production-sync-alert";
 
 const STATUS_CARDS = [
   { key: "pendingCount", label: "Pending Orders", icon: Clock, color: "bg-gray-100 text-gray-700 border-gray-300", hoverStatus: "Pending" },
-  { key: "materialReadyCount", label: "Material Ready", icon: PackageCheck, color: "bg-blue-100 text-blue-700 border-blue-300", hoverStatus: "Material Ready" },
-  { key: "inProductionCount", label: "In Production", icon: Settings2, color: "bg-orange-100 text-orange-700 border-orange-300", hoverStatus: "in-production" },
+  { key: "acceptedCount", label: "Accepted", icon: PackageCheck, color: "bg-blue-100 text-blue-700 border-blue-300", hoverStatus: "Accepted" },
+  { key: "planningCount", label: "Planning", icon: Settings2, color: "bg-purple-100 text-purple-700 border-purple-300", hoverStatus: "Planning" },
+  { key: "machineRunningCount", label: "Machine Running", icon: Factory, color: "bg-orange-100 text-orange-700 border-orange-300", hoverStatus: "Machine Running" },
   { key: "qualityCheckCount", label: "Quality Check", icon: ShieldCheck, color: "bg-yellow-100 text-yellow-700 border-yellow-300", hoverStatus: "Quality Check" },
-  { key: "packingCount", label: "Packing", icon: Package, color: "bg-cyan-100 text-cyan-700 border-cyan-300", hoverStatus: "Packing" },
   { key: "readyForDispatchCount", label: "Ready for Dispatch", icon: Truck, color: "bg-green-100 text-green-700 border-green-300", hoverStatus: "Ready For Dispatch" },
   { key: "completedToday", label: "Completed Today", icon: CheckCircle2, color: "bg-emerald-100 text-emerald-700 border-emerald-300", hoverStatus: "completed-today" },
   { key: "delayedOrders", label: "Delayed Orders", icon: AlertTriangle, color: "bg-red-100 text-red-700 border-red-300", hoverStatus: "delayed" },
@@ -99,9 +99,7 @@ export default function ProductionDashboard() {
               className="cursor-pointer hover:shadow-md transition-shadow border-2 border-transparent hover:border-primary/20"
               onClick={() => {
                 const params = new URLSearchParams();
-                if (card.hoverStatus === "in-production") {
-                  params.set("status", "Production Started");
-                } else if (card.hoverStatus === "completed-today") {
+                if (card.hoverStatus === "completed-today") {
                   params.set("completedToday", "true");
                 } else if (card.hoverStatus === "delayed") {
                   params.set("delayed", "true");

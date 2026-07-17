@@ -11,6 +11,11 @@ import { createNotification } from "./notifications";
 import { promoteDealToExistingCustomer } from "./existing-customers";
 import { generateId } from "../lib/id-generator";
 import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
+import { getActivePiForDeal, getActivePiSummary, validateActivePiForPiSent } from "../lib/proforma-service";
+import { convertContactToMyClient, checkNoExistingOrder, getTodayWonCount, validateWonPrerequisites, validateProductionUnit } from "../lib/won-service";
+import { notifyProductionUsers } from "../lib/notification-service";
+import { logActivity, logDealStageActivity, formatTimestamp } from "../lib/activity-logger";
+import { canAccessSalesResource } from "../lib/permission-service";
 
 const router: IRouter = Router();
 
@@ -21,25 +26,7 @@ async function enrichDeal(deal: typeof dealsTable.$inferSelect) {
     const [u] = await db.select().from(usersTable).where(eq(usersTable.id, deal.salesOwnerId));
     if (u) { const { passwordHash: _, ...safe } = u; salesOwner = safe; }
   }
-  // Fetch active proforma invoice for this deal
-  const [activePI] = await db
-    .select({
-      id: proformaInvoicesTable.id,
-      invoiceNumber: proformaInvoicesTable.invoiceNumber,
-      status: proformaInvoicesTable.status,
-      taxableAmount: proformaInvoicesTable.taxableAmount,
-      grandTotal: proformaInvoicesTable.grandTotal,
-      version: proformaInvoicesTable.version,
-      isActive: proformaInvoicesTable.isActive,
-      createdAt: proformaInvoicesTable.createdAt,
-    })
-    .from(proformaInvoicesTable)
-    .where(and(
-      eq(proformaInvoicesTable.dealId, deal.id),
-      eq(proformaInvoicesTable.isActive, true),
-      eq(proformaInvoicesTable.isDeleted, false),
-    ))
-    .limit(1);
+  const activePI = await getActivePiSummary(db, deal.id);
   return { ...deal, contact: contact ?? null, salesOwner, activeProformaInvoice: activePI ?? null };
 }
 
@@ -229,36 +216,21 @@ router.patch("/deals/:id", async (req, res) => {
 
     // Validate Won: Active PI must exist, status must be Sent/Approved, taxableAmount used as Won Value
     if (updateData.stage === "Won") {
-      const [activePI] = await db.select().from(proformaInvoicesTable).where(and(
-        eq(proformaInvoicesTable.dealId, params.data.id),
-        eq(proformaInvoicesTable.isActive, true),
-        eq(proformaInvoicesTable.isDeleted, false),
-      )).limit(1);
-      if (!activePI) {
-        res.status(400).json({ error: "No active Proforma Invoice found. Create and send a PI before marking as Won." });
-        return;
-      }
-      if (activePI.status !== "Sent" && activePI.status !== "Approved") {
-        res.status(400).json({ error: `Proforma Invoice must be "Sent" or "Approved" before marking as Won. Current status: "${activePI.status}". Send the PI to the customer first.` });
-        return;
-      }
-      const piTaxableAmount = Number(activePI.taxableAmount || 0);
-      if (piTaxableAmount <= 0) {
-        res.status(400).json({ error: "Proforma Invoice has no subtotal (taxable amount). Update the PI before marking as Won." });
+      const piValidation = await validateWonPrerequisites({
+        exec: db, dealId: params.data.id, isMarkWonEndpoint: false,
+      });
+      if (!piValidation.valid) {
+        res.status(piValidation.status).json({ error: piValidation.error });
         return;
       }
       // Won Value = PI Subtotal only — never GST, freight, or other charges
-      updateData.wonAmount = String(piTaxableAmount);
+      updateData.wonAmount = String(piValidation.piTaxableAmount);
     }
     // Validate PI Sent: Active Proforma Invoice must exist for this deal
     if (updateData.stage === "PI Sent") {
-      const [activePI] = await db.select().from(proformaInvoicesTable).where(and(
-        eq(proformaInvoicesTable.dealId, params.data.id),
-        eq(proformaInvoicesTable.isActive, true),
-        eq(proformaInvoicesTable.isDeleted, false),
-      )).limit(1);
-      if (!activePI) {
-        res.status(400).json({ error: "No active Proforma Invoice found for this Deal. Create a PI before moving to PI Sent." });
+      const piSentValidation = await validateActivePiForPiSent(db, params.data.id);
+      if (!piSentValidation.valid) {
+        res.status(400).json({ error: piSentValidation.error });
         return;
       }
     }
@@ -288,11 +260,7 @@ router.patch("/deals/:id", async (req, res) => {
 
     // Auto-update active PI status to "Sent" when deal moves to PI Sent
     if (deal.stage === "PI Sent" && oldDeal.stage !== "PI Sent") {
-      const [activePI] = await db.select().from(proformaInvoicesTable).where(and(
-        eq(proformaInvoicesTable.dealId, deal.id),
-        eq(proformaInvoicesTable.isActive, true),
-        eq(proformaInvoicesTable.isDeleted, false),
-      )).limit(1);
+      const activePI = await getActivePiForDeal(db, deal.id);
       if (activePI && activePI.status === "Draft") {
         await db.update(proformaInvoicesTable).set({ status: "Sent" }).where(eq(proformaInvoicesTable.id, activePI.id));
         await db.insert(proformaInvoiceHistoryTable).values({
@@ -307,39 +275,16 @@ router.patch("/deals/:id", async (req, res) => {
 
     // Auto-set contact category when deal is Won
     if (deal.stage === "Won" && !deal.convertedToClient) {
-      const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
-      if (contact) {
-        if (contact.isMyClient) {
-          // Already a permanent My Client — just mark this deal as converted
-          await db.update(dealsTable).set({
-            convertedToClient: true,
-            convertedAt: new Date(),
-          }).where(eq(dealsTable.id, deal.id));
-        } else {
-          const now = new Date().toISOString();
-          const prevCategory = contact.category;
-
-          await db.update(contactsTable).set({
-            category: "My Client",
-            isMyClient: true,
-            customerSince: now,
-            customerStatus: "Active",
-            lastPurchaseDate: now.split("T")[0],
-          }).where(eq(contactsTable.id, contact.id));
-
-          await db.update(dealsTable).set({
-            convertedToClient: true,
-            convertedAt: new Date(),
-          }).where(eq(dealsTable.id, deal.id));
-
-          await db.insert(categoryHistoryTable).values({
-            contactId: contact.id,
-            previousCategory: prevCategory,
-            newCategory: "My Client",
-            changedBy: user.id,
-            reason: "Deal Won - Auto converted to My Client",
-          });
-        }
+      const [wonContact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+      if (wonContact) {
+        await convertContactToMyClient(db, {
+          contactId: deal.contactId,
+          dealId: deal.id,
+          userId: user.id,
+          isMyClient: wonContact.isMyClient,
+          convertedToClient: deal.convertedToClient,
+          now: new Date(),
+        });
 
         // Promote to Existing Customers so Support team sees them immediately
         try {
@@ -401,25 +346,25 @@ router.patch("/deals/:id", async (req, res) => {
 
     if (parsed.data.stage && parsed.data.stage !== oldDeal.stage) {
       const stage = parsed.data.stage;
-      const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
       // Create activity for stage change
-      let activityNotes: string;
       if (stage === "Lost") {
         const reason = parsed.data.lostReason || "No reason provided";
         const body = req.body as Record<string, any>;
         const other = body.otherReason;
         const displayReason = reason === "Other" && other ? `Other - ${other}` : reason;
-        activityNotes = `Deal marked as Lost\n\nLost Reason: ${displayReason}`;
+        await logDealStageActivity(db, {
+          dealId: deal.id, contactId: deal.contactId,
+          fromStage: oldDeal.stage, toStage: stage,
+          userName: user.name, createdBy: user.id,
+          extraNotes: `Lost Reason: ${displayReason}`,
+        });
       } else {
-        activityNotes = `${user.name} moved deal stage from "${oldDeal.stage}" to "${stage}"\n\n${now}`;
+        await logDealStageActivity(db, {
+          dealId: deal.id, contactId: deal.contactId,
+          fromStage: oldDeal.stage, toStage: stage,
+          userName: user.name, createdBy: user.id,
+        });
       }
-      await db.insert(activitiesTable).values({
-        dealId: deal.id,
-        contactId: deal.contactId,
-        type: "Note",
-        notes: activityNotes,
-        createdBy: user.id,
-      });
 
       // Auto-complete all pending activities for this deal
       if (stage === "Won" || stage === "Lost") {
@@ -510,15 +455,15 @@ router.post("/deals/:id/mark-won", async (req, res) => {
 
     const { wonAmount, productionUnit, productionNotes, salesNotes } = req.body as Record<string, any>;
 
-    // Validate required fields
-    if (wonAmount == null || isNaN(Number(wonAmount)) || Number(wonAmount) <= 0) {
-      res.status(400).json({ error: "Won Amount is required and must be greater than 0" });
+    // Unified validation — single source of truth for both PATCH and mark-won
+    const validation = await validateWonPrerequisites({
+      exec: db, dealId, wonAmount, productionUnit, isMarkWonEndpoint: true,
+    });
+    if (!validation.valid) {
+      res.status(validation.status).json({ error: validation.error });
       return;
     }
-    if (!productionUnit || !["Himatnagar", "Surat", "Rajkot"].includes(productionUnit)) {
-      res.status(400).json({ error: "Production Unit is required (Himatnagar, Surat, or Rajkot)" });
-      return;
-    }
+    const piTaxableAmount = validation.piTaxableAmount;
 
     // Fetch the deal
     const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, dealId));
@@ -529,48 +474,12 @@ router.post("/deals/:id/mark-won", async (req, res) => {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 
-    // Prevent re-won
-    if (deal.stage === "Won") {
-      res.status(400).json({ error: "This deal is already marked as Won" }); return;
-    }
-
     // Fetch ACTIVE proforma invoice for this deal (single source of truth)
-    let [latestPI] = await db
-      .select()
-      .from(proformaInvoicesTable)
-      .where(and(
-        eq(proformaInvoicesTable.dealId, dealId),
-        eq(proformaInvoicesTable.isActive, true),
-        eq(proformaInvoicesTable.isDeleted, false),
-      ))
-      .limit(1);
+    const latestPI = await getActivePiForDeal(db, dealId);
 
-    // Validate: Active PI must exist
-    if (!latestPI) {
-      res.status(400).json({ error: "No active Proforma Invoice found. Create and send a PI before marking as Won." });
-      return;
-    }
-
-    // Validate: PI status must be Sent or Approved
-    if (latestPI.status !== "Sent" && latestPI.status !== "Approved") {
-      res.status(400).json({ error: `Proforma Invoice must be "Sent" or "Approved" before marking as Won. Current status: "${latestPI.status}". Send the PI to the customer first.` });
-      return;
-    }
-
-    // Validate: Subtotal (taxableAmount) must be available
-    const piTaxableAmount = Number(latestPI.taxableAmount || 0);
-    if (piTaxableAmount <= 0) {
-      res.status(400).json({ error: "Proforma Invoice has no subtotal (taxable amount). Update the PI before marking as Won." });
-      return;
-    }
-
-    // Check for existing order from this deal
-    const [existingOrder] = await db
-      .select({ id: ordersTable.id })
-      .from(ordersTable)
-      .where(eq(ordersTable.dealId, dealId))
-      .limit(1);
-    if (existingOrder) {
+    // Check for existing order from this deal (prevents duplicate orders)
+    const hasExistingOrder = await checkNoExistingOrder(db, dealId);
+    if (!hasExistingOrder) {
       res.status(409).json({ error: "This Deal already has an Order" }); return;
     }
 
@@ -602,34 +511,16 @@ router.post("/deals/:id/mark-won", async (req, res) => {
         notes: salesNotes || deal.notes,
       }).where(eq(dealsTable.id, dealId));
 
-      // 2. Convert Contact → My Client (if not already)
-      if (contact && !contact.isMyClient) {
-        const prevCategory = contact.category;
-        await tx.update(contactsTable).set({
-          category: "My Client",
-          isMyClient: true,
-          customerSince: now.toISOString(),
-          customerStatus: "Active",
-          lastPurchaseDate: now.toISOString().split("T")[0],
-        }).where(eq(contactsTable.id, contact.id));
-
-        await tx.update(dealsTable).set({
-          convertedToClient: true,
-          convertedAt: now,
-        }).where(eq(dealsTable.id, dealId));
-
-        await tx.insert(categoryHistoryTable).values({
+      // 2. Convert Contact → My Client (single shared helper)
+      if (contact) {
+        await convertContactToMyClient(tx, {
           contactId: contact.id,
-          previousCategory: prevCategory,
-          newCategory: "My Client",
-          changedBy: user.id,
-          reason: "Deal Won - Auto converted to My Client",
+          dealId,
+          userId: user.id,
+          isMyClient: contact.isMyClient,
+          convertedToClient: deal.convertedToClient,
+          now,
         });
-      } else if (deal.convertedToClient === false) {
-        await tx.update(dealsTable).set({
-          convertedToClient: true,
-          convertedAt: now,
-        }).where(eq(dealsTable.id, dealId));
       }
 
       // 3. Create Order
@@ -730,8 +621,8 @@ router.post("/deals/:id/mark-won", async (req, res) => {
         }).where(eq(proformaInvoicesTable.id, latestPI.id));
       }
 
-      // 7. Activity Log entries
-      const ts = now.toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      // 7. Activity Log entries (using centralized logger)
+      const ts = formatTimestamp(now);
       const activityEntries = [
         `Deal Won — ₹${effectiveWonAmount.toLocaleString("en-IN")}\n\nBy: ${user.name}\n${ts}`,
         `Order Created — ${orderNumber}\n\nAuto-created from Deal Won\n${ts}`,
@@ -741,100 +632,40 @@ router.post("/deals/:id/mark-won", async (req, res) => {
       ].filter(Boolean);
 
       for (const notes of activityEntries) {
-        await tx.insert(activitiesTable).values({
-          dealId: deal.id,
-          contactId: deal.contactId,
-          type: "Note",
-          notes,
-          createdBy: user.id,
+        await logActivity(tx, {
+          dealId: deal.id, contactId: deal.contactId,
+          type: "Note", notes, createdBy: user.id,
         });
       }
 
       // 7b. Auto-complete all pending activities for this deal
       await completePendingActivitiesForDeal(tx, deal.id, deal.contactId, "Won", user.id);
 
-      // 8. Notifications
-      // 8a. Notify sales owner
-      const notifyUserId = deal.salesOwnerId || user.id;
-      if (notifyUserId && notifyUserId !== user.id) {
-        await createNotification({
-          userId: notifyUserId,
-          type: "deal_won",
-          title: "Deal Won! 🎉",
-            message: `Deal "${deal.title || `#${deal.id}`}" has been marked as Won.\nWon Amount: ₹${effectiveWonAmount.toLocaleString("en-IN")}\nOrder: ${orderNumber}\nBy: ${user.name}`,
-          link: `/deals/${deal.id}`,
-          relatedId: deal.id,
-          relatedType: "deal",
-        });
-      }
-
-      // 8b. Notify admins
-      const admins = await tx.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
-      for (const admin of admins) {
-        if (admin.id !== user.id && admin.id !== notifyUserId) {
-          await createNotification({
-            userId: admin.id,
-            type: "deal_won",
-            title: "Deal Won",
-            message: `Deal "${deal.title || `#${deal.id}`}" won for ${contact?.name || "Unknown"}\nWon Amount: ₹${effectiveWonAmount.toLocaleString("en-IN")}\nOrder: ${orderNumber}\nBy: ${user.name}`,
-            link: `/deals/${deal.id}`,
-            relatedId: deal.id,
-            relatedType: "deal",
-          });
-        }
-      }
-
-      // 8c. Notify production team (unit-filtered)
-      const productionUsers = await tx
-        .select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role })
-        .from(usersTable)
-        .where(and(
-          eq(usersTable.role, "production"),
-        ));
-      const adminUsers = await tx
-        .select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role })
-        .from(usersTable)
-        .where(eq(usersTable.role, "admin"));
-      const allNotifiable = [...productionUsers, ...adminUsers];
-
-      const firstProduct = piItems[0]?.productName || "Multiple Items";
-      const totalQty = piItems.reduce((sum: number, i: any) => sum + Number(i.quantity || 0), 0);
-      const unit = piItems[0]?.unit || "pcs";
-      const remarksLine = productionNotes ? `\nProduction Notes: ${productionNotes}` : "";
-
-      for (const pu of allNotifiable) {
-        if (pu.id === user.id) continue;
-
-        const userUnit = pu.unit || "All";
-        const shouldNotify =
-          pu.role === "admin" ||
-          userUnit === "All" ||
-          userUnit === productionUnit ||
-          productionUnit === "Himatnagar";
-
-        if (!shouldNotify) continue;
-
-        await createNotification({
-          userId: pu.id,
-          type: "production_order_created",
-          title: "New Production Order (Deal Won)",
-          message: [
-            `Created By: ${user.name} (${user.role === "production_and_support" ? "Production & Support" : "Sales"})`,
-            `Production Unit: ${productionUnit}`,
-            ``,
-            `Customer: ${contact?.name || "Unknown"}`,
-            `Company: ${contact?.companyName || "N/A"}`,
-            `Product: ${firstProduct}`,
-            totalQty > 0 ? `Quantity: ${totalQty.toLocaleString("en-IN")} ${unit}` : null,
-            `Order No: ${orderNumber}`,
-            `Won Amount: ₹${effectiveWonAmount.toLocaleString("en-IN")}`,
-            remarksLine,
-          ].filter(Boolean).join("\n"),
-          link: `/production/orders/${productionOrder?.id || ""}`,
-          relatedId: productionOrder?.id || order.id,
-          relatedType: "production_order",
-        });
-      }
+      // 8. Notifications — using centralized helpers
+      // 8a+b. Notify sales owner + admins (single shared helper)
+      await notifyProductionUsers({
+        productionUnit,
+        title: "New Production Order (Deal Won)",
+        message: [
+          `Created By: ${user.name} (${user.role === "production_and_support" ? "Production & Support" : "Sales"})`,
+          `Production Unit: ${productionUnit}`,
+          ``,
+          `Customer: ${contact?.name || "Unknown"}`,
+          `Company: ${contact?.companyName || "N/A"}`,
+          `Product: ${piItems[0]?.productName || "Multiple Items"}`,
+          piItems.reduce((sum: number, i: any) => sum + Number(i.quantity || 0), 0) > 0
+            ? `Quantity: ${piItems.reduce((sum: number, i: any) => sum + Number(i.quantity || 0), 0).toLocaleString("en-IN")} ${piItems[0]?.unit || "pcs"}`
+            : null,
+          `Order No: ${orderNumber}`,
+          `Won Amount: ₹${effectiveWonAmount.toLocaleString("en-IN")}`,
+          productionNotes ? `\nProduction Notes: ${productionNotes}` : null,
+        ].filter(Boolean).join("\n"),
+        link: `/production/orders/${productionOrder?.id || ""}`,
+        relatedId: productionOrder?.id || order.id,
+        relatedType: "production_order",
+        type: "production_order_created",
+        excludeUserId: user.id,
+      });
 
       // 9. Promote to Existing Customers
       try {
@@ -849,21 +680,8 @@ router.post("/deals/:id/mark-won", async (req, res) => {
 
     // ── END TRANSACTION ──
 
-    // Count how many deals this user has won today (server local timezone)
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const todayEnd = new Date(todayStart.getTime() + 86400000);
-    const [countResult] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(dealsTable)
-      .where(
-        and(
-          eq(dealsTable.salesOwnerId, user.id),
-          eq(dealsTable.stage, "Won"),
-          gte(dealsTable.completedAt, todayStart),
-        )
-      );
-    const todayWonCount = countResult?.count ?? 1;
+    // Count how many deals this user has won today
+    const todayWonCount = await getTodayWonCount(user.id);
 
     res.json({
       success: true,

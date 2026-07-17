@@ -7,6 +7,10 @@ import { amountToWords } from "../lib/amount-to-words";
 import { getGstProvider } from "../lib/gst-provider";
 import axios from "axios";
 import * as XLSX from "xlsx";
+import { getActivePiForDeal, deactivateActivePis, getNextPiVersion } from "../lib/proforma-service";
+import { notifyProductionUsers } from "../lib/notification-service";
+import { logPiActivity, logActivity, formatTimestamp } from "../lib/activity-logger";
+import { canModifyInvoice } from "../lib/permission-service";
 
 const router: IRouter = Router();
 
@@ -774,22 +778,9 @@ router.post("/proforma-invoices", async (req, res) => {
     const resolvedDealId = dealId || null;
     let nextVersion = 1;
     if (resolvedDealId) {
-      const [lastVersion] = await db
-        .select({ version: proformaInvoicesTable.version })
-        .from(proformaInvoicesTable)
-        .where(and(eq(proformaInvoicesTable.dealId, resolvedDealId), eq(proformaInvoicesTable.isDeleted, false)))
-        .orderBy(desc(proformaInvoicesTable.version))
-        .limit(1);
-      if (lastVersion) nextVersion = (lastVersion.version || 0) + 1;
-
+      nextVersion = await getNextPiVersion(db, resolvedDealId);
       // Deactivate any existing active PI for this deal (only one active at a time)
-      await db.update(proformaInvoicesTable)
-        .set({ isActive: false })
-        .where(and(
-          eq(proformaInvoicesTable.dealId, resolvedDealId),
-          eq(proformaInvoicesTable.isActive, true),
-          eq(proformaInvoicesTable.isDeleted, false),
-        ));
+      await deactivateActivePis(db, resolvedDealId);
     }
 
     const [invoice] = await db
@@ -1063,7 +1054,7 @@ router.get("/proforma-invoices/:id", async (req, res) => {
 
     if (!invoice) { res.status(404).json({ error: "Not found" }); return; }
 
-    if (user.role === "sales" && invoice.createdBy !== user.id) {
+    if (!canModifyInvoice(user, invoice.createdBy)) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
@@ -1090,7 +1081,7 @@ router.get("/proforma-invoices/:id/production-progress", async (req, res) => {
 
     if (!invoice) { res.status(404).json({ error: "Not found" }); return; }
 
-    if (user.role === "sales" && invoice.createdBy !== user.id) {
+    if (!canModifyInvoice(user, invoice.createdBy)) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
@@ -1200,7 +1191,7 @@ async function updateInvoiceHandler(req: any, res: any) {
       .where(and(eq(proformaInvoicesTable.id, id), eq(proformaInvoicesTable.isDeleted, false)));
     if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
-    if (user.role === "sales" && existing.createdBy !== user.id) {
+    if (!canModifyInvoice(user, existing.createdBy)) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
@@ -1221,11 +1212,7 @@ async function updateInvoiceHandler(req: any, res: any) {
       const newInvoiceNumber = await getNextInvoiceNumber();
 
       if (existing.dealId) {
-        await db.update(proformaInvoicesTable).set({ isActive: false }).where(and(
-          eq(proformaInvoicesTable.dealId, existing.dealId),
-          eq(proformaInvoicesTable.isActive, true),
-          eq(proformaInvoicesTable.isDeleted, false),
-        ));
+        await deactivateActivePis(db, existing.dealId);
       }
 
       const merged = {
@@ -1470,131 +1457,9 @@ async function updateInvoiceHandler(req: any, res: any) {
       }
 
       if (linkedOrder) {
-        const prodStatus = linkedOrder.status;
-        const hasItemChanges = !!items;
-
-        if (prodStatus === "Completed" || prodStatus === "Ready for Dispatch" || prodStatus === "Dispatched") {
-          const ts = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-          await db.insert(activitiesTable).values({
-            dealId: existing.dealId!,
-            contactId: existing.contactId!,
-            type: "Note",
-            notes: `PI Modified After Production Complete — ${existing.invoiceNumber}\n\nProduction Order #${linkedOrder.id} is "${prodStatus}". Changes cannot be auto-synced.\nBy: ${user.name}\n${ts}`,
-            createdBy: user.id,
-          });
-
-          const prodUsers = await db
-            .select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role, name: usersTable.name })
-            .from(usersTable)
-            .where(or(eq(usersTable.role, "production"), eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
-
-          const orderUnit = linkedOrder.productionUnit || "Himatnagar";
-          const invoiceNum = currentInvoice.invoiceNumber || `#${piId}`;
-
-          for (const pu of prodUsers) {
-            if (pu.id === user.id) continue;
-            const userUnit = pu.unit || "All";
-            const shouldNotify = pu.role === "admin" || userUnit === "All" || userUnit === orderUnit || orderUnit === "Himatnagar";
-            if (!shouldNotify) continue;
-
-            await createNotification({
-              userId: pu.id,
-              type: "production_order_updated",
-              title: "PI Modified After Production Complete",
-              message: [
-                `Invoice ${invoiceNum} was modified by ${user.name} AFTER production was ${prodStatus}.`,
-                `Changes are NOT auto-synced to production.`,
-                `Please review and create a new Production Order if needed.`,
-              ].join("\n"),
-              link: `/production/orders/${linkedOrder.id}`,
-              relatedId: linkedOrder.id,
-              relatedType: "production_order",
-            });
-          }
-        } else if (prodStatus === "Production Started" || prodStatus === "In Production" || prodStatus === "Quality Check" || prodStatus === "Packing") {
-          const prodUsers = await db
-            .select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role, name: usersTable.name })
-            .from(usersTable)
-            .where(or(eq(usersTable.role, "production"), eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
-
-          const orderUnit = linkedOrder.productionUnit || "Himatnagar";
-          const invoiceNum = currentInvoice.invoiceNumber || `#${piId}`;
-
-          for (const pu of prodUsers) {
-            if (pu.id === user.id) continue;
-            const userUnit = pu.unit || "All";
-            const shouldNotify = pu.role === "admin" || userUnit === "All" || userUnit === orderUnit || orderUnit === "Himatnagar";
-            if (!shouldNotify) continue;
-
-            await createNotification({
-              userId: pu.id,
-              type: "production_order_updated",
-              title: "PI Modified During Production",
-              message: [
-                `Invoice ${invoiceNum} was modified by ${user.name} while production is "${prodStatus}".`,
-                `Changes are NOT auto-synced.`,
-                `Production Order #${linkedOrder.id} continues with original specs.`,
-              ].join("\n"),
-              link: `/production/orders/${linkedOrder.id}`,
-              relatedId: linkedOrder.id,
-              relatedType: "production_order",
-            });
-          }
-        } else {
-          const now = new Date();
-          await db.update(productionOrdersTable).set({ updatedAt: now, updatedBy: user.id }).where(eq(productionOrdersTable.id, linkedOrder.id));
-
-          const changedFields: string[] = [];
-          if (updateData.customerName) changedFields.push("Customer Name");
-          if (updateData.companyName) changedFields.push("Company Name");
-          if (updateData.mobile) changedFields.push("Mobile");
-          if (updateData.gstNumber) changedFields.push("GST Number");
-          if (updateData.address || updateData.addressLine1 || updateData.addressLine2 || updateData.addressLine3) changedFields.push("Address");
-          if (updateData.city || updateData.district || updateData.state || updateData.pincode) changedFields.push("Location");
-          if (updateData.grandTotal) changedFields.push("Grand Total");
-          if (updateData.notes) changedFields.push("Notes");
-          if (hasItemChanges) changedFields.push("Line Items");
-
-          const summary = changedFields.length > 0
-            ? `PI updated — ${changedFields.join(", ")}`
-            : "PI updated";
-
-          await db.insert(productionTimelineTable).values({
-            productionOrderId: linkedOrder.id,
-            status: linkedOrder.status,
-            notes: `${summary} by ${user.name}`,
-            createdBy: user.id,
-          });
-
-          const prodUsers = await db
-            .select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role, name: usersTable.name })
-            .from(usersTable)
-            .where(or(eq(usersTable.role, "production"), eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
-
-          const orderUnit = linkedOrder.productionUnit || "Himatnagar";
-          const invoiceNum = currentInvoice.invoiceNumber || `#${piId}`;
-
-          for (const pu of prodUsers) {
-            if (pu.id === user.id) continue;
-            const userUnit = pu.unit || "All";
-            const shouldNotify = pu.role === "admin" || userUnit === "All" || userUnit === orderUnit || orderUnit === "Himatnagar";
-            if (!shouldNotify) continue;
-
-            await createNotification({
-              userId: pu.id,
-              type: "production_order_updated",
-              title: "Production Order Modified",
-              message: [
-                `Invoice ${invoiceNum} was updated by ${user.name}`,
-                hasItemChanges ? "Line items have changed" : null,
-                changedFields.length > 0 ? `Changes: ${changedFields.join(", ")}` : null,
-              ].filter(Boolean).join("\n"),
-              link: `/production/orders/${linkedOrder.id}`,
-              relatedId: linkedOrder.id,
-              relatedType: "production_order",
-            });
-          }
-        }
+        const { handlePiModification } = await import("../lib/production-service");
+        const nextVersion = (existing.version || 1) + 1;
+        await handlePiModification(user, linkedOrder.id, nextVersion);
       }
     } catch (syncErr) {
       req.log.warn({ err: syncErr }, "Production auto-sync failed for PI update");
@@ -1684,7 +1549,7 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
 
     if (!invoice) { res.status(404).json({ error: "Not found" }); return; }
 
-    if (user.role === "sales" && invoice.createdBy !== user.id) {
+    if (!canModifyInvoice(user, invoice.createdBy)) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
@@ -1753,7 +1618,7 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
           .where(eq(productionOrdersTable.proformaInvoiceId, id))
           .limit(1);
 
-        if (newOrder) {
+          if (newOrder) {
           await db.insert(productionTimelineTable).values({
             productionOrderId: newOrder.id,
             status: "Pending",
@@ -1767,58 +1632,29 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
             .from(proformaInvoiceItemsTable)
             .where(eq(proformaInvoiceItemsTable.invoiceId, id));
 
-          const firstProduct = items[0]?.productName || "Multiple Items";
-          const totalQty = items.reduce((sum, i) => sum + Number(i.quantity || 0), 0);
-          const unit = items[0]?.unit || "pcs";
-
-          // Notify production users based on production unit permissions
-          // Himatnagar sees ALL units, Surat sees only Surat, Rajkot sees only Rajkot
-          // Himatnagar is also notified for Surat and Rajkot orders
-          const productionUsers = await db
-            .select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role })
-            .from(usersTable)
-            .where(or(
-              eq(usersTable.role, "production"),
-              eq(usersTable.role, "admin"),
-            ));
-
           const remarksLine = productionRemarks ? `\nRemarks: ${productionRemarks}` : "";
 
-          for (const pu of productionUsers) {
-            if (pu.id === user.id) continue;
-
-            const userUnit = pu.unit || "All";
-            const orderUnit = productionUnit || "Himatnagar";
-
-            // Himatnagar users see all, same-unit users see their unit, admin sees all
-            const shouldNotify =
-              pu.role === "admin" ||
-              userUnit === "All" ||
-              userUnit === orderUnit ||
-              orderUnit === "Himatnagar";
-
-            if (!shouldNotify) continue;
-
-            await createNotification({
-              userId: pu.id,
-              type: "production_order_created",
-              title: "New Production Order",
-              message: [
-                `Created By: ${user.name} (${creatorRoleLabel})`,
-                `Production Unit: ${productionUnit}`,
-                ``,
-                `Customer: ${invoice.customerName}`,
-                `Company: ${invoice.companyName || "N/A"}`,
-                `Product: ${firstProduct}`,
-                `Quantity: ${totalQty.toLocaleString("en-IN")} ${unit}`,
-                `Order No: ${invoice.invoiceNumber}`,
-                remarksLine,
-              ].filter(Boolean).join("\n"),
-              link: `/production/orders/${newOrder.id}`,
-              relatedId: newOrder.id,
-              relatedType: "production_order",
-            });
-          }
+          // Notify production users based on unit permissions (single shared helper)
+          await notifyProductionUsers({
+            productionUnit: productionUnit || "Himatnagar",
+            title: "New Production Order",
+            message: [
+              `Created By: ${user.name} (${creatorRoleLabel})`,
+              `Production Unit: ${productionUnit}`,
+              ``,
+              `Customer: ${invoice.customerName}`,
+              `Company: ${invoice.companyName || "N/A"}`,
+              `Product: ${items[0]?.productName || "Multiple Items"}`,
+              `Quantity: ${items.reduce((sum, i) => sum + Number(i.quantity || 0), 0).toLocaleString("en-IN")} ${items[0]?.unit || "pcs"}`,
+              `Order No: ${invoice.invoiceNumber}`,
+              remarksLine,
+            ].filter(Boolean).join("\n"),
+            link: `/production/orders/${newOrder.id}`,
+            relatedId: newOrder.id,
+            relatedType: "production_order",
+            type: "production_order_created",
+            excludeUserId: user.id,
+          });
         }
       }
     }
@@ -1868,7 +1704,7 @@ router.post("/proforma-invoices/:id/duplicate", async (req, res) => {
 
     if (!source) { res.status(404).json({ error: "Not found" }); return; }
 
-    if (user.role === "sales" && source.createdBy !== user.id) {
+    if (!canModifyInvoice(user, source.createdBy)) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
@@ -1884,13 +1720,7 @@ router.post("/proforma-invoices/:id/duplicate", async (req, res) => {
 
     // Deactivate any existing active PI for this deal
     if (source.dealId) {
-      await db.update(proformaInvoicesTable)
-        .set({ isActive: false })
-        .where(and(
-          eq(proformaInvoicesTable.dealId, source.dealId),
-          eq(proformaInvoicesTable.isActive, true),
-          eq(proformaInvoicesTable.isDeleted, false),
-        ));
+      await deactivateActivePis(db, source.dealId);
     }
 
     const newInvoiceNumber = await getNextInvoiceNumber();
@@ -2123,7 +1953,7 @@ router.get("/proforma-invoices/:id/versions", async (req, res) => {
       .where(and(eq(proformaInvoicesTable.id, id), eq(proformaInvoicesTable.isDeleted, false)));
     if (!invoice) { res.status(404).json({ error: "Not found" }); return; }
 
-    if (user.role === "sales" && invoice.createdBy !== user.id) {
+    if (!canModifyInvoice(user, invoice.createdBy)) {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 
@@ -2193,7 +2023,7 @@ router.get("/proforma-invoices/:id/diff", async (req, res) => {
       .where(and(eq(proformaInvoicesTable.id, id), eq(proformaInvoicesTable.isDeleted, false)));
     if (!current) { res.status(404).json({ error: "Not found" }); return; }
 
-    if (user.role === "sales" && current.createdBy !== user.id) {
+    if (!canModifyInvoice(user, current.createdBy)) {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 

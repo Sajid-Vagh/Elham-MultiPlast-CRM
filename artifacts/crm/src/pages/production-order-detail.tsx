@@ -16,24 +16,22 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { onProductionChange } from "@/lib/query-invalidation";
-import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Upload, CheckCircle, ArrowRightLeft } from "lucide-react";
+import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Upload, CheckCircle, ArrowRightLeft, Play, XCircle, Calendar, AlertTriangle, Eye } from "lucide-react";
 import { useActiveUnits } from "@/lib/use-active-units";
 
 const STATUSES = [
-  "Pending", "Material Ready", "Production Started", "In Process",
-  "Quality Check", "Packing", "Ready For Dispatch", "Completed", "On Hold", "Cancelled",
+  "Pending", "Accepted", "Planning", "Machine Running",
+  "Quality Check", "Ready For Dispatch", "Completed", "Cancelled",
 ] as const;
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
-  "Material Ready": "bg-blue-100 text-blue-700 border-blue-300",
-  "Production Started": "bg-orange-100 text-orange-700 border-orange-300",
-  "In Process": "bg-purple-100 text-purple-700 border-purple-300",
+  "Accepted": "bg-blue-100 text-blue-700 border-blue-300",
+  "Planning": "bg-indigo-100 text-indigo-700 border-indigo-300",
+  "Machine Running": "bg-orange-100 text-orange-700 border-orange-300",
   "Quality Check": "bg-yellow-100 text-yellow-700 border-yellow-300",
-  "Packing": "bg-cyan-100 text-cyan-700 border-cyan-300",
   "Ready For Dispatch": "bg-green-100 text-green-700 border-green-300",
   "Completed": "bg-emerald-100 text-emerald-700 border-emerald-300",
-  "On Hold": "bg-gray-100 text-gray-500 border-gray-300",
   "Cancelled": "bg-red-100 text-red-700 border-red-300",
 };
 
@@ -59,6 +57,14 @@ export default function ProductionOrderDetail() {
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [transferUnit, setTransferUnit] = useState("");
   const [transferReason, setTransferReason] = useState("");
+  const [planningDialogOpen, setPlanningDialogOpen] = useState(false);
+  const [planningMachine, setPlanningMachine] = useState("");
+  const [planningExpectedStart, setPlanningExpectedStart] = useState("");
+  const [planningExpectedCompletion, setPlanningExpectedCompletion] = useState("");
+  const [planningNotes, setPlanningNotes] = useState("");
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [noteType, setNoteType] = useState("general");
   const { units: activeUnits } = useActiveUnits();
 
   const { data: order, isLoading } = useQuery({
@@ -85,7 +91,7 @@ export default function ProductionOrderDetail() {
   });
 
   const addNote = useMutation({
-    mutationFn: (data: { note: string }) =>
+    mutationFn: (data: { note: string; noteType?: string }) =>
       customFetch<any>(`/production/orders/${id}/notes`, {
         method: "POST",
         body: JSON.stringify(data),
@@ -146,6 +152,77 @@ export default function ProductionOrderDetail() {
       toast({ title: "Production order transferred successfully" });
     },
     onError: () => toast({ title: "Failed to transfer order", variant: "destructive" }),
+  });
+
+  const acceptOrder = useMutation({
+    mutationFn: () =>
+      customFetch<any>(`/production/orders/${id}/accept`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => {
+      onProductionChange(queryClient, id);
+      toast({ title: "Order accepted" });
+    },
+    onError: () => toast({ title: "Failed to accept order", variant: "destructive" }),
+  });
+
+  const startProduction = useMutation({
+    mutationFn: () =>
+      customFetch<any>(`/production/orders/${id}/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => {
+      onProductionChange(queryClient, id);
+      toast({ title: "Production started! Machine is now frozen." });
+    },
+    onError: () => toast({ title: "Failed to start production", variant: "destructive" }),
+  });
+
+  const updatePlanning = useMutation({
+    mutationFn: (data: any) =>
+      customFetch<any>(`/production/orders/${id}/planning`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => {
+      onProductionChange(queryClient, id);
+      setPlanningDialogOpen(false);
+      toast({ title: "Planning updated" });
+    },
+    onError: () => toast({ title: "Failed to update planning", variant: "destructive" }),
+  });
+
+  const cancelOrder = useMutation({
+    mutationFn: (data: { reason: string }) =>
+      customFetch<any>(`/production/orders/${id}/cancel`, {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => {
+      onProductionChange(queryClient, id);
+      setCancelDialogOpen(false);
+      setCancelReason("");
+      toast({ title: "Order cancelled" });
+    },
+    onError: () => toast({ title: "Failed to cancel order", variant: "destructive" }),
+  });
+
+  const approveModification = useMutation({
+    mutationFn: (data: { approve: boolean }) =>
+      customFetch<any>(`/production/orders/${id}/approve-modification`, {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => {
+      onProductionChange(queryClient, id);
+      toast({ title: "Modification decision recorded" });
+    },
+    onError: () => toast({ title: "Failed to process modification", variant: "destructive" }),
   });
 
   // Order Conversation
@@ -563,13 +640,39 @@ export default function ProductionOrderDetail() {
                 <CardTitle>Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                {order?.status === "Pending" && (
+                  <Button className="w-full bg-blue-600 hover:bg-blue-700" onClick={() => acceptOrder.mutate()} disabled={acceptOrder.isPending}>
+                    <CheckCircle className="h-4 w-4 mr-2" /> Accept Order
+                  </Button>
+                )}
+                {(order?.status === "Pending" || order?.status === "Accepted" || order?.status === "Planning") && (
+                  <Button className="w-full" variant="outline" onClick={() => setPlanningDialogOpen(true)}>
+                    <Calendar className="h-4 w-4 mr-2" /> Planning
+                  </Button>
+                )}
+                {order?.status === "Planning" && (
+                  <Button className="w-full bg-orange-600 hover:bg-orange-700" onClick={() => startProduction.mutate()} disabled={startProduction.isPending}>
+                    <Play className="h-4 w-4 mr-2" /> Start Production
+                  </Button>
+                )}
                 <Button className="w-full" onClick={() => setStatusDialogOpen(true)}>
                   Update Status
                 </Button>
-                {user?.role === "admin" && (
+                {(user?.role === "admin" || user?.role === "production" || user?.role === "production_and_support") && (
                   <Button className="w-full" variant="outline" onClick={() => setTransferDialogOpen(true)}>
                     <ArrowRightLeft className="h-4 w-4 mr-2" /> Transfer Unit
                   </Button>
+                )}
+                {order?.status !== "Completed" && order?.status !== "Cancelled" && (
+                  <Button className="w-full" variant="destructive" onClick={() => setCancelDialogOpen(true)}>
+                    <XCircle className="h-4 w-4 mr-2" /> Cancel Order
+                  </Button>
+                )}
+                {order?.isFrozen && order?.status !== "Completed" && (
+                  <div className="p-2 bg-orange-50 border border-orange-200 rounded text-xs text-orange-700">
+                    <AlertTriangle className="h-3 w-3 inline mr-1" />
+                    Machine Running — PI modifications require approval
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -694,6 +797,23 @@ export default function ProductionOrderDetail() {
           <DialogHeader>
             <DialogTitle>Add Production Note</DialogTitle>
           </DialogHeader>
+          <div>
+            <label className="text-sm font-medium">Note Type</label>
+            <Select value={noteType} onValueChange={setNoteType}>
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="general">General</SelectItem>
+                <SelectItem value="delay">Delay</SelectItem>
+                <SelectItem value="issue">Issue</SelectItem>
+                <SelectItem value="machine_problem">Machine Problem</SelectItem>
+                <SelectItem value="material_shortage">Material Shortage</SelectItem>
+                <SelectItem value="power_failure">Power Failure</SelectItem>
+                <SelectItem value="quality_issue">Quality Issue</SelectItem>
+                <SelectItem value="operator_remark">Operator Remark</SelectItem>
+                <SelectItem value="planning">Planning</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <Textarea
             placeholder="Enter your note..."
             value={newNote}
@@ -704,7 +824,7 @@ export default function ProductionOrderDetail() {
             <Button variant="outline" onClick={() => setNoteDialogOpen(false)}>Cancel</Button>
             <Button
               disabled={!newNote.trim() || addNote.isPending}
-              onClick={() => addNote.mutate({ note: newNote.trim() })}
+              onClick={() => addNote.mutate({ note: newNote.trim(), noteType })}
             >
               {addNote.isPending ? "Adding..." : "Add Note"}
             </Button>
@@ -814,9 +934,9 @@ export default function ProductionOrderDetail() {
               </Select>
             </div>
             <div>
-              <label className="text-sm font-medium">Reason (optional)</label>
+              <label className="text-sm font-medium">Reason *</label>
               <Textarea
-                placeholder="Reason for transfer..."
+                placeholder="Reason for transfer (required)..."
                 value={transferReason}
                 onChange={(e) => setTransferReason(e.target.value)}
                 rows={3}
@@ -826,10 +946,109 @@ export default function ProductionOrderDetail() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>Cancel</Button>
             <Button
-              disabled={!transferUnit || transferOrder.isPending}
-              onClick={() => transferOrder.mutate({ targetUnit: transferUnit, reason: transferReason || undefined })}
+              disabled={!transferUnit || !transferReason.trim() || transferOrder.isPending}
+              onClick={() => transferOrder.mutate({ targetUnit: transferUnit, reason: transferReason })}
             >
               {transferOrder.isPending ? "Transferring..." : "Transfer Order"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={planningDialogOpen} onOpenChange={setPlanningDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" /> Production Planning
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Machine</label>
+              <input
+                type="text"
+                className="w-full mt-1 px-3 py-2 border rounded-md text-sm"
+                placeholder="e.g. Machine 1, Injection Moulding..."
+                value={planningMachine}
+                onChange={(e) => setPlanningMachine(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">Expected Start</label>
+                <input
+                  type="date"
+                  className="w-full mt-1 px-3 py-2 border rounded-md text-sm"
+                  value={planningExpectedStart}
+                  onChange={(e) => setPlanningExpectedStart(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Expected Completion</label>
+                <input
+                  type="date"
+                  className="w-full mt-1 px-3 py-2 border rounded-md text-sm"
+                  value={planningExpectedCompletion}
+                  onChange={(e) => setPlanningExpectedCompletion(e.target.value)}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Planning Notes</label>
+              <Textarea
+                placeholder="Planning remarks..."
+                value={planningNotes}
+                onChange={(e) => setPlanningNotes(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPlanningDialogOpen(false)}>Cancel</Button>
+            <Button
+              disabled={updatePlanning.isPending}
+              onClick={() => updatePlanning.mutate({
+                machine: planningMachine || undefined,
+                expectedStartDate: planningExpectedStart || undefined,
+                expectedCompletionDate: planningExpectedCompletion || undefined,
+                notes: planningNotes || undefined,
+              })}
+            >
+              {updatePlanning.isPending ? "Saving..." : "Save Planning"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <XCircle className="h-5 w-5" /> Cancel Production Order
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Are you sure you want to cancel this order? This action cannot be undone.
+            </p>
+            <div>
+              <label className="text-sm font-medium">Reason *</label>
+              <Textarea
+                placeholder="Cancellation reason (required)..."
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelDialogOpen(false)}>Keep Order</Button>
+            <Button
+              variant="destructive"
+              disabled={!cancelReason.trim() || cancelOrder.isPending}
+              onClick={() => cancelOrder.mutate({ reason: cancelReason })}
+            >
+              {cancelOrder.isPending ? "Cancelling..." : "Cancel Order"}
             </Button>
           </DialogFooter>
         </DialogContent>
