@@ -52,7 +52,7 @@ export default function Dashboard() {
       if (!res.ok) return null;
       return res.json() as Promise<{
         totalContacts: number; totalDeals: number; wonDeals: number; lostDeals: number; lostLeads: number;
-        activeDeals: number; totalWonValue: number; categoryCounts: { category: string; count: number }[];
+        activeDeals: number; totalWonValue: number; totalLostValue: number; categoryCounts: { category: string; count: number }[];
         unitStats: Record<string, number>; todayTotal: number; todayCompleted: number; todayPending: number;
         overdueCount: number; newLeadsThisMonth: number; myClientsCount: number; conversionRate: number;
       }>;
@@ -72,7 +72,7 @@ export default function Dashboard() {
       return res.json() as Promise<{
         userId: number; userName: string; colorCode: string; profilePhoto?: string | null; unit: string;
         totalContacts: number; totalDeals: number; wonDeals: number; lostDeals: number;
-        activeDeals: number; totalWonValue: number; myClients: number;
+        activeDeals: number; totalWonValue: number; totalLostValue: number; myClients: number;
         conversionRate: number; followUpRate: number;
       }[]>;
     },
@@ -194,7 +194,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── KPI CARDS ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <Link href="/leads" className="block">
           <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -228,6 +228,18 @@ export default function Dashboard() {
             <CardContent>
               <div className="text-2xl font-bold">₹{kpi?.totalWonValue?.toLocaleString() || 0}</div>
               <p className="text-xs text-muted-foreground">{kpi?.totalDeals} total deals</p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/reports" className="block">
+          <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Lost Value</CardTitle>
+              <DollarSign className="h-4 w-4 text-red-400" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">₹{kpi?.totalLostValue?.toLocaleString() || 0}</div>
+              <p className="text-xs text-muted-foreground">{kpi?.lostDeals} deals lost</p>
             </CardContent>
           </Card>
         </Link>

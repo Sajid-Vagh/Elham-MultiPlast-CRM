@@ -435,3 +435,48 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `artifacts/api-server/src/routes/orders.ts`: cancel endpoint
 - `artifacts/api-server/src/routes/complaints.ts`: enhanced CRUD with permissions + audit
 - `artifacts/api-server/src/routes/search.ts`: expanded 8-entity search
+
+---
+
+# Part 6: Security & Performance Hardening
+
+## Goal
+- Apply unit security to all export endpoints (9/10 were missing it)
+- Exclude soft-deleted orders from all export queries
+- Activate complaints unit filter
+- Add Lost Value KPI card to dashboard
+- Add role-based filtering to global search (deals, activities)
+- Fix notification dedup for notifications without relatedId
+- Clean up dead code
+
+## Progress
+### Done
+- **Export unit security**: Added `getAccessibleUnits()` to all 9 remaining export endpoints (reports, deals, activities, existing-customers, production, dispatch, complaints, orders, leads)
+- **Soft-deleted order exclusion**: Added `eq(ordersTable.isDeleted, false)` to contacts and existing-customers export order queries
+- **Complaints unit filter**: Activated `getAccessibleUnits()` in complaints list via SQL subquery on contacts table
+- **Dashboard Lost Value card**: Added `totalLostValue` to backend KPI + sales performance endpoints; added Lost Value card to dashboard with red styling; grid changed to 5 columns
+- **Search role filtering**: Added `salesOwnerId` filter for sales users + `getAccessibleUnits()` unit filter to deals and activities search
+- **Notification dedup**: Extended `createNotification()` to deduplicate by `userId + type + title` when `relatedId`/`relatedType` not provided
+- **Dead code cleanup**: Removed unused `or` import from exports.ts
+- **Build verification**: 0 new errors (28 pre-existing), CRM clean
+
+### In Progress
+- (none)
+
+### Blocked
+- (none)
+
+## Key Decisions
+- Export unit filtering uses different strategies per entity: contacts/leads/deals use `contactsTable.unit`, orders/dispatch/production use `productionOrdersTable.productionUnit`, complaints use subquery on contacts
+- Dashboard Lost Value uses `totalValue` (not `wonAmount`) consistent with reports.ts FIX 2
+- Search deals/activities filtering fetches allowed contactIds from contacts table to filter via `inArray`, avoiding additional SQL joins
+- Notification dedup fallback uses `title` as secondary key when no `relatedId`/`relatedType`
+
+## Relevant Files
+- `artifacts/api-server/src/routes/exports.ts`: 9 endpoints secured with unit filtering + 2 endpoints with soft-delete exclusion
+- `artifacts/api-server/src/routes/complaints.ts`: unit filter activated via SQL subquery
+- `artifacts/api-server/src/routes/search.ts`: role+unit filtering for deals and activities
+- `artifacts/api-server/src/routes/dashboard.ts`: `totalLostValue` added to KPI and sales performance
+- `artifacts/api-server/src/routes/notifications.ts`: dedup extended for notifications without relatedId
+- `artifacts/crm/src/pages/dashboard.tsx`: Lost Value card + 5-column grid
+- `docs/verification/part-6-verification.md`: full verification report

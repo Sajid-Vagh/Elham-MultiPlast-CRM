@@ -119,7 +119,7 @@ router.get("/reports/pipeline", async (req, res) => {
       return {
         stage,
         count: stageDeals.length,
-        totalValue: stageDeals.reduce((s, d) => s + Number(d.totalValue ?? 0), 0),
+        totalValue: stageDeals.reduce((s, d) => s + Number(stage === "Won" ? (d.wonAmount ?? d.totalValue ?? 0) : (d.totalValue ?? 0)), 0),
         probability: STAGE_PROBS[stage] ?? 0,
       };
     });
@@ -287,7 +287,7 @@ router.get("/reports/lost-reasons", async (req, res) => {
       if (!reasonMap.has(reason)) reasonMap.set(reason, { count: 0, totalValue: 0 });
       const s = reasonMap.get(reason)!;
       s.count++;
-      s.totalValue += Number(deal.wonAmount ?? 0);
+      s.totalValue += Number(deal.totalValue ?? 0);
     }
 
     // Count from lost leads (contacts)
@@ -471,7 +471,7 @@ router.get("/reports/by-city", async (req, res) => {
       }
       if (deal.stage === "Lost") {
         s.lostDeals++;
-        s.totalLostValue += Number(deal.wonAmount ?? 0);
+        s.totalLostValue += Number(deal.totalValue ?? 0);
       }
     }
 

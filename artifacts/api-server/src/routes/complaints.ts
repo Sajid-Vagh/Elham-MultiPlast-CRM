@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, complaintsTable, complaintUpdatesTable, contactsTable, usersTable, ordersTable } from "@workspace/db";
-import { eq, and, or, desc, sql, ilike } from "drizzle-orm";
+import { eq, and, or, desc, sql, ilike, inArray } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { generateId } from "../lib/id-generator";
@@ -65,6 +65,13 @@ router.get("/complaints", async (req, res) => {
     if (user.role === "production") {
       // Production sees only assigned to them
       conditions.push(eq(complaintsTable.assignedTo, user.id));
+    }
+
+    // Unit-based filtering — complaints link to contacts via contactId
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits) {
+      const allowedContactIds = sql<number>`(SELECT id FROM contacts WHERE unit IN (${sql.join(accessibleUnits.map(u => sql`${u}`), sql`, `)}))`;
+      conditions.push(sql`${complaintsTable.contactId} IN ${allowedContactIds}`);
     }
 
     if (status && status !== "All") conditions.push(eq(complaintsTable.status, status));

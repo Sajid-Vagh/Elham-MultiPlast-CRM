@@ -23,6 +23,7 @@ import {
 } from "@workspace/db";
 import { eq, and, SQL, inArray, sql } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
+import { getAccessibleUnits } from "../lib/unit-filter";
 import {
   buildWorkbook,
   sendWorkbook,
@@ -101,10 +102,19 @@ router.get("/reports", async (req, res) => {
 
     const { format, mode, dateFrom, dateTo, ownerId, stage, search } = parseQueryParams(req);
 
-    const contacts = await db.select().from(contactsTable);
+    const accessibleUnits = getAccessibleUnits(user);
+    const reportContactConditions: SQL[] = [];
+    const contactUnitCond = accessibleUnits ? inArray(contactsTable.unit, accessibleUnits) : undefined;
+    if (contactUnitCond) reportContactConditions.push(contactUnitCond);
+    if (user.role === "sales") reportContactConditions.push(eq(contactsTable.salesOwnerId, user.id));
+
+    const contacts = reportContactConditions.length
+      ? await db.select().from(contactsTable).where(and(...reportContactConditions))
+      : await db.select().from(contactsTable);
     const users = await db.select().from(usersTable);
     const contactMap = new Map(contacts.map(c => [c.id, c]));
     const userMap = new Map(users.map(u => [u.id, u]));
+    const unitContactIds = accessibleUnits ? new Set(contacts.map(c => c.id)) : null;
 
     const dealConditions: SQL[] = [];
     if (user.role === "sales") dealConditions.push(eq(dealsTable.salesOwnerId, user.id));
@@ -115,7 +125,8 @@ router.get("/reports", async (req, res) => {
       ? await db.select().from(dealsTable).where(and(...dealConditions))
       : await db.select().from(dealsTable);
 
-    const filteredDeals = deals.filter(d => matchesDateRange(d.createdAt, dateFrom, dateTo));
+    let filteredDeals = deals.filter(d => matchesDateRange(d.createdAt, dateFrom, dateTo));
+    if (unitContactIds) filteredDeals = filteredDeals.filter(d => unitContactIds.has(d.contactId));
 
     const validDealIds = nonNullIds(filteredDeals.map(d => d.id));
     const activities = validDealIds.length
@@ -375,7 +386,7 @@ router.get("/contacts", async (req, res) => {
     });
 
     const orders = contactIds.length
-      ? await db.select().from(ordersTable).where(inArray(ordersTable.contactId, contactIds))
+      ? await db.select().from(ordersTable).where(and(inArray(ordersTable.contactId, contactIds), eq(ordersTable.isDeleted, false)))
       : [];
     const orderHeaders = [
       "Order #", "Customer", "Company", "Status", "Grand Total", "Sales Owner", "Created",
@@ -490,6 +501,9 @@ router.get("/deals", async (req, res) => {
 
     const { format, mode, dateFrom, dateTo, ownerId, stage, search } = parseQueryParams(req);
 
+    const accessibleUnits = getAccessibleUnits(user);
+    const contactUnitCond = accessibleUnits ? inArray(contactsTable.unit, accessibleUnits) : undefined;
+
     const dealConditions: SQL[] = [];
     if (user.role === "sales") dealConditions.push(eq(dealsTable.salesOwnerId, user.id));
 
@@ -501,10 +515,17 @@ router.get("/deals", async (req, res) => {
     if (ownerId) filtered = filtered.filter(d => d.salesOwnerId === ownerId);
     if (stage) filtered = filtered.filter(d => d.stage === stage);
 
-    const contacts = await db.select().from(contactsTable);
+    const contacts = contactUnitCond
+      ? await db.select().from(contactsTable).where(contactUnitCond)
+      : await db.select().from(contactsTable);
     const users = await db.select().from(usersTable);
     const contactMap = new Map(contacts.map(c => [c.id, c]));
     const userMap = new Map(users.map(u => [u.id, u]));
+
+    if (accessibleUnits) {
+      const allowedContactIds = new Set(contacts.map(c => c.id));
+      filtered = filtered.filter(d => allowedContactIds.has(d.contactId));
+    }
 
     if (search) {
       filtered = filtered.filter(d => {
@@ -655,6 +676,9 @@ router.get("/activities", async (req, res) => {
 
     const { format, mode, dateFrom, dateTo, ownerId, status, search } = parseQueryParams(req);
 
+    const accessibleUnits = getAccessibleUnits(user);
+    const contactUnitCond = accessibleUnits ? inArray(contactsTable.unit, accessibleUnits) : undefined;
+
     const actConditions: SQL[] = [];
     if (user.role === "sales") actConditions.push(eq(activitiesTable.createdBy, user.id));
 
@@ -666,10 +690,17 @@ router.get("/activities", async (req, res) => {
     if (ownerId) filtered = filtered.filter(a => a.assignedTo === ownerId || a.createdBy === ownerId);
     if (status) filtered = filtered.filter(a => a.callStatus === status);
 
-    const contacts = await db.select().from(contactsTable);
+    const contacts = contactUnitCond
+      ? await db.select().from(contactsTable).where(contactUnitCond)
+      : await db.select().from(contactsTable);
     const users = await db.select().from(usersTable);
     const contactMap = new Map(contacts.map(c => [c.id, c]));
     const userMap = new Map(users.map(u => [u.id, u]));
+
+    if (accessibleUnits) {
+      const allowedContactIds = new Set(contacts.map(c => c.id));
+      filtered = filtered.filter(a => a.contactId && allowedContactIds.has(a.contactId));
+    }
 
     if (search) {
       filtered = filtered.filter(a => {
@@ -787,6 +818,9 @@ router.get("/existing-customers", async (req, res) => {
 
     const { format, mode, dateFrom, dateTo, ownerId, status, search } = parseQueryParams(req);
 
+    const accessibleUnits = getAccessibleUnits(user);
+    const contactUnitCond = accessibleUnits ? inArray(contactsTable.unit, accessibleUnits) : undefined;
+
     const ecConditions: SQL[] = [];
     if (user.role === "production_and_support") ecConditions.push(eq(existingCustomersTable.supportOwnerId, user.id));
 
@@ -800,9 +834,19 @@ router.get("/existing-customers", async (req, res) => {
 
     const ecContactIds = nonNullIds(filtered.map(ec => ec.contactId));
     const contacts = ecContactIds.length
-      ? await db.select().from(contactsTable).where(inArray(contactsTable.id, ecContactIds))
-      : await db.select().from(contactsTable);
+      ? await db.select().from(contactsTable).where(and(
+          inArray(contactsTable.id, ecContactIds),
+          ...(contactUnitCond ? [contactUnitCond] : []),
+        ))
+      : (contactUnitCond
+          ? await db.select().from(contactsTable).where(contactUnitCond)
+          : await db.select().from(contactsTable));
     const ecContactMap = new Map(contacts.map(c => [c.id, c]));
+
+    if (accessibleUnits) {
+      const allowedContactIds = new Set(contacts.map(c => c.id));
+      filtered = filtered.filter(ec => allowedContactIds.has(ec.contactId));
+    }
 
     if (search) {
       filtered = filtered.filter(ec => {
@@ -891,7 +935,7 @@ router.get("/existing-customers", async (req, res) => {
 
     const validContactIds = nonNullIds(filtered.map(ec => ec.contactId));
     const orders = validContactIds.length
-      ? await db.select().from(ordersTable).where(inArray(ordersTable.contactId, validContactIds))
+      ? await db.select().from(ordersTable).where(and(inArray(ordersTable.contactId, validContactIds), eq(ordersTable.isDeleted, false)))
       : [];
     const orderHeaders = [
       "Order #", "Customer", "Company", "Status", "Grand Total", "Created",
@@ -982,14 +1026,19 @@ router.get("/production", async (req, res) => {
 
     const { format, mode, dateFrom, dateTo, status, search } = parseQueryParams(req);
 
+    const accessibleUnits = getAccessibleUnits(user);
+    const prodUnitCond = accessibleUnits ? inArray(productionOrdersTable.productionUnit, accessibleUnits) : undefined;
+
     const prodConditions: SQL[] = [];
     if (user.role === "production") {
       prodConditions.push(eq(productionOrdersTable.assignedProductionManagerId, user.id));
     }
 
     const prodOrders = prodConditions.length
-      ? await db.select().from(productionOrdersTable).where(and(...prodConditions))
-      : await db.select().from(productionOrdersTable);
+      ? await db.select().from(productionOrdersTable).where(and(...prodConditions, ...(prodUnitCond ? [prodUnitCond] : [])))
+      : (prodUnitCond
+          ? await db.select().from(productionOrdersTable).where(prodUnitCond)
+          : await db.select().from(productionOrdersTable));
 
     let filtered = prodOrders.filter(po => matchesDateRange(po.createdAt, dateFrom, dateTo));
     if (status) filtered = filtered.filter(po => po.status === status);
@@ -1124,9 +1173,25 @@ router.get("/dispatch", async (req, res) => {
 
     const { format, mode, dateFrom, dateTo, status, search } = parseQueryParams(req);
 
+    const accessibleUnits = getAccessibleUnits(user);
+
     let dispatchList = await db.select().from(dispatchTable);
     let filtered = dispatchList.filter(d => matchesDateRange(d.createdAt, dateFrom, dateTo));
     if (status) filtered = filtered.filter(d => d.status === status);
+
+    if (accessibleUnits) {
+      const dispatchOrderIds = nonNullIds(filtered.map(d => d.orderId));
+      if (dispatchOrderIds.length) {
+        const dispatchOrders = await db.select().from(ordersTable).where(and(
+          inArray(ordersTable.id, dispatchOrderIds),
+          inArray(ordersTable.productionUnit, accessibleUnits),
+        ));
+        const allowedOrderIds = new Set(dispatchOrders.map(o => o.id));
+        filtered = filtered.filter(d => allowedOrderIds.has(d.orderId));
+      } else {
+        filtered = [];
+      }
+    }
 
     const users = await db.select().from(usersTable);
     const userMap = new Map(users.map(u => [u.id, u]));
@@ -1246,6 +1311,8 @@ router.get("/complaints", async (req, res) => {
 
     const { format, mode, dateFrom, dateTo, ownerId, status, search } = parseQueryParams(req);
 
+    const accessibleUnits = getAccessibleUnits(user);
+
     const compConditions: SQL[] = [];
     if (user.role === "sales") compConditions.push(eq(complaintsTable.createdBy, user.id));
     if (user.role === "production") compConditions.push(eq(complaintsTable.assignedTo, user.id));
@@ -1257,6 +1324,19 @@ router.get("/complaints", async (req, res) => {
     let filtered = complaintsList.filter(c => matchesDateRange(c.createdAt, dateFrom, dateTo));
     if (ownerId) filtered = filtered.filter(c => c.assignedTo === ownerId);
     if (status) filtered = filtered.filter(c => c.status === status);
+
+    if (accessibleUnits) {
+      const complaintContactIds = nonNullIds(filtered.map(c => c.contactId));
+      if (complaintContactIds.length) {
+        const compContacts = await db.select({ id: contactsTable.id }).from(contactsTable).where(
+          and(inArray(contactsTable.id, complaintContactIds), inArray(contactsTable.unit, accessibleUnits))
+        );
+        const allowedContactIds = new Set(compContacts.map(c => c.id));
+        filtered = filtered.filter(c => c.contactId && allowedContactIds.has(c.contactId));
+      } else {
+        filtered = [];
+      }
+    }
 
     const users = await db.select().from(usersTable);
     const userMap = new Map(users.map(u => [u.id, u]));
@@ -1368,8 +1448,12 @@ router.get("/orders", async (req, res) => {
 
     const { format, mode, dateFrom, dateTo, ownerId, status, search } = parseQueryParams(req);
 
-    const orderConditions: SQL[] = [];
+    const accessibleUnits = getAccessibleUnits(user);
+    const orderUnitCond = accessibleUnits ? inArray(ordersTable.productionUnit, accessibleUnits) : undefined;
+
+    const orderConditions: SQL[] = [eq(ordersTable.isDeleted, false)];
     if (user.role === "sales") orderConditions.push(eq(ordersTable.salesOwnerId, user.id));
+    if (orderUnitCond) orderConditions.push(orderUnitCond);
 
     const allOrders = orderConditions.length
       ? await db.select().from(ordersTable).where(and(...orderConditions))
@@ -1500,8 +1584,12 @@ router.get("/leads", async (req, res) => {
 
     const { format, mode, dateFrom, dateTo, ownerId, status } = parseQueryParams(req);
 
+    const accessibleUnits = getAccessibleUnits(user);
+    const contactUnitCond = accessibleUnits ? inArray(contactsTable.unit, accessibleUnits) : undefined;
+
     const leadConditions: SQL[] = [];
     if (user.role === "sales") leadConditions.push(eq(contactsTable.salesOwnerId, user.id));
+    if (contactUnitCond) leadConditions.push(contactUnitCond);
 
     const leads = leadConditions.length
       ? await db.select().from(contactsTable).where(and(...leadConditions))

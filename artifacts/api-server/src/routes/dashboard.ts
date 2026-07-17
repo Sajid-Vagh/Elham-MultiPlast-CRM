@@ -64,6 +64,7 @@ router.get("/dashboard/kpi", async (req, res) => {
     const lostLeads = filteredContacts.filter(c => c.lostReason != null).length;
     const activeDeals = filteredDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").length;
     const totalWonValue = filteredDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? 0), 0);
+    const totalLostValue = filteredDeals.filter(d => d.stage === "Lost").reduce((s, d) => s + Number(d.totalValue ?? 0), 0);
 
     const activeDealContactIds = new Set(
       filteredDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").map(d => d.contactId)
@@ -119,7 +120,7 @@ router.get("/dashboard/kpi", async (req, res) => {
       lostLeads,
       activeDeals,
       totalWonValue,
-      categoryCounts,
+      totalLostValue,
       unitStats,
       todayTotal,
       todayCompleted,
@@ -170,6 +171,7 @@ router.get("/dashboard/sales-performance", async (req, res) => {
       const lostDeals = userDeals.filter(d => d.stage === "Lost").length;
       const activeDeals = userDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").length;
       const totalWonValue = userDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? 0), 0);
+      const totalLostValue = userDeals.filter(d => d.stage === "Lost").reduce((s, d) => s + Number(d.totalValue ?? 0), 0);
       const myClients = userContacts.filter(c => c.category === "My Client").length;
       const conversionRate = totalContacts > 0 ? Math.round((myClients / totalContacts) * 100) : 0;
 
@@ -190,6 +192,7 @@ router.get("/dashboard/sales-performance", async (req, res) => {
         lostDeals,
         activeDeals,
         totalWonValue,
+        totalLostValue,
         myClients,
         conversionRate,
         followUpRate,

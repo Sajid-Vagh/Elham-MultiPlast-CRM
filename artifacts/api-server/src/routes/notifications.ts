@@ -368,6 +368,22 @@ export async function createNotification(params: {
     if (existing) {
       return existing;
     }
+  } else {
+    const [existing] = await db
+      .select()
+      .from(notificationsTable)
+      .where(and(
+        eq(notificationsTable.userId, params.userId),
+        eq(notificationsTable.type, params.type),
+        eq(notificationsTable.title, params.title),
+        eq(notificationsTable.notificationSeen, false),
+        isNull(notificationsTable.readAt),
+      ))
+      .limit(1);
+
+    if (existing) {
+      return existing;
+    }
   }
 
   const [n] = await db.insert(notificationsTable).values(params).returning();
