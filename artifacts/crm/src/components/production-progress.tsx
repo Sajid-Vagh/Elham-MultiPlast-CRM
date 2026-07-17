@@ -6,25 +6,22 @@ import { Clock, User, CheckCircle2, Circle, Loader2, MessageSquare, FileText } f
 
 const PRODUCTION_STEPS = [
   "Pending",
-  "Material Ready",
-  "Production Started",
-  "In Process",
+  "Accepted",
+  "Planning",
+  "Machine Running",
   "Quality Check",
-  "Packing",
   "Ready For Dispatch",
   "Completed",
 ];
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
   "Pending": { label: "Pending", className: "bg-gray-100 text-gray-700 border-gray-300" },
-  "Material Ready": { label: "Material Ready", className: "bg-blue-100 text-blue-700 border-blue-300" },
-  "Production Started": { label: "Production Started", className: "bg-orange-100 text-orange-700 border-orange-300" },
-  "In Process": { label: "In Process", className: "bg-purple-100 text-purple-700 border-purple-300" },
+  "Accepted": { label: "Accepted", className: "bg-blue-100 text-blue-700 border-blue-300" },
+  "Planning": { label: "Planning", className: "bg-indigo-100 text-indigo-700 border-indigo-300" },
+  "Machine Running": { label: "Machine Running", className: "bg-orange-100 text-orange-700 border-orange-300" },
   "Quality Check": { label: "Quality Check", className: "bg-yellow-100 text-yellow-700 border-yellow-300" },
-  "Packing": { label: "Packing", className: "bg-cyan-100 text-cyan-700 border-cyan-300" },
   "Ready For Dispatch": { label: "Ready For Dispatch", className: "bg-green-100 text-green-700 border-green-300" },
   "Completed": { label: "Completed", className: "bg-emerald-100 text-emerald-700 border-emerald-300" },
-  "On Hold": { label: "On Hold", className: "bg-red-100 text-red-700 border-red-300" },
   "Cancelled": { label: "Cancelled", className: "bg-red-100 text-red-700 border-red-300" },
 };
 

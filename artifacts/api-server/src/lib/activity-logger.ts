@@ -48,6 +48,27 @@ export const PRODUCTION_ACTIVITY_TYPES = {
 } as const;
 
 /**
+ * Activity types for Order lifecycle events.
+ */
+export const ORDER_ACTIVITY_TYPES = {
+  ORDER_CANCELLED: "Order Cancelled",
+  CANCELLATION_REQUESTED: "Cancellation Requested",
+} as const;
+
+/**
+ * Activity types for Complaint lifecycle events.
+ */
+export const COMPLAINT_ACTIVITY_TYPES = {
+  COMPLAINT_CREATED: "Complaint Created",
+  COMPLAINT_ASSIGNED: "Complaint Assigned",
+  COMPLAINT_STATUS_CHANGED: "Complaint Status Changed",
+  COMPLAINT_RESOLVED: "Complaint Resolved",
+  COMPLAINT_CLOSED: "Complaint Closed",
+  COMPLAINT_REJECTED: "Complaint Rejected",
+  COMMENT_ADDED: "Complaint Comment Added",
+} as const;
+
+/**
  * Centralized activity logger.
  * Single function for creating activity log entries across all modules.
  *

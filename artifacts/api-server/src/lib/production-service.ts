@@ -402,6 +402,11 @@ export async function updatePlanning(
     changedById: user.id, changedByName: user.name || "",
   });
 
+  await logProductionActivity(db, {
+    dealId: order.dealId, contactId: null, eventName: "Production Planning Updated",
+    orderId, userName: user.name || "", createdBy: user.id,
+  });
+
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
   return { order: await enrichProductionOrder(updated!) };
 }
@@ -466,6 +471,10 @@ export async function handlePiModification(
       piVersionAtCreation: newPiVersion, updatedAt: new Date(), updatedBy: user.id,
     }).where(eq(productionOrdersTable.id, productionOrderId));
     await addTimelineEntry(db, productionOrderId, order.status, `PI updated to Version ${newPiVersion}. Auto-synced.`, user.id);
+    await logProductionActivity(db, {
+      dealId: order.dealId, contactId: null, eventName: `PI Modified — Auto-synced to Version ${newPiVersion}`,
+      orderId: productionOrderId, userName: user.name || "", createdBy: user.id,
+    });
     return { action: "auto_synced", order: await enrichProductionOrder(order) };
   }
 
@@ -474,6 +483,10 @@ export async function handlePiModification(
       piVersionAtCreation: newPiVersion, updatedAt: new Date(), updatedBy: user.id,
     }).where(eq(productionOrdersTable.id, productionOrderId));
     await addTimelineEntry(db, productionOrderId, order.status, `PI modified to Version ${newPiVersion}. Awaiting production approval.`, user.id);
+    await logProductionActivity(db, {
+      dealId: order.dealId, contactId: null, eventName: `PI Modified — Approval Required (Version ${newPiVersion})`,
+      orderId: productionOrderId, userName: user.name || "", createdBy: user.id,
+    });
 
     await notifyProductionUsers({
       productionUnit: order.productionUnit || "Himatnagar",
@@ -528,6 +541,11 @@ export async function approveModification(
       message: `Order #${orderId}: Production has accepted the PI modification.`,
       excludeUserId: user.id,
     });
+
+    await logProductionActivity(db, {
+      dealId: order.dealId, contactId: null, eventName: "PI Modification Approved",
+      orderId, userName: user.name || "", createdBy: user.id,
+    });
   } else {
     await addTimelineEntry(db, orderId, order.status, `Production rejected PI modification.`, user.id);
     await writeAuditTrail(db, {
@@ -540,6 +558,11 @@ export async function approveModification(
       title: "Modification Rejected",
       message: `Order #${orderId}: Production rejected the PI modification. Please review.`,
       excludeUserId: user.id,
+    });
+
+    await logProductionActivity(db, {
+      dealId: order.dealId, contactId: null, eventName: "PI Modification Rejected",
+      orderId, userName: user.name || "", createdBy: user.id,
     });
   }
 
@@ -571,6 +594,11 @@ export async function updateStatus(
   }).where(eq(productionOrdersTable.id, orderId));
 
   await addTimelineEntry(db, orderId, targetStatus, notes || null, user.id);
+
+  await logProductionActivity(db, {
+    dealId: order.dealId, contactId: null, eventName: `Production Status Changed → ${targetStatus}`,
+    orderId, details: notes || undefined, userName: user.name || "", createdBy: user.id,
+  });
 
   await writeAuditTrail(db, {
     productionOrderId: orderId, action: "status_change",
@@ -1192,4 +1220,67 @@ async function createDispatchRecord(orderId: number, order: any, user: Permissio
   } catch (err) {
     console.error("Auto-create dispatch record failed:", err);
   }
+}
+
+// ── Scenario 11: Complete Dispatch ──
+
+export async function completeDispatch(
+  user: PermissionUser,
+  orderId: number,
+  data: { transportName?: string; transportDetails?: string; builtyUrl?: string }
+): Promise<any> {
+  if (user.role !== "admin" && user.role !== "production_and_support") {
+    return { error: "Only production & support or admin users can complete dispatch", status: 403 };
+  }
+
+  const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
+  if (!order) return { error: "Production order not found", status: 404 };
+  if (order.status !== "Ready For Dispatch") {
+    return { error: "Order must be in 'Ready For Dispatch' status to complete dispatch", status: 400 };
+  }
+
+  const now = new Date();
+
+  await db.update(productionOrdersTable).set({
+    status: "Completed",
+    transportName: data.transportName || null,
+    transportDetails: data.transportDetails || null,
+    builtyUrl: data.builtyUrl || null,
+    dispatchCompletedAt: now,
+    dispatchCompletedBy: user.id,
+    updatedBy: user.id,
+    updatedAt: now,
+  }).where(eq(productionOrdersTable.id, orderId));
+
+  await addTimelineEntry(db, orderId, "Completed",
+    `Dispatch completed by ${user.name}${data.transportName ? `. Transport: ${data.transportName}` : ""}`,
+    user.id);
+
+  await writeAuditTrail(db, {
+    productionOrderId: orderId, action: "dispatch_completed",
+    oldValue: order.status, newValue: "Completed",
+    changedById: user.id, changedByName: user.name || "",
+    reason: data.transportName ? `Transport: ${data.transportName}` : undefined,
+  });
+
+  await logProductionActivity(db, {
+    dealId: order.dealId, contactId: null, eventName: "Dispatch Completed",
+    orderId, details: `Transport: ${data.transportName || "-"}\nDetails: ${data.transportDetails || "-"}`,
+    userName: user.name || "", createdBy: user.id,
+  });
+
+  const [invoice] = order.proformaInvoiceId
+    ? await db.select({ invoiceNumber: proformaInvoicesTable.invoiceNumber, createdBy: proformaInvoicesTable.createdBy, contactId: proformaInvoicesTable.contactId })
+        .from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, order.proformaInvoiceId))
+    : [];
+
+  await notifySalesOfProductionEvent({
+    productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
+    title: "Dispatch Completed",
+    message: `Order #${invoice?.invoiceNumber || orderId} has been dispatched. Transport: ${data.transportName || "-"}${data.transportDetails ? `\nDetails: ${data.transportDetails}` : ""}`,
+    excludeUserId: user.id,
+  });
+
+  const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
+  return { order: await enrichProductionOrder(updated!) };
 }

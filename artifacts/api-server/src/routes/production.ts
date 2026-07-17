@@ -17,6 +17,7 @@ import {
   getPendingSummary, getPendingRequirements, getReports,
   getProgressByDeal, getProductionByContact, getModifiedSince,
   handlePiModification, approveModification, addTimelineEntry,
+  completeDispatch,
 } from "../lib/production-service";
 import { transferOrder, getTransferHistory } from "../lib/production-transfer-service";
 
@@ -321,57 +322,14 @@ router.patch("/production/orders/:id/dispatch", async (req, res) => {
   try {
     const user = await requireAuth(req, res);
     if (!user) return;
-    if (user.role !== "admin" && user.role !== "production_and_support") {
-      res.status(403).json({ error: "Only production & support or admin users can complete dispatch" });
-      return;
-    }
 
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-    const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, id));
-    if (!order) { res.status(404).json({ error: "Production order not found" }); return; }
-    if (order.status !== "Ready For Dispatch") {
-      res.status(400).json({ error: "Order must be in 'Ready For Dispatch' status to complete dispatch" });
-      return;
-    }
-
     const { transportName, transportDetails, builtyUrl } = req.body;
-    const now = new Date();
-
-    await db.update(productionOrdersTable).set({
-      status: "Completed", transportName: transportName || null, transportDetails: transportDetails || null,
-      builtyUrl: builtyUrl || null, dispatchCompletedAt: now, dispatchCompletedBy: user.id,
-      updatedBy: user.id, updatedAt: now,
-    }).where(eq(productionOrdersTable.id, id));
-
-    const { addTimelineEntry } = await import("../lib/production-service");
-    await addTimelineEntry(db, id, "Completed", `Dispatch completed by ${user.name}${transportName ? `. Transport: ${transportName}` : ""}`, user.id);
-
-    const [invoice] = order.proformaInvoiceId
-      ? await db.select().from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, order.proformaInvoiceId))
-      : [];
-
-    if (invoice?.createdBy && invoice.createdBy !== user.id) {
-      await createNotification({
-        userId: invoice.createdBy, type: "production_status", title: "Dispatch Completed",
-        message: `Order #${invoice.invoiceNumber} has been dispatched.\nTransport: ${transportName || "-"}\nCustomer: ${invoice.customerName || "-"}${transportDetails ? `\nDetails: ${transportDetails}` : ""}`,
-        link: `/proforma-invoices`, relatedId: order.proformaInvoiceId ?? undefined, relatedType: "proforma_invoice",
-      });
-    }
-
-    if (invoice?.dealId) {
-      const { logActivity, formatTimestamp } = await import("../lib/activity-logger");
-      const ts = formatTimestamp(now);
-      await logActivity(db, {
-        dealId: invoice.dealId, contactId: invoice.contactId || null, type: "Note",
-        notes: `Dispatch Completed\nTransport: ${transportName || "-"}\nDetails: ${transportDetails || "-"}\n\nBy: ${user.name}\n${ts}`,
-        createdBy: user.id,
-      });
-    }
-
-    const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, id));
-    res.json(await enrichProductionOrder(updated!));
+    const result = await completeDispatch(user, id, { transportName, transportDetails, builtyUrl });
+    if (result.error) { res.status(result.status).json({ error: result.error }); return; }
+    res.json(result.order);
   } catch (err) {
     console.error("Complete dispatch error:", err);
     res.status(500).json({ error: "Internal server error" });

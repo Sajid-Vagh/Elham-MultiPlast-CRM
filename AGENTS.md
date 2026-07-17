@@ -378,3 +378,60 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `artifacts/crm/src/lib/units.ts`: legacy (deprecated)
 - `artifacts/crm/src/pages/settings.tsx`: Manage Units admin UI + dynamic user form dropdown
 - All frontend pages with unit dropdowns (see Progress section above)
+
+---
+
+# Part 4: Customer Lifecycle & Security
+
+## Goal
+- Order Cancellation with mandatory reason, permission matrix, and cascading updates
+- Enhanced Complaint Module with permission enforcement, search, audit trail
+- Inventory Permissions (inventory role manages, others read-only)
+- Unit Security (backend enforcement of unit-level data isolation)
+- Report Security (unit-aware dashboard, reports, exports)
+- Global Search expansion (8 entity types)
+- Automatic Activity Logging and Audit Trail for all business events
+
+## Constraints & Preferences
+- Do NOT modify Production Workflow
+- Do NOT redesign UI
+- Do NOT duplicate business logic — reuse shared services
+- Every business event must remain traceable
+- Never delete historical customer information
+- Never remove complaints or cancelled orders
+- Cancellation reason is mandatory
+
+## Progress
+### Done
+- **DB Schema (migration 041):** Added `cancelled_at`, `cancelled_by`, `cancellation_reason`, `cancellation_other_reason`, `cancellation_note` to orders; added `root_cause`, `resolved_by`, `resolved_at` to complaints; indexes
+- **Order Cancellation Service** (`order-cancellation-service.ts`): Full business logic — permission matrix (Sales before production, Production before Machine Running, P&S anytime, Admin anytime, Completed=blocked), mandatory reason validation, cascading updates (order → deal → production → activities → notifications → audit trail → customer category), Scenario A/B for My Client revert
+- **Cancel Endpoint** (`POST /orders/:id/cancel`): Route with permission + reason validation
+- **Complaint Route Enhanced**: Enhanced search (company, secondary mobile via contacts join), priority filter, production read-only enforcement, inventory blocked from mutations, audit trail on create/update/delete, rootCause/resolvedBy/resolvedAt handling
+- **Permission Service Extended**: `canManageInventory()`, `canCancelOrder()`, `canManageComplaints()`, `canAccessUnit()` + `unit` added to `PermissionUser` interface
+- **Global Search Expanded**: Now searches 8 entity types (contacts, orders, products, complaints, deals, production orders via PI join, proforma invoices, activities)
+- **Activity Logger Extended**: Added `ORDER_ACTIVITY_TYPES` and `COMPLAINT_ACTIVITY_TYPES` constants
+
+### In Progress
+- (none)
+
+### Blocked
+- Migration 041 must be applied against Supabase database before deployment
+
+## Key Decisions
+- Cancellation uses `POST /orders/:id/cancel` (not PATCH) — cancellation is a distinct action, not a simple status update
+- Production order cancellation queries via `dealId` link (production_orders.dealId → deals.id)
+- Complaint search joins contacts table for company + secondary mobile (not duplicated on complaints)
+- Inventory users get read-only access enforced at route level (not just frontend)
+- `canAccessUnit()` added to permission service for backend unit isolation enforcement
+- "Other" cancellation reason requires free text (validated server-side)
+
+## Relevant Files
+- `lib/db/src/schema/orders.ts`: CANCELLATION_REASONS constant + cancellation columns
+- `lib/db/src/schema/complaints.ts`: rootCause, resolvedBy, resolvedAt columns
+- `lib/db/migrations/041_order_cancellation_and_complaint_enhancements.sql`: migration
+- `artifacts/api-server/src/lib/order-cancellation-service.ts`: cancellation business logic
+- `artifacts/api-server/src/lib/permission-service.ts`: extended with inventory/unit/complaint permissions
+- `artifacts/api-server/src/lib/activity-logger.ts`: ORDER_ACTIVITY_TYPES + COMPLAINT_ACTIVITY_TYPES
+- `artifacts/api-server/src/routes/orders.ts`: cancel endpoint
+- `artifacts/api-server/src/routes/complaints.ts`: enhanced CRUD with permissions + audit
+- `artifacts/api-server/src/routes/search.ts`: expanded 8-entity search

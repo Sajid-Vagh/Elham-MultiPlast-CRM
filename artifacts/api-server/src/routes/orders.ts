@@ -7,6 +7,7 @@ import { generateId } from "../lib/id-generator";
 import { logAudit } from "../middlewares/auth";
 import { promoteToExistingCustomer } from "./existing-customers";
 import { getAccessibleUnits } from "../lib/unit-filter";
+import { cancelOrder } from "../lib/order-cancellation-service";
 
 const PRODUCTION_UNITS = ["Himatnagar", "Surat", "Rajkot"] as const;
 
@@ -324,6 +325,30 @@ router.delete("/orders/:id", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     console.error("Delete order error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Cancel order with reason + cascading updates ──
+router.post("/orders/:id/cancel", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid order id" }); return; }
+
+    const { reason, otherReason, note } = req.body;
+    const result = await cancelOrder(user, id, { reason, otherReason, note });
+
+    if (result.error) {
+      res.status(result.status || 400).json({ error: result.error });
+      return;
+    }
+
+    res.json({ success: true, order: result.order });
+  } catch (err) {
+    console.error("Cancel order error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

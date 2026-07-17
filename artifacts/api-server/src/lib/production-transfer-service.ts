@@ -3,7 +3,7 @@ import {
   productionTransferHistoryTable, proformaInvoicesTable,
   contactsTable, usersTable, notificationsTable,
 } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, or, desc } from "drizzle-orm";
 import { enrichProductionOrder } from "./production-service";
 import { notifyProductionUsers } from "./notification-service";
 import { formatTimestamp } from "./activity-logger";
@@ -67,7 +67,11 @@ export async function transferOrder(
   const targetUnitUsers = await db
     .select({ id: usersTable.id, role: usersTable.role, unit: usersTable.unit })
     .from(usersTable)
-    .where(eq(usersTable.role, "production"));
+    .where(or(
+      eq(usersTable.role, "production"),
+      eq(usersTable.role, "production_and_support"),
+      eq(usersTable.role, "admin"),
+    ));
 
   for (const tu of targetUnitUsers) {
     if (tu.id !== user.id) {

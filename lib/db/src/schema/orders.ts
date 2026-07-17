@@ -38,6 +38,18 @@ export const ORDER_ITEM_STATUSES = [
 ] as const;
 export type OrderItemStatus = typeof ORDER_ITEM_STATUSES[number];
 
+export const CANCELLATION_REASONS = [
+  "Customer Cancelled",
+  "Price Issue",
+  "Quality Concern",
+  "Duplicate Order",
+  "Wrong Product",
+  "Production Delay",
+  "Payment Issue",
+  "Other",
+] as const;
+export type CancellationReason = typeof CANCELLATION_REASONS[number];
+
 export const ORDER_SOURCES = [
   "New Lead",
   "Existing Customer",
@@ -105,6 +117,11 @@ export const ordersTable = pgTable("orders", {
   healthStatus: text("health_status").notNull().default("Healthy"),
   productionUnit: text("production_unit"),
   productionRemarks: text("production_remarks"),
+  cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  cancelledBy: integer("cancelled_by").references(() => usersTable.id, { onDelete: "set null" }),
+  cancellationReason: text("cancellation_reason"),
+  cancellationOtherReason: text("cancellation_other_reason"),
+  cancellationNote: text("cancellation_note"),
   isDeleted: boolean("is_deleted").notNull().default(false),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   deletedBy: integer("deleted_by").references(() => usersTable.id, { onDelete: "set null" }),

@@ -7,6 +7,7 @@ export interface PermissionUser {
   id: number;
   role: string;
   name?: string;
+  unit?: string | null;
 }
 
 /**
@@ -102,4 +103,48 @@ export function canModifyProduction(user: PermissionUser): boolean {
  */
 export function canViewProduction(user: PermissionUser): boolean {
   return true;
+}
+
+/**
+ * Check if a user can manage inventory (create, edit, delete, adjust).
+ * Only admin and inventory roles can manage. Sales and production are read-only.
+ */
+export function canManageInventory(user: PermissionUser): boolean {
+  return user.role === "admin" || user.role === "inventory";
+}
+
+/**
+ * Check if a user can cancel orders.
+ * Permission matrix:
+ * - admin: anytime (except completed)
+ * - sales: before production starts, own orders only
+ * - production: before Machine Running
+ * - production_and_support: anytime with reason
+ */
+export function canCancelOrder(user: PermissionUser): boolean {
+  return user.role === "admin" || user.role === "sales" || isProductionUser(user);
+}
+
+/**
+ * Check if a user can create or update complaints.
+ * Inventory users are read-only.
+ */
+export function canManageComplaints(user: PermissionUser): boolean {
+  return user.role !== "inventory";
+}
+
+/**
+ * Check if user's unit matches the resource's unit.
+ * Used for unit-level data isolation enforcement on the backend.
+ * Returns true if access is allowed (admin/All always allowed).
+ */
+export function canAccessUnit(
+  user: PermissionUser,
+  resourceUnit: string | null | undefined,
+): boolean {
+  if (user.role === "admin") return true;
+  const userUnit = user.unit || "All";
+  if (userUnit === "All") return true;
+  if (!resourceUnit) return true; // No unit constraint on resource
+  return userUnit === resourceUnit;
 }
