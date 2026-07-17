@@ -444,6 +444,16 @@ export interface Deal {
   completedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
+  /** Active proforma invoice for this deal (if any) */
+  activeProformaInvoice?: {
+    id: number;
+    invoiceNumber: string;
+    status: string;
+    grandTotal: number | string;
+    version: number;
+    isActive: boolean;
+    createdAt: string;
+  } | null;
 }
 
 export type DealInputStage = typeof DealInputStage[keyof typeof DealInputStage];

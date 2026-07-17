@@ -19,6 +19,19 @@ import { onDealChange, onActivityChange } from "@/lib/query-invalidation";
 import { Pencil, Phone, Calendar, ExternalLink, Clock, CheckCircle2, X, MessageSquare } from "lucide-react";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
 import { Link } from "wouter";
+import { customFetch } from "@workspace/api-client-react/custom-fetch";
+
+const PI_STATUS_COLORS: Record<string, string> = {
+  "No PI": "bg-gray-100 text-gray-500",
+  "Draft": "bg-slate-100 text-slate-600",
+  "Sent": "bg-blue-100 text-blue-600",
+  "Viewed": "bg-cyan-100 text-cyan-600",
+  "Approved": "bg-green-100 text-green-600",
+  "Rejected": "bg-red-100 text-red-600",
+  "Expired": "bg-yellow-100 text-yellow-600",
+  "Converted to Order": "bg-purple-100 text-purple-600",
+  "Converted to Production": "bg-purple-100 text-purple-600",
+};
 
 const ACT_STYLE: Record<string, { bg: string; fg: string; icon: string }> = {
   "Call":     { bg: "#dcfce7", fg: "#15803d", icon: "📞" },
@@ -104,6 +117,19 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
     if (!selectedStage || selectedStage === deal?.stage) { setStageOpen(false); return; }
     if (selectedStage === "Won") { setStageOpen(false); setWonAmount(""); setWonOpen(true); return; }
     if (selectedStage === "Lost") { setStageOpen(false); setLostOpen(true); return; }
+    if (selectedStage === "PI Sent") {
+      setStageOpen(false);
+      const hasActivePI = !!(deal as any).activeProformaInvoice;
+      if (!hasActivePI) {
+        toast({ title: "No active Proforma Invoice. Create one first.", variant: "destructive" });
+        return;
+      }
+      updateDeal.mutate(
+        { id: dealId!, data: { stage: selectedStage as DealStage } },
+        { onSuccess: () => { toast({ title: `Deal moved to ${selectedStage}` }); invalidateAllDeal(); }, onError: () => toast({ title: "Error changing stage", variant: "destructive" }) },
+      );
+      return;
+    }
     updateDeal.mutate(
       { id: dealId!, data: { stage: selectedStage as DealStage } },
       { onSuccess: () => { toast({ title: `Deal moved to ${selectedStage}` }); setStageOpen(false); invalidateAllDeal(); }, onError: () => toast({ title: "Error changing stage", variant: "destructive" }) },
@@ -172,6 +198,10 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${stageColor}`}>{deal.stage}</span>
                   <span className="text-xs text-muted-foreground">Probability: {STAGE_PROBS[deal.stage] ?? deal.probability}%</span>
+                  <Badge variant="outline" className={`text-xs ${PI_STATUS_COLORS[(deal as any).activeProformaInvoice?.status || "No PI"] || PI_STATUS_COLORS["No PI"]}`}>
+                    PI: {(deal as any).activeProformaInvoice?.status || "No PI"}
+                    {(deal as any).activeProformaInvoice?.version > 1 ? ` v${(deal as any).activeProformaInvoice.version}` : ""}
+                  </Badge>
                 </div>
 
                 {/* Quick Actions */}

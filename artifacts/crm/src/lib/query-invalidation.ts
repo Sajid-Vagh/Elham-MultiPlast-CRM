@@ -41,6 +41,7 @@ export function onDealChange(queryClient: QueryClient, dealId?: number, contactI
   queryClient.invalidateQueries({ queryKey: ["dashboard-sales-performance"] });
   queryClient.invalidateQueries({ queryKey: ["dashboard-charts"] });
   queryClient.invalidateQueries({ queryKey: ["dashboard-recent-activities"] });
+  queryClient.invalidateQueries({ queryKey: ["global-search"] });
   if (dealId) {
     queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) });
     queryClient.invalidateQueries({ queryKey: getListDealProductsQueryKey(dealId) });
@@ -106,4 +107,20 @@ export function onProductionChange(queryClient: QueryClient, orderId?: string, d
   }
   queryClient.invalidateQueries({ queryKey: ["follow-up-activities"] });
   queryClient.invalidateQueries({ queryKey: ["dashboard-recent-activities"] });
+}
+
+export function onPIChange(queryClient: QueryClient, dealId?: number, contactId?: number) {
+  queryClient.invalidateQueries({ queryKey: ["proforma-invoices"] });
+  queryClient.invalidateQueries({ queryKey: ["global-search"] });
+  queryClient.invalidateQueries({ queryKey: ["dashboard-kpi"] });
+  queryClient.invalidateQueries({ queryKey: ["dashboard-recent-activities"] });
+  if (dealId) {
+    queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) });
+    queryClient.invalidateQueries({ queryKey: getListDealsQueryKey() });
+  }
+  if (contactId) {
+    queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
+    queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
+    queryClient.invalidateQueries({ queryKey: ["deal-info", contactId] });
+  }
 }

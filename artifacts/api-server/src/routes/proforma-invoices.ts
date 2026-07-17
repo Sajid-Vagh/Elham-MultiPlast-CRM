@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable, productionNotesTable, usersTable, contactsTable, dealsTable, customerMasterTable, INVOICE_STATUSES } from "@workspace/db";
+import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable, productionNotesTable, usersTable, contactsTable, dealsTable, customerMasterTable, activitiesTable, INVOICE_STATUSES } from "@workspace/db";
 import { eq, desc, and, or, SQL, sql, like, gte, lte, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -770,6 +770,28 @@ router.post("/proforma-invoices", async (req, res) => {
       if (contact) resolvedSalesOwnerId = contact.salesOwnerId;
     }
 
+    // Version management: auto-increment version for this deal
+    const resolvedDealId = dealId || null;
+    let nextVersion = 1;
+    if (resolvedDealId) {
+      const [lastVersion] = await db
+        .select({ version: proformaInvoicesTable.version })
+        .from(proformaInvoicesTable)
+        .where(and(eq(proformaInvoicesTable.dealId, resolvedDealId), eq(proformaInvoicesTable.isDeleted, false)))
+        .orderBy(desc(proformaInvoicesTable.version))
+        .limit(1);
+      if (lastVersion) nextVersion = (lastVersion.version || 0) + 1;
+
+      // Deactivate any existing active PI for this deal (only one active at a time)
+      await db.update(proformaInvoicesTable)
+        .set({ isActive: false })
+        .where(and(
+          eq(proformaInvoicesTable.dealId, resolvedDealId),
+          eq(proformaInvoicesTable.isActive, true),
+          eq(proformaInvoicesTable.isDeleted, false),
+        ));
+    }
+
     const [invoice] = await db
       .insert(proformaInvoicesTable)
       .values({
@@ -778,7 +800,7 @@ router.post("/proforma-invoices", async (req, res) => {
         companyName: companyName || null,
         tradeName: tradeName || null,
         contactId: resolvedContactId,
-        dealId: dealId || null,
+        dealId: resolvedDealId,
         salesOwnerId: resolvedSalesOwnerId,
         customerMasterId: customerMasterId || null,
         address: address || null,
@@ -807,6 +829,8 @@ router.post("/proforma-invoices", async (req, res) => {
         amountInWords: words,
         status: status || "Draft",
         notes: notes || null,
+        version: nextVersion,
+        isActive: true,
         createdBy: user.id,
       })
       .returning();
@@ -835,6 +859,19 @@ router.post("/proforma-invoices", async (req, res) => {
         statusFrom: null,
         statusTo: status || "Draft",
         changedBy: user.id,
+      });
+    }
+
+    // Auto-create activity: PI Created
+    if (resolvedDealId) {
+      const ts = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      const versionNote = nextVersion > 1 ? ` (Version ${nextVersion})` : "";
+      await db.insert(activitiesTable).values({
+        dealId: resolvedDealId,
+        contactId: resolvedContactId,
+        type: "Note",
+        notes: `Proforma Invoice Created — ${finalInvoiceNumber}${versionNote}\n\nAmount: ₹${Number(grandTotal || 0).toLocaleString("en-IN")}\nBy: ${user.name}\n${ts}`,
+        createdBy: user.id,
       });
     }
 
@@ -1230,6 +1267,27 @@ async function updateInvoiceHandler(req: any, res: any) {
       .from(proformaInvoicesTable)
       .where(eq(proformaInvoicesTable.id, id));
 
+    // Auto-create activity: PI Updated (only if meaningful fields changed)
+    if (existing.dealId && Object.keys(updateData).length > 0) {
+      const changedFields: string[] = [];
+      if (updateData.customerName) changedFields.push("Customer Name");
+      if (updateData.companyName) changedFields.push("Company Name");
+      if (updateData.grandTotal) changedFields.push("Amount");
+      if (updateData.gstNumber) changedFields.push("GSTIN");
+      if (items) changedFields.push("Line Items");
+      if (updateData.notes) changedFields.push("Notes");
+      if (changedFields.length > 0) {
+        const ts = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        await db.insert(activitiesTable).values({
+          dealId: existing.dealId,
+          contactId: existing.contactId,
+          type: "Note",
+          notes: `Proforma Invoice Updated — ${existing.invoiceNumber}\n\nChanged: ${changedFields.join(", ")}\nBy: ${user.name}\n${ts}`,
+          createdBy: user.id,
+        });
+      }
+    }
+
     if (contactId && !existing.contactId) {
       const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, contactId));
       if (contact && !updateData.salesOwnerId) {
@@ -1447,6 +1505,24 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
       notes: notes || null,
     });
 
+    // Auto-create activity for key PI status transitions
+    if (invoice.dealId && status !== prevStatus) {
+      const ts = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      let activityNote: string | null = null;
+      if (status === "Sent") activityNote = `Proforma Invoice Sent — ${invoice.invoiceNumber}\n\nBy: ${user.name}\n${ts}`;
+      else if (status === "Approved") activityNote = `Proforma Invoice Approved — ${invoice.invoiceNumber}\n\nBy: ${user.name}\n${ts}`;
+      else if (status === "Rejected") activityNote = `Proforma Invoice Rejected — ${invoice.invoiceNumber}\n\nBy: ${user.name}\n${ts}`;
+      if (activityNote) {
+        await db.insert(activitiesTable).values({
+          dealId: invoice.dealId,
+          contactId: invoice.contactId,
+          type: "Note",
+          notes: activityNote,
+          createdBy: user.id,
+        });
+      }
+    }
+
     // Auto-create Production Order when status changes to "Converted to Order" or "Converted to Production"
     const isConversion = (status === "Converted to Order" || status === "Converted to Production")
       && prevStatus !== "Converted to Order" && prevStatus !== "Converted to Production";
@@ -1604,6 +1680,21 @@ router.post("/proforma-invoices/:id/duplicate", async (req, res) => {
       .from(proformaInvoiceItemsTable)
       .where(eq(proformaInvoiceItemsTable.invoiceId, id));
 
+    // Version management: increment version from source
+    const nextVersion = (source.version || 1) + 1;
+    const revisionReason = (req.body as Record<string, any>)?.revisionReason || null;
+
+    // Deactivate any existing active PI for this deal
+    if (source.dealId) {
+      await db.update(proformaInvoicesTable)
+        .set({ isActive: false })
+        .where(and(
+          eq(proformaInvoicesTable.dealId, source.dealId),
+          eq(proformaInvoicesTable.isActive, true),
+          eq(proformaInvoicesTable.isDeleted, false),
+        ));
+    }
+
     const newInvoiceNumber = await getNextInvoiceNumber();
     const [invoice] = await db
       .insert(proformaInvoicesTable)
@@ -1638,6 +1729,9 @@ router.post("/proforma-invoices/:id/duplicate", async (req, res) => {
         amountInWords: source.amountInWords,
         status: "Draft",
         notes: source.notes,
+        version: nextVersion,
+        isActive: true,
+        revisionReason,
         createdBy: user.id,
       })
       .returning();
@@ -1657,6 +1751,19 @@ router.post("/proforma-invoices/:id/duplicate", async (req, res) => {
         discount: item.discount,
         gstPercent: item.gstPercent,
         amount: item.amount,
+      });
+    }
+
+    // Auto-create activity: PI Revised (new version)
+    if (source.dealId) {
+      const ts = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      const reasonNote = revisionReason ? `\nReason: ${revisionReason}` : "";
+      await db.insert(activitiesTable).values({
+        dealId: source.dealId,
+        contactId: source.contactId,
+        type: "Note",
+        notes: `Proforma Invoice Revised — ${newInvoiceNumber} (Version ${nextVersion})\n\nCopied from: ${source.invoiceNumber} (Version ${source.version || 1})${reasonNote}\nBy: ${user.name}\n${ts}`,
+        createdBy: user.id,
       });
     }
 
@@ -1685,7 +1792,7 @@ router.delete("/proforma-invoices/:id", async (req, res) => {
     // Soft-delete: mark as deleted with timestamp and user
     await db
       .update(proformaInvoicesTable)
-      .set({ isDeleted: true, deletedAt: new Date(), deletedBy: user.id })
+      .set({ isDeleted: true, deletedAt: new Date(), deletedBy: user.id, isActive: false })
       .where(eq(proformaInvoicesTable.id, id));
 
     // Add activity log entry

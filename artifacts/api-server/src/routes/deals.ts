@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable, activitiesTable, DEAL_STAGES, STAGE_PROBS, ordersTable, orderItemsTable, proformaInvoicesTable, proformaInvoiceItemsTable, productionOrdersTable, productionTimelineTable } from "@workspace/db";
-import { eq, and, SQL, sql, desc, gte, between } from "drizzle-orm";
+import { eq, and, SQL, sql, desc, gte, between, isNull } from "drizzle-orm";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import {
   CreateDealBody, UpdateDealBody, GetDealParams, UpdateDealParams, DeleteDealParams,
@@ -21,7 +21,25 @@ async function enrichDeal(deal: typeof dealsTable.$inferSelect) {
     const [u] = await db.select().from(usersTable).where(eq(usersTable.id, deal.salesOwnerId));
     if (u) { const { passwordHash: _, ...safe } = u; salesOwner = safe; }
   }
-  return { ...deal, contact: contact ?? null, salesOwner };
+  // Fetch active proforma invoice for this deal
+  const [activePI] = await db
+    .select({
+      id: proformaInvoicesTable.id,
+      invoiceNumber: proformaInvoicesTable.invoiceNumber,
+      status: proformaInvoicesTable.status,
+      grandTotal: proformaInvoicesTable.grandTotal,
+      version: proformaInvoicesTable.version,
+      isActive: proformaInvoicesTable.isActive,
+      createdAt: proformaInvoicesTable.createdAt,
+    })
+    .from(proformaInvoicesTable)
+    .where(and(
+      eq(proformaInvoicesTable.dealId, deal.id),
+      eq(proformaInvoicesTable.isActive, true),
+      eq(proformaInvoicesTable.isDeleted, false),
+    ))
+    .limit(1);
+  return { ...deal, contact: contact ?? null, salesOwner, activeProformaInvoice: activePI ?? null };
 }
 
 router.get("/deals", async (req, res) => {
@@ -216,11 +234,15 @@ router.patch("/deals/:id", async (req, res) => {
         return;
       }
     }
-    // Validate PI Sent: Proforma Invoice must exist
+    // Validate PI Sent: Active Proforma Invoice must exist for this deal
     if (updateData.stage === "PI Sent") {
-      const [existingPI] = await db.select().from(proformaInvoicesTable).where(eq(proformaInvoicesTable.dealId, params.data.id)).limit(1);
-      if (!existingPI) {
-        res.status(400).json({ error: "No Proforma Invoice found for this Deal. Create a PI before moving to PI Sent." });
+      const [activePI] = await db.select().from(proformaInvoicesTable).where(and(
+        eq(proformaInvoicesTable.dealId, params.data.id),
+        eq(proformaInvoicesTable.isActive, true),
+        eq(proformaInvoicesTable.isDeleted, false),
+      )).limit(1);
+      if (!activePI) {
+        res.status(400).json({ error: "No active Proforma Invoice found for this Deal. Create a PI before moving to PI Sent." });
         return;
       }
     }

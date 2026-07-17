@@ -25,6 +25,18 @@ import { ExportDropdown } from "@/components/export-dropdown";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useActiveUnits } from "@/lib/use-active-units";
 
+const PI_STATUS_COLORS: Record<string, string> = {
+  "No PI": "bg-gray-100 text-gray-500 border-gray-200",
+  "Draft": "bg-slate-100 text-slate-600 border-slate-200",
+  "Sent": "bg-blue-100 text-blue-600 border-blue-200",
+  "Viewed": "bg-cyan-100 text-cyan-600 border-cyan-200",
+  "Approved": "bg-green-100 text-green-600 border-green-200",
+  "Rejected": "bg-red-100 text-red-600 border-red-200",
+  "Expired": "bg-yellow-100 text-yellow-600 border-yellow-200",
+  "Converted to Order": "bg-purple-100 text-purple-600 border-purple-200",
+  "Converted to Production": "bg-purple-100 text-purple-600 border-purple-200",
+};
+
 function DraggableCard({ deal, children }: { deal: Deal; children: ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `deal-${deal.id}`,
@@ -316,23 +328,32 @@ export default function Deals() {
       return;
     }
 
-    // Intercept PI Sent drops — check for Proforma Invoice first
+    // Intercept PI Sent drops — check for active Proforma Invoice
     if (newStage === "PI Sent") {
       setOptimisticStages(prev => ({ ...prev, [dealId]: "PI Sent" }));
-      setPiSentDeal(deal);
-      setPiSentExistingPi(false);
-      setPiSentLoading(true);
-      const token = localStorage.getItem("crm_token");
-      fetch(`/api/proforma-invoices`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }).then(res => res.ok ? res.json() : []).then((allPIs: any[]) => {
-        const hasPI = Array.isArray(allPIs) && allPIs.some((pi: any) => pi.dealId === dealId);
-        setPiSentExistingPi(hasPI);
-      }).catch(() => {
+      const hasActivePI = !!(deal as any).activeProformaInvoice;
+      if (hasActivePI) {
+        // Active PI exists → move deal directly, no popup
+        updateDeal.mutate(
+          { id: dealId, data: { stage: "PI Sent" as DealStage } },
+          {
+            onSuccess: () => {
+              setOptimisticStages(prev => { const n = { ...prev }; delete n[dealId]; return n; });
+              onDealChange(queryClient, dealId, deal?.contactId);
+              toast({ title: "Deal moved to PI Sent" });
+            },
+            onError: (err: any) => {
+              setOptimisticStages(prev => { const n = { ...prev }; delete n[dealId]; return n; });
+              toast({ title: err?.data?.error || "Failed to move deal", variant: "destructive" });
+            },
+          },
+        );
+      } else {
+        // No active PI → show Create PI popup
+        setPiSentDeal(deal);
         setPiSentExistingPi(false);
-      }).finally(() => {
         setPiSentLoading(false);
-      });
+      }
       return;
     }
 
@@ -445,6 +466,10 @@ export default function Deals() {
                             {deal.contact?.unit && (
                               <Badge variant="outline" className="text-[10px] px-1.5 py-0">{deal.contact.unit}</Badge>
                             )}
+                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 border ${PI_STATUS_COLORS[(deal as any).activeProformaInvoice?.status || "No PI"] || PI_STATUS_COLORS["No PI"]}`}>
+                              {(deal as any).activeProformaInvoice?.status || "No PI"}
+                              {(deal as any).activeProformaInvoice?.version > 1 ? ` v${(deal as any).activeProformaInvoice.version}` : ""}
+                            </Badge>
                             <CompletionBadge deal={deal} visibility={completedDealVisibility} />
                           </div>
                           {deal.contact?.customerComments && (
@@ -610,82 +635,23 @@ export default function Deals() {
         />
       )}
 
-      {/* PI Sent Confirmation Dialog */}
+      {/* PI Sent Dialog — only shown when no active PI exists */}
       <Dialog open={!!piSentDeal} onOpenChange={(o) => { if (!o) { setPiSentDeal(null); setOptimisticStages(prev => { const n = { ...prev }; if (piSentDeal) delete n[piSentDeal.id]; return n; }); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{piSentExistingPi ? "Confirm Proforma" : "Proforma Invoice Required"}</DialogTitle>
+            <DialogTitle>Proforma Invoice Required</DialogTitle>
             <DialogDescription>
-              {piSentLoading
-                ? "Checking for Proforma Invoice..."
-                : piSentExistingPi
-                  ? "Have you already sent the Proforma Invoice to the Customer?"
-                  : "No Proforma Invoice has been created for this Deal. Would you like to create one now?"}
+              No active Proforma Invoice has been created for this Deal. Create one before moving to PI Sent.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            {piSentLoading ? (
-              <Button variant="outline" disabled><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Checking...</Button>
-            ) : piSentExistingPi ? (
-              <>
-                <Button variant="outline" onClick={() => {
-                  if (!piSentDeal) return;
-                  const contactId = piSentDeal.contactId || piSentDeal.contact?.id;
-                  setPiSentDeal(null);
-                  setOptimisticStages(prev => { const n = { ...prev }; delete n[piSentDeal!.id]; return n; });
-                  navigate(`/proforma-invoices${contactId ? `?contactId=${contactId}` : ""}`);
-                }}>No</Button>
-                <Button onClick={async () => {
-                  if (!piSentDeal) return;
-                  const dealId = piSentDeal.id;
-                  // Re-verify PI exists for THIS specific deal before proceeding
-                  try {
-                    const token = localStorage.getItem("crm_token");
-                    const res = await fetch(`/api/proforma-invoices`, {
-                      headers: { Authorization: `Bearer ${token}` },
-                    });
-                    const allPIs = res.ok ? await res.json() : [];
-                    const hasPI = Array.isArray(allPIs) && allPIs.some((pi: any) => pi.dealId === dealId);
-                    if (!hasPI) {
-                      setPiSentDeal(null);
-                      setOptimisticStages(prev => { const n = { ...prev }; delete n[dealId]; return n; });
-                      toast({ title: "No Proforma Invoice found for this specific deal. Please create one.", variant: "destructive" });
-                      return;
-                    }
-                  } catch {
-                    setPiSentDeal(null);
-                    setOptimisticStages(prev => { const n = { ...prev }; delete n[dealId]; return n; });
-                    toast({ title: "Could not verify Proforma Invoice.", variant: "destructive" });
-                    return;
-                  }
-                  setPiSentDeal(null);
-                  updateDeal.mutate(
-                    { id: dealId, data: { stage: "PI Sent" as DealStage } },
-                    {
-                      onSuccess: () => {
-                        setOptimisticStages(prev => { const n = { ...prev }; delete n[dealId]; return n; });
-                        onDealChange(queryClient, dealId, piSentDeal?.contactId);
-                        toast({ title: "Deal moved to PI Sent" });
-                      },
-                      onError: () => {
-                        setOptimisticStages(prev => { const n = { ...prev }; delete n[dealId]; return n; });
-                        toast({ title: "Failed to move deal", variant: "destructive" });
-                      },
-                    },
-                  );
-                }}>Yes</Button>
-              </>
-            ) : (
-              <>
-                <Button variant="outline" onClick={() => { setPiSentDeal(null); setOptimisticStages(prev => { const n = { ...prev }; if (piSentDeal) delete n[piSentDeal.id]; return n; }); }}>Cancel</Button>
-                <Button onClick={() => {
-                  if (!piSentDeal) return;
-                  const contactId = piSentDeal.contactId || piSentDeal.contact?.id;
-                  setPiSentDeal(null);
-                  navigate(`/proforma-invoices${contactId ? `?contactId=${contactId}` : ""}`);
-                }}>Create Proforma</Button>
-              </>
-            )}
+            <Button variant="outline" onClick={() => { setPiSentDeal(null); setOptimisticStages(prev => { const n = { ...prev }; if (piSentDeal) delete n[piSentDeal.id]; return n; }); }}>Cancel</Button>
+            <Button onClick={() => {
+              if (!piSentDeal) return;
+              const contactId = piSentDeal.contactId || piSentDeal.contact?.id;
+              setPiSentDeal(null);
+              navigate(`/proforma-invoices${contactId ? `?contactId=${contactId}` : ""}`);
+            }}>Create Proforma</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

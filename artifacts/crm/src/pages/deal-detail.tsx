@@ -26,6 +26,19 @@ import { MoveCategoryDialog } from "@/components/move-category-dialog";
 import { DEAL_STAGES, STAGE_PROBS, STAGE_BADGE_COLORS } from "@/lib/deal-stages";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { Link as LinkIcon } from "lucide-react";
+
+const PI_STATUS_COLORS: Record<string, string> = {
+  "No PI": "bg-gray-100 text-gray-500",
+  "Draft": "bg-slate-100 text-slate-600",
+  "Sent": "bg-blue-100 text-blue-600",
+  "Viewed": "bg-cyan-100 text-cyan-600",
+  "Approved": "bg-green-100 text-green-600",
+  "Rejected": "bg-red-100 text-red-600",
+  "Expired": "bg-yellow-100 text-yellow-600",
+  "Converted to Order": "bg-purple-100 text-purple-600",
+  "Converted to Production": "bg-purple-100 text-purple-600",
+};
 
 const ACT_STYLE: Record<string, { bg: string; fg: string; icon: string }> = {
   "Call":     { bg: "#dcfce7", fg: "#15803d", icon: "\u{1F4DE}" },
@@ -125,11 +138,6 @@ export default function DealDetail() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [showMoveCategory, setShowMoveCategory] = useState(false);
 
-  // PI Sent dialog state
-  const [piSentDialogOpen, setPiSentDialogOpen] = useState(false);
-  const [piSentLoading, setPiSentLoading] = useState(false);
-  const [piSentHasPI, setPiSentHasPI] = useState(false);
-
   const deleteDeal = useDeleteDeal();
 
   // Activity date filter
@@ -171,19 +179,12 @@ export default function DealDetail() {
     }
     if (newStage === "Lost") { setLostOpen(true); return; }
     if (newStage === "PI Sent") {
-      setPiSentLoading(true);
-      setPiSentDialogOpen(true);
-      const token = localStorage.getItem("crm_token");
-      fetch(`/api/proforma-invoices`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }).then(res => res.ok ? res.json() : []).then((allPIs: any[]) => {
-        const hasPI = Array.isArray(allPIs) && allPIs.some((pi: any) => pi.dealId === dealId);
-        setPiSentHasPI(hasPI);
-      }).catch(() => {
-        setPiSentHasPI(false);
-      }).finally(() => {
-        setPiSentLoading(false);
-      });
+      const hasActivePI = !!(deal as any).activeProformaInvoice;
+      if (!hasActivePI) {
+        toast({ title: "No active Proforma Invoice. Create one first.", variant: "destructive" });
+        return;
+      }
+      doStageUpdate("PI Sent", null, null);
       return;
     }
     doStageUpdate(newStage, null, null);
@@ -417,6 +418,10 @@ export default function DealDetail() {
             <h1 className="text-2xl font-bold">{deal.title || `Deal #${deal.id}`}</h1>
             <CategoryBadge category={contact?.category} />
             <span className={`text-sm px-2.5 py-1 rounded-full font-medium ${STAGE_BADGE_COLORS[deal.stage] || "bg-gray-100"}`}>{deal.stage}</span>
+            <span className={`text-xs px-2 py-1 rounded-full font-medium ${PI_STATUS_COLORS[(deal as any).activeProformaInvoice?.status || "No PI"] || PI_STATUS_COLORS["No PI"]}`}>
+              PI: {(deal as any).activeProformaInvoice?.status || "No PI"}
+              {(deal as any).activeProformaInvoice?.version > 1 ? ` v${(deal as any).activeProformaInvoice.version}` : ""}
+            </span>
           </div>
           {contact && <p className="text-muted-foreground text-sm">{contact.name}{contact.companyName ? ` — ${contact.companyName}` : ""}</p>}
         </div>
@@ -456,6 +461,52 @@ export default function DealDetail() {
                 {contact.companyName && <p className="text-muted-foreground">{contact.companyName}</p>}
                 <p>{contact.mobile}</p>
                 {contact.city && <p className="text-muted-foreground">{contact.city}</p>}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Active Proforma Invoice */}
+          {(deal as any).activeProformaInvoice && (
+            <Card>
+              <CardHeader><CardTitle className="text-sm">Proforma Invoice</CardTitle></CardHeader>
+              <CardContent className="text-sm space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Invoice</span>
+                  <span className="font-medium font-mono">{(deal as any).activeProformaInvoice.invoiceNumber}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Status</span>
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${PI_STATUS_COLORS[(deal as any).activeProformaInvoice.status] || "bg-gray-100 text-gray-600"}`}>
+                    {(deal as any).activeProformaInvoice.status}
+                  </span>
+                </div>
+                {(deal as any).activeProformaInvoice.version > 1 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Version</span>
+                    <span className="font-medium">v{(deal as any).activeProformaInvoice.version}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Total</span>
+                  <span className="font-medium">₹{Number((deal as any).activeProformaInvoice.grandTotal).toLocaleString()}</span>
+                </div>
+                <Link href={`/proforma-invoices/${(deal as any).activeProformaInvoice.id}`}>
+                  <Button size="sm" variant="outline" className="w-full mt-2">
+                    <LinkIcon className="h-3.5 w-3.5 mr-1" /> View Invoice
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+          )}
+          {!(deal as any).activeProformaInvoice && (
+            <Card className="border-dashed border-gray-300">
+              <CardContent className="py-4 text-center">
+                <p className="text-xs text-muted-foreground">No active Proforma Invoice</p>
+                <Link href={`/proforma-invoices${contact?.id ? `?contactId=${contact.id}` : ""}`}>
+                  <Button size="sm" variant="ghost" className="mt-1 text-primary h-7 text-xs">
+                    <Plus className="h-3 w-3 mr-1" /> Create
+                  </Button>
+                </Link>
               </CardContent>
             </Card>
           )}
@@ -848,40 +899,6 @@ export default function DealDetail() {
         saving={lostSubmitting}
         hideCategory={contact?.category === "My Client"}
       />
-
-      {/* PI Sent Confirmation Dialog */}
-      <Dialog open={piSentDialogOpen} onOpenChange={(o) => setPiSentDialogOpen(o)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{piSentHasPI ? "Confirm Proforma" : "Proforma Invoice Required"}</DialogTitle>
-            <DialogDescription>
-              {piSentLoading
-                ? "Checking for Proforma Invoice..."
-                : piSentHasPI
-                  ? "Have you already sent the Proforma Invoice to the Customer?"
-                  : "No Proforma Invoice has been created for this Deal. Would you like to create one now?"}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            {piSentLoading ? (
-              <Button variant="outline" disabled><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Checking...</Button>
-            ) : piSentHasPI ? (
-              <>
-                <Button variant="outline" onClick={() => setPiSentDialogOpen(false)}>No</Button>
-                <Button onClick={() => { setPiSentDialogOpen(false); doStageUpdate("PI Sent", null, null); }}>Yes</Button>
-              </>
-            ) : (
-              <>
-                <Button variant="outline" onClick={() => setPiSentDialogOpen(false)}>Cancel</Button>
-                <Button onClick={() => {
-                  setPiSentDialogOpen(false);
-                  setLocation(`/proforma-invoices${contact?.id ? `?contactId=${contact.id}` : ""}`);
-                }}>Create Proforma</Button>
-              </>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Regular Follow-up Dialog */}
       <Dialog open={fuDialogOpen} onOpenChange={setFuDialogOpen}>
