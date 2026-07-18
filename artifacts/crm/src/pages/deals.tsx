@@ -24,6 +24,7 @@ import { UserAvatar } from "@/components/user-avatar";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { PENDING_UNIT_ASSIGNMENT, isPendingUnit } from "@/lib/unit-constants";
 
 const PI_STATUS_COLORS: Record<string, string> = {
   "No PI": "bg-gray-100 text-gray-500 border-gray-200",
@@ -157,6 +158,7 @@ export default function Deals() {
   const [wonProductionUnit, setWonProductionUnit] = useState("");
   const [wonProductionNotes, setWonProductionNotes] = useState("");
   const [wonSalesNotes, setWonSalesNotes] = useState("");
+  const [wonUnitReason, setWonUnitReason] = useState("");
   const [wonSubmitting, setWonSubmitting] = useState(false);
   const [wonDealForCelebration, setWonDealForCelebration] = useState<Deal | null>(null);
   const [wonTodayCount, setWonTodayCount] = useState(1);
@@ -198,6 +200,7 @@ export default function Deals() {
     setWonProductionUnit("");
     setWonProductionNotes("");
     setWonSalesNotes("");
+    setWonUnitReason("");
   };
 
   const handleMarkWonSubmit = async () => {
@@ -220,6 +223,7 @@ export default function Deals() {
           productionUnit: wonProductionUnit,
           productionNotes: wonProductionNotes || null,
           salesNotes: wonSalesNotes || null,
+          unitChangeReason: wonUnitReason || null,
         }),
       });
       setWonSubmitting(false);
@@ -228,6 +232,7 @@ export default function Deals() {
       setWonProductionUnit("");
       setWonProductionNotes("");
       setWonSalesNotes("");
+      setWonUnitReason("");
       setOptimisticStages(prev => { const n = { ...prev }; delete n[markWonDeal.deal.id]; return n; });
       onDealChange(queryClient, markWonDeal.deal.id, markWonDeal.deal.contactId);
       onProductionChange(queryClient);
@@ -417,7 +422,8 @@ export default function Deals() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Units</SelectItem>
-            {activeUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+            <SelectItem value={PENDING_UNIT_ASSIGNMENT}>Pending Unit</SelectItem>
+            {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
@@ -463,9 +469,7 @@ export default function Deals() {
                           )}
                           <div className="mt-1 flex items-center gap-2 flex-wrap">
                             <CategoryBadge category={deal.contact?.category} />
-                            {deal.contact?.unit && (
-                              <Badge variant="outline" className="text-[10px] px-1.5 py-0">{deal.contact.unit}</Badge>
-                            )}
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{deal.contact?.unit || PENDING_UNIT_ASSIGNMENT}</Badge>
                             <Badge variant="outline" className={`text-[10px] px-1.5 py-0 border ${PI_STATUS_COLORS[(deal as any).activeProformaInvoice?.status || "No PI"] || PI_STATUS_COLORS["No PI"]}`}>
                               {(deal as any).activeProformaInvoice?.status || "No PI"}
                               {(deal as any).activeProformaInvoice?.version > 1 ? ` v${(deal as any).activeProformaInvoice.version}` : ""}
@@ -509,9 +513,7 @@ export default function Deals() {
                 )}
                 <div className="mt-1 flex items-center gap-2">
                   <CategoryBadge category={activeDeal.contact?.category} />
-                  {activeDeal.contact?.unit && (
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">{activeDeal.contact.unit}</Badge>
-                  )}
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">{activeDeal.contact?.unit || PENDING_UNIT_ASSIGNMENT}</Badge>
                 </div>
                 {activeDeal.contact?.customerComments && (
                   <div className="mt-1 text-xs text-muted-foreground line-clamp-1">{activeDeal.contact.customerComments}</div>
@@ -568,6 +570,18 @@ export default function Deals() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Unit Assignment Reason (Optional)</Label>
+              <Input
+                value={wonUnitReason}
+                onChange={(e) => setWonUnitReason(e.target.value)}
+                placeholder="e.g. Customer requested Surat factory"
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Logged in unit change history for audit trail
+              </p>
             </div>
             <div>
               <Label className="text-sm font-medium">Production Notes (Optional)</Label>

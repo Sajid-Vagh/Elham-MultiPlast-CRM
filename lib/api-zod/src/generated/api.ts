@@ -339,7 +339,8 @@ export const UpdateContactBody = zod.object({
   "lastCallDate": zod.string().nullish(),
   "nextCallDate": zod.string().nullish(),
   "state": zod.string().nullish(),
-  "category": zod.string().nullish()
+  "category": zod.string().nullish(),
+  "unitChangeReason": zod.string().nullish()
 })
 
 export const UpdateContactResponse = zod.object({

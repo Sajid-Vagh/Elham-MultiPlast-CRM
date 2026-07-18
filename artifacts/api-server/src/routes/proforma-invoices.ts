@@ -1537,10 +1537,12 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
       return;
     }
 
-    if ((status === "Converted to Order" || status === "Converted to Production") && !productionUnit) {
-      res.status(400).json({ error: "Production Unit is required when converting to production" });
-      return;
-    }
+    // Production Unit is no longer required at PI conversion time.
+    // It will be required when marking the Deal as Won (via mark-won endpoint).
+    // if ((status === "Converted to Order" || status === "Converted to Production") && !productionUnit) {
+    //   res.status(400).json({ error: "Production Unit is required when converting to production" });
+    //   return;
+    // }
 
     const [invoice] = await db
       .select()
@@ -1635,26 +1637,30 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
           const remarksLine = productionRemarks ? `\nRemarks: ${productionRemarks}` : "";
 
           // Notify production users based on unit permissions (single shared helper)
-          await notifyProductionUsers({
-            productionUnit: productionUnit || "Himatnagar",
-            title: "New Production Order",
-            message: [
-              `Created By: ${user.name} (${creatorRoleLabel})`,
-              `Production Unit: ${productionUnit}`,
-              ``,
-              `Customer: ${invoice.customerName}`,
-              `Company: ${invoice.companyName || "N/A"}`,
-              `Product: ${items[0]?.productName || "Multiple Items"}`,
-              `Quantity: ${items.reduce((sum, i) => sum + Number(i.quantity || 0), 0).toLocaleString("en-IN")} ${items[0]?.unit || "pcs"}`,
-              `Order No: ${invoice.invoiceNumber}`,
-              remarksLine,
-            ].filter(Boolean).join("\n"),
-            link: `/production/orders/${newOrder.id}`,
-            relatedId: newOrder.id,
-            relatedType: "production_order",
-            type: "production_order_created",
-            excludeUserId: user.id,
-          });
+          // Only send notification if a real production unit is assigned (not "To Be Assigned")
+          const notifyUnit = productionUnit && productionUnit !== "To Be Assigned" ? productionUnit : null;
+          if (notifyUnit) {
+            await notifyProductionUsers({
+              productionUnit: notifyUnit,
+              title: "New Production Order",
+              message: [
+                `Created By: ${user.name} (${creatorRoleLabel})`,
+                `Production Unit: ${productionUnit}`,
+                ``,
+                `Customer: ${invoice.customerName}`,
+                `Company: ${invoice.companyName || "N/A"}`,
+                `Product: ${items[0]?.productName || "Multiple Items"}`,
+                `Quantity: ${items.reduce((sum, i) => sum + Number(i.quantity || 0), 0).toLocaleString("en-IN")} ${items[0]?.unit || "pcs"}`,
+                `Order No: ${invoice.invoiceNumber}`,
+                remarksLine,
+              ].filter(Boolean).join("\n"),
+              link: `/production/orders/${newOrder.id}`,
+              relatedId: newOrder.id,
+              relatedType: "production_order",
+              type: "production_order_created",
+              excludeUserId: user.id,
+            });
+          }
         }
       }
     }

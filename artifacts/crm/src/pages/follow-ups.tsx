@@ -17,6 +17,7 @@ import { onActivityChange } from "@/lib/query-invalidation";
 import { CategoryBadge } from "@/components/category-badge";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
 const PAGE_SIZE = 15;
 
@@ -369,7 +370,8 @@ export default function FollowUps() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Units</SelectItem>
-                  {activeUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                  <SelectItem value={PENDING_UNIT_ASSIGNMENT}>Pending Unit</SelectItem>
+                  {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                 </SelectContent>
               </Select>
               {isAdmin && (

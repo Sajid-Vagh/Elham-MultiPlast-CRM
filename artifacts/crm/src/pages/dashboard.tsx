@@ -3,7 +3,7 @@ import { useGetMe } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {   Briefcase, Users, DollarSign, TrendingUp, AlertCircle, PhoneCall, X, Clock, Phone, CheckCircle2, FolderTree, UserCheck, Activity, BarChart3, ChevronRight, UserPlus } from "lucide-react";
+import {   Briefcase, Users, DollarSign, TrendingUp, AlertCircle, PhoneCall, X, Clock, Phone, CheckCircle2, FolderTree, UserCheck, Activity, BarChart3, ChevronRight, UserPlus, PauseCircle } from "lucide-react";
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { UserAvatar } from "@/components/user-avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
 function daysDiff(dateStr: string): number {
   const today = new Date();
@@ -53,7 +54,7 @@ export default function Dashboard() {
       return res.json() as Promise<{
         totalContacts: number; totalDeals: number; wonDeals: number; lostDeals: number; lostLeads: number;
         activeDeals: number; totalWonValue: number; totalLostValue: number; categoryCounts: { category: string; count: number }[];
-        unitStats: Record<string, number>; todayTotal: number; todayCompleted: number; todayPending: number;
+        unitStats: Record<string, number>; pendingUnitCount: number; todayTotal: number; todayCompleted: number; todayPending: number;
         overdueCount: number; newLeadsThisMonth: number; myClientsCount: number; conversionRate: number;
       }>;
     },
@@ -186,7 +187,8 @@ export default function Dashboard() {
               <SelectTrigger className="w-36 h-8 text-sm"><SelectValue placeholder="All Units" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Units</SelectItem>
-                {activeUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                <SelectItem value={PENDING_UNIT_ASSIGNMENT}>Pending Unit Assignment</SelectItem>
+                {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -322,6 +324,18 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-xl font-bold text-amber-600">{kpi?.conversionRate ?? 0}%</div>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href={`/deals?unit=${encodeURIComponent(PENDING_UNIT_ASSIGNMENT)}`} className="block">
+          <Card className="border-orange-200 hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-xs font-medium">Pending Unit</CardTitle>
+              <PauseCircle className="h-4 w-4 text-orange-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold text-orange-600">{kpi?.pendingUnitCount ?? 0}</div>
+              <p className="text-[10px] text-muted-foreground">deals awaiting factory</p>
             </CardContent>
           </Card>
         </Link>

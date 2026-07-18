@@ -291,6 +291,8 @@ export interface ContactUpdate {
   state?: string | null;
   /** @nullable */
   category?: string | null;
+  /** @nullable */
+  unitChangeReason?: string | null;
 }
 
 export interface DuplicateGroup {

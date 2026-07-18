@@ -7,6 +7,9 @@ const router: IRouter = Router();
 
 function filterContactsByUnit(contacts: (typeof contactsTable.$inferSelect)[], unit: string | undefined) {
   if (!unit) return contacts;
+  if (unit === "To Be Assigned") {
+    return contacts.filter(c => !c.unit);
+  }
   return contacts.filter(c => c.unit === unit);
 }
 
@@ -80,9 +83,17 @@ router.get("/dashboard/kpi", async (req, res) => {
 
     const unitStats: Record<string, number> = {};
     for (const c of filteredContacts) {
-      const u = c.unit || "Unassigned";
+      const u = c.unit || "To Be Assigned";
       unitStats[u] = (unitStats[u] || 0) + 1;
     }
+
+    // Pending Unit Assignment = active Deals (not Won/Lost) where contact has no unit
+    const contactMap = new Map(allContacts.map(c => [c.id, c]));
+    const pendingUnitCount = filteredDeals.filter(d => {
+      if (d.stage === "Won" || d.stage === "Lost") return false;
+      const contact = contactMap.get(d.contactId);
+      return contact && !contact.unit;
+    }).length;
 
     // Activities: scope to owner and apply unit filter via contacts
     let activitiesQuery = db.select().from(activitiesTable);
@@ -122,6 +133,7 @@ router.get("/dashboard/kpi", async (req, res) => {
       totalWonValue,
       totalLostValue,
       unitStats,
+      pendingUnitCount,
       todayTotal,
       todayCompleted,
       todayPending,

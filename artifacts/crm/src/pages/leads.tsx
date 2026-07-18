@@ -18,6 +18,7 @@ import { onContactChange, onDealChange } from "@/lib/query-invalidation";
 import { UserAvatar } from "@/components/user-avatar";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
 export default function Leads() {
   const [search, setSearch] = useState("");
@@ -209,7 +210,8 @@ export default function Leads() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Units</SelectItem>
-            {activeUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+            <SelectItem value={PENDING_UNIT_ASSIGNMENT}>Pending Unit</SelectItem>
+            {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
@@ -381,7 +383,7 @@ export default function Leads() {
                         </span>
                       )}
                     </TableCell>
-                    <TableCell>{contact.unit || "-"}</TableCell>
+                    <TableCell>{contact.unit || PENDING_UNIT_ASSIGNMENT}</TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>

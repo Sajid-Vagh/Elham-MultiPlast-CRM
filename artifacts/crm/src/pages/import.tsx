@@ -16,6 +16,7 @@ import { CheckCircle, AlertCircle, Upload, FileSpreadsheet, X, Sparkles, Clipboa
 import { UserAvatar } from "@/components/user-avatar";
 import { Link } from "wouter";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
 // ── IndiaMart multi-format parser ────────────────────────────────────────────
 interface ParsedLead {
@@ -532,7 +533,7 @@ export default function ImportPage() {
 
   // ── Unit state (persisted per user) ──
   const unitStorageKey = `crm_import_unit_${me?.id ?? "anon"}`;
-  const [unit, setUnit] = useState(() => localStorage.getItem(unitStorageKey) || "");
+  const [unit, setUnit] = useState(() => localStorage.getItem(unitStorageKey) || PENDING_UNIT_ASSIGNMENT);
   useEffect(() => {
     if (unit) localStorage.setItem(unitStorageKey, unit);
     else localStorage.removeItem(unitStorageKey);
@@ -593,7 +594,7 @@ export default function ImportPage() {
         requirement:  im.requirement  || null,
         quantity:     im.quantity     || null,
         salesOwnerId: me?.role !== "admin" && me?.id ? me.id : im.salesOwnerId ? Number(im.salesOwnerId) : null,
-        unit: unit || null,
+        unit: unit === PENDING_UNIT_ASSIGNMENT ? null : unit || null,
         category: importCategory,
       } as any,
     }, {
@@ -674,7 +675,8 @@ export default function ImportPage() {
 
   const handleExcelUploadImport = () => {
     if (!parsedRows?.length) return;
-    const rowsWithUnit = parsedRows.map(r => ({ ...r, unit: r.unit || unit || null }));
+    const effectiveUnit = unit === PENDING_UNIT_ASSIGNMENT ? null : unit;
+    const rowsWithUnit = parsedRows.map(r => ({ ...r, unit: r.unit || effectiveUnit || null }));
     importExcel.mutate({
       data: {
         rows: rowsWithUnit,
@@ -711,7 +713,8 @@ export default function ImportPage() {
     } catch {
       toast({ title: "Invalid format", variant: "destructive" }); return;
     }
-    const rowsWithUnit = rows.map(r => ({ ...r, unit: r.unit || unit || null }));
+    const effectiveUnit = unit === PENDING_UNIT_ASSIGNMENT ? null : unit;
+    const rowsWithUnit = rows.map(r => ({ ...r, unit: r.unit || effectiveUnit || null }));
     importExcel.mutate({ data: { rows: rowsWithUnit, defaultSalesOwnerId: pasteOwner ? Number(pasteOwner) : null, category: importCategory, duplicateAction } as any }, {
       onSuccess: (result) => {
         setPasteResult(result);
@@ -867,7 +870,8 @@ export default function ImportPage() {
                   <Select value={unit} onValueChange={setUnit}>
                     <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
                     <SelectContent>
-                      {activeUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                      <SelectItem value={PENDING_UNIT_ASSIGNMENT}>{PENDING_UNIT_ASSIGNMENT}</SelectItem>
+                      {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -882,7 +886,7 @@ export default function ImportPage() {
                 </div>
               </div>
 
-              <Button onClick={handleIndiaMart} disabled={importIndiaMart.isPending || !unit} className="w-full">
+              <Button onClick={handleIndiaMart} disabled={importIndiaMart.isPending} className="w-full">
                 <Upload className="h-4 w-4 mr-2" />
                 {importIndiaMart.isPending ? "Importing…" : "Save Lead"}
               </Button>
@@ -1032,7 +1036,8 @@ export default function ImportPage() {
                       <Select value={unit} onValueChange={setUnit}>
                         <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
                         <SelectContent>
-                      {activeUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                      <SelectItem value={PENDING_UNIT_ASSIGNMENT}>{PENDING_UNIT_ASSIGNMENT}</SelectItem>
+                      {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1091,7 +1096,7 @@ export default function ImportPage() {
 
                   <Button
                     onClick={() => setShowImportConfirm(true)}
-                    disabled={importExcel.isPending || !parsedRows.length || !unit}
+                    disabled={importExcel.isPending || !parsedRows.length}
                     className="w-full"
                   >
                     <Upload className="h-4 w-4 mr-2" />
@@ -1159,7 +1164,8 @@ export default function ImportPage() {
                 <Select value={unit} onValueChange={setUnit}>
                   <SelectTrigger><SelectValue placeholder="Unit" /></SelectTrigger>
                   <SelectContent>
-                    {activeUnits.filter(u => u !== "Not Sure").map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                    <SelectItem value={PENDING_UNIT_ASSIGNMENT}>{PENDING_UNIT_ASSIGNMENT}</SelectItem>
+                    {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT && u !== "Not Sure").map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                   </SelectContent>
                 </Select>
                 <Select value={importCategory} onValueChange={setImportCategory}>
@@ -1168,7 +1174,7 @@ export default function ImportPage() {
                     {CATEGORY_OPTIONS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <Button onClick={handlePasteImport} disabled={importExcel.isPending || !pasteText.trim() || !unit}>
+                <Button onClick={handlePasteImport} disabled={importExcel.isPending || !pasteText.trim()}>
                   <Upload className="h-4 w-4 mr-2" /> Import
                 </Button>
               </div>

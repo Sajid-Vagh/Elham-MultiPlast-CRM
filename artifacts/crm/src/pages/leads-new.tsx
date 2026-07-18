@@ -8,6 +8,7 @@ import { Link } from "wouter";
 import LeadForm from "@/components/lead-form";
 import type { LeadFormData } from "@/components/lead-form";
 import { onContactChange } from "@/lib/query-invalidation";
+import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
 export default function LeadsNew() {
   const [, setLocation] = useLocation();

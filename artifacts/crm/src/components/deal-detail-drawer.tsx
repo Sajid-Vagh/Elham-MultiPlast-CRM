@@ -232,7 +232,7 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
                     {contact?.mobile && <div><span className="text-muted-foreground">Mobile</span><p className="font-medium">{contact.mobile}</p></div>}
                     {contact?.email && <div><span className="text-muted-foreground">Email</span><p className="font-medium truncate">{contact.email}</p></div>}
                     {contact?.city && <div><span className="text-muted-foreground">City</span><p className="font-medium">{contact.city}</p></div>}
-                    {contact?.unit && <div><span className="text-muted-foreground">Unit</span><p className="font-medium">{contact.unit}</p></div>}
+                    <div><span className="text-muted-foreground">Unit</span><p className="font-medium">{contact?.unit || "To Be Assigned"}</p></div>
                   </div>
                 </div>
 

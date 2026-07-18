@@ -129,6 +129,7 @@ export default function DealDetail() {
   const [wonProductionUnit, setWonProductionUnit] = useState("");
   const [wonProductionNotes, setWonProductionNotes] = useState("");
   const [wonSalesNotes, setWonSalesNotes] = useState("");
+  const [wonUnitReason, setWonUnitReason] = useState("");
   const [wonSubmitting, setWonSubmitting] = useState(false);
   const [wonDealForCelebration, setWonDealForCelebration] = useState<any>(null);
   const [wonTodayCount, setWonTodayCount] = useState(1);
@@ -198,6 +199,7 @@ export default function DealDetail() {
     setWonProductionUnit("");
     setWonProductionNotes("");
     setWonSalesNotes("");
+    setWonUnitReason("");
   };
 
   const handleMarkWonSubmit = async () => {
@@ -219,6 +221,7 @@ export default function DealDetail() {
           productionUnit: wonProductionUnit,
           productionNotes: wonProductionNotes || null,
           salesNotes: wonSalesNotes || null,
+          unitChangeReason: wonUnitReason || null,
         }),
       });
       setWonSubmitting(false);
@@ -850,6 +853,18 @@ export default function DealDetail() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Unit Assignment Reason (Optional)</Label>
+              <Input
+                value={wonUnitReason}
+                onChange={(e) => setWonUnitReason(e.target.value)}
+                placeholder="e.g. Customer requested Surat factory"
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Logged in unit change history for audit trail
+              </p>
             </div>
             <div>
               <Label className="text-sm font-medium">Production Notes (Optional)</Label>

@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { onProductionChange } from "@/lib/query-invalidation";
 import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Upload, CheckCircle, ArrowRightLeft, Play, XCircle, Calendar, AlertTriangle, Eye } from "lucide-react";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
 const STATUSES = [
   "Pending", "Accepted", "Planning", "Machine Running",
@@ -927,7 +928,7 @@ export default function ProductionOrderDetail() {
               <Select value={transferUnit} onValueChange={setTransferUnit}>
                 <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
                 <SelectContent>
-                  {activeUnits.filter(u => u !== order.productionUnit).map((u) => (
+                  {activeUnits.filter(u => u !== order.productionUnit && u !== PENDING_UNIT_ASSIGNMENT).map((u) => (
                     <SelectItem key={u} value={u}>{u}</SelectItem>
                   ))}
                 </SelectContent>

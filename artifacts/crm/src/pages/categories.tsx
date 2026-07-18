@@ -20,6 +20,7 @@ import { Download, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
 function CategoryCard({ name, count, color, onClick }: { name: string; count: number; color: string; onClick: () => void }) {
   return (
@@ -313,7 +314,8 @@ export default function CategoriesPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Units</SelectItem>
-            {activeUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+            <SelectItem value={PENDING_UNIT_ASSIGNMENT}>Pending Unit</SelectItem>
+            {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
@@ -411,7 +413,7 @@ export default function CategoriesPage() {
                         <TableCell>{c.companyName || "-"}</TableCell>
                         <TableCell>{c.mobile}</TableCell>
                         <TableCell>{c.city || "-"}</TableCell>
-                        <TableCell>{c.unit || "-"}</TableCell>
+                        <TableCell>{c.unit || PENDING_UNIT_ASSIGNMENT}</TableCell>
                         <TableCell>{c.salesOwner?.name || "-"}</TableCell>
                         <TableCell><CategoryBadge category={c.category} /></TableCell>
                         <TableCell>

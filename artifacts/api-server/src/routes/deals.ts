@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable, activitiesTable, DEAL_STAGES, STAGE_PROBS, ordersTable, orderItemsTable, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable } from "@workspace/db";
+import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable, unitHistoryTable, activitiesTable, DEAL_STAGES, STAGE_PROBS, ordersTable, orderItemsTable, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable } from "@workspace/db";
 import { eq, and, SQL, sql, desc, gte, between, isNull } from "drizzle-orm";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import {
@@ -99,8 +99,16 @@ router.get("/deals", async (req, res) => {
     }
 
     if (params.success && params.data.unit) {
-      const unitContacts = new Set(contacts.filter(c => c.unit === params.data.unit).map(c => c.id));
-      resultDeals = resultDeals.filter(d => unitContacts.has(d.contactId));
+      if (params.data.unit === "To Be Assigned") {
+        // Filter deals where contact unit is null (pending assignment)
+        const pendingUnitContacts = new Set(
+          contacts.filter(c => !c.unit).map(c => c.id)
+        );
+        resultDeals = resultDeals.filter(d => pendingUnitContacts.has(d.contactId));
+      } else {
+        const unitContacts = new Set(contacts.filter(c => c.unit === params.data.unit).map(c => c.id));
+        resultDeals = resultDeals.filter(d => unitContacts.has(d.contactId));
+      }
     }
 
     const accessibleUnits = getAccessibleUnits(user);
@@ -453,7 +461,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
     const dealId = Number(req.params.id);
     if (isNaN(dealId)) { res.status(400).json({ error: "Invalid deal id" }); return; }
 
-    const { wonAmount, productionUnit, productionNotes, salesNotes } = req.body as Record<string, any>;
+    const { wonAmount, productionUnit, productionNotes, salesNotes, unitChangeReason } = req.body as Record<string, any>;
 
     // Unified validation — single source of truth for both PATCH and mark-won
     const validation = await validateWonPrerequisites({
@@ -521,6 +529,18 @@ router.post("/deals/:id/mark-won", async (req, res) => {
           convertedToClient: deal.convertedToClient,
           now,
         });
+
+        // 2b. Update contact's production unit (first assignment at Won stage)
+        if (productionUnit && !contact.unit) {
+          await tx.update(contactsTable).set({ unit: productionUnit }).where(eq(contactsTable.id, contact.id));
+          await tx.insert(unitHistoryTable).values({
+            contactId: contact.id,
+            previousUnit: contact.unit || null,
+            newUnit: productionUnit,
+            changedBy: user.id,
+            reason: unitChangeReason || "Deal Won — Production Unit assigned",
+          });
+        }
       }
 
       // 3. Create Order

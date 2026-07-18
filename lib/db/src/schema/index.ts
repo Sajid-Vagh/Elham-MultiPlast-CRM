@@ -29,5 +29,6 @@ export * from "./transport_logistics";
 export * from "./product_bundle_master";
 export * from "./transport_destination_master";
 export * from "./units";
+export * from "./unit_history";
 export * from "./inventory";
 export * from "./import_batches";

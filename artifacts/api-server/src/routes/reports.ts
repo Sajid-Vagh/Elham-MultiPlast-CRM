@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, activitiesTable, DEAL_STAGES, STAGE_PROBS } from "@workspace/db";
-import { eq, and, gte, sql, inArray } from "drizzle-orm";
+import { eq, and, gte, sql, inArray, or, isNull } from "drizzle-orm";
 import { GetPipelineReportQueryParams, GetReportByOwnerQueryParams, GetReportByProductQueryParams, GetReportByCityQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 
@@ -8,13 +8,25 @@ const router: IRouter = Router();
 
 function filterContactsByUnit(contacts: any[], unit: string | undefined) {
   if (!unit) return contacts;
+  if (unit === "To Be Assigned") {
+    return contacts.filter(c => !c.unit);
+  }
   return contacts.filter(c => c.unit === unit);
 }
 
 function filterDealsByUnit(deals: any[], unit: string | undefined, allContacts: any[]) {
   if (!unit) return deals;
-  const contactIds = new Set(allContacts.filter(c => c.unit === unit).map(c => c.id));
+  const contactIds = new Set(filterContactsByUnit(allContacts, unit).map(c => c.id));
   return deals.filter(d => contactIds.has(d.contactId));
+}
+
+async function getUnitContactIds(unit: string): Promise<Set<number>> {
+  if (unit === "To Be Assigned") {
+    const contacts = await db.select().from(contactsTable).where(isNull(contactsTable.unit));
+    return new Set(contacts.map(c => c.id));
+  }
+  const contacts = await db.select().from(contactsTable).where(eq(contactsTable.unit, unit));
+  return new Set(contacts.map(c => c.id));
 }
 
 async function restrictToOwnDeals(req: any, params: any) {
@@ -103,9 +115,8 @@ router.get("/reports/pipeline", async (req, res) => {
         }
       }
       if (params.data.unit) {
-        const contacts = await db.select().from(contactsTable).where(eq(contactsTable.unit, params.data.unit));
-        const contactIds = new Set(contacts.map(c => c.id));
-        deals = deals.filter(d => contactIds.has(d.contactId));
+        const unitContactIds = await getUnitContactIds(params.data.unit);
+        deals = deals.filter(d => unitContactIds.has(d.contactId));
       }
       if (params.data.city) {
         const contacts = await db.select().from(contactsTable);
@@ -159,9 +170,8 @@ router.get("/reports/by-owner", async (req, res) => {
         }
       }
       if (params.data.unit) {
-        const contacts = await db.select().from(contactsTable).where(eq(contactsTable.unit, params.data.unit));
-        const contactIds = new Set(contacts.map(c => c.id));
-        deals = deals.filter(d => contactIds.has(d.contactId));
+        const unitContactIds = await getUnitContactIds(params.data.unit);
+        deals = deals.filter(d => unitContactIds.has(d.contactId));
       }
     }
 
@@ -272,10 +282,9 @@ router.get("/reports/lost-reasons", async (req, res) => {
         }
       }
       if (params.data.unit) {
-        const contacts = await db.select().from(contactsTable).where(eq(contactsTable.unit, params.data.unit));
-        const contactIds = new Set(contacts.map(c => c.id));
-        deals = deals.filter(d => contactIds.has(d.contactId));
-        lostContacts = lostContacts.filter(c => contactIds.has(c.id));
+        const unitContactIds = await getUnitContactIds(params.data.unit);
+        deals = deals.filter(d => unitContactIds.has(d.contactId));
+        lostContacts = lostContacts.filter(c => unitContactIds.has(c.id));
       }
     }
 
@@ -360,7 +369,12 @@ router.get("/reports/lost-reasons/detail", async (req, res) => {
         }
       }
       if (params.data.unit) {
-        const unitContactIds = new Set(allContacts.filter(c => c.unit === params.data.unit).map(c => c.id));
+        let unitContactIds: Set<number>;
+        if (params.data.unit === "To Be Assigned") {
+          unitContactIds = new Set(allContacts.filter(c => !c.unit || c.unit === "To Be Assigned" || c.unit.trim() === "").map(c => c.id));
+        } else {
+          unitContactIds = new Set(allContacts.filter(c => c.unit === params.data.unit).map(c => c.id));
+        }
         deals = deals.filter(d => unitContactIds.has(d.contactId));
         lostContacts = lostContacts.filter(c => unitContactIds.has(c.id));
       }

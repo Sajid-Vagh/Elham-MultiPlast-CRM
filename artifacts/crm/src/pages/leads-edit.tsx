@@ -9,6 +9,7 @@ import { Link } from "wouter";
 import LeadForm from "@/components/lead-form";
 import type { LeadFormData } from "@/components/lead-form";
 import { onContactChange } from "@/lib/query-invalidation";
+import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
 export default function LeadsEdit() {
   const { id } = useParams<{ id: string }>();
@@ -73,7 +74,7 @@ export default function LeadsEdit() {
           salesOwnerId: String(contact.salesOwnerId),
           leadSource: contact.leadSource || "",
           city: contact.city || "",
-          unit: contact.unit || "",
+          unit: contact.unit || PENDING_UNIT_ASSIGNMENT,
           industry: contact.industry || "",
           tags: contact.tags || "",
           address: contact.address || "",

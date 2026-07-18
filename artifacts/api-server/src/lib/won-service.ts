@@ -5,6 +5,7 @@ import {
 import { eq, and, sql } from "drizzle-orm";
 import { getActivePiForDeal } from "./proforma-service";
 import { unitsTable } from "@workspace/db";
+import { PENDING_UNIT_ASSIGNMENT, isPendingUnit } from "./unit-constants";
 
 /**
  * Validate production unit against dynamic units table.
@@ -62,8 +63,8 @@ export async function validateWonPrerequisites(params: {
 
   // Validate production unit (mark-won endpoint only)
   if (isMarkWonEndpoint) {
-    if (!productionUnit) {
-      return { valid: false, status: 400, error: "Production Unit is required" };
+    if (!productionUnit || isPendingUnit(productionUnit)) {
+      return { valid: false, status: 400, error: "Production Unit is required. Please select a Production Unit before marking this Deal as Won. Available Units: Himatnagar, Surat, Rajkot" };
     }
     const validUnit = await validateProductionUnit(exec, productionUnit);
     if (!validUnit) {

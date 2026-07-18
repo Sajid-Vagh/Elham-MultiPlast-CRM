@@ -42,6 +42,7 @@ const TIMELINE_ICONS: Record<string, { bg: string; icon: string }> = {
   "deal_updated":    { bg: "#e0e7ff", icon: "📊" },
   "document_uploaded": { bg: "#fef9c3", icon: "📄" },
   "document_replaced": { bg: "#fce7f3", icon: "🔄" },
+  "unit_change":       { bg: "#fef3c7", icon: "🏭" },
 };
 
 const ACT_STYLE: Record<string, { bg: string; fg: string; icon: string }> = {
@@ -279,6 +280,7 @@ export default function LeadDetail() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editField, setEditField] = useState("");
   const [editValue, setEditValue] = useState("");
+  const [editReason, setEditReason] = useState("");
 
   // Mark Lost dialog
   const [lostOpen, setLostOpen] = useState(false);
@@ -385,11 +387,16 @@ export default function LeadDetail() {
   };
 
   const handleInlineEdit = (field: string, value: string) => {
-    updateContact.mutate({ id: contactId, data: { [field]: value || null } as any }, {
+    const payload: any = { [field]: value || null };
+    if (field === "unit" && editReason.trim()) {
+      payload.unitChangeReason = editReason.trim();
+    }
+    updateContact.mutate({ id: contactId, data: payload }, {
       onSuccess: () => {
         onContactChange(queryClient, contactId);
         toast({ title: `${field} updated` });
         setEditDialogOpen(false);
+        setEditReason("");
       },
       onError: () => toast({ title: "Error updating", variant: "destructive" }),
     });
@@ -496,7 +503,7 @@ export default function LeadDetail() {
               {infield("State", "state", (contact as any).state)}
               {infield("Lead Source", "leadSource", contact.leadSource)}
               {infield("Industry", "industry", contact.industry)}
-              {infield("Unit", "unit", contact.unit)}
+              {infield("Unit", "unit", contact.unit || PENDING_UNIT_ASSIGNMENT)}
               {infield("Inquiry Date", "inquiryDate", contact.inquiryDate)}
               {infield("Customer Since", "customerSince", (contact as any).customerSince)}
               {infield("Customer Status", "customerStatus", (contact as any).customerStatus)}
@@ -1234,9 +1241,15 @@ export default function LeadDetail() {
               <Label>{editField}</Label>
               <Input value={editValue} onChange={e => setEditValue(e.target.value)} />
             </div>
+            {editField === "unit" && (
+              <div>
+                <Label>Reason for change (optional)</Label>
+                <Input value={editReason} onChange={e => setEditReason(e.target.value)} placeholder="e.g. Customer requested Surat factory" />
+              </div>
+            )}
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setEditDialogOpen(false); setEditReason(""); }}>Cancel</Button>
             <Button onClick={() => handleInlineEdit(editField, editValue)}>Save</Button>
           </DialogFooter>
         </DialogContent>

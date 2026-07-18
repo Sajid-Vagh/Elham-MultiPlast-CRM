@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, usersTable, activitiesTable, dealsTable, notificationsTable, commentHistoryTable, categoryHistoryTable, documentsTable, proformaInvoicesTable, proformaInvoiceItemsTable } from "@workspace/db";
+import { db, contactsTable, usersTable, activitiesTable, dealsTable, notificationsTable, commentHistoryTable, categoryHistoryTable, unitHistoryTable, documentsTable, proformaInvoicesTable, proformaInvoiceItemsTable } from "@workspace/db";
 import { eq, or, and, ilike, lte, isNotNull, isNull, inArray, SQL, desc } from "drizzle-orm";
 import { CreateContactBody, UpdateContactBody, GetContactParams, UpdateContactParams, DeleteContactParams, ListContactsQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
@@ -43,7 +43,14 @@ router.get("/contacts", async (req, res) => {
     if (params.success) {
       if (params.data.salesOwnerId && isAdmin) conditions.push(eq(contactsTable.salesOwnerId, params.data.salesOwnerId));
       if (params.data.city) conditions.push(ilike(contactsTable.city, `%${params.data.city}%`));
-      if (params.data.unit) conditions.push(eq(contactsTable.unit, params.data.unit));
+      if (params.data.unit) {
+        if (params.data.unit === "To Be Assigned") {
+          // Filter contacts where unit is null (pending assignment)
+          conditions.push(isNull(contactsTable.unit));
+        } else {
+          conditions.push(eq(contactsTable.unit, params.data.unit));
+        }
+      }
       if (params.data.industry) conditions.push(eq(contactsTable.industry, params.data.industry));
       if (categoryParam && categoryParam !== "Regular Follow up") {
         conditions.push(eq(contactsTable.category, categoryParam));
@@ -277,7 +284,7 @@ router.patch("/contacts/:id", async (req, res) => {
     }
 
     // Handle customer comments separately with history tracking
-    const { customerComments, ...restUpdate } = parsed.data;
+    const { customerComments, unitChangeReason, ...restUpdate } = parsed.data;
     const updatePayload = { ...restUpdate } as Record<string, any>;
 
     if (customerComments !== undefined) {
@@ -366,6 +373,22 @@ router.patch("/contacts/:id", async (req, res) => {
         newCategory: newCategory,
         changedBy: user.id,
       });
+    }
+
+    // Record unit history when unit changes
+    const newUnit = parsed.data.unit;
+    if (newUnit !== undefined) {
+      const oldUnit = oldContact.unit || null;
+      const normalizedNew = newUnit === "" || newUnit === "To Be Assigned" ? null : newUnit;
+      if (oldUnit !== normalizedNew) {
+        await db.insert(unitHistoryTable).values({
+          contactId: params.data.id,
+          previousUnit: oldUnit,
+          newUnit: normalizedNew,
+          changedBy: user.id,
+          reason: (unitChangeReason as string) || null,
+        });
+      }
     }
 
     // If category changed away from "Regular Follow up", close deals and complete pending follow-ups
@@ -672,6 +695,34 @@ router.get("/contacts/:id/category-history", async (req, res) => {
   }
 });
 
+// Get unit change history for a contact
+router.get("/contacts/:id/unit-history", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const history = await db
+      .select({
+        id: unitHistoryTable.id,
+        previousUnit: unitHistoryTable.previousUnit,
+        newUnit: unitHistoryTable.newUnit,
+        changedBy: unitHistoryTable.changedBy,
+        changedByName: usersTable.name,
+        reason: unitHistoryTable.reason,
+        createdAt: unitHistoryTable.createdAt,
+      })
+      .from(unitHistoryTable)
+      .leftJoin(usersTable, eq(usersTable.id, unitHistoryTable.changedBy))
+      .where(eq(unitHistoryTable.contactId, id))
+      .orderBy(desc(unitHistoryTable.createdAt));
+    res.json(history);
+  } catch (err) {
+    req.log.error({ err }, "Get unit history error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // Get combined activity timeline for a contact
 router.get("/contacts/:id/timeline", async (req, res) => {
   const id = Number(req.params.id);
@@ -768,6 +819,32 @@ router.get("/contacts/:id/timeline", async (req, res) => {
         description: "Customer Comments Updated",
         user: h.updatedByName ? { name: h.updatedByName } : null,
         createdAt: h.updatedAt,
+      });
+    }
+
+    // 4b. Unit history events
+    const unitHist = await db
+      .select({
+        id: unitHistoryTable.id,
+        previousUnit: unitHistoryTable.previousUnit,
+        newUnit: unitHistoryTable.newUnit,
+        changedByName: usersTable.name,
+        reason: unitHistoryTable.reason,
+        createdAt: unitHistoryTable.createdAt,
+      })
+      .from(unitHistoryTable)
+      .leftJoin(usersTable, eq(usersTable.id, unitHistoryTable.changedBy))
+      .where(eq(unitHistoryTable.contactId, id))
+      .orderBy(desc(unitHistoryTable.createdAt));
+    for (const u of unitHist.reverse()) {
+      const from = u.previousUnit || "To Be Assigned";
+      const to = u.newUnit || "To Be Assigned";
+      timeline.push({
+        type: "unit_change",
+        description: `Production Unit changed from "${from}" to "${to}"`,
+        notes: u.reason || null,
+        user: u.changedByName ? { name: u.changedByName } : null,
+        createdAt: u.createdAt,
       });
     }
 

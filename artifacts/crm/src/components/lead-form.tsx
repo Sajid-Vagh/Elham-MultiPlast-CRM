@@ -14,6 +14,7 @@ import { AlertTriangle, ExternalLink } from "lucide-react";
 import { Link } from "wouter";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { UserAvatar } from "@/components/user-avatar";
+import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
 const schema = z.object({
   name: z.string().min(1, "Required"),
@@ -84,7 +85,7 @@ export default function LeadForm({
     resolver: zodResolver(schema),
     defaultValues: {
       name: "", mobile: "", otherPhone: "", email: "", companyName: "", salesOwnerId: "",
-      leadSource: "", city: "", unit: "", industry: "", tags: "", address: "",
+      leadSource: "", city: "", unit: PENDING_UNIT_ASSIGNMENT, industry: "", tags: "", address: "",
       ...initialData,
     },
   });
@@ -93,7 +94,7 @@ export default function LeadForm({
     if (initialData) {
       form.reset({
         name: "", mobile: "", otherPhone: "", email: "", companyName: "", salesOwnerId: "",
-        leadSource: "", city: "", unit: "", industry: "", tags: "", address: "",
+        leadSource: "", city: "", unit: PENDING_UNIT_ASSIGNMENT, industry: "", tags: "", address: "",
         ...initialData,
       });
     }
@@ -106,7 +107,8 @@ export default function LeadForm({
   }, [me, canAssign, form, initialData]);
 
   const handleSubmit = (data: LeadFormData) => {
-    onSubmit(data);
+    // Convert "To Be Assigned" to null for DB storage
+    onSubmit({ ...data, unit: data.unit === PENDING_UNIT_ASSIGNMENT ? "" : data.unit });
   };
 
   const handleClosePopup = () => {
@@ -240,13 +242,17 @@ export default function LeadForm({
               )} />
               <FormField control={form.control} name="unit" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Unit</FormLabel>
+                  <FormLabel>Production Unit</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl><SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger></FormControl>
                     <SelectContent>
-                      {activeUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                      <SelectItem value={PENDING_UNIT_ASSIGNMENT}>{PENDING_UNIT_ASSIGNMENT}</SelectItem>
+                      {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Unit will be finalized when the deal is won.
+                  </p>
                   <FormMessage />
                 </FormItem>
               )} />

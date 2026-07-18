@@ -20,6 +20,7 @@ import { UserAvatar } from "@/components/user-avatar";
 import { STAGE_CHART_COLORS } from "@/lib/deal-stages";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { ExportDropdown } from "@/components/export-dropdown";
+import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
 function MonthPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return <Input type="month" value={value} onChange={e => onChange(e.target.value)} className="w-40" />;
@@ -32,7 +33,8 @@ function UnitPicker({ value, onChange }: { value: string; onChange: (v: string) 
       <SelectTrigger className="w-36"><SelectValue placeholder="All Units" /></SelectTrigger>
       <SelectContent>
         <SelectItem value="all">All Units</SelectItem>
-        {activeUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+        <SelectItem value={PENDING_UNIT_ASSIGNMENT}>Pending Unit</SelectItem>
+        {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
       </SelectContent>
     </Select>
   );
