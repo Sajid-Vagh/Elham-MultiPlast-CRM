@@ -2,12 +2,13 @@ import { Router, type IRouter } from "express";
 import { db, contactsTable, dealsTable, usersTable, activitiesTable, CATEGORIES, DEAL_STAGES } from "@workspace/db";
 import { eq, inArray, and } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
+import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 
 const router: IRouter = Router();
 
 function filterContactsByUnit(contacts: (typeof contactsTable.$inferSelect)[], unit: string | undefined) {
   if (!unit) return contacts;
-  if (unit === "To Be Assigned") {
+  if (unit === PENDING_UNIT_ASSIGNMENT) {
     return contacts.filter(c => !c.unit);
   }
   return contacts.filter(c => c.unit === unit);
@@ -83,7 +84,7 @@ router.get("/dashboard/kpi", async (req, res) => {
 
     const unitStats: Record<string, number> = {};
     for (const c of filteredContacts) {
-      const u = c.unit || "To Be Assigned";
+      const u = c.unit || PENDING_UNIT_ASSIGNMENT;
       unitStats[u] = (unitStats[u] || 0) + 1;
     }
 

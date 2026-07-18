@@ -3,12 +3,13 @@ import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsT
 import { eq, and, gte, sql, inArray, or, isNull } from "drizzle-orm";
 import { GetPipelineReportQueryParams, GetReportByOwnerQueryParams, GetReportByProductQueryParams, GetReportByCityQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
+import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 
 const router: IRouter = Router();
 
 function filterContactsByUnit(contacts: any[], unit: string | undefined) {
   if (!unit) return contacts;
-  if (unit === "To Be Assigned") {
+  if (unit === PENDING_UNIT_ASSIGNMENT) {
     return contacts.filter(c => !c.unit);
   }
   return contacts.filter(c => c.unit === unit);
@@ -21,7 +22,7 @@ function filterDealsByUnit(deals: any[], unit: string | undefined, allContacts: 
 }
 
 async function getUnitContactIds(unit: string): Promise<Set<number>> {
-  if (unit === "To Be Assigned") {
+  if (unit === PENDING_UNIT_ASSIGNMENT) {
     const contacts = await db.select().from(contactsTable).where(isNull(contactsTable.unit));
     return new Set(contacts.map(c => c.id));
   }
@@ -370,8 +371,8 @@ router.get("/reports/lost-reasons/detail", async (req, res) => {
       }
       if (params.data.unit) {
         let unitContactIds: Set<number>;
-        if (params.data.unit === "To Be Assigned") {
-          unitContactIds = new Set(allContacts.filter(c => !c.unit || c.unit === "To Be Assigned" || c.unit.trim() === "").map(c => c.id));
+        if (params.data.unit === PENDING_UNIT_ASSIGNMENT) {
+          unitContactIds = new Set(allContacts.filter(c => !c.unit || c.unit === PENDING_UNIT_ASSIGNMENT || c.unit.trim() === "").map(c => c.id));
         } else {
           unitContactIds = new Set(allContacts.filter(c => c.unit === params.data.unit).map(c => c.id));
         }

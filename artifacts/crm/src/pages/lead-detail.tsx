@@ -27,6 +27,7 @@ import { DocumentUploadDialog } from "@/components/document-upload-dialog";
 import { ScheduleFollowUpDialog } from "@/components/schedule-follow-up-dialog";
 import { PiSentDialog } from "@/components/pi-sent-dialog";
 import { STAGE_BADGE_COLORS } from "@/lib/deal-stages";
+import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { onContactChange, onDealChange, onActivityChange } from "@/lib/query-invalidation";
 
 const TIMELINE_ICONS: Record<string, { bg: string; icon: string }> = {

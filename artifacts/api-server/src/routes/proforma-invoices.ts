@@ -11,6 +11,7 @@ import { getActivePiForDeal, deactivateActivePis, getNextPiVersion } from "../li
 import { notifyProductionUsers } from "../lib/notification-service";
 import { logPiActivity, logActivity, formatTimestamp } from "../lib/activity-logger";
 import { canModifyInvoice } from "../lib/permission-service";
+import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 
 const router: IRouter = Router();
 
@@ -1637,8 +1638,8 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
           const remarksLine = productionRemarks ? `\nRemarks: ${productionRemarks}` : "";
 
           // Notify production users based on unit permissions (single shared helper)
-          // Only send notification if a real production unit is assigned (not "To Be Assigned")
-          const notifyUnit = productionUnit && productionUnit !== "To Be Assigned" ? productionUnit : null;
+          // Only send notification if a real production unit is assigned (not PENDING_UNIT_ASSIGNMENT)
+          const notifyUnit = productionUnit && productionUnit !== PENDING_UNIT_ASSIGNMENT ? productionUnit : null;
           if (notifyUnit) {
             await notifyProductionUsers({
               productionUnit: notifyUnit,

@@ -6,6 +6,7 @@ import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
 import { getAccessibleUnits } from "../lib/unit-filter";
+import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 
 const router: IRouter = Router();
 
@@ -44,7 +45,7 @@ router.get("/contacts", async (req, res) => {
       if (params.data.salesOwnerId && isAdmin) conditions.push(eq(contactsTable.salesOwnerId, params.data.salesOwnerId));
       if (params.data.city) conditions.push(ilike(contactsTable.city, `%${params.data.city}%`));
       if (params.data.unit) {
-        if (params.data.unit === "To Be Assigned") {
+        if (params.data.unit === PENDING_UNIT_ASSIGNMENT) {
           // Filter contacts where unit is null (pending assignment)
           conditions.push(isNull(contactsTable.unit));
         } else {
@@ -379,7 +380,7 @@ router.patch("/contacts/:id", async (req, res) => {
     const newUnit = parsed.data.unit;
     if (newUnit !== undefined) {
       const oldUnit = oldContact.unit || null;
-      const normalizedNew = newUnit === "" || newUnit === "To Be Assigned" ? null : newUnit;
+      const normalizedNew = newUnit === "" || newUnit === PENDING_UNIT_ASSIGNMENT ? null : newUnit;
       if (oldUnit !== normalizedNew) {
         await db.insert(unitHistoryTable).values({
           contactId: params.data.id,
@@ -837,8 +838,8 @@ router.get("/contacts/:id/timeline", async (req, res) => {
       .where(eq(unitHistoryTable.contactId, id))
       .orderBy(desc(unitHistoryTable.createdAt));
     for (const u of unitHist.reverse()) {
-      const from = u.previousUnit || "To Be Assigned";
-      const to = u.newUnit || "To Be Assigned";
+      const from = u.previousUnit || PENDING_UNIT_ASSIGNMENT;
+      const to = u.newUnit || PENDING_UNIT_ASSIGNMENT;
       timeline.push({
         type: "unit_change",
         description: `Production Unit changed from "${from}" to "${to}"`,

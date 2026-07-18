@@ -18,6 +18,7 @@ import { DEAL_STAGES, STAGE_PROBS, STAGE_BADGE_COLORS } from "@/lib/deal-stages"
 import { onDealChange, onActivityChange } from "@/lib/query-invalidation";
 import { Pencil, Phone, Calendar, ExternalLink, Clock, CheckCircle2, X, MessageSquare } from "lucide-react";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
+import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { Link } from "wouter";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 
@@ -232,7 +233,7 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
                     {contact?.mobile && <div><span className="text-muted-foreground">Mobile</span><p className="font-medium">{contact.mobile}</p></div>}
                     {contact?.email && <div><span className="text-muted-foreground">Email</span><p className="font-medium truncate">{contact.email}</p></div>}
                     {contact?.city && <div><span className="text-muted-foreground">City</span><p className="font-medium">{contact.city}</p></div>}
-                    <div><span className="text-muted-foreground">Unit</span><p className="font-medium">{contact?.unit || "To Be Assigned"}</p></div>
+                    <div><span className="text-muted-foreground">Unit</span><p className="font-medium">{contact?.unit || PENDING_UNIT_ASSIGNMENT}</p></div>
                   </div>
                 </div>
 

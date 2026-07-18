@@ -16,6 +16,7 @@ import { convertContactToMyClient, checkNoExistingOrder, getTodayWonCount, valid
 import { notifyProductionUsers } from "../lib/notification-service";
 import { logActivity, logDealStageActivity, formatTimestamp } from "../lib/activity-logger";
 import { canAccessSalesResource } from "../lib/permission-service";
+import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 
 const router: IRouter = Router();
 
@@ -99,7 +100,7 @@ router.get("/deals", async (req, res) => {
     }
 
     if (params.success && params.data.unit) {
-      if (params.data.unit === "To Be Assigned") {
+      if (params.data.unit === PENDING_UNIT_ASSIGNMENT) {
         // Filter deals where contact unit is null (pending assignment)
         const pendingUnitContacts = new Set(
           contacts.filter(c => !c.unit).map(c => c.id)
