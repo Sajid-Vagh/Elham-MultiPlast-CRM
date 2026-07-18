@@ -26,6 +26,8 @@ import { PiSentDialog } from "@/components/pi-sent-dialog";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { PENDING_UNIT_ASSIGNMENT, isPendingUnit } from "@/lib/unit-constants";
+import { VoiceRecorder } from "@/components/voice-recorder";
+import { Mic } from "lucide-react";
 
 const PI_STATUS_COLORS: Record<string, string> = {
   "No PI": "bg-gray-100 text-gray-500 border-gray-200",
@@ -164,6 +166,14 @@ export default function Deals() {
   const [wonDealForCelebration, setWonDealForCelebration] = useState<Deal | null>(null);
   const [wonTodayCount, setWonTodayCount] = useState(1);
 
+  // Voice note state
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
+  const [voiceNoteBlob, setVoiceNoteBlob] = useState<Blob | null>(null);
+  const [voiceNoteTranscript, setVoiceNoteTranscript] = useState("");
+  const [voiceNoteDurationMs, setVoiceNoteDurationMs] = useState(0);
+  const [voiceNoteId, setVoiceNoteId] = useState<number | null>(null);
+  const [voiceNoteUploading, setVoiceNoteUploading] = useState(false);
+
   // Lost reason flow
   const [lostDeal, setLostDeal] = useState<Deal | null>(null);
   const [lostSubmitting, setLostSubmitting] = useState(false);
@@ -202,6 +212,11 @@ export default function Deals() {
     setWonProductionNotes("");
     setWonSalesNotes("");
     setWonUnitReason("");
+    setShowVoiceRecorder(false);
+    setVoiceNoteBlob(null);
+    setVoiceNoteTranscript("");
+    setVoiceNoteDurationMs(0);
+    setVoiceNoteId(null);
   };
 
   const handleMarkWonSubmit = async () => {
@@ -217,6 +232,29 @@ export default function Deals() {
     }
     setWonSubmitting(true);
     try {
+      // Upload voice note first if recorded
+      let finalVoiceNoteId = voiceNoteId;
+      if (voiceNoteBlob && !voiceNoteId) {
+        setVoiceNoteUploading(true);
+        const formData = new FormData();
+        formData.append("file", voiceNoteBlob, `voice-note-${Date.now()}.webm`);
+        formData.append("dealId", String(markWonDeal.deal.id));
+        if (voiceNoteTranscript) formData.append("transcript", voiceNoteTranscript);
+        if (voiceNoteDurationMs) formData.append("durationMs", String(voiceNoteDurationMs));
+
+        const token = localStorage.getItem("crm_token");
+        const uploadRes = await fetch("/api/voice-notes", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+        if (!uploadRes.ok) throw new Error("Voice note upload failed");
+        const uploadData = await uploadRes.json();
+        finalVoiceNoteId = uploadData.id;
+        setVoiceNoteId(uploadData.id);
+        setVoiceNoteUploading(false);
+      }
+
       const result = await customFetch<any>(`/deals/${markWonDeal.deal.id}/mark-won`, {
         method: "POST",
         body: JSON.stringify({
@@ -225,6 +263,7 @@ export default function Deals() {
           productionNotes: wonProductionNotes || null,
           salesNotes: wonSalesNotes || null,
           unitChangeReason: wonUnitReason || null,
+          voiceNoteId: finalVoiceNoteId || null,
         }),
       });
       setWonSubmitting(false);
@@ -234,6 +273,11 @@ export default function Deals() {
       setWonProductionNotes("");
       setWonSalesNotes("");
       setWonUnitReason("");
+      setShowVoiceRecorder(false);
+      setVoiceNoteBlob(null);
+      setVoiceNoteTranscript("");
+      setVoiceNoteDurationMs(0);
+      setVoiceNoteId(null);
       setOptimisticStages(prev => { const n = { ...prev }; delete n[markWonDeal.deal.id]; return n; });
       onDealChange(queryClient, markWonDeal.deal.id, markWonDeal.deal.contactId);
       onProductionChange(queryClient);
@@ -251,6 +295,7 @@ export default function Deals() {
       }
     } catch (err: any) {
       setWonSubmitting(false);
+      setVoiceNoteUploading(false);
       toast({ title: "Error", description: err?.message || "Failed to mark deal as Won", variant: "destructive" });
     }
   };
@@ -607,6 +652,58 @@ export default function Deals() {
                 className="mt-1"
               />
             </div>
+            <div className="border rounded-lg p-3 bg-muted/20">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-sm font-medium flex items-center gap-1.5">
+                    <Mic className="h-3.5 w-3.5" /> Voice Note (Optional)
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Record a message for the Production team
+                  </p>
+                </div>
+                {!showVoiceRecorder && !voiceNoteBlob && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowVoiceRecorder(true)}
+                    className="text-xs gap-1"
+                  >
+                    <Mic className="h-3 w-3" /> Record
+                  </Button>
+                )}
+                {voiceNoteBlob && !showVoiceRecorder && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-green-600 font-medium">✓ Voice note recorded</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setVoiceNoteBlob(null);
+                        setVoiceNoteTranscript("");
+                        setVoiceNoteDurationMs(0);
+                      }}
+                      className="text-xs text-destructive h-7"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {showVoiceRecorder && (
+                <div className="mt-2">
+                  <VoiceRecorder
+                    onRecordingComplete={(blob, transcript, durationMs) => {
+                      setVoiceNoteBlob(blob);
+                      setVoiceNoteTranscript(transcript);
+                      setVoiceNoteDurationMs(durationMs);
+                      setShowVoiceRecorder(false);
+                    }}
+                    onCancel={() => setShowVoiceRecorder(false)}
+                  />
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={handleMarkWonCancel} disabled={wonSubmitting}>
@@ -615,10 +712,10 @@ export default function Deals() {
             <Button
               className="bg-green-600 text-white hover:bg-green-700"
               onClick={handleMarkWonSubmit}
-              disabled={wonSubmitting || !wonAmount || Number(wonAmount) <= 0 || !wonProductionUnit}
+              disabled={wonSubmitting || voiceNoteUploading || !wonAmount || Number(wonAmount) <= 0 || !wonProductionUnit}
             >
-              {wonSubmitting ? (
-                <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Processing...</>
+              {wonSubmitting || voiceNoteUploading ? (
+                <><Loader2 className="h-4 w-4 animate-spin mr-2" /> {voiceNoteUploading ? "Uploading voice note..." : "Processing..."}</>
               ) : (
                 "Confirm — Mark as Won"
               )}

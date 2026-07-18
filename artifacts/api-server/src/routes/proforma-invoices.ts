@@ -867,6 +867,26 @@ router.post("/proforma-invoices", async (req, res) => {
       });
     }
 
+    // Auto-update deal stage to "PI Sent" ONLY when PI is created with status="Sent" ("Generate & Send")
+    // When status="Draft" ("Save Draft"), deal stays in its current stage
+    const PI_SENT_STAGES = ["New", "CL Sent", "Price Given", "Samples Sent", "Samples Received"];
+    let dealStageUpdated = false;
+    if (resolvedDealId && (status || "Draft") === "Sent") {
+      const [currentDeal] = await db.select().from(dealsTable).where(eq(dealsTable.id, resolvedDealId));
+      if (currentDeal && PI_SENT_STAGES.includes(currentDeal.stage)) {
+        await db.update(dealsTable).set({ stage: "PI Sent", probability: 80, updatedAt: new Date() }).where(eq(dealsTable.id, resolvedDealId));
+        dealStageUpdated = true;
+        // Log stage change activity
+        await db.insert(activitiesTable).values({
+          dealId: resolvedDealId,
+          contactId: resolvedContactId,
+          type: "Note",
+          notes: `Deal moved to PI Sent (Proforma Invoice ${finalInvoiceNumber} generated & sent)`,
+          createdBy: user.id,
+        });
+      }
+    }
+
     // Notify sales owner and admins about new invoice
     if (resolvedSalesOwnerId && resolvedSalesOwnerId !== user.id) {
       await createNotification({
@@ -880,7 +900,8 @@ router.post("/proforma-invoices", async (req, res) => {
       });
     }
 
-    res.status(201).json(await enrichInvoice(invoice!));
+    const response = await enrichInvoice(invoice!);
+    res.status(201).json({ ...response, dealStageUpdated });
   } catch (err) {
     req.log.error({ err }, "Create proforma invoice error");
     res.status(500).json({ error: "Internal server error" });
@@ -1365,6 +1386,12 @@ async function updateInvoiceHandler(req: any, res: any) {
     if (amountInWords !== undefined) updateData.amountInWords = amountInWords;
     if (notes !== undefined) updateData.notes = notes;
 
+    // Handle status transition: Draft → Sent ("Update & Send" in edit mode)
+    const requestedStatus = req.body.status;
+    if (requestedStatus && requestedStatus === "Sent" && existing.status === "Draft") {
+      updateData.status = "Sent";
+    }
+
     if (Object.keys(updateData).length > 0) {
       await db
         .update(proformaInvoicesTable)
@@ -1422,6 +1449,22 @@ async function updateInvoiceHandler(req: any, res: any) {
       const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, contactId));
       if (contact && !updateData.salesOwnerId) {
         await db.update(proformaInvoicesTable).set({ salesOwnerId: contact.salesOwnerId }).where(eq(proformaInvoicesTable.id, id));
+      }
+    }
+
+    // When status transitions Draft → Sent ("Update & Send"), auto-update deal stage to PI Sent
+    if (existing.dealId && updateData.status === "Sent" && existing.status === "Draft") {
+      const PI_SENT_STAGES = ["New", "CL Sent", "Price Given", "Samples Sent", "Samples Received"];
+      const [currentDeal] = await db.select().from(dealsTable).where(eq(dealsTable.id, existing.dealId));
+      if (currentDeal && PI_SENT_STAGES.includes(currentDeal.stage)) {
+        await db.update(dealsTable).set({ stage: "PI Sent", probability: 80, updatedAt: new Date() }).where(eq(dealsTable.id, existing.dealId));
+        await db.insert(activitiesTable).values({
+          dealId: existing.dealId,
+          contactId: existing.contactId,
+          type: "Note",
+          notes: `Deal moved to PI Sent (Proforma Invoice ${existing.invoiceNumber} generated & sent)`,
+          createdBy: user.id,
+        });
       }
     }
 
@@ -1584,6 +1627,22 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
           contactId: invoice.contactId,
           type: "Note",
           notes: activityNote,
+          createdBy: user.id,
+        });
+      }
+    }
+
+    // When PI status transitions TO "Sent", auto-update deal stage to PI Sent (if not already there)
+    if (invoice.dealId && status === "Sent" && prevStatus === "Draft") {
+      const PI_SENT_STAGES = ["New", "CL Sent", "Price Given", "Samples Sent", "Samples Received"];
+      const [currentDeal] = await db.select().from(dealsTable).where(eq(dealsTable.id, invoice.dealId));
+      if (currentDeal && PI_SENT_STAGES.includes(currentDeal.stage)) {
+        await db.update(dealsTable).set({ stage: "PI Sent", probability: 80, updatedAt: new Date() }).where(eq(dealsTable.id, invoice.dealId));
+        await db.insert(activitiesTable).values({
+          dealId: invoice.dealId,
+          contactId: invoice.contactId,
+          type: "Note",
+          notes: `Deal moved to PI Sent (Proforma Invoice ${invoice.invoiceNumber} sent to customer)`,
           createdBy: user.id,
         });
       }

@@ -20,6 +20,8 @@ export const dealsTable = pgTable("deals", {
   category: text("category").notNull().default("Category A"),
   convertedToClient: boolean("converted_to_client").default(false),
   convertedAt: timestamp("converted_at", { withTimezone: true }),
+  wonAt: timestamp("won_at", { withTimezone: true }),
+  lostAt: timestamp("lost_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

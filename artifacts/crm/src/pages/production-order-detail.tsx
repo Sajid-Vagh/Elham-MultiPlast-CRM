@@ -19,6 +19,7 @@ import { onProductionChange } from "@/lib/query-invalidation";
 import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Upload, CheckCircle, ArrowRightLeft, Play, XCircle, Calendar, AlertTriangle, Eye } from "lucide-react";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import { VoiceNoteList } from "@/components/voice-note-player";
 
 const STATUSES = [
   "Pending", "Accepted", "Planning", "Machine Running",
@@ -414,6 +415,23 @@ export default function ProductionOrderDetail() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Voice Note from Sales */}
+          {(order.dealId || order.id) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Voice Note from Sales</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <VoiceNoteList
+                  dealId={order.dealId}
+                  productionOrderId={order.id}
+                  currentUserId={user?.id || 0}
+                  userRole={user?.role || ""}
+                />
+              </CardContent>
+            </Card>
+          )}
 
           {order.items && order.items.length > 0 && (
             <Card>

@@ -698,7 +698,7 @@ export default function LeadDetail() {
                 <Link href={`/proforma-invoices?contactId=${contactId}`}>
                   <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={(e) => {
                     e.preventDefault();
-                    window.location.href = `/proforma-invoices?contactId=${contactId}`;
+                    setLocation(`/proforma-invoices?contactId=${contactId}`);
                   }}>View All</Button>
                 </Link>
               </div>
@@ -743,7 +743,7 @@ export default function LeadDetail() {
                 <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setDealDialogOpen(true)}>
                   <Plus className="h-3.5 w-3.5 shrink-0" /> Create Deal
                 </Button>
-                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => window.location.href = `/proforma-invoices?contactId=${contactId}`}>
+                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setLocation(`/proforma-invoices?contactId=${contactId}`)}>
                   <FileText className="h-3.5 w-3.5 shrink-0" /> Proforma Invoice
                 </Button>
                 <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setUploadDocOpen(true)}>

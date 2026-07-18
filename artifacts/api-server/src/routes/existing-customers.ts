@@ -712,8 +712,13 @@ router.post("/existing-customers/:id/follow-ups", async (req, res) => {
     if (!access) return;
     const { user, ec } = access;
 
-    // Find or create a deal for the contact to link the activity
-    let [deal] = await db.select().from(dealsTable).where(eq(dealsTable.contactId, ec.contactId)).limit(1);
+    // Find or create an active deal for the contact to link the activity
+    // Always prefer the most recently updated active deal (not Won, not Lost)
+    let [deal] = await db.select().from(dealsTable).where(and(
+      eq(dealsTable.contactId, ec.contactId),
+      isNull(dealsTable.wonAt),
+      isNull(dealsTable.lostAt),
+    )).orderBy(desc(dealsTable.updatedAt)).limit(1);
     if (!deal) {
       const contact = await db.select().from(contactsTable).where(eq(contactsTable.id, ec.contactId)).then(r => r[0]);
       [deal] = await db.insert(dealsTable).values({

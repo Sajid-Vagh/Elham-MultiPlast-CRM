@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetMe, searchContactByMobile } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ProductionProgressSection } from "@/components/production-progress";
+import { onPIChange, onDealChange } from "@/lib/query-invalidation";
 const STATUS_COLORS: Record<string, string> = {
   "Draft": "bg-gray-100 text-gray-700",
   "Sent": "bg-blue-100 text-blue-700",
@@ -92,6 +93,7 @@ export default function ProformaInvoicesPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { data: me } = useGetMe();
+  const queryClient = useQueryClient();
   const token = localStorage.getItem("crm_token");
   const urlContactId = (() => {
     if (typeof window === "undefined") return null;
@@ -945,6 +947,12 @@ export default function ProformaInvoicesPage() {
       setSelectedInvoice(invoice);
       setMode("detail");
       fetchInvoices();
+
+      // Invalidate all related caches so Pipeline, Lead Detail, Customer History, PI List refresh
+      const dealId = selectedDeal?.id || urlDealId;
+      const contactIdForInvalidation = selectedLead?.id || urlContactId;
+      onPIChange(queryClient, dealId || undefined, contactIdForInvalidation || undefined);
+      if (dealId) onDealChange(queryClient, dealId, contactIdForInvalidation || undefined);
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to save invoice", variant: "destructive" });
     } finally {
@@ -1056,6 +1064,7 @@ export default function ProformaInvoicesPage() {
         fetchInvoices();
         setSelectedInvoice(newInv);
         setMode("detail");
+        onPIChange(queryClient, invoice.dealId || undefined, invoice.contactId || undefined);
       } else {
         const err = await res.json().catch(() => ({}));
         toast({ title: "Error", description: err.error || "Failed to duplicate", variant: "destructive" });
@@ -1079,6 +1088,7 @@ export default function ProformaInvoicesPage() {
         setMode("list");
         setShowPdfPreview(false);
         fetchInvoices();
+        onPIChange(queryClient, invoice.dealId || undefined, invoice.contactId || undefined);
       } else {
         const err = await res.json().catch(() => ({}));
         toast({ title: "Error", description: err.error || "Failed to delete", variant: "destructive" });
@@ -1113,6 +1123,7 @@ export default function ProformaInvoicesPage() {
         setNewStatus("");
         setStatusNotes("");
         fetchInvoices();
+        onPIChange(queryClient, statusDialog.invoice.dealId || undefined, statusDialog.invoice.contactId || undefined);
         if (mode === "detail") {
           const updated = await res.json();
           setSelectedInvoice(updated);
@@ -1626,14 +1637,27 @@ ${pagesHtml}
             {dealSelectOpen && activeDeals.length > 1 && (
               <div className="sm:col-span-2">
                 <Label>Select Active Deal <span className="text-destructive">*</span></Label>
+                <p className="text-xs text-muted-foreground mt-0.5">Multiple active deals found for this contact. Select one to attach the Proforma Invoice.</p>
                 <div className="space-y-2 mt-1">
                   {activeDeals.map((d: any) => (
                     <div key={d.id} className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${selectedDeal?.id === d.id ? "border-blue-500 bg-blue-50" : "hover:bg-muted/50"}`} onClick={() => { setSelectedDeal(d); setDealSelectOpen(false); }}>
-                      <div>
-                        <span className="text-sm font-medium">Deal #{d.id}</span>
-                        {d.title && <span className="text-xs text-muted-foreground ml-2">{d.title}</span>}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">Deal #{d.id}</span>
+                          <Badge variant="outline" className="text-xs">{d.stage}</Badge>
+                          {d.totalValue ? <span className="text-xs text-muted-foreground">₹{Number(d.totalValue).toLocaleString("en-IN")}</span> : null}
+                        </div>
+                        {d.title && <p className="text-xs text-muted-foreground mt-0.5 truncate">{d.title}</p>}
                       </div>
-                      <Badge variant="outline" className="text-xs">{d.stage}</Badge>
+                      <div className="ml-3 shrink-0">
+                        {d.activeProformaInvoice ? (
+                          <Badge className={`text-[10px] px-1.5 py-0 ${d.activeProformaInvoice.status === "Sent" ? "bg-blue-100 text-blue-700" : d.activeProformaInvoice.status === "Approved" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+                            PI: {d.activeProformaInvoice.invoiceNumber} ({d.activeProformaInvoice.status})
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground">No PI</Badge>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

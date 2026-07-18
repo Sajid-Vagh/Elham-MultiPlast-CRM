@@ -9,6 +9,7 @@ import {
   getListProductsQueryKey,
   getListUsersQueryKey,
   getGetMeQueryKey,
+  getListContactProformaInvoicesQueryKey,
 } from "@workspace/api-client-react";
 
 export function onContactChange(queryClient: QueryClient, contactId?: number) {
@@ -113,6 +114,7 @@ export function onPIChange(queryClient: QueryClient, dealId?: number, contactId?
   queryClient.invalidateQueries({ queryKey: ["proforma-invoices"] });
   queryClient.invalidateQueries({ queryKey: ["global-search"] });
   queryClient.invalidateQueries({ queryKey: ["dashboard-kpi"] });
+  queryClient.invalidateQueries({ queryKey: ["dashboard-sales-performance"] });
   queryClient.invalidateQueries({ queryKey: ["dashboard-recent-activities"] });
   if (dealId) {
     queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) });
@@ -122,6 +124,7 @@ export function onPIChange(queryClient: QueryClient, dealId?: number, contactId?
     queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
     queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
     queryClient.invalidateQueries({ queryKey: ["deal-info", contactId] });
+    queryClient.invalidateQueries({ queryKey: getListContactProformaInvoicesQueryKey(contactId) });
   }
 }
 

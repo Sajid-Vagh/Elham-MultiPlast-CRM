@@ -31,6 +31,7 @@ import transportLogisticsRouter from "./transport-logistics";
 import transportMastersRouter from "./transport-masters";
 import unitsRouter from "./units";
 import inventoryRouter from "./inventory";
+import voiceNotesRouter from "./voice-notes";
 
 const router: IRouter = Router();
 
@@ -65,6 +66,7 @@ router.use(transportLogisticsRouter);
 router.use(transportMastersRouter);
 router.use(unitsRouter);
 router.use(inventoryRouter);
+router.use(voiceNotesRouter);
 router.use("/exports", exportsRouter);
 
 export default router;

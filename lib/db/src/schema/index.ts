@@ -32,3 +32,4 @@ export * from "./units";
 export * from "./unit_history";
 export * from "./inventory";
 export * from "./import_batches";
+export * from "./voice-notes";

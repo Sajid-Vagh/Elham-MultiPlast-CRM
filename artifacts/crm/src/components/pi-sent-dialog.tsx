@@ -1,5 +1,6 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useLocation } from "wouter";
 
 interface PiSentDialogProps {
   open: boolean;
@@ -9,6 +10,7 @@ interface PiSentDialogProps {
 }
 
 export function PiSentDialog({ open, onOpenChange, contactId, dealId }: PiSentDialogProps) {
+  const [, navigate] = useLocation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -25,7 +27,7 @@ export function PiSentDialog({ open, onOpenChange, contactId, dealId }: PiSentDi
             const params = new URLSearchParams();
             if (contactId) params.set("contactId", String(contactId));
             if (dealId) params.set("dealId", String(dealId));
-            window.location.href = `/proforma-invoices${params.toString() ? `?${params.toString()}` : ""}`;
+            navigate(`/proforma-invoices${params.toString() ? `?${params.toString()}` : ""}`);
           }}>Create Proforma</Button>
         </DialogFooter>
       </DialogContent>

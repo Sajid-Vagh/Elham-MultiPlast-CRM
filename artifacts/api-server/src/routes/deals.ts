@@ -462,7 +462,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
     const dealId = Number(req.params.id);
     if (isNaN(dealId)) { res.status(400).json({ error: "Invalid deal id" }); return; }
 
-    const { wonAmount, productionUnit, productionNotes, salesNotes, unitChangeReason } = req.body as Record<string, any>;
+    const { wonAmount, productionUnit, productionNotes, salesNotes, unitChangeReason, voiceNoteId } = req.body as Record<string, any>;
 
     // Unified validation — single source of truth for both PATCH and mark-won
     const validation = await validateWonPrerequisites({
@@ -635,6 +635,15 @@ router.post("/deals/:id/mark-won", async (req, res) => {
         }
       }
 
+      // 5b. Link voice note to production order (if provided)
+      if (voiceNoteId && productionOrder) {
+        const { voiceNotesTable } = await import("@workspace/db");
+        await tx.update(voiceNotesTable).set({
+          productionOrderId: productionOrder.id,
+          proformaInvoiceId: latestPI?.id || null,
+        }).where(eq(voiceNotesTable.id, Number(voiceNoteId)));
+      }
+
       // 6. Update Proforma Invoice status → "Converted to Production"
       if (latestPI && latestPI.status !== "Converted to Production" && latestPI.status !== "Converted to Order") {
         await tx.update(proformaInvoicesTable).set({
@@ -650,6 +659,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
         productionOrder ? `Production Order Created — Unit: ${productionUnit}\n\nBy: ${user.name}\n${ts}` : null,
         `Production Unit Assigned — ${productionUnit}\n\nBy: ${user.name}\n${ts}`,
         productionNotes ? `Production Notes Added — ${productionNotes}\n\nBy: ${user.name}\n${ts}` : null,
+        voiceNoteId ? `Voice Note Attached — sent by ${user.name} with Deal Won\n\nDuration: see attached audio\n${ts}` : null,
       ].filter(Boolean);
 
       for (const notes of activityEntries) {

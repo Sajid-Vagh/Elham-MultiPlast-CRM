@@ -409,11 +409,16 @@ router.patch("/contacts/:id", async (req, res) => {
           .where(inArray(dealsTable.id, contactDeals.map(d => d.id)));
       }
 
-      // Find and complete pending follow-ups via deal relation
+      // Find and complete pending follow-ups via active deal relation (not Won/Lost)
       const [existingDeal] = await db
         .select({ id: dealsTable.id })
         .from(dealsTable)
-        .where(eq(dealsTable.contactId, contact.id))
+        .where(and(
+          eq(dealsTable.contactId, contact.id),
+          isNull(dealsTable.wonAt),
+          isNull(dealsTable.lostAt),
+        ))
+        .orderBy(desc(dealsTable.updatedAt))
         .limit(1);
 
       if (existingDeal) {
@@ -475,7 +480,12 @@ router.patch("/contacts/:id", async (req, res) => {
       const [existingDeal] = await db
         .select({ id: dealsTable.id })
         .from(dealsTable)
-        .where(eq(dealsTable.contactId, contact.id))
+        .where(and(
+          eq(dealsTable.contactId, contact.id),
+          isNull(dealsTable.wonAt),
+          isNull(dealsTable.lostAt),
+        ))
+        .orderBy(desc(dealsTable.updatedAt))
         .limit(1);
       const dealId = existingDeal?.id;
       if (dealId) {
@@ -1034,7 +1044,7 @@ router.get("/contacts/:id/proforma-invoices", async (req, res) => {
   }
 });
 
-// GET /contacts/:id/active-deals — return active deals (not Won, not Lost) for a contact
+// GET /contacts/:id/active-deals — return active deals (not Won, not Lost) for a contact, enriched with PI info
 router.get("/contacts/:id/active-deals", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
@@ -1052,8 +1062,17 @@ router.get("/contacts/:id/active-deals", async (req, res) => {
         probability: dealsTable.probability,
         createdAt: dealsTable.createdAt,
         updatedAt: dealsTable.updatedAt,
+        activePiId: proformaInvoicesTable.id,
+        activePiNumber: proformaInvoicesTable.invoiceNumber,
+        activePiStatus: proformaInvoicesTable.status,
+        activePiGrandTotal: proformaInvoicesTable.grandTotal,
       })
       .from(dealsTable)
+      .leftJoin(proformaInvoicesTable, and(
+        eq(proformaInvoicesTable.dealId, dealsTable.id),
+        eq(proformaInvoicesTable.isActive, true),
+        eq(proformaInvoicesTable.isDeleted, false),
+      ))
       .where(and(
         eq(dealsTable.contactId, id),
         isNull(dealsTable.wonAt),
@@ -1061,7 +1080,23 @@ router.get("/contacts/:id/active-deals", async (req, res) => {
       ))
       .orderBy(desc(dealsTable.updatedAt));
 
-    res.json(deals);
+    const enriched = deals.map(d => ({
+      id: d.id,
+      title: d.title,
+      stage: d.stage,
+      totalValue: d.totalValue,
+      probability: d.probability,
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+      activeProformaInvoice: d.activePiId ? {
+        id: d.activePiId,
+        invoiceNumber: d.activePiNumber,
+        status: d.activePiStatus,
+        grandTotal: d.activePiGrandTotal,
+      } : null,
+    }));
+
+    res.json(enriched);
   } catch (err) {
     req.log.error({ err }, "Get active deals error");
     res.status(500).json({ error: "Internal server error" });
