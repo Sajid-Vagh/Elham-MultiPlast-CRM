@@ -38,6 +38,7 @@ import ExistingCustomerDetail from "@/pages/existing-customer-detail";
 import GlobalSearch from "@/pages/global-search";
 import TransportLogistics from "@/pages/transport-logistics";
 import TransportLogisticsLookup from "@/pages/transport-logistics-readonly";
+import MastersPage from "@/pages/masters";
 import Inventory from "@/pages/inventory";
 
 const queryClient = new QueryClient({
@@ -227,7 +228,7 @@ function Router() {
         </ProtectedLayout>
       </Route>
 
-      {/* Transport Logistics */}
+      {/* Transport Logistics (legacy) */}
       <Route path="/transport-logistics/lookup">
         <ProtectedLayout>
           <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><TransportLogisticsLookup /></RoleGuard>
@@ -236,6 +237,13 @@ function Router() {
       <Route path="/transport-logistics">
         <ProtectedLayout>
           <RoleGuard allowedRoles={SUPPORT_ROLES}><TransportLogistics /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+
+      {/* Masters page (transport, packing, import) */}
+      <Route path="/masters">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={[...SUPPORT_ROLES, "production", "inventory"]}><MastersPage /></RoleGuard>
         </ProtectedLayout>
       </Route>
 

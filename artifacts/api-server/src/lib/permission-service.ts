@@ -148,3 +148,27 @@ export function canAccessUnit(
   if (!resourceUnit) return true; // No unit constraint on resource
   return userUnit === resourceUnit;
 }
+
+/**
+ * Check if a user can manage transport/packing masters (create, edit).
+ * Admin and inventory roles can manage. Sales and production are view-only.
+ */
+export function canManageMaster(user: PermissionUser): boolean {
+  return user.role === "admin" || user.role === "inventory";
+}
+
+/**
+ * Check if a user can import master data.
+ * Admin and inventory roles only.
+ */
+export function canImportMaster(user: PermissionUser): boolean {
+  return user.role === "admin" || user.role === "inventory";
+}
+
+/**
+ * Check if a user can delete master import records.
+ * Admin only.
+ */
+export function canUndoImport(user: PermissionUser): boolean {
+  return user.role === "admin";
+}

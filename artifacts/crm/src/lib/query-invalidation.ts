@@ -124,3 +124,13 @@ export function onPIChange(queryClient: QueryClient, dealId?: number, contactId?
     queryClient.invalidateQueries({ queryKey: ["deal-info", contactId] });
   }
 }
+
+export function onMasterChange(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: ["transport-destinations"] });
+  queryClient.invalidateQueries({ queryKey: ["product-bundles"] });
+  queryClient.invalidateQueries({ queryKey: ["transport-destinations-lookup"] });
+  queryClient.invalidateQueries({ queryKey: ["product-bundles-lookup"] });
+  queryClient.invalidateQueries({ queryKey: ["transport-lookup"] });
+  queryClient.invalidateQueries({ queryKey: ["import-last", "transport_master"] });
+  queryClient.invalidateQueries({ queryKey: ["import-last", "packing_master"] });
+}

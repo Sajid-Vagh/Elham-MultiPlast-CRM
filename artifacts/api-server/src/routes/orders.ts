@@ -115,12 +115,22 @@ router.post("/orders", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { items, ...orderData } = req.body;
+    const { items, transportSnapshot, ...orderData } = req.body;
 
     const orderNumber = await generateId("order");
 
+    // Transport snapshot: preserve master data at time of order
+    const transportSnapshotData: any = {};
+    if (transportSnapshot) {
+      transportSnapshotData.transportMasterId = transportSnapshot.transportMasterId || null;
+      transportSnapshotData.transportCompany = transportSnapshot.transportCompany || null;
+      transportSnapshotData.freightChargeSnapshot = transportSnapshot.freightCharge ? String(transportSnapshot.freightCharge) : null;
+      transportSnapshotData.transitDaysSnapshot = transportSnapshot.transitDays || null;
+    }
+
     const [order] = await db.insert(ordersTable).values({
       ...orderData,
+      ...transportSnapshotData,
       orderNumber,
       createdBy: user.id,
       salesOwnerId: orderData.salesOwnerId || (user.role === "sales" ? user.id : null),
@@ -147,6 +157,11 @@ router.post("/orders", async (req, res) => {
           rate: String(item.rate || 0),
           gstPercent: String(item.gstPercent || 0),
           amount: String(amount),
+          // Packing snapshot per item
+          packingMasterId: item.packingMasterId || null,
+          linerPackingQty: Number(item.linerPackingQty || 0),
+          tciBoraQty: Number(item.tciBoraQty || 0),
+          normalBoraQty: Number(item.normalBoraQty || 0),
         });
       }
     }
@@ -212,7 +227,7 @@ router.patch("/orders/:id", async (req, res) => {
     const [existing] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
     if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
-    const { items, ...updateData } = req.body;
+    const { items, transportSnapshot, ...updateData } = req.body;
 
     // Track status changes for timeline
     if (updateData.status && updateData.status !== existing.status) {
@@ -244,6 +259,14 @@ router.patch("/orders/:id", async (req, res) => {
       }
     }
 
+    // Transport snapshot on update
+    if (transportSnapshot) {
+      updateData.transportMasterId = transportSnapshot.transportMasterId || existing.transportMasterId;
+      updateData.transportCompany = transportSnapshot.transportCompany || existing.transportCompany;
+      updateData.freightChargeSnapshot = transportSnapshot.freightCharge ? String(transportSnapshot.freightCharge) : existing.freightChargeSnapshot;
+      updateData.transitDaysSnapshot = transportSnapshot.transitDays || existing.transitDaysSnapshot;
+    }
+
     // Update order
     const [updated] = await db.update(ordersTable).set({ ...updateData, updatedAt: new Date() }).where(eq(ordersTable.id, id)).returning();
 
@@ -271,6 +294,10 @@ router.patch("/orders/:id", async (req, res) => {
             status: item.status,
             readyQuantity: String(item.readyQuantity || 0),
             dispatchedQuantity: String(item.dispatchedQuantity || 0),
+            packingMasterId: item.packingMasterId || null,
+            linerPackingQty: Number(item.linerPackingQty || 0),
+            tciBoraQty: Number(item.tciBoraQty || 0),
+            normalBoraQty: Number(item.normalBoraQty || 0),
             updatedAt: new Date(),
           }).where(eq(orderItemsTable.id, item.id));
         } else {
@@ -285,6 +312,10 @@ router.patch("/orders/:id", async (req, res) => {
             rate: String(item.rate || 0),
             gstPercent: String(item.gstPercent || 0),
             amount: String(amount),
+            packingMasterId: item.packingMasterId || null,
+            linerPackingQty: Number(item.linerPackingQty || 0),
+            tciBoraQty: Number(item.tciBoraQty || 0),
+            normalBoraQty: Number(item.normalBoraQty || 0),
           });
         }
       }
