@@ -21,11 +21,6 @@ import { useActiveUnits } from "@/lib/use-active-units";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { VoiceNoteList } from "@/components/voice-note-player";
 
-const STATUSES = [
-  "Pending", "Accepted", "Planning", "Machine Running",
-  "Quality Check", "Ready For Dispatch", "Completed", "Cancelled",
-] as const;
-
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
   "Accepted": "bg-blue-100 text-blue-700 border-blue-300",
@@ -313,7 +308,7 @@ export default function ProductionOrderDetail() {
     );
   }
 
-  const isProductionUser = user?.role === "production" || user?.role === "admin";
+  const isProductionUser = user?.role === "production" || user?.role === "production_and_support" || user?.role === "admin";
   const isSupportUser = user?.role === "production_and_support" || user?.role === "admin";
   const isReadyForDispatch = order.status === "Ready For Dispatch";
   const hasDispatch = order.transportName || order.builtyUrl;
@@ -674,9 +669,11 @@ export default function ProductionOrderDetail() {
                     <Play className="h-4 w-4 mr-2" /> Start Production
                   </Button>
                 )}
+                {order?.validNextStatuses && order.validNextStatuses.length > 0 && (
                 <Button className="w-full" onClick={() => setStatusDialogOpen(true)}>
                   Update Status
                 </Button>
+                )}
                 {(user?.role === "admin" || user?.role === "production" || user?.role === "production_and_support") && (
                   <Button className="w-full" variant="outline" onClick={() => setTransferDialogOpen(true)}>
                     <ArrowRightLeft className="h-4 w-4 mr-2" /> Transfer Unit
@@ -784,7 +781,7 @@ export default function ProductionOrderDetail() {
               <Select value={newStatus} onValueChange={setNewStatus}>
                 <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
                 <SelectContent>
-                  {STATUSES.map((s) => (
+                  {(order.validNextStatuses || []).map((s: string) => (
                     <SelectItem key={s} value={s}>{s}</SelectItem>
                   ))}
                 </SelectContent>

@@ -506,7 +506,7 @@ export async function handlePiModification(
   }
 
   // Ready For Dispatch: notify but don't auto-sync
-  if (order.status === "Ready for Dispatch" || order.status === "Partially Dispatched") {
+  if (order.status === "Ready For Dispatch") {
     await addTimelineEntry(db, productionOrderId, order.status, `PI modified to Version ${newPiVersion}. Dispatch stage — review required.`, user.id);
     await notifyProductionUsers({
       productionUnit: order.productionUnit || "Himatnagar",
