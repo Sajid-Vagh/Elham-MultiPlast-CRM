@@ -221,6 +221,50 @@ router.get("/deals/:id", async (req, res) => {
   }
 });
 
+// ── Validate Won prerequisites (lightweight check before opening Won dialog) ──
+// Checks the deal's Active Proforma Invoice directly — never depends on paginated data.
+router.get("/deals/:id/validate-won", async (req, res) => {
+  try {
+    const parsed = GetDealParams.safeParse({ id: Number(req.params.id) });
+    if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, parsed.data.id));
+    if (!deal) { res.status(404).json({ error: "Deal not found" }); return; }
+
+    if (user.role === "sales" && deal.salesOwnerId !== user.id) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+
+    const activePi = await getActivePiForDeal(db, parsed.data.id);
+    if (!activePi) {
+      res.json({ valid: false, error: "This Deal requires an Active Sent/Approved Proforma Invoice before it can be marked Won." });
+      return;
+    }
+
+    if (activePi.status !== "Sent" && activePi.status !== "Approved") {
+      res.json({ valid: false, error: `This Deal requires an Active Sent/Approved Proforma Invoice before it can be marked Won. Current PI status: "${activePi.status}".` });
+      return;
+    }
+
+    res.json({
+      valid: true,
+      pi: {
+        id: activePi.id,
+        invoiceNumber: activePi.invoiceNumber,
+        status: activePi.status,
+        taxableAmount: activePi.taxableAmount,
+        grandTotal: activePi.grandTotal,
+      },
+    });
+  } catch (err) {
+    req.log.error({ err }, "Validate won error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.patch("/deals/:id", async (req, res) => {
   const params = UpdateDealParams.safeParse({ id: Number(req.params.id) });
   if (!params.success) { res.status(400).json({ error: "Invalid id" }); return; }

@@ -344,19 +344,18 @@ export default function Deals() {
     const oldStage = deal?.stage as string | undefined;
     if (!newStage || !deal || !oldStage || oldStage === newStage) return;
 
-    // Intercept WON drops — check for Proforma Invoice first (hard block if missing)
+    // Intercept WON drops — validate Active Sent/Approved PI directly from backend
     if (newStage === "Won") {
       setOptimisticStages(prev => ({ ...prev, [dealId]: "Won" }));
       const token = localStorage.getItem("crm_token");
-      fetch(`/api/proforma-invoices`, {
+      fetch(`/api/deals/${dealId}/validate-won`, {
         headers: { Authorization: `Bearer ${token}` },
       })
-        .then(res => res.ok ? res.json() : [])
-        .then((allPIs: any[]) => {
-          const hasPI = Array.isArray(allPIs) && allPIs.some((pi: any) => pi.dealId === dealId);
-          if (!hasPI) {
+        .then(res => res.json())
+        .then((result: any) => {
+          if (!result.valid) {
             setOptimisticStages(prev => { const n = { ...prev }; delete n[dealId]; return n; });
-            toast({ title: "Action Denied", description: "Please create a Proforma Invoice before marking this deal as Won.", variant: "destructive" });
+            toast({ title: "Action Denied", description: result.error || "This Deal requires an Active Sent/Approved Proforma Invoice before it can be marked Won.", variant: "destructive" });
             return;
           }
           setMarkWonDeal({ deal, oldStage });
