@@ -11,7 +11,7 @@ import { createNotification } from "./notifications";
 import { promoteDealToExistingCustomer } from "./existing-customers";
 import { generateId } from "../lib/id-generator";
 import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
-import { getActivePiForDeal, getActivePiSummary, validateActivePiForPiSent } from "../lib/proforma-service";
+import { getActivePiForDeal, getActivePiSummary, validateActivePiForPiSent, deactivateActivePis } from "../lib/proforma-service";
 import { convertContactToMyClient, checkNoExistingOrder, getTodayWonCount, validateWonPrerequisites, validateProductionUnit } from "../lib/won-service";
 import { notifyProductionUsers } from "../lib/notification-service";
 import { logActivity, logDealStageActivity, formatTimestamp } from "../lib/activity-logger";
@@ -19,6 +19,26 @@ import { canAccessSalesResource } from "../lib/permission-service";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 
 const router: IRouter = Router();
+
+// ── Deal Stage Transition Rules ──
+// Each key maps to the set of stages it can transition TO.
+// Won and Lost are terminal — they can only transition to specific stages if reopened.
+const VALID_STAGE_TRANSITIONS: Record<string, string[]> = {
+  "New":              ["CL Sent", "Price Given", "Samples Sent", "Samples Received", "PI Sent", "Won", "Lost"],
+  "CL Sent":          ["Price Given", "Samples Sent", "Samples Received", "PI Sent", "Won", "Lost"],
+  "Price Given":      ["Samples Sent", "Samples Received", "PI Sent", "Won", "Lost"],
+  "Samples Sent":     ["Samples Received", "PI Sent", "Won", "Lost"],
+  "Samples Received": ["PI Sent", "Won", "Lost"],
+  "PI Sent":          ["Won", "Lost"],
+  "Won":              ["Lost", "New"],
+  "Lost":             ["New", "CL Sent", "Price Given", "Samples Sent", "Samples Received", "PI Sent", "Won"],
+};
+
+function isValidStageTransition(from: string, to: string): boolean {
+  const allowed = VALID_STAGE_TRANSITIONS[from];
+  if (!allowed) return false;
+  return allowed.includes(to);
+}
 
 async function enrichDeal(deal: typeof dealsTable.$inferSelect) {
   const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
@@ -223,6 +243,14 @@ router.patch("/deals/:id", async (req, res) => {
       delete updateData.salesOwnerId;
     }
 
+    // Validate stage transition
+    if (updateData.stage && updateData.stage !== oldDeal.stage) {
+      if (!isValidStageTransition(oldDeal.stage, updateData.stage)) {
+        res.status(400).json({ error: `Cannot move deal from "${oldDeal.stage}" to "${updateData.stage}". Valid transitions: ${VALID_STAGE_TRANSITIONS[oldDeal.stage]?.join(", ") || "none"}` });
+        return;
+      }
+    }
+
     // Validate Won: Active PI must exist, status must be Sent/Approved, taxableAmount used as Won Value
     if (updateData.stage === "Won") {
       const piValidation = await validateWonPrerequisites({
@@ -309,6 +337,9 @@ router.patch("/deals/:id", async (req, res) => {
     // EXCEPTION: My Clients is permanent — they stay in My Client regardless
     const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
     if (deal.stage === "Lost") {
+      // Deactivate all active PIs for this deal
+      await deactivateActivePis(db, deal.id);
+
       if (contact) {
         if (contact.isMyClient) {
           // My Clients is permanent — contact stays in My Client, nothing to restore

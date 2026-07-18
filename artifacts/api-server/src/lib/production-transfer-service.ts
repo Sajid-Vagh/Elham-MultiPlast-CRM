@@ -1,7 +1,7 @@
 import {
   db, productionOrdersTable, productionTimelineTable,
   productionTransferHistoryTable, proformaInvoicesTable,
-  contactsTable, usersTable, notificationsTable,
+  contactsTable, usersTable, notificationsTable, ordersTable,
 } from "@workspace/db";
 import { eq, or, desc } from "drizzle-orm";
 import { enrichProductionOrder } from "./production-service";
@@ -42,6 +42,14 @@ export async function transferOrder(
     updatedBy: user.id,
     updatedAt: now,
   }).where(eq(productionOrdersTable.id, orderId));
+
+  // Sync production unit to linked orders table
+  if (order.dealId) {
+    await db.update(ordersTable).set({
+      productionUnit: targetUnit,
+      updatedAt: now,
+    }).where(eq(ordersTable.dealId, order.dealId));
+  }
 
   await db.insert(productionTransferHistoryTable).values({
     productionOrderId: orderId,

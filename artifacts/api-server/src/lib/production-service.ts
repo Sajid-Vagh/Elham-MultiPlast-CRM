@@ -165,7 +165,7 @@ export async function enrichProductionOrder(order: any) {
     const [inv] = await db
       .select()
       .from(proformaInvoicesTable)
-      .where(eq(proformaInvoicesTable.dealId, order.dealId))
+      .where(and(eq(proformaInvoicesTable.dealId, order.dealId), eq(proformaInvoicesTable.isActive, true), eq(proformaInvoicesTable.isDeleted, false)))
       .orderBy(desc(proformaInvoicesTable.createdAt))
       .limit(1);
     invoice = inv || null;
@@ -176,7 +176,7 @@ export async function enrichProductionOrder(order: any) {
       const [inv] = await db
         .select()
         .from(proformaInvoicesTable)
-        .where(eq(proformaInvoicesTable.contactId, deal.contactId))
+        .where(and(eq(proformaInvoicesTable.contactId, deal.contactId), eq(proformaInvoicesTable.isActive, true), eq(proformaInvoicesTable.isDeleted, false)))
         .orderBy(desc(proformaInvoicesTable.createdAt))
         .limit(1);
       invoice = inv || null;
@@ -505,6 +505,20 @@ export async function handlePiModification(
     return { action: "rejected", message: "Production already completed. Suggest creating a new deal." };
   }
 
+  // Ready For Dispatch: notify but don't auto-sync
+  if (order.status === "Ready for Dispatch" || order.status === "Partially Dispatched") {
+    await addTimelineEntry(db, productionOrderId, order.status, `PI modified to Version ${newPiVersion}. Dispatch stage — review required.`, user.id);
+    await notifyProductionUsers({
+      productionUnit: order.productionUnit || "Himatnagar",
+      title: "PI Modified — Dispatch Review",
+      message: `Order #${order.id}: PI has been modified by Sales at dispatch stage. Version ${newPiVersion}. Review changes.`,
+      link: `/production/orders/${order.id}`,
+      relatedId: order.id, relatedType: "production_order",
+      type: "production_pi_modified", excludeUserId: user.id,
+    });
+    return { action: "dispatch_review", order: await enrichProductionOrder(order) };
+  }
+
   return { action: "no_action" };
 }
 
@@ -523,14 +537,21 @@ export async function approveModification(
   if (approve) {
     await addTimelineEntry(db, orderId, order.status, `Production approved PI modification.`, user.id);
 
-    if (order.proformaInvoiceId) {
-      const pi = await getActivePiForDeal(db, order.dealId!);
+    if (order.dealId) {
+      const pi = await getActivePiForDeal(db, order.dealId);
       if (pi) {
-        const newItems = await db.select().from(proformaInvoiceItemsTable).where(eq(proformaInvoiceItemsTable.invoiceId, pi.id));
+        // Sync production order to point to the approved PI
+        await db.update(productionOrdersTable).set({
+          proformaInvoiceId: pi.id,
+          piVersionAtCreation: pi.version,
+          updatedAt: now,
+          updatedBy: user.id,
+        }).where(eq(productionOrdersTable.id, orderId));
+
         await writeAuditTrail(db, {
           productionOrderId: orderId, action: "pi_modification_approved",
           changedById: user.id, changedByName: user.name || "",
-          reason: `PI Version ${pi.version} approved`,
+          reason: `PI Version ${pi.version} approved — production order synced`,
         });
       }
     }

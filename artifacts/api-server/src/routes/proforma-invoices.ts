@@ -11,6 +11,7 @@ import { getActivePiForDeal, deactivateActivePis, getNextPiVersion } from "../li
 import { notifyProductionUsers } from "../lib/notification-service";
 import { logPiActivity, logActivity, formatTimestamp } from "../lib/activity-logger";
 import { canModifyInvoice } from "../lib/permission-service";
+import { getAccessibleUnits } from "../lib/unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 
 const router: IRouter = Router();
@@ -651,6 +652,15 @@ router.get("/proforma-invoices", async (req, res) => {
       conditions.push(eq(proformaInvoicesTable.createdBy, user.id));
     }
 
+    // Unit isolation: non-admin, non-"All" users see only PIs for contacts in their unit
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits) {
+      conditions.push(sql`${proformaInvoicesTable.contactId} IN (
+        SELECT ${contactsTable.id} FROM ${contactsTable}
+        WHERE ${contactsTable.unit} IN (${sql.join(accessibleUnits.map(u => sql`${u}`), sql`, `)})
+      )`);
+    }
+
     if (status && status !== "all") conditions.push(eq(proformaInvoicesTable.status, status));
     if (ownerId) conditions.push(eq(proformaInvoicesTable.salesOwnerId, Number(ownerId)));
     if (customer) conditions.push(sql`LOWER(${proformaInvoicesTable.customerName}) LIKE ${`%${customer.toLowerCase()}%`}`);
@@ -700,6 +710,15 @@ router.get("/proforma-invoices/all", async (req, res) => {
 
     if (user.role === "sales") {
       conditions.push(eq(proformaInvoicesTable.createdBy, user.id));
+    }
+
+    // Unit isolation for /all endpoint
+    const accessibleUnitsAll = getAccessibleUnits(user);
+    if (accessibleUnitsAll) {
+      conditions.push(sql`${proformaInvoicesTable.contactId} IN (
+        SELECT ${contactsTable.id} FROM ${contactsTable}
+        WHERE ${contactsTable.unit} IN (${sql.join(accessibleUnitsAll.map(u => sql`${u}`), sql`, `)})
+      )`);
     }
 
     if (status && status !== "all") conditions.push(eq(proformaInvoicesTable.status, status));
@@ -1341,6 +1360,50 @@ async function updateInvoiceHandler(req: any, res: any) {
         changedBy: user.id,
         notes: `Version ${nextVersion} created as ${newInvoiceNumber}${reasonNote}`,
       });
+
+      // ── Production Sync for non-draft PI revision ──
+      // Find production order linked to this deal and notify production
+      try {
+        let linkedOrder: any = null;
+        if (existing.dealId) {
+          // Find production order by dealId
+          const [byDeal] = await db
+            .select()
+            .from(productionOrdersTable)
+            .where(eq(productionOrdersTable.dealId, existing.dealId))
+            .orderBy(desc(productionOrdersTable.createdAt))
+            .limit(1);
+          if (byDeal) {
+            linkedOrder = byDeal;
+            // Update production order to point to the new active PI
+            await db
+              .update(productionOrdersTable)
+              .set({ proformaInvoiceId: newInvoice!.id, updatedAt: new Date(), updatedBy: user.id })
+              .where(eq(productionOrdersTable.id, byDeal.id));
+          }
+        }
+
+        if (linkedOrder) {
+          const { handlePiModification } = await import("../lib/production-service");
+          await handlePiModification(user, linkedOrder.id, nextVersion);
+        }
+
+        // Notify production users about PI revision
+        if (existing.dealId) {
+          await notifyProductionUsers({
+            productionUnit: linkedOrder?.productionUnit || "Himatnagar",
+            title: "Proforma Invoice Revised",
+            message: `Invoice ${existing.invoiceNumber} revised to ${newInvoiceNumber} (Version ${nextVersion}) by ${user.name}.${reasonNote}`,
+            link: `/production/orders/${linkedOrder?.id || ""}`,
+            relatedId: newInvoice!.id,
+            relatedType: "proforma_invoice",
+            type: "pi_revision",
+            excludeUserId: user.id,
+          });
+        }
+      } catch (syncErr) {
+        req.log.warn({ err: syncErr }, "Production sync failed for PI revision");
+      }
 
       return res.status(201).json(await enrichInvoice(newInvoice!));
     }

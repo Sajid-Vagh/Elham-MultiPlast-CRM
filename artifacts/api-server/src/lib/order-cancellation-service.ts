@@ -157,26 +157,113 @@ export async function cancelOrder(
   const now = new Date();
   const previousStatus = order.status;
 
-  // 4. Update order status to Cancelled
-  await db.update(ordersTable).set({
-    status: "Cancelled",
-    cancelledAt: now,
-    cancelledBy: user.id,
-    cancellationReason: reason,
-    cancellationOtherReason: reason === "Other" ? otherReason : null,
-    cancellationNote: note || null,
-    updatedAt: now,
-  }).where(eq(ordersTable.id, orderId));
+  // 4-9. Critical cascading updates inside a single transaction
+  const transactionResult = await db.transaction(async (tx) => {
+    // 4. Update order status to Cancelled
+    await tx.update(ordersTable).set({
+      status: "Cancelled",
+      cancelledAt: now,
+      cancelledBy: user.id,
+      cancellationReason: reason,
+      cancellationOtherReason: reason === "Other" ? otherReason : null,
+      cancellationNote: note || null,
+      updatedAt: now,
+    }).where(eq(ordersTable.id, orderId));
 
-  // 5. Order timeline entry
-  await db.insert(orderTimelineTable).values({
-    orderId,
-    type: "order_cancelled",
-    description: `Order cancelled by ${user.name}. Reason: ${reason}${reason === "Other" ? ` (${otherReason})` : ""}${note ? `\nNote: ${note}` : ""}`,
-    createdBy: user.id,
+    // 5. Order timeline entry
+    await tx.insert(orderTimelineTable).values({
+      orderId,
+      type: "order_cancelled",
+      description: `Order cancelled by ${user.name}. Reason: ${reason}${reason === "Other" ? ` (${otherReason})` : ""}${note ? `\nNote: ${note}` : ""}`,
+      createdBy: user.id,
+    });
+
+    // 6. Cancel associated production order if exists
+    const [productionOrder] = await tx.select().from(productionOrdersTable)
+      .where(order.dealId ? eq(productionOrdersTable.dealId, order.dealId) : sql`false`)
+      .limit(1);
+
+    if (productionOrder && productionOrder.status !== "Completed") {
+      await tx.update(productionOrdersTable).set({
+        status: "Cancelled",
+        updatedAt: now,
+        updatedBy: user.id,
+      }).where(eq(productionOrdersTable.id, productionOrder.id));
+    }
+
+    // 7. Update deal if Won → revert stage
+    if (order.dealId) {
+      const [deal] = await tx.select().from(dealsTable).where(eq(dealsTable.id, order.dealId));
+      if (deal && deal.stage === "Won") {
+        await tx.update(dealsTable).set({
+          stage: "Lost",
+          lostReason: `Order Cancelled — ${reason}`,
+          otherReason: reason === "Other" ? otherReason : null,
+          lostNotes: note || `Order #${order.orderNumber} was cancelled`,
+          probability: 0,
+          updatedAt: now,
+        }).where(eq(dealsTable.id, order.dealId));
+      }
+    }
+
+    // 8. Handle customer category (Scenario A vs B)
+    if (order.contactId) {
+      const [countResult] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(ordersTable)
+        .where(
+          and(
+            eq(ordersTable.contactId, order.contactId),
+            eq(ordersTable.isDeleted, false),
+            sql`${ordersTable.id} != ${orderId}`,
+            sql`${ordersTable.status} IN ('Completed', 'Delivered')`,
+          )
+        );
+      const hasOtherCompleted = (countResult?.count ?? 0) > 0;
+
+      if (!hasOtherCompleted) {
+        // Scenario A: First/only order cancelled → move back to previous category
+        const [contact] = await tx.select().from(contactsTable).where(eq(contactsTable.id, order.contactId));
+        if (contact && contact.isMyClient) {
+          const [lastCategoryChange] = await tx.select().from(categoryHistoryTable)
+            .where(
+              and(
+                eq(categoryHistoryTable.contactId, order.contactId),
+                eq(categoryHistoryTable.newCategory, "My Client"),
+              )
+            )
+            .orderBy(sql`${categoryHistoryTable.createdAt} DESC`)
+            .limit(1);
+
+          const revertCategory = lastCategoryChange?.previousCategory || "Regular Follow up";
+
+          await tx.update(contactsTable).set({
+            category: revertCategory,
+            isMyClient: false,
+          }).where(eq(contactsTable.id, order.contactId));
+
+          await tx.insert(categoryHistoryTable).values({
+            contactId: order.contactId,
+            previousCategory: "My Client",
+            newCategory: revertCategory,
+            changedBy: user.id,
+            reason: `Order #${order.orderNumber} cancelled — reverting from My Client to ${revertCategory}`,
+          });
+
+          // Remove from existing_customers if present
+          await tx.update(existingCustomersTable).set({
+            isActive: false,
+            status: "Inactive",
+          }).where(eq(existingCustomersTable.contactId, order.contactId));
+        }
+      }
+      // Scenario B: Has other completed orders → stay in My Client (no action needed)
+    }
+
+    return { productionOrder };
   });
 
-  // 6. Audit trail
+  // 9. Audit trail (outside transaction — uses global db)
   await logAudit(
     "order", orderId, "cancelled",
     { status: previousStatus },
@@ -185,94 +272,12 @@ export async function cancelOrder(
     `Reason: ${reason}${reason === "Other" ? ` (${otherReason})` : ""}`,
   );
 
-  // 7. Cancel associated production order if exists
-  const [productionOrder] = await db.select().from(productionOrdersTable)
-    .where(order.dealId ? eq(productionOrdersTable.dealId, order.dealId) : sql`false`)
-    .limit(1);
-
-  if (productionOrder && productionOrder.status !== "Completed") {
-    await db.update(productionOrdersTable).set({
-      status: "Cancelled",
-      updatedAt: now,
-      updatedBy: user.id,
-    }).where(eq(productionOrdersTable.id, productionOrder.id));
-  }
-
-  // 8. Update deal if Won → revert stage
-  if (order.dealId) {
-    const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, order.dealId));
-    if (deal && deal.stage === "Won") {
-      const previousCategory = deal.category;
-      await db.update(dealsTable).set({
-        stage: "Lost",
-        lostReason: `Order Cancelled — ${reason}`,
-        otherReason: reason === "Other" ? otherReason : null,
-        lostNotes: note || `Order #${order.orderNumber} was cancelled`,
-        probability: 0,
-        updatedAt: now,
-      }).where(eq(dealsTable.id, order.dealId));
-
-      // Log deal stage change activity
-      await logActivity(db, {
-        dealId: order.dealId,
-        contactId: order.contactId,
-        type: "Note",
-        notes: `Deal moved from Won to Lost due to order cancellation.\n\nReason: ${reason}${reason === "Other" ? ` (${otherReason})` : ""}\nOrder: ${order.orderNumber}\n\nBy: ${user.name}\n${formatTimestamp(now)}`,
-        createdBy: user.id,
-      });
-    }
-  }
-
-  // 9. Handle customer category (Scenario A vs B)
-  if (order.contactId) {
-    const hasOtherCompleted = await hasCompletedOrders(db, order.contactId, orderId);
-
-    if (!hasOtherCompleted) {
-      // Scenario A: First/only order cancelled → move back to previous category
-      const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, order.contactId));
-      if (contact && contact.isMyClient) {
-        // Find the category before "My Client"
-        const [lastCategoryChange] = await db.select().from(categoryHistoryTable)
-          .where(
-            and(
-              eq(categoryHistoryTable.contactId, order.contactId),
-              eq(categoryHistoryTable.newCategory, "My Client"),
-            )
-          )
-          .orderBy(sql`${categoryHistoryTable.createdAt} DESC`)
-          .limit(1);
-
-        const revertCategory = lastCategoryChange?.previousCategory || "Regular Follow up";
-
-        await db.update(contactsTable).set({
-          category: revertCategory,
-          isMyClient: false,
-        }).where(eq(contactsTable.id, order.contactId));
-
-        await db.insert(categoryHistoryTable).values({
-          contactId: order.contactId,
-          previousCategory: "My Client",
-          newCategory: revertCategory,
-          changedBy: user.id,
-          reason: `Order #${order.orderNumber} cancelled — reverting from My Client to ${revertCategory}`,
-        });
-
-        // Remove from existing_customers if present
-        await db.update(existingCustomersTable).set({
-          isActive: false,
-          status: "Inactive",
-        }).where(eq(existingCustomersTable.contactId, order.contactId));
-      }
-    }
-    // Scenario B: Has other completed orders → stay in My Client (no action needed)
-  }
-
   // 10. Activity log entry
   await logActivity(db, {
     dealId: order.dealId || null,
     contactId: order.contactId || null,
     type: "Note",
-    notes: `Order Cancelled\nOrder: ${order.orderNumber}\nReason: ${reason}${reason === "Other" ? ` (${otherReason})` : ""}\n${note ? `Note: ${note}\n` : ""}By: ${user.name}\n${formatTimestamp(now)}`,
+    notes: `Deal moved from Won to Lost due to order cancellation.\n\nReason: ${reason}${reason === "Other" ? ` (${otherReason})` : ""}\nOrder: ${order.orderNumber}\n\nBy: ${user.name}\n${formatTimestamp(now)}`,
     createdBy: user.id,
   });
 

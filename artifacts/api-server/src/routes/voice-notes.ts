@@ -1,10 +1,11 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import multer from "multer";
-import { db, voiceNotesTable, dealsTable, productionOrdersTable, usersTable } from "@workspace/db";
+import { db, voiceNotesTable, dealsTable, productionOrdersTable, usersTable, contactsTable } from "@workspace/db";
 import { eq, and, desc, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { storage } from "../lib/storage";
-import { canAccessSalesResource } from "../lib/permission-service";
+import { canAccessSalesResource, canAccessUnit } from "../lib/permission-service";
+import { getAccessibleUnits } from "../lib/unit-filter";
 import path from "node:path";
 
 const router: IRouter = Router();
@@ -56,6 +57,18 @@ router.post("/voice-notes", upload.single("file"), async (req: Request, res: Res
       }
     }
 
+    // Unit isolation: non-admin users can only access deals in their unit
+    if (dealId) {
+      const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, dealId));
+      if (deal) {
+        const [contact] = await db.select({ unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+        const resourceUnit = contact?.unit || null;
+        if (!canAccessUnit(user, resourceUnit)) {
+          res.status(403).json({ error: "Access denied: unit mismatch" }); return;
+        }
+      }
+    }
+
     // Production users can also upload (for orders they have access to)
     if (productionOrderId && !dealId) {
       if (user.role === "sales") {
@@ -97,6 +110,22 @@ router.get("/voice-notes/deal/:dealId", async (req: Request, res: Response) => {
 
     const dealId = Number(req.params.dealId);
     if (isNaN(dealId)) { res.status(400).json({ error: "Invalid deal id" }); return; }
+
+    // Unit isolation: verify user can access this deal's unit
+    {
+      const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, dealId));
+      if (deal) {
+        const [contact] = await db.select({ unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+        const resourceUnit = contact?.unit || null;
+        if (!canAccessUnit(user, resourceUnit)) {
+          res.status(403).json({ error: "Access denied: unit mismatch" }); return;
+        }
+        // Sales users can only view their own deals
+        if (user.role === "sales" && !canAccessSalesResource(user, deal.salesOwnerId)) {
+          res.status(403).json({ error: "Not your deal" }); return;
+        }
+      }
+    }
 
     const notes = await db
       .select({
@@ -159,6 +188,17 @@ router.get("/voice-notes/production/:productionOrderId", async (req: Request, re
       const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, po.dealId));
       if (!deal || !canAccessSalesResource(user, deal.salesOwnerId)) {
         res.status(403).json({ error: "Not your deal" }); return;
+      }
+    }
+
+    // Unit isolation: verify user can access this production order's unit
+    {
+      const [po] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, poId));
+      if (po) {
+        const resourceUnit = po.productionUnit || null;
+        if (!canAccessUnit(user, resourceUnit)) {
+          res.status(403).json({ error: "Access denied: unit mismatch" }); return;
+        }
       }
     }
 
@@ -227,6 +267,22 @@ router.patch("/voice-notes/:id/transcript", async (req: Request, res: Response) 
       res.status(403).json({ error: "Not your voice note" }); return;
     }
 
+    // Unit isolation
+    if (existing.dealId) {
+      const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, existing.dealId));
+      if (deal) {
+        const [contact] = await db.select({ unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+        if (!canAccessUnit(user, contact?.unit || null)) {
+          res.status(403).json({ error: "Access denied: unit mismatch" }); return;
+        }
+      }
+    } else if (existing.productionOrderId) {
+      const [po] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, existing.productionOrderId));
+      if (po && !canAccessUnit(user, po.productionUnit || null)) {
+        res.status(403).json({ error: "Access denied: unit mismatch" }); return;
+      }
+    }
+
     const [updated] = await db
       .update(voiceNotesTable)
       .set({ transcript, transcriptStatus: transcript ? "completed" : "pending" })
@@ -259,6 +315,22 @@ router.delete("/voice-notes/:id", async (req: Request, res: Response) => {
     // Sales can only delete their own voice notes
     if (user.role === "sales" && existing.uploadedById !== user.id) {
       res.status(403).json({ error: "Not your voice note" }); return;
+    }
+
+    // Unit isolation
+    if (existing.dealId) {
+      const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, existing.dealId));
+      if (deal) {
+        const [contact] = await db.select({ unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+        if (!canAccessUnit(user, contact?.unit || null)) {
+          res.status(403).json({ error: "Access denied: unit mismatch" }); return;
+        }
+      }
+    } else if (existing.productionOrderId) {
+      const [po] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, existing.productionOrderId));
+      if (po && !canAccessUnit(user, po.productionUnit || null)) {
+        res.status(403).json({ error: "Access denied: unit mismatch" }); return;
+      }
     }
 
     await db
@@ -298,6 +370,22 @@ router.post("/voice-notes/:id/replace", upload.single("file"), async (req: Reque
     // Only uploader can replace
     if (user.role === "sales" && existing.uploadedById !== user.id) {
       res.status(403).json({ error: "Not your voice note" }); return;
+    }
+
+    // Unit isolation
+    if (existing.dealId) {
+      const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, existing.dealId));
+      if (deal) {
+        const [contact] = await db.select({ unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+        if (!canAccessUnit(user, contact?.unit || null)) {
+          res.status(403).json({ error: "Access denied: unit mismatch" }); return;
+        }
+      }
+    } else if (existing.productionOrderId) {
+      const [po] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, existing.productionOrderId));
+      if (po && !canAccessUnit(user, po.productionUnit || null)) {
+        res.status(403).json({ error: "Access denied: unit mismatch" }); return;
+      }
     }
 
     const transcript = req.body.transcript || existing.transcript;

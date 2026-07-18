@@ -4,6 +4,7 @@ import { eq, and, gte, isNull, SQL } from "drizzle-orm";
 import { CreateActivityBody, UpdateActivityBody, ListActivitiesQueryParams, UpdateActivityParams, DeleteActivityParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
+import { getAccessibleUnits } from "../lib/unit-filter";
 
 const router: IRouter = Router();
 
@@ -166,6 +167,15 @@ router.get("/activities", async (req, res) => {
         contact,
       };
     });
+
+    // Unit isolation: filter activities by user's accessible units
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits) {
+      enriched = enriched.filter(a => {
+        const unit = a.contact?.unit;
+        return !unit || accessibleUnits.includes(unit);
+      });
+    }
 
     // Post-filter for upcoming: only Pending status (any category)
     if (upcoming && !dateFilter) {
