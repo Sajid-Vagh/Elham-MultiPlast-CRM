@@ -1842,19 +1842,19 @@ ${pagesHtml}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <Label>Freight Charges (₹)</Label>
-                <Input type="number" value={freight} onChange={(e) => setFreight(Number(e.target.value))} min={0} {...preventSpinHandlers} />
+                <Input type="number" value={freight || ""} onChange={(e) => setFreight(Number(e.target.value))} min={0} placeholder="Enter Freight Charges" {...preventSpinHandlers} />
               </div>
               <div>
                 <Label>CGST (%)</Label>
-                <Input type="number" value={cgstPct} onChange={(e) => setCgstPct(Number(e.target.value))} min={0} max={100} step={0.01} {...preventSpinHandlers} />
+                <Input type="number" value={cgstPct || ""} onChange={(e) => setCgstPct(Number(e.target.value))} min={0} max={100} step={0.01} placeholder="Enter CGST %" {...preventSpinHandlers} />
               </div>
               <div>
                 <Label>SGST (%)</Label>
-                <Input type="number" value={sgstPct} onChange={(e) => setSgstPct(Number(e.target.value))} min={0} max={100} step={0.01} {...preventSpinHandlers} />
+                <Input type="number" value={sgstPct || ""} onChange={(e) => setSgstPct(Number(e.target.value))} min={0} max={100} step={0.01} placeholder="Enter SGST %" {...preventSpinHandlers} />
               </div>
               <div>
                 <Label>IGST (%)</Label>
-                <Input type="number" value={igstPct} onChange={(e) => setIgstPct(Number(e.target.value))} min={0} max={100} step={0.01} {...preventSpinHandlers} />
+                <Input type="number" value={igstPct || ""} onChange={(e) => setIgstPct(Number(e.target.value))} min={0} max={100} step={0.01} placeholder="Enter IGST %" {...preventSpinHandlers} />
               </div>
             </div>
             <div className="mt-4 p-4 bg-muted/30 rounded-lg space-y-1 text-sm">
