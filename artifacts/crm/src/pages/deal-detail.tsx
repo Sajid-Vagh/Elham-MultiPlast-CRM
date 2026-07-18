@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { ArrowLeft, Plus, Trash2, FolderTree, Pencil, Check, X, Loader2 } from "lucide-react";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
 import { DealWonCelebration } from "@/components/deal-won-celebration";
+import { PiSentDialog } from "@/components/pi-sent-dialog";
 import { UserAvatar } from "@/components/user-avatar";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
@@ -138,6 +139,7 @@ export default function DealDetail() {
   const [lostSubmitting, setLostSubmitting] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [showMoveCategory, setShowMoveCategory] = useState(false);
+  const [piSentDialogOpen, setPiSentDialogOpen] = useState(false);
 
   const deleteDeal = useDeleteDeal();
 
@@ -184,7 +186,7 @@ export default function DealDetail() {
     if (newStage === "PI Sent") {
       const hasActivePI = !!(deal as any).activeProformaInvoice;
       if (!hasActivePI) {
-        toast({ title: "No active Proforma Invoice. Create one first.", variant: "destructive" });
+        setPiSentDialogOpen(true);
         return;
       }
       doStageUpdate("PI Sent", null, null);
@@ -959,6 +961,13 @@ export default function DealDetail() {
           onGoToProduction={() => { setLocation("/production/orders"); setWonDealForCelebration(null); }}
         />
       )}
+
+      <PiSentDialog
+        open={piSentDialogOpen}
+        onOpenChange={setPiSentDialogOpen}
+        contactId={deal.contactId}
+        dealId={deal.id}
+      />
     </div>
   );
 }

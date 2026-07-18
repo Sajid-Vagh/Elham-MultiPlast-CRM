@@ -18,6 +18,7 @@ import { DEAL_STAGES, STAGE_PROBS, STAGE_BADGE_COLORS } from "@/lib/deal-stages"
 import { onDealChange, onActivityChange } from "@/lib/query-invalidation";
 import { Pencil, Phone, Calendar, ExternalLink, Clock, CheckCircle2, X, MessageSquare } from "lucide-react";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
+import { PiSentDialog } from "@/components/pi-sent-dialog";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { Link } from "wouter";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
@@ -83,6 +84,7 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
 
   const [lostOpen, setLostOpen] = useState(false);
   const [lostSubmitting, setLostSubmitting] = useState(false);
+  const [piSentDialogOpen, setPiSentDialogOpen] = useState(false);
 
   const [followUpOpen, setFollowUpOpen] = useState(false);
   const [fuNotes, setFuNotes] = useState("");
@@ -129,7 +131,7 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
       setStageOpen(false);
       const hasActivePI = !!(deal as any).activeProformaInvoice;
       if (!hasActivePI) {
-        toast({ title: "No active Proforma Invoice. Create one first.", variant: "destructive" });
+        setPiSentDialogOpen(true);
         return;
       }
       updateDeal.mutate(
@@ -454,6 +456,13 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PiSentDialog
+        open={piSentDialogOpen}
+        onOpenChange={setPiSentDialogOpen}
+        contactId={deal?.contactId}
+        dealId={deal?.id}
+      />
     </>
   );
 }

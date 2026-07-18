@@ -655,6 +655,7 @@ export default function Deals() {
         open={!!piSentDeal}
         onOpenChange={(o) => { if (!o) { setPiSentDeal(null); setOptimisticStages(prev => { const n = { ...prev }; if (piSentDeal) delete n[piSentDeal.id]; return n; }); } }}
         contactId={piSentDeal?.contactId || piSentDeal?.contact?.id}
+        dealId={piSentDeal?.id}
       />
     </div>
   );

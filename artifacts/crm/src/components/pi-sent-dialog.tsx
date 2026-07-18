@@ -5,9 +5,10 @@ interface PiSentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   contactId?: number | null;
+  dealId?: number | null;
 }
 
-export function PiSentDialog({ open, onOpenChange, contactId }: PiSentDialogProps) {
+export function PiSentDialog({ open, onOpenChange, contactId, dealId }: PiSentDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -21,7 +22,10 @@ export function PiSentDialog({ open, onOpenChange, contactId }: PiSentDialogProp
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button onClick={() => {
             onOpenChange(false);
-            window.location.href = `/proforma-invoices${contactId ? `?contactId=${contactId}` : ""}`;
+            const params = new URLSearchParams();
+            if (contactId) params.set("contactId", String(contactId));
+            if (dealId) params.set("dealId", String(dealId));
+            window.location.href = `/proforma-invoices${params.toString() ? `?${params.toString()}` : ""}`;
           }}>Create Proforma</Button>
         </DialogFooter>
       </DialogContent>

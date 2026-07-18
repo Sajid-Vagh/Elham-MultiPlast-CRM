@@ -21,7 +21,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import {
   Plus, Download, Printer, Share2, Mail, Eye, FileText, Save, ArrowLeft, Trash2, Search,
   ChevronLeft, ChevronRight, Send, Loader2, CheckCircle2, RefreshCw, Building2, Calendar, Clock,
-  Shield, Store, MapPin, Verified, History, GitBranch, ArrowRight,
+  Shield, Store, MapPin, Verified, History, GitBranch, ArrowRight, Link as LinkIcon,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ProductionProgressSection } from "@/components/production-progress";
@@ -98,6 +98,11 @@ export default function ProformaInvoicesPage() {
     const p = new URLSearchParams(window.location.search).get("contactId");
     return p ? Number(p) : null;
   })();
+  const urlDealId = (() => {
+    if (typeof window === "undefined") return null;
+    const p = new URLSearchParams(window.location.search).get("dealId");
+    return p ? Number(p) : null;
+  })();
 
   const preventSpinHandlers = {
     onKeyDown: (e: React.KeyboardEvent) => {
@@ -143,15 +148,12 @@ export default function ProformaInvoicesPage() {
   const [igstPct, setIgstPct] = useState(0);
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<InvoiceItem[]>([
-    { productName: "", hsnCode: "", quantity: 1, unit: "Pcs", rate: 0, gstPercent: 0, amount: 0 },
+    { productName: "", hsnCode: "", quantity: 0, unit: "Pcs", rate: 0, gstPercent: 0, amount: 0 },
   ]);
   const [saving, setSaving] = useState(false);
   const [showPdfPreview, setShowPdfPreview] = useState(false);
   const [pdfHtml, setPdfHtml] = useState("");
   const [editMode, setEditMode] = useState(false);
-  const [contactSearchQuery, setContactSearchQuery] = useState("");
-  const [contactSearchResults, setContactSearchResults] = useState<any[]>([]);
-  const [showContactSearch, setShowContactSearch] = useState(false);
   const [district, setDistrict] = useState("");
   const [tradeName, setTradeName] = useState("");
   const [gstStatus, setGstStatus] = useState("");
@@ -162,15 +164,14 @@ export default function ProformaInvoicesPage() {
   const [gstLoading, setGstLoading] = useState(false);
   const [gstError, setGstError] = useState("");
   const [gstVerifying, setGstVerifying] = useState(false);
-  const [leadLinkQuery, setLeadLinkQuery] = useState("");
-  const [leadLinkResults, setLeadLinkResults] = useState<any[]>([]);
-  const [showLeadLink, setShowLeadLink] = useState(false);
   const [selectedLead, setSelectedLead] = useState<any>(null);
-  const [mobileSearchValue, setMobileSearchValue] = useState("");
-  const [mobileSearching, setMobileSearching] = useState(false);
-  const [mobileSearchResult, setMobileSearchResult] = useState<any>(null);
-  const [mobileSearchError, setMobileSearchError] = useState("");
+  const [selectedDeal, setSelectedDeal] = useState<any>(null);
+  const [activeDeals, setActiveDeals] = useState<any[]>([]);
+  const [dealSelectOpen, setDealSelectOpen] = useState(false);
+  const [mobileFetchLoading, setMobileFetchLoading] = useState(false);
+  const [mobileFetchError, setMobileFetchError] = useState("");
   const [mobileError, setMobileError] = useState("");
+  const [customerHistory, setCustomerHistory] = useState<any>(null);
   const [gstVerified, setGstVerified] = useState(false);
   const [lastVerifiedAt, setLastVerifiedAt] = useState("");
   const [gstVerificationResult, setGstVerificationResult] = useState<any>(null);
@@ -269,7 +270,7 @@ export default function ProformaInvoicesPage() {
   };
 
   const addItem = () => {
-    setItems([...items, { productName: "", hsnCode: "", quantity: 1, unit: "Pcs", rate: 0, gstPercent: 0, amount: 0 }]);
+    setItems([...items, { productName: "", hsnCode: "", quantity: 0, unit: "Pcs", rate: 0, gstPercent: 0, amount: 0 }]);
   };
 
   const duplicateItem = (idx: number) => {
@@ -307,7 +308,7 @@ export default function ProformaInvoicesPage() {
     setSgstPct(0);
     setIgstPct(0);
     setNotes("");
-    setItems([{ productName: "", hsnCode: "", quantity: 1, unit: "Pcs", rate: 0, gstPercent: 0, amount: 0 }]);
+    setItems([{ productName: "", hsnCode: "", quantity: 0, unit: "Pcs", rate: 0, gstPercent: 0, amount: 0 }]);
     setEditMode(false);
     setCustomerMasterId(null);
     setRevisionReason("");
@@ -325,57 +326,12 @@ export default function ProformaInvoicesPage() {
     setActiveProductIdx(-1);
     setProductSearchPos({ top: 0, left: 0, width: 0 });
     setSelectedLead(null);
-    setLeadLinkQuery("");
-    setLeadLinkResults([]);
-    setShowLeadLink(false);
-    setMobileSearchValue("");
-    setMobileSearchResult(null);
-    setMobileSearching(false);
-    setMobileSearchError("");
+    setSelectedDeal(null);
+    setActiveDeals([]);
+    setDealSelectOpen(false);
+    setMobileFetchError("");
+    setCustomerHistory(null);
   };
-
-  useEffect(() => {
-    if (!contactSearchQuery || contactSearchQuery.length < 2) {
-      setContactSearchResults([]);
-      setShowContactSearch(false);
-      return;
-    }
-    const timer = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/contacts?search=${encodeURIComponent(contactSearchQuery)}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const json = await res.json();
-          setContactSearchResults(ensureArray(json).slice(0, 10));
-          setShowContactSearch(true);
-        }
-      } catch { }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [contactSearchQuery, token]);
-
-  // Lead link search autocomplete
-  useEffect(() => {
-    if (!leadLinkQuery || leadLinkQuery.length < 2) {
-      setLeadLinkResults([]);
-      setShowLeadLink(false);
-      return;
-    }
-    const timer = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/contacts?search=${encodeURIComponent(leadLinkQuery)}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const json = await res.json();
-          setLeadLinkResults(ensureArray(json).slice(0, 10));
-          setShowLeadLink(true);
-        }
-      } catch { }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [leadLinkQuery, token]);
 
   // Product search autocomplete
   useEffect(() => {
@@ -399,119 +355,79 @@ export default function ProformaInvoicesPage() {
     return () => clearTimeout(timer);
   }, [productSearchQuery, token]);
 
-  // Debounced mobile number search to auto-link lead (separate search field)
-  useEffect(() => {
-    const m = mobileSearchValue.replace(/\s/g, "");
-    if (m.length < 10) {
-      setMobileSearchResult(null);
-      setMobileSearchError("");
-      return;
-    }
-    const timer = setTimeout(async () => {
-      setMobileSearching(true);
-      setMobileSearchError("");
-      try {
-        const contact = await searchContactByMobile({ mobile: m });
-        setMobileSearchResult(contact);
-        setMobileSearchError("");
-      } catch (err: any) {
-        if (err?.status === 404) {
-          setMobileSearchResult(null);
-          setMobileSearchError("No lead found with this mobile number");
-        } else {
-          setMobileSearchResult(null);
-          setMobileSearchError(err?.message || "Search failed");
-        }
-      } finally {
-        setMobileSearching(false);
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [mobileSearchValue]);
-
-  // Auto-link lead when the mobile field changes (create & edit)
+  // Debounced mobile number search — auto-fetches contact + active deals (PART 1 + PART 2)
   useEffect(() => {
     const m = mobile.replace(/\s/g, "");
     if (m.length < 10) {
       setSelectedLead(null);
+      setSelectedDeal(null);
+      setActiveDeals([]);
+      setCustomerHistory(null);
+      setMobileFetchError("");
       return;
     }
     const timer = setTimeout(async () => {
+      setMobileFetchLoading(true);
+      setMobileFetchError("");
       try {
         const contact = await searchContactByMobile({ mobile: m });
-        setSelectedLead({ id: contact.id, name: contact.name, companyName: contact.companyName, mobile: contact.mobile });
-        // Auto-fill party details from existing contact
+        setSelectedLead(contact);
+        // Auto-fill ALL party details from contact
         setCustomerName(contact.name || "");
         setCompanyName(contact.companyName || "");
         setCity(contact.city || "");
         setAddress(contact.address || "");
         setState(contact.state || "");
+        setDistrict(contact.district || "");
+        setPincode(contact.pincode || "");
+        setTradeName((contact as any).tradeName || "");
+        setNotes((contact as any).customerComments || "");
         const gst = (contact as any).gstNumber;
         if (gst) {
           setGstNumber(gst);
           setCustomerType("GST");
+          if ((contact as any).gstStatus) setGstStatus((contact as any).gstStatus);
         }
-      } catch {
+        // Fetch active deals for this contact
+        try {
+          const dealsRes = await fetch(`/api/contacts/${contact.id}/active-deals`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (dealsRes.ok) {
+            const deals = await dealsRes.json();
+            setActiveDeals(deals);
+            if (deals.length === 1) {
+              setSelectedDeal(deals[0]);
+              setDealSelectOpen(false);
+            } else if (deals.length > 1) {
+              setSelectedDeal(null);
+              setDealSelectOpen(true);
+            } else {
+              setSelectedDeal(null);
+              setDealSelectOpen(false);
+              setMobileFetchError("No active Deal found. Please create a Deal first.");
+            }
+          }
+        } catch { }
+        // Fetch customer history
+        try {
+          const histRes = await fetch(`/api/contacts/${contact.id}/customer-history`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (histRes.ok) setCustomerHistory(await histRes.json());
+        } catch { }
+      } catch (err: any) {
         setSelectedLead(null);
+        setSelectedDeal(null);
+        setActiveDeals([]);
+        setCustomerHistory(null);
+        setMobileFetchError(err?.status === 404 ? "No contact found with this mobile number" : err?.message || "Search failed");
+      } finally {
+        setMobileFetchLoading(false);
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [mobile]);
-
-  // Auto-fill party details from most recent PI when mobile field loses focus (create mode only)
-  const handleMobileBlur = async () => {
-    if (editMode) return;
-    const phone = mobile.replace(/\s/g, "").trim();
-    if (phone.length < 10) return;
-    try {
-      const res = await fetch(`/api/proforma-invoices/last-by-phone/${encodeURIComponent(phone)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      if (!data.found) return;
-      // Only auto-fill if party name is still empty (debounced contact lookup may have run first)
-      if (!customerName.trim()) {
-        setCustomerName(data.customerName || "");
-      }
-      if (!companyName.trim()) {
-        setCompanyName(data.companyName || "");
-      }
-      setTradeName(data.tradeName || "");
-      if (!addressLine1.trim()) setAddressLine1(data.addressLine1 || "");
-      if (!addressLine2.trim()) setAddressLine2(data.addressLine2 || "");
-      if (!addressLine3.trim()) setAddressLine3(data.addressLine3 || "");
-      if (!city.trim()) setCity(data.city || "");
-      setDistrict(data.district || "");
-      if (!state.trim()) setState(data.state || "");
-      setPincode(data.pincode || "");
-      if (!address.trim()) setAddress(data.address || "");
-      if (!gstNumber.trim()) {
-        setGstNumber(data.gstNumber || "");
-        if (data.gstStatus) setGstStatus(data.gstStatus);
-        if (data.customerType) setCustomerType(data.customerType);
-      }
-    } catch {
-      // Silently ignore — auto-fill is best-effort
-    }
-  };
-
-  const applyMobileSearchResult = (contact: any) => {
-    setCustomerName(contact.name || "");
-    setCompanyName(contact.companyName || "");
-    setMobile(contact.mobile || "");
-    setCity(contact.city || "");
-    setAddress(contact.address || "");
-    setState(contact.state || "");
-    const gst = contact.gstNumber;
-    if (gst) {
-      setGstNumber(gst);
-      setCustomerType("GST");
-    }
-    setSelectedLead({ id: contact.id, name: contact.name, companyName: contact.companyName, mobile: contact.mobile });
-    setMobileSearchResult(null);
-    setMobileSearchError("");
-  };
+  }, [mobile, token]);
 
   const MATERIAL_HSN: Record<string, string> = {
     PET: "39233090",
@@ -534,27 +450,6 @@ export default function ProformaInvoicesPage() {
     setProductSearchQuery("");
     setActiveProductIdx(-1);
     setProductSearchPos({ top: 0, left: 0, width: 0 });
-  };
-
-  const selectContact = (contact: any) => {
-    setCustomerName(contact.name);
-    setCompanyName(contact.companyName || "");
-    setMobile(contact.mobile || "");
-    setGstNumber(contact.gstNumber || "");
-    setCity(contact.city || "");
-    setAddress(contact.address || "");
-    setShowContactSearch(false);
-    setContactSearchQuery("");
-  };
-
-  const selectLeadLink = (contact: any) => {
-    setSelectedLead(contact);
-    setShowLeadLink(false);
-    setLeadLinkQuery("");
-  };
-
-  const clearLeadLink = () => {
-    setSelectedLead(null);
   };
 
   const parseAddressString = (addr: string) => {
@@ -935,6 +830,10 @@ export default function ProformaInvoicesPage() {
     } else {
       setMobileError("");
     }
+    if (!editMode && !selectedDeal?.id && !urlDealId) {
+      toast({ title: "Error", description: "No active Deal linked. Please search by mobile to find and attach a Deal.", variant: "destructive" });
+      hasError = true;
+    }
     if (items.some((i) => !i.productName)) {
       toast({ title: "Error", description: "All items must have a product name", variant: "destructive" });
       hasError = true;
@@ -985,6 +884,8 @@ export default function ProformaInvoicesPage() {
       if (customerMasterId) body.customerMasterId = customerMasterId;
       if (selectedLead?.id) body.contactId = selectedLead.id;
       else if (urlContactId) body.contactId = urlContactId;
+      if (selectedDeal?.id) body.dealId = selectedDeal.id;
+      else if (urlDealId) body.dealId = urlDealId;
       if (invoiceNumber) body.invoiceNumber = invoiceNumber;
       if (editMode && selectedInvoice?.id && selectedInvoice.status !== "Draft" && revisionReason) {
         body.revisionReason = revisionReason;
@@ -1493,63 +1394,72 @@ ${pagesHtml}
           </Card>
         )}
 
+        {/* Customer History Card (PART 6) */}
+        {customerHistory && (
           <Card>
-            <CardHeader><CardTitle>Party Details</CardTitle></CardHeader>
-            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="sm:col-span-2">
-                <Label>Search by Mobile (auto-link lead)</Label>
-                <div className="relative">
-                  <Input
-                    value={mobileSearchValue}
-                    onChange={(e) => setMobileSearchValue(e.target.value)}
-                    placeholder="Enter 10-digit mobile number to find & link lead"
-                  />
-                  {mobileSearching && (
-                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
-                  )}
-                  {mobileSearchResult && (
-                    <div className="mt-2 flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded-md">
-                      <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <span className="text-sm font-medium text-green-800">{mobileSearchResult.name}</span>
-                        <span className="text-xs text-green-600 ml-2">{mobileSearchResult.companyName || ""}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => applyMobileSearchResult(mobileSearchResult)}
-                        className="text-xs text-blue-600 hover:underline shrink-0"
-                      >
-                        Apply & Link
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setMobileSearchValue(""); setMobileSearchResult(null); setMobileSearchError(""); }}
-                        className="text-xs text-muted-foreground hover:text-destructive shrink-0"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  )}
-                  {mobileSearchError && !mobileSearchResult && (
-                    <p className="mt-1 text-xs text-amber-600">{mobileSearchError}</p>
-                  )}
+            <CardHeader><CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">Customer History</CardTitle></CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                <div>
+                  <p className="text-xs text-muted-foreground">Deals</p>
+                  <p className="text-lg font-bold">{customerHistory.totalDeals || 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Active Deal</p>
+                  <p className="text-sm font-medium">{customerHistory.activeDeal ? `#${customerHistory.activeDeal.id} ${customerHistory.activeDeal.stage}` : "None"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Previous Proformas</p>
+                  <p className="text-lg font-bold">{customerHistory.totalProformas || 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Last Won Value</p>
+                  <p className="text-sm font-medium">{customerHistory.lastWonValue ? `₹${Number(customerHistory.lastWonValue).toLocaleString("en-IN")}` : "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Last PI Date</p>
+                  <p className="text-sm font-medium">{customerHistory.lastOrderDate ? new Date(customerHistory.lastOrderDate).toLocaleDateString("en-IN") : "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Production Unit</p>
+                  <p className="text-sm font-medium">{customerHistory.productionUnit || "—"}</p>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Party Details</CardTitle>
+                {selectedDeal && (
+                  <Badge variant="outline" className="text-xs gap-1">
+                    <LinkIcon className="h-3 w-3" />
+                    Deal #{selectedDeal.id} — {selectedDeal.stage}
+                  </Badge>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
-              <Label>Party Name *</Label>
-              <div className="relative">
-                <Input value={customerName} onChange={(e) => { setCustomerName(e.target.value); setContactSearchQuery(e.target.value); }} placeholder="Enter party name (type to search contacts)" onFocus={() => { if (contactSearchResults.length > 0) setShowContactSearch(true); }} onBlur={() => setTimeout(() => setShowContactSearch(false), 200)} />
-                {showContactSearch && contactSearchResults.length > 0 && (
-                  <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-md shadow-lg mt-1 max-h-48 overflow-y-auto">
-                    {contactSearchResults.map((c: any) => (
-                      <div key={c.id} className="px-3 py-2 hover:bg-muted cursor-pointer text-sm" onMouseDown={() => selectContact(c)}>
-                        <div className="font-medium">{c.name}</div>
-                        <div className="text-xs text-muted-foreground">{c.companyName || ""}{c.companyName && c.mobile ? " · " : ""}{c.mobile || ""}</div>
-                      </div>
-                    ))}
+                <Label>Mobile Number <span className="text-destructive">*</span></Label>
+                <div className="relative">
+                  <Input value={mobile} onChange={(e) => { setMobile(e.target.value); setMobileError(""); setMobileFetchError(""); }} placeholder="Enter 10-digit mobile to search customer & attach Deal" className={mobileError || mobileFetchError ? "border-destructive" : ""} />
+                  {mobileFetchLoading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />}
+                </div>
+                {mobileError && <p className="text-xs text-destructive mt-1">{mobileError}</p>}
+                {mobileFetchError && <p className="text-xs text-amber-600 mt-1">{mobileFetchError}</p>}
+                {selectedLead && !mobileFetchError && (
+                  <div className="mt-1 flex items-center gap-2 text-xs text-green-700">
+                    <CheckCircle2 className="h-3 w-3" />
+                    <span>Contact: {selectedLead.name}{selectedLead.companyName ? ` (${selectedLead.companyName})` : ""}</span>
                   </div>
                 )}
               </div>
+              <div className="sm:col-span-2">
+              <Label>Party Name *</Label>
+              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Auto-filled from contact" />
             </div>
             <div className="sm:col-span-2">
               <Label>Invoice Number (leave empty for auto-generated)</Label>
@@ -1708,42 +1618,27 @@ ${pagesHtml}
               </>
             )}
             <div>
-              <Label>Mobile Number <span className="text-destructive">*</span></Label>
-              <Input value={mobile} onChange={(e) => { setMobile(e.target.value); setMobileError(""); }} onBlur={handleMobileBlur} placeholder="Mobile number" className={mobileError ? "border-destructive" : ""} />
-              {mobileError && <p className="text-xs text-destructive mt-1">{mobileError}</p>}
-            </div>
-            <div>
               <Label>Notes</Label>
               <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Internal notes" />
             </div>
 
-            <div className="sm:col-span-2">
-              <Label>Link to Lead (optional)</Label>
-              {selectedLead ? (
-                <div className="flex items-center justify-between p-2 border rounded-md bg-muted/30">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{selectedLead.name}</span>
-                    <span className="text-xs text-muted-foreground">{selectedLead.companyName || ""}{selectedLead.companyName && selectedLead.mobile ? " · " : ""}{selectedLead.mobile || ""}</span>
-                  </div>
-                  <button onClick={clearLeadLink} className="text-xs text-muted-foreground hover:text-destructive underline" type="button">Clear</button>
-                </div>
-              ) : (
-                <div className="relative">
-                  <Input value={leadLinkQuery} onChange={(e) => setLeadLinkQuery(e.target.value)} placeholder="Search lead by name, company, or mobile..." onFocus={() => { if (leadLinkResults.length > 0) setShowLeadLink(true); }} onBlur={() => setTimeout(() => setShowLeadLink(false), 200)} />
-                  {showLeadLink && leadLinkResults.length > 0 && (
-                    <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-md shadow-lg mt-1 max-h-48 overflow-y-auto">
-                      {leadLinkResults.map((c: any) => (
-                        <div key={c.id} className="px-3 py-2 hover:bg-muted cursor-pointer text-sm" onMouseDown={() => selectLeadLink(c)}>
-                          <div className="font-medium">{c.name}</div>
-                          <div className="text-xs text-muted-foreground">{c.companyName || ""}{c.companyName && c.mobile ? " · " : ""}{c.mobile || ""}</div>
-                        </div>
-                      ))}
+            {/* Deal Selection for multiple active deals */}
+            {dealSelectOpen && activeDeals.length > 1 && (
+              <div className="sm:col-span-2">
+                <Label>Select Active Deal <span className="text-destructive">*</span></Label>
+                <div className="space-y-2 mt-1">
+                  {activeDeals.map((d: any) => (
+                    <div key={d.id} className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${selectedDeal?.id === d.id ? "border-blue-500 bg-blue-50" : "hover:bg-muted/50"}`} onClick={() => { setSelectedDeal(d); setDealSelectOpen(false); }}>
+                      <div>
+                        <span className="text-sm font-medium">Deal #{d.id}</span>
+                        {d.title && <span className="text-xs text-muted-foreground ml-2">{d.title}</span>}
+                      </div>
+                      <Badge variant="outline" className="text-xs">{d.stage}</Badge>
                     </div>
-                  )}
-                  {urlContactId && !selectedLead && <p className="text-xs text-muted-foreground mt-1">Will link to lead from detail page. Search above to override.</p>}
+                  ))}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Customer Master actions */}
             {!customerMasterId && !existingCustomer && gstNumber.trim().length >= 15 && companyName.trim() && (
@@ -1863,7 +1758,6 @@ ${pagesHtml}
                   <col className="w-[72px]" />
                   <col className="w-[72px]" />
                   <col className="w-[88px]" />
-                  <col className="w-[72px]" />
                   <col className="w-[88px]" />
                   <col className="w-[72px]" />
                 </colgroup>
@@ -1875,7 +1769,6 @@ ${pagesHtml}
                     <TableHead className="w-[72px]">Qty</TableHead>
                     <TableHead className="w-[72px]">Unit</TableHead>
                     <TableHead className="w-[88px]">Rate (₹)</TableHead>
-                    <TableHead className="w-[72px]">GST %</TableHead>
                     <TableHead className="w-[88px]">Amount (₹)</TableHead>
                     <TableHead className="w-[72px]"></TableHead>
                   </TableRow>
@@ -1898,7 +1791,7 @@ ${pagesHtml}
                         <Input value={item.hsnCode} onChange={(e) => updateItem(idx, "hsnCode", e.target.value)} placeholder="HSN" className="h-8 w-full" />
                       </TableCell>
                       <TableCell>
-                        <Input type="number" value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} min={0} className="h-8 text-center w-full" {...preventSpinHandlers} />
+                        <Input type="number" value={item.quantity || ""} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} min={0} className="h-8 text-center w-full" placeholder="Qty" {...preventSpinHandlers} />
                       </TableCell>
                       <TableCell>
                         <Select value={item.unit} onValueChange={(v) => updateItem(idx, "unit", v)}>
@@ -1911,10 +1804,7 @@ ${pagesHtml}
                         </Select>
                       </TableCell>
                       <TableCell>
-                        <Input type="number" value={item.rate} onChange={(e) => updateItem(idx, "rate", Number(e.target.value))} min={0} className="h-8 text-right w-full" {...preventSpinHandlers} />
-                      </TableCell>
-                      <TableCell>
-                        <Input type="number" value={item.gstPercent} onChange={(e) => updateItem(idx, "gstPercent", Number(e.target.value))} min={0} max={100} className="h-8 text-center w-full" {...preventSpinHandlers} />
+                        <Input type="number" value={item.rate || ""} onChange={(e) => updateItem(idx, "rate", Number(e.target.value))} min={0} className="h-8 text-right w-full" placeholder="Rate" {...preventSpinHandlers} />
                       </TableCell>
                       <TableCell className="text-right font-medium text-sm">
                         {calcAmount(item).toFixed(2)}
@@ -2017,6 +1907,11 @@ ${pagesHtml}
           )}
           {inv.isActive && (
             <Badge className="bg-green-100 text-green-700 text-xs px-2 py-1">Active</Badge>
+          )}
+          {inv.deal && (
+            <Badge variant="outline" className="text-xs px-2 py-1 gap-1">
+              <LinkIcon className="h-3 w-3" /> Deal #{inv.deal.id} — {inv.deal.stage}
+            </Badge>
           )}
           <Button variant="outline" size="sm" onClick={() => {
             setSelectedInvoice(inv);

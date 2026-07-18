@@ -94,6 +94,7 @@ export default function LeadDetail() {
   const [newDealLostReason, setNewDealLostReason] = useState("");
   const [dealDialogOpen, setDealDialogOpen] = useState(false);
   const [piSentDialogOpen, setPiSentDialogOpen] = useState(false);
+  const [piSentDealId, setPiSentDealId] = useState<number | null>(null);
 
   const [actType, setActType] = useState("Call");
   const [actNotes, setActNotes] = useState("");
@@ -354,19 +355,17 @@ export default function LeadDetail() {
 
   const handleCreateDeal = () => {
     if (!newDealStage) return;
-    if (newDealStage === "PI Sent") {
-      const hasActivePI = Array.isArray(contactProformas) && contactProformas.some((pi: any) => pi.isActive && !pi.isDeleted);
-      if (!hasActivePI) {
-        setDealDialogOpen(false);
-        setPiSentDialogOpen(true);
-        return;
-      }
-    }
-    createDeal.mutate({ data: { contactId, stage: newDealStage as any, title: newDealTitle || null, salesOwnerId: contact.salesOwnerId, lostReason: newDealStage === "Lost" ? newDealLostReason || null : null } }, {
-      onSuccess: () => {
+    createDeal.mutate({ data: { contactId, stage: newDealStage === "PI Sent" ? "Qualification" : newDealStage as any, title: newDealTitle || null, salesOwnerId: contact.salesOwnerId, lostReason: newDealStage === "Lost" ? newDealLostReason || null : null } }, {
+      onSuccess: (createdDeal: any) => {
         onDealChange(queryClient, undefined, contactId);
-        toast({ title: "Deal created" });
         setDealDialogOpen(false); setNewDealTitle(""); setNewDealLostReason("");
+        if (newDealStage === "PI Sent") {
+          setPiSentDealId(createdDeal?.id || null);
+          setPiSentDialogOpen(true);
+          toast({ title: "Deal created. Now create a Proforma Invoice for it." });
+        } else {
+          toast({ title: "Deal created" });
+        }
       },
       onError: () => toast({ title: "Error creating deal", variant: "destructive" }),
     });
@@ -779,6 +778,7 @@ export default function LeadDetail() {
             open={piSentDialogOpen}
             onOpenChange={setPiSentDialogOpen}
             contactId={contactId}
+            dealId={piSentDealId || deal?.id}
           />
         </div>
 
@@ -1308,7 +1308,7 @@ function ProformaInvoiceList({ contactId }: { contactId: number }) {
     query: { queryKey: getListContactProformaInvoicesQueryKey(contactId), enabled: !!contactId, staleTime: 10_000 },
   });
 
-  const displayList = (proformas || []).slice(0, 5);
+  const displayList = (proformas || []);
 
   if (isLoading) return <p className="text-xs text-muted-foreground">Loading...</p>;
   if (displayList.length === 0) return <p className="text-xs text-muted-foreground">No proforma invoices yet.</p>;
@@ -1318,24 +1318,19 @@ function ProformaInvoiceList({ contactId }: { contactId: number }) {
       {displayList.map((p) => (
         <Link key={p.id} href={`/proforma-invoices`} className="block">
           <div className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 transition-colors cursor-pointer text-xs">
-            <div>
-              <span className="font-medium">{p.invoiceNumber}</span>
-              <span className="text-muted-foreground ml-2">{p.customerName}</span>
-            </div>
             <div className="flex items-center gap-2">
+              <span className="font-medium">{p.invoiceNumber}</span>
               <Badge className={`text-[10px] px-1.5 py-0 ${(p.status === "Draft" ? "bg-gray-100 text-gray-700" : p.status === "Sent" ? "bg-blue-100 text-blue-700" : p.status === "Approved" ? "bg-green-100 text-green-700" : p.status === "Rejected" ? "bg-red-100 text-red-700" : "bg-purple-100 text-purple-700")}`}>
                 {p.status}
               </Badge>
-              <span className="text-muted-foreground">₹{Number(p.grandTotal || 0).toLocaleString()}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-muted-foreground font-medium">₹{Number(p.grandTotal || 0).toLocaleString("en-IN")}</span>
+              <span className="text-muted-foreground text-[10px]">{p.createdAt ? new Date(p.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : ""}</span>
             </div>
           </div>
         </Link>
       ))}
-      {proformas && proformas.length > 5 && (
-        <Link href="/proforma-invoices">
-          <p className="text-xs text-blue-600 text-center mt-1 hover:underline cursor-pointer">View all proformas →</p>
-        </Link>
-      )}
     </div>
   );
 }

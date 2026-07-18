@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable, usersTable, activitiesTable, dealsTable, notificationsTable, commentHistoryTable, categoryHistoryTable, unitHistoryTable, documentsTable, proformaInvoicesTable, proformaInvoiceItemsTable } from "@workspace/db";
-import { eq, or, and, ilike, lte, isNotNull, isNull, inArray, SQL, desc } from "drizzle-orm";
+import { eq, or, and, ilike, lte, isNotNull, isNull, inArray, SQL, desc, sql } from "drizzle-orm";
 import { CreateContactBody, UpdateContactBody, GetContactParams, UpdateContactParams, DeleteContactParams, ListContactsQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -1030,6 +1030,116 @@ router.get("/contacts/:id/proforma-invoices", async (req, res) => {
     res.json(enriched);
   } catch (err) {
     req.log.error({ err }, "List contact proforma invoices error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /contacts/:id/active-deals — return active deals (not Won, not Lost) for a contact
+router.get("/contacts/:id/active-deals", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const id = Number(req.params.id);
+    if (!id) { res.status(400).json({ error: "Invalid contact ID" }); return; }
+
+    const deals = await db
+      .select({
+        id: dealsTable.id,
+        title: dealsTable.title,
+        stage: dealsTable.stage,
+        totalValue: dealsTable.totalValue,
+        probability: dealsTable.probability,
+        createdAt: dealsTable.createdAt,
+        updatedAt: dealsTable.updatedAt,
+      })
+      .from(dealsTable)
+      .where(and(
+        eq(dealsTable.contactId, id),
+        isNull(dealsTable.wonAt),
+        isNull(dealsTable.lostAt),
+      ))
+      .orderBy(desc(dealsTable.updatedAt));
+
+    res.json(deals);
+  } catch (err) {
+    req.log.error({ err }, "Get active deals error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /contacts/:id/customer-history — return customer summary stats for PI form
+router.get("/contacts/:id/customer-history", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const id = Number(req.params.id);
+    if (!id) { res.status(400).json({ error: "Invalid contact ID" }); return; }
+
+    // Total deals
+    const [dealCount] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(dealsTable)
+      .where(eq(dealsTable.contactId, id));
+
+    // Active deals
+    const activeDeals = await db
+      .select({ id: dealsTable.id, title: dealsTable.title, stage: dealsTable.stage })
+      .from(dealsTable)
+      .where(and(
+        eq(dealsTable.contactId, id),
+        isNull(dealsTable.wonAt),
+        isNull(dealsTable.lostAt),
+      ))
+      .orderBy(desc(dealsTable.updatedAt))
+      .limit(1);
+
+    // Total PIs
+    const [piCount] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(proformaInvoicesTable)
+      .where(and(
+        eq(proformaInvoicesTable.contactId, id),
+        eq(proformaInvoicesTable.isDeleted, false),
+      ));
+
+    // Last won deal
+    const [lastWon] = await db
+      .select({ totalValue: dealsTable.totalValue, wonAt: dealsTable.wonAt })
+      .from(dealsTable)
+      .where(and(eq(dealsTable.contactId, id), isNotNull(dealsTable.wonAt)))
+      .orderBy(desc(dealsTable.wonAt))
+      .limit(1);
+
+    // Last PI for order info
+    const [lastPI] = await db
+      .select({ customerName: proformaInvoicesTable.customerName, createdAt: proformaInvoicesTable.createdAt })
+      .from(proformaInvoicesTable)
+      .where(and(
+        eq(proformaInvoicesTable.contactId, id),
+        eq(proformaInvoicesTable.isDeleted, false),
+      ))
+      .orderBy(desc(proformaInvoicesTable.createdAt))
+      .limit(1);
+
+    // Contact's production unit
+    const [contact] = await db
+      .select({ unit: contactsTable.unit })
+      .from(contactsTable)
+      .where(eq(contactsTable.id, id));
+
+    res.json({
+      totalDeals: dealCount?.count || 0,
+      activeDeal: activeDeals[0] || null,
+      totalProformas: piCount?.count || 0,
+      lastWonValue: lastWon?.totalValue ? Number(lastWon.totalValue) : null,
+      lastWonDate: lastWon?.wonAt || null,
+      lastOrderDate: lastPI?.createdAt || null,
+      productionUnit: contact?.unit || null,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Get customer history error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
