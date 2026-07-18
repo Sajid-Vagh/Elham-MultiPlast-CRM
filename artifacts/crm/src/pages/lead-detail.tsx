@@ -25,6 +25,7 @@ import { MoveCategoryDialog } from "@/components/move-category-dialog";
 import { DocumentManager } from "@/components/document-manager";
 import { DocumentUploadDialog } from "@/components/document-upload-dialog";
 import { ScheduleFollowUpDialog } from "@/components/schedule-follow-up-dialog";
+import { PiSentDialog } from "@/components/pi-sent-dialog";
 import { STAGE_BADGE_COLORS } from "@/lib/deal-stages";
 import { onContactChange, onDealChange, onActivityChange } from "@/lib/query-invalidation";
 
@@ -80,6 +81,7 @@ export default function LeadDetail() {
   const { data: activities } = useListActivities({ contactId: contactId });
   const { data: users } = useListUsers();
   const { data: currentUser } = useGetMe();
+  const { data: contactProformas } = useListContactProformaInvoices(contactId, { query: { enabled: !!contactId, queryKey: getListContactProformaInvoicesQueryKey(contactId) } });
 
   const createDeal = useCreateDeal();
   const createActivity = useCreateActivity();
@@ -90,6 +92,7 @@ export default function LeadDetail() {
   const [newDealTitle, setNewDealTitle] = useState("");
   const [newDealLostReason, setNewDealLostReason] = useState("");
   const [dealDialogOpen, setDealDialogOpen] = useState(false);
+  const [piSentDialogOpen, setPiSentDialogOpen] = useState(false);
 
   const [actType, setActType] = useState("Call");
   const [actNotes, setActNotes] = useState("");
@@ -350,6 +353,14 @@ export default function LeadDetail() {
 
   const handleCreateDeal = () => {
     if (!newDealStage) return;
+    if (newDealStage === "PI Sent") {
+      const hasActivePI = Array.isArray(contactProformas) && contactProformas.some((pi: any) => pi.isActive && !pi.isDeleted);
+      if (!hasActivePI) {
+        setDealDialogOpen(false);
+        setPiSentDialogOpen(true);
+        return;
+      }
+    }
     createDeal.mutate({ data: { contactId, stage: newDealStage as any, title: newDealTitle || null, salesOwnerId: contact.salesOwnerId, lostReason: newDealStage === "Lost" ? newDealLostReason || null : null } }, {
       onSuccess: () => {
         onDealChange(queryClient, undefined, contactId);
@@ -762,6 +773,11 @@ export default function LeadDetail() {
             onSave={handleMarkLost}
             saving={lostSubmitting}
             hideCategory={contact?.category === "My Client"}
+          />
+          <PiSentDialog
+            open={piSentDialogOpen}
+            onOpenChange={setPiSentDialogOpen}
+            contactId={contactId}
           />
         </div>
 

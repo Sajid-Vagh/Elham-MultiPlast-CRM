@@ -22,6 +22,7 @@ import { DealWonCelebration } from "@/components/deal-won-celebration";
 import { onDealChange, onProductionChange } from "@/lib/query-invalidation";
 import { UserAvatar } from "@/components/user-avatar";
 import { ExportDropdown } from "@/components/export-dropdown";
+import { PiSentDialog } from "@/components/pi-sent-dialog";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { PENDING_UNIT_ASSIGNMENT, isPendingUnit } from "@/lib/unit-constants";
@@ -650,25 +651,11 @@ export default function Deals() {
       )}
 
       {/* PI Sent Dialog — only shown when no active PI exists */}
-      <Dialog open={!!piSentDeal} onOpenChange={(o) => { if (!o) { setPiSentDeal(null); setOptimisticStages(prev => { const n = { ...prev }; if (piSentDeal) delete n[piSentDeal.id]; return n; }); } }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Proforma Invoice Required</DialogTitle>
-            <DialogDescription>
-              No active Proforma Invoice has been created for this Deal. Create one before moving to PI Sent.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setPiSentDeal(null); setOptimisticStages(prev => { const n = { ...prev }; if (piSentDeal) delete n[piSentDeal.id]; return n; }); }}>Cancel</Button>
-            <Button onClick={() => {
-              if (!piSentDeal) return;
-              const contactId = piSentDeal.contactId || piSentDeal.contact?.id;
-              setPiSentDeal(null);
-              navigate(`/proforma-invoices${contactId ? `?contactId=${contactId}` : ""}`);
-            }}>Create Proforma</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PiSentDialog
+        open={!!piSentDeal}
+        onOpenChange={(o) => { if (!o) { setPiSentDeal(null); setOptimisticStages(prev => { const n = { ...prev }; if (piSentDeal) delete n[piSentDeal.id]; return n; }); } }}
+        contactId={piSentDeal?.contactId || piSentDeal?.contact?.id}
+      />
     </div>
   );
 }
