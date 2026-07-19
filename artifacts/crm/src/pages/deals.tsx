@@ -226,8 +226,8 @@ export default function Deals() {
       toast({ title: "Validation Error", description: "Won Amount must be greater than 0", variant: "destructive" });
       return;
     }
-    if (!wonProductionUnit) {
-      toast({ title: "Validation Error", description: "Production Unit is required", variant: "destructive" });
+    if (!wonProductionUnit && !markWonDeal?.deal.productionUnit) {
+      toast({ title: "Validation Error", description: "Please select a Production Unit", variant: "destructive" });
       return;
     }
     setWonSubmitting(true);
@@ -259,7 +259,7 @@ export default function Deals() {
         method: "POST",
         body: JSON.stringify({
           wonAmount: amount,
-          productionUnit: wonProductionUnit,
+          productionUnit: wonProductionUnit || markWonDeal.deal.productionUnit,
           productionNotes: wonProductionNotes || null,
           salesNotes: wonSalesNotes || null,
           unitChangeReason: wonUnitReason || null,
@@ -359,8 +359,9 @@ export default function Deals() {
             return;
           }
           setMarkWonDeal({ deal, oldStage });
-          setWonAmount(deal.totalValue ? String(deal.totalValue) : "");
-          setWonProductionUnit("");
+          const piTaxable = result.pi?.taxableAmount;
+          setWonAmount(piTaxable ? String(piTaxable) : deal.totalValue ? String(deal.totalValue) : "");
+          setWonProductionUnit(deal.productionUnit || "");
           setWonProductionNotes("");
           setWonSalesNotes("");
         })
@@ -514,7 +515,7 @@ export default function Deals() {
                           )}
                           <div className="mt-1 flex items-center gap-2 flex-wrap">
                             <CategoryBadge category={deal.contact?.category} />
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{deal.contact?.unit || PENDING_UNIT_ASSIGNMENT}</Badge>
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{deal.productionUnit || deal.contact?.unit || PENDING_UNIT_ASSIGNMENT}</Badge>
                             <Badge variant="outline" className={`text-[10px] px-1.5 py-0 border ${PI_STATUS_COLORS[(deal as any).activeProformaInvoice?.status || "No PI"] || PI_STATUS_COLORS["No PI"]}`}>
                               {(deal as any).activeProformaInvoice?.status || "No PI"}
                               {(deal as any).activeProformaInvoice?.version > 1 ? ` v${(deal as any).activeProformaInvoice.version}` : ""}
@@ -558,7 +559,7 @@ export default function Deals() {
                 )}
                 <div className="mt-1 flex items-center gap-2">
                   <CategoryBadge category={activeDeal.contact?.category} />
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">{activeDeal.contact?.unit || PENDING_UNIT_ASSIGNMENT}</Badge>
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">{activeDeal.productionUnit || activeDeal.contact?.unit || PENDING_UNIT_ASSIGNMENT}</Badge>
                 </div>
                 {activeDeal.contact?.customerComments && (
                   <div className="mt-1 text-xs text-muted-foreground line-clamp-1">{activeDeal.contact.customerComments}</div>
@@ -574,15 +575,15 @@ export default function Deals() {
 
       {/* Mark Deal as Won Dialog — comprehensive single dialog */}
       <Dialog open={!!markWonDeal} onOpenChange={(open) => { if (!open) handleMarkWonCancel(); }}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-lg max-h-[calc(100vh-32px)] overflow-hidden grid-rows-[auto_1fr_auto] p-0">
+          <DialogHeader className="px-6 pt-6 pb-2">
             <DialogTitle className="text-green-700">Mark Deal as Won</DialogTitle>
             <DialogDescription>
               Create an Order and Production Order for <strong>{dealName}</strong>
               {markWonDeal?.deal.contact?.companyName && <> — {markWonDeal.deal.contact.companyName}</>}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 px-6 overflow-y-auto min-h-0">
             <div>
               <Label className="text-sm font-medium">
                 Won Value (₹) <span className="text-destructive">*</span>
@@ -598,14 +599,23 @@ export default function Deals() {
                 className="mt-1"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Auto-filled from deal value. Edit if needed.
+                Auto-filled from Proforma Invoice subtotal (GST/freight excluded). Edit if needed.
               </p>
             </div>
             <div>
               <Label className="text-sm font-medium">
                 Production Unit <span className="text-destructive">*</span>
               </Label>
-              <Select value={wonProductionUnit} onValueChange={setWonProductionUnit}>
+              {markWonDeal?.deal.productionUnit ? (
+                <p className="text-xs text-muted-foreground mt-1 mb-1">
+                  Pre-filled from Deal. You may change if needed.
+                </p>
+              ) : null}
+              <Select
+                value={wonProductionUnit || markWonDeal?.deal.productionUnit || ""}
+                onValueChange={setWonProductionUnit}
+                required={!markWonDeal?.deal.productionUnit}
+              >
                 <SelectTrigger className="mt-1">
                   <SelectValue placeholder="Select production unit" />
                 </SelectTrigger>
@@ -704,14 +714,14 @@ export default function Deals() {
               )}
             </div>
           </div>
-          <DialogFooter className="gap-2">
+          <DialogFooter className="gap-2 px-6 py-4 border-t bg-background sticky bottom-0">
             <Button variant="outline" onClick={handleMarkWonCancel} disabled={wonSubmitting}>
               Cancel
             </Button>
             <Button
               className="bg-green-600 text-white hover:bg-green-700"
               onClick={handleMarkWonSubmit}
-              disabled={wonSubmitting || voiceNoteUploading || !wonAmount || Number(wonAmount) <= 0 || !wonProductionUnit}
+              disabled={wonSubmitting || voiceNoteUploading || !wonAmount || Number(wonAmount) <= 0 || (!wonProductionUnit && !markWonDeal?.deal.productionUnit)}
             >
               {wonSubmitting || voiceNoteUploading ? (
                 <><Loader2 className="h-4 w-4 animate-spin mr-2" /> {voiceNoteUploading ? "Uploading voice note..." : "Processing..."}</>

@@ -372,14 +372,14 @@ export default function ProductionOrderDetail() {
                 </div>
                 <div>
                   <span className="text-muted-foreground">Created By</span>
-                  <p className="font-medium mt-1">
+                  <div className="font-medium mt-1 flex items-center gap-1">
                     {order.createdByName || "-"}
                     {order.createdByRole && (
-                      <Badge variant="outline" className="ml-2 text-[10px] py-0">
+                      <Badge variant="outline" className="text-[10px] py-0">
                         {order.createdByRole === "production_and_support" ? "Production & Support" : "Sales"}
                       </Badge>
                     )}
-                  </p>
+                  </div>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Assigned Manager</span>
@@ -387,13 +387,13 @@ export default function ProductionOrderDetail() {
                 </div>
                 <div>
                   <span className="text-muted-foreground">Production Unit</span>
-                  <p className="font-medium mt-1">
+                  <div className="font-medium mt-1">
                     {order.productionUnit ? (
                       <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200">{order.productionUnit}</Badge>
                     ) : (
                       <span className="text-muted-foreground">Unassigned</span>
                     )}
-                  </p>
+                  </div>
                 </div>
                 <div className="col-span-2 md:col-span-3">
                   <span className="text-muted-foreground">Production Remarks</span>

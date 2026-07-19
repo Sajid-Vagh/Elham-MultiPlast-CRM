@@ -10,6 +10,7 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { onDealChange, onActivityChange, onProductionChange } from "@/lib/query-invalidation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,6 +25,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { CategoryBadge } from "@/components/category-badge";
 import { MoveCategoryDialog } from "@/components/move-category-dialog";
+import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { DEAL_STAGES, STAGE_PROBS, STAGE_BADGE_COLORS } from "@/lib/deal-stages";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useActiveUnits } from "@/lib/use-active-units";
@@ -141,6 +143,12 @@ export default function DealDetail() {
   const [showMoveCategory, setShowMoveCategory] = useState(false);
   const [piSentDialogOpen, setPiSentDialogOpen] = useState(false);
 
+  // Change Production Unit dialog
+  const [changeUnitOpen, setChangeUnitOpen] = useState(false);
+  const [changeUnitValue, setChangeUnitValue] = useState("");
+  const [changeUnitReason, setChangeUnitReason] = useState("");
+  const [changeUnitSubmitting, setChangeUnitSubmitting] = useState(false);
+
   const deleteDeal = useDeleteDeal();
 
   // Activity date filter
@@ -176,7 +184,7 @@ export default function DealDetail() {
       const activePI = (deal as any).activeProformaInvoice;
       const piSubtotal = activePI?.taxableAmount ?? activePI?.subtotal;
       setWonAmount(piSubtotal ? String(piSubtotal) : deal.totalValue ? String(deal.totalValue) : "");
-      setWonProductionUnit("");
+      setWonProductionUnit(deal.productionUnit || "");
       setWonProductionNotes("");
       setWonSalesNotes("");
       setMarkWonOpen(true);
@@ -210,7 +218,7 @@ export default function DealDetail() {
       toast({ title: "Validation Error", description: "Won Amount must be greater than 0", variant: "destructive" });
       return;
     }
-    if (!wonProductionUnit) {
+    if (!wonProductionUnit && !deal.productionUnit) {
       toast({ title: "Validation Error", description: "Production Unit is required", variant: "destructive" });
       return;
     }
@@ -220,7 +228,7 @@ export default function DealDetail() {
         method: "POST",
         body: JSON.stringify({
           wonAmount: amount,
-          productionUnit: wonProductionUnit,
+          productionUnit: wonProductionUnit || deal.productionUnit,
           productionNotes: wonProductionNotes || null,
           salesNotes: wonSalesNotes || null,
           unitChangeReason: wonUnitReason || null,
@@ -282,6 +290,33 @@ export default function DealDetail() {
     updateDeal.mutate({ id: dealId, data: { totalValue: val ? Number(val) : null } }, {
       onSuccess: () => onDealChange(queryClient, dealId, contact?.id),
     });
+  };
+
+  const handleChangeProductionUnit = async () => {
+    if (!changeUnitValue) {
+      toast({ title: "Error", description: "Select a production unit", variant: "destructive" });
+      return;
+    }
+    setChangeUnitSubmitting(true);
+    try {
+      const token = localStorage.getItem("crm_token");
+      const res = await fetch(`/api/deals/${dealId}/change-production-unit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ productionUnit: changeUnitValue, reason: changeUnitReason || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to change unit");
+      toast({ title: "Production Unit changed", description: `Changed to ${changeUnitValue}` });
+      setChangeUnitOpen(false);
+      setChangeUnitValue("");
+      setChangeUnitReason("");
+      onDealChange(queryClient, dealId, contact?.id);
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to change unit", variant: "destructive" });
+    } finally {
+      setChangeUnitSubmitting(false);
+    }
   };
 
   const handleAddProduct = () => {
@@ -457,6 +492,17 @@ export default function DealDetail() {
                 <Input type="number" defaultValue={deal.totalValue ? String(deal.totalValue) : ""} placeholder="0" onBlur={e => handleValueUpdate(e.target.value)} />
               </div>
               <div className="text-xs text-muted-foreground">Probability: {STAGE_PROBS[deal.stage] ?? deal.probability}%</div>
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1 block">Production Unit</Label>
+                <div className="flex items-center gap-2">
+                  <Badge variant={deal.productionUnit ? "secondary" : "outline"} className="text-xs">
+                    {deal.productionUnit || PENDING_UNIT_ASSIGNMENT}
+                  </Badge>
+                  <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => { setChangeUnitValue(deal.productionUnit || ""); setChangeUnitReason(""); setChangeUnitOpen(true); }}>
+                    Change
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -814,15 +860,15 @@ export default function DealDetail() {
 
       {/* Mark Deal as Won Dialog */}
       <Dialog open={markWonOpen} onOpenChange={(open) => { if (!open) handleMarkWonCancel(); }}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-lg max-h-[calc(100vh-32px)] overflow-hidden grid-rows-[auto_1fr_auto] p-0">
+          <DialogHeader className="px-6 pt-6 pb-2">
             <DialogTitle className="text-green-700">Mark Deal as Won</DialogTitle>
             <DialogDescription>
               Create an Order and Production Order for <strong>{deal.title || `Deal #${deal.id}`}</strong>
               {contact ? ` — ${contact.name}` : ""}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 px-6 overflow-y-auto min-h-0">
             <div>
               <Label className="text-sm font-medium">
                 Won Value (₹) <span className="text-destructive">*</span>
@@ -845,7 +891,16 @@ export default function DealDetail() {
               <Label className="text-sm font-medium">
                 Production Unit <span className="text-destructive">*</span>
               </Label>
-              <Select value={wonProductionUnit} onValueChange={setWonProductionUnit}>
+              {deal.productionUnit ? (
+                <p className="text-xs text-muted-foreground mt-1 mb-1">
+                  Pre-filled from Deal. You may change if needed.
+                </p>
+              ) : null}
+              <Select
+                value={wonProductionUnit || deal.productionUnit || ""}
+                onValueChange={setWonProductionUnit}
+                required={!deal.productionUnit}
+              >
                 <SelectTrigger className="mt-1">
                   <SelectValue placeholder="Select production unit" />
                 </SelectTrigger>
@@ -892,14 +947,14 @@ export default function DealDetail() {
               />
             </div>
           </div>
-          <DialogFooter className="gap-2">
+          <DialogFooter className="gap-2 px-6 py-4 border-t bg-background sticky bottom-0">
             <Button variant="outline" onClick={handleMarkWonCancel} disabled={wonSubmitting}>
               Cancel
             </Button>
             <Button
               className="bg-green-600 text-white hover:bg-green-700"
               onClick={handleMarkWonSubmit}
-              disabled={wonSubmitting || !wonAmount || Number(wonAmount) <= 0 || !wonProductionUnit}
+              disabled={wonSubmitting || !wonAmount || Number(wonAmount) <= 0 || (!wonProductionUnit && !deal.productionUnit)}
             >
               {wonSubmitting ? (
                 <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Processing...</>
@@ -968,6 +1023,41 @@ export default function DealDetail() {
         contactId={deal.contactId}
         dealId={deal.id}
       />
+
+      {/* Change Production Unit Dialog */}
+      <Dialog open={changeUnitOpen} onOpenChange={setChangeUnitOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Change Production Unit</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <Label className="text-sm font-medium">Current Unit: <Badge variant="secondary">{deal.productionUnit || PENDING_UNIT_ASSIGNMENT}</Badge></Label>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">New Production Unit <span className="text-destructive">*</span></Label>
+              <Select value={changeUnitValue} onValueChange={setChangeUnitValue}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT && u !== "Not Sure").map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Reason (Optional)</Label>
+              <Input value={changeUnitReason} onChange={e => setChangeUnitReason(e.target.value)} placeholder="e.g. Customer requested different factory" className="mt-1" />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setChangeUnitOpen(false)} disabled={changeUnitSubmitting}>Cancel</Button>
+              <Button onClick={handleChangeProductionUnit} disabled={changeUnitSubmitting || !changeUnitValue}>
+                {changeUnitSubmitting ? "Saving..." : "Change Unit"}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

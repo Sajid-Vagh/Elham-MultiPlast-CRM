@@ -28,6 +28,7 @@ import { ScheduleFollowUpDialog } from "@/components/schedule-follow-up-dialog";
 import { PiSentDialog } from "@/components/pi-sent-dialog";
 import { STAGE_BADGE_COLORS } from "@/lib/deal-stages";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import { useActiveUnits } from "@/lib/use-active-units";
 import { onContactChange, onDealChange, onActivityChange } from "@/lib/query-invalidation";
 
 const TIMELINE_ICONS: Record<string, { bg: string; icon: string }> = {
@@ -82,6 +83,7 @@ export default function LeadDetail() {
   const { data: activities } = useListActivities({ contactId: contactId });
   const { data: users } = useListUsers();
   const { data: currentUser } = useGetMe();
+  const { units: activeUnits } = useActiveUnits();
   const { data: contactProformas } = useListContactProformaInvoices(contactId, { query: { enabled: !!contactId, queryKey: getListContactProformaInvoicesQueryKey(contactId) } });
 
   const createDeal = useCreateDeal();
@@ -92,6 +94,7 @@ export default function LeadDetail() {
   const [newDealStage, setNewDealStage] = useState("New");
   const [newDealTitle, setNewDealTitle] = useState("");
   const [newDealLostReason, setNewDealLostReason] = useState("");
+  const [newDealProductionUnit, setNewDealProductionUnit] = useState("");
   const [dealDialogOpen, setDealDialogOpen] = useState(false);
   const [piSentDialogOpen, setPiSentDialogOpen] = useState(false);
   const [piSentDealId, setPiSentDealId] = useState<number | null>(null);
@@ -355,10 +358,10 @@ export default function LeadDetail() {
 
   const handleCreateDeal = () => {
     if (!newDealStage) return;
-    createDeal.mutate({ data: { contactId, stage: newDealStage === "PI Sent" ? "Qualification" : newDealStage as any, title: newDealTitle || null, salesOwnerId: contact.salesOwnerId, lostReason: newDealStage === "Lost" ? newDealLostReason || null : null } }, {
+    createDeal.mutate({ data: { contactId, stage: newDealStage === "PI Sent" ? "Qualification" : newDealStage as any, title: newDealTitle || null, salesOwnerId: contact.salesOwnerId, lostReason: newDealStage === "Lost" ? newDealLostReason || null : null, productionUnit: newDealProductionUnit || null } }, {
       onSuccess: (createdDeal: any) => {
         onDealChange(queryClient, undefined, contactId);
-        setDealDialogOpen(false); setNewDealTitle(""); setNewDealLostReason("");
+        setDealDialogOpen(false); setNewDealTitle(""); setNewDealLostReason(""); setNewDealProductionUnit("");
         if (newDealStage === "PI Sent") {
           setPiSentDealId(createdDeal?.id || null);
           setPiSentDialogOpen(true);
@@ -934,6 +937,15 @@ export default function LeadDetail() {
                       </Select>
                     </div>
                     {newDealStage === "Lost" && <div><Label>Lost Reason *</Label><Textarea value={newDealLostReason} onChange={e => setNewDealLostReason(e.target.value)} placeholder="Reason for losing this deal" /></div>}
+                    <div><Label>Production Unit</Label>
+                      <Select value={newDealProductionUnit || PENDING_UNIT_ASSIGNMENT} onValueChange={(v) => setNewDealProductionUnit(v === PENDING_UNIT_ASSIGNMENT ? "" : v)}>
+                        <SelectTrigger><SelectValue placeholder="Select production unit" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={PENDING_UNIT_ASSIGNMENT}>Not assigned</SelectItem>
+                          {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT && u !== "Not Sure").map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <Button onClick={handleCreateDeal} disabled={createDeal.isPending} className="w-full">Create</Button>
                   </div>
                 </DialogContent>

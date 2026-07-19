@@ -55,7 +55,8 @@ router.get("/production/pending-requirements", async (req, res) => {
   try {
     const user = await requireAuth(req, res);
     if (!user) return;
-    res.json(await getPendingRequirements(user));
+    const { unit: unitFilter } = req.query as Record<string, string | undefined>;
+    res.json(await getPendingRequirements(user, unitFilter));
   } catch (err) {
     console.error("Get pending requirements error:", err);
     res.status(500).json({ error: "Internal server error" });

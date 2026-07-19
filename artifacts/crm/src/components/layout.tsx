@@ -196,6 +196,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
 
   const salesNavItems = [
     { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", color: "#a78bfa" },
+    { icon: Download, label: "Import", href: "/import", color: "#fbbf24" },
     { icon: Users, label: "Leads", href: "/leads", color: "#60a5fa" },
     { icon: Briefcase, label: "Deals", href: "/deals", color: "#34d399" },
     { icon: Bell, label: "Activity", href: "/follow-ups", color: "#f59e0b" },
@@ -207,7 +208,6 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: MapPin, label: "Freight Lookup", href: "/transport-logistics/lookup", color: "#14b8a6" },
     { icon: BarChart, label: "Reports", href: "/reports", color: "#f472b6" },
     { icon: Package, label: "Inventory", href: "/inventory", color: "#0ea5e9" },
-    { icon: Download, label: "Import", href: "/import", color: "#fbbf24" },
     { icon: Copy, label: "Duplicates", href: "/duplicates", color: "#f87171" },
     { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
   ];

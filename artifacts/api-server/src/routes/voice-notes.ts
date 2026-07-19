@@ -6,6 +6,7 @@ import { getUserFromRequest } from "./auth";
 import { storage } from "../lib/storage";
 import { canAccessSalesResource, canAccessUnit } from "../lib/permission-service";
 import { getAccessibleUnits } from "../lib/unit-filter";
+import fs from "node:fs";
 import path from "node:path";
 
 const router: IRouter = Router();
@@ -157,11 +158,13 @@ router.get("/voice-notes/deal/:dealId", async (req: Request, res: Response) => {
       )
       .orderBy(desc(voiceNotesTable.createdAt));
 
-    // Attach playback URL
-    const result = notes.map((n) => ({
-      ...n,
-      url: storage.getUrl(n.storagePath),
-    }));
+    // Attach playback URL and filter out orphaned records (file missing on disk)
+    const result = notes
+      .map((n) => ({
+        ...n,
+        url: storage.getUrl(n.storagePath),
+      }))
+      .filter((n) => fs.existsSync(storage.getPhysicalPath(n.storagePath)));
 
     res.json(result);
   } catch (err) {
@@ -232,10 +235,13 @@ router.get("/voice-notes/production/:productionOrderId", async (req: Request, re
       )
       .orderBy(desc(voiceNotesTable.createdAt));
 
-    const result = notes.map((n) => ({
-      ...n,
-      url: storage.getUrl(n.storagePath),
-    }));
+    // Attach playback URL and filter out orphaned records (file missing on disk)
+    const result = notes
+      .map((n) => ({
+        ...n,
+        url: storage.getUrl(n.storagePath),
+      }))
+      .filter((n) => fs.existsSync(storage.getPhysicalPath(n.storagePath)));
 
     res.json(result);
   } catch (err) {

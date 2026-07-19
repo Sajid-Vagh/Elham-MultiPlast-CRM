@@ -47,14 +47,14 @@ export default function ProductionOrders() {
 
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all");
   const [priorityFilter, setPriorityFilter] = useState(searchParams.get("priority") || "all");
-  const [unitFilter, setUnitFilter] = useState("all");
+  const [unitFilter, setUnitFilter] = useState("All");
   const [createdByFilter, setCreatedByFilter] = useState("all");
   const [search, setSearch] = useState(searchParams.get("search") || "");
   const [page, setPage] = useState(1);
 
   useEffect(() => {
     if (unitLocked && accessibleUnits.length === 1) {
-      setUnitFilter(accessibleUnits[0].toLowerCase());
+      setUnitFilter(accessibleUnits[0]);
     }
   }, [unitLocked, accessibleUnits]);
 
@@ -68,7 +68,7 @@ export default function ProductionOrders() {
     const p: Record<string, string> = { page: String(page), limit: "15" };
     if (statusFilter !== "all") p.status = statusFilter;
     if (priorityFilter !== "all") p.priority = priorityFilter;
-    if (unitFilter !== "all") p.unit = unitFilter;
+    if (unitFilter !== "All") p.unit = unitFilter;
     if (createdByFilter !== "all") p.createdBy = createdByFilter;
     if (search.trim()) p.search = search.trim();
     return p;
@@ -133,7 +133,7 @@ export default function ProductionOrders() {
             <SelectTrigger className="w-[160px]"><SelectValue placeholder="Select Unit" /></SelectTrigger>
             <SelectContent>
               {accessibleUnits.map((u) => (
-                <SelectItem key={u} value={u.toLowerCase()}>{u}</SelectItem>
+                <SelectItem key={u} value={u}>{u}</SelectItem>
               ))}
             </SelectContent>
           </Select>

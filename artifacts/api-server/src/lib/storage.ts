@@ -12,6 +12,8 @@ export interface StorageProvider {
 
 const UPLOADS_ROOT = path.resolve(process.cwd(), "uploads");
 
+export { UPLOADS_ROOT };
+
 class LocalStorageProvider implements StorageProvider {
   async save(filename: string, buffer: Buffer, subDir = "documents"): Promise<string> {
     const dir = path.join(UPLOADS_ROOT, subDir);

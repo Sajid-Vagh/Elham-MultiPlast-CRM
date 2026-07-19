@@ -590,6 +590,9 @@ router.post("/deals/:id/mark-won", async (req, res) => {
     const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, dealId));
     if (!deal) { res.status(404).json({ error: "Deal not found" }); return; }
 
+    // Production Unit: prefer req.body, fallback to deal.productionUnit (already set at creation/edit)
+    const effectiveProductionUnit = productionUnit || deal.productionUnit;
+
     // Permission check
     if (user.role === "sales" && deal.salesOwnerId !== user.id) {
       res.status(403).json({ error: "Forbidden" }); return;
@@ -623,10 +626,11 @@ router.post("/deals/:id/mark-won", async (req, res) => {
     const result = await db.transaction(async (tx) => {
       const now = new Date();
 
-      // 1. Update Deal → Won (Won Value = PI Subtotal only)
+      // 1. Update Deal → Won (Won Value = PI Subtotal only, save Production Unit)
       await tx.update(dealsTable).set({
         stage: "Won",
         wonAmount: String(effectiveWonAmount),
+        productionUnit: effectiveProductionUnit,
         probability: 100,
         completedAt: now,
         notes: salesNotes || deal.notes,
@@ -643,15 +647,32 @@ router.post("/deals/:id/mark-won", async (req, res) => {
           now,
         });
 
-        // 2b. Update contact's production unit (first assignment at Won stage)
-        if (productionUnit && !contact.unit) {
-          await tx.update(contactsTable).set({ unit: productionUnit }).where(eq(contactsTable.id, contact.id));
+        // 2b. Sync contact's production unit from deal (keeps contact.unit in sync)
+        //     and record unit change history (single entry per Won)
+        if (effectiveProductionUnit && effectiveProductionUnit !== contact.unit) {
+          await tx.update(contactsTable).set({ unit: effectiveProductionUnit }).where(eq(contactsTable.id, contact.id));
+
+          // Determine reason and previous unit for history
+          const historyPreviousUnit = deal.productionUnit || contact.unit || null;
+          const historyReason = deal.productionUnit && effectiveProductionUnit !== deal.productionUnit
+            ? (unitChangeReason || `Production Unit changed during Won: "${deal.productionUnit}" → "${effectiveProductionUnit}"`)
+            : (unitChangeReason || "Deal Won — Production Unit assigned from Deal");
+
           await tx.insert(unitHistoryTable).values({
             contactId: contact.id,
-            previousUnit: contact.unit || null,
-            newUnit: productionUnit,
+            previousUnit: historyPreviousUnit,
+            newUnit: effectiveProductionUnit,
             changedBy: user.id,
-            reason: unitChangeReason || "Deal Won — Production Unit assigned",
+            reason: historyReason,
+          });
+        } else if (effectiveProductionUnit && deal.productionUnit && effectiveProductionUnit !== deal.productionUnit) {
+          // Contact already in sync but deal unit changed — still record history
+          await tx.insert(unitHistoryTable).values({
+            contactId: contact.id,
+            previousUnit: deal.productionUnit,
+            newUnit: effectiveProductionUnit,
+            changedBy: user.id,
+            reason: unitChangeReason || `Production Unit changed during Won: "${deal.productionUnit}" → "${effectiveProductionUnit}"`,
           });
         }
       }
@@ -675,7 +696,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
         salesOwnerId: deal.salesOwnerId || user.id,
         createdBy: user.id,
         dealId: deal.id,
-        productionUnit: productionUnit || null,
+        productionUnit: effectiveProductionUnit || null,
         productionRemarks: productionNotes || null,
         totalAmount: latestPI?.grandTotal || "0",
         grandTotal: latestPI?.grandTotal || "0",
@@ -727,7 +748,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
           dealId: deal.id,
           status: "Pending",
           priority: "Medium",
-          productionUnit,
+          productionUnit: effectiveProductionUnit,
           productionRemarks: productionNotes || null,
           updatedBy: user.id,
           createdById: user.id,
@@ -741,7 +762,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
           await tx.insert(productionTimelineTable).values({
             productionOrderId: po.id,
             status: "Pending",
-            notes: `Order received from ${user.name} (${user.role === "production_and_support" ? "Production & Support" : "Sales"}) — Production Unit: ${productionUnit}`,
+            notes: `Order received from ${user.name} (${user.role === "production_and_support" ? "Production & Support" : "Sales"}) — Production Unit: ${effectiveProductionUnit}`,
             createdBy: user.id,
           });
         }
@@ -768,8 +789,8 @@ router.post("/deals/:id/mark-won", async (req, res) => {
       const activityEntries = [
         `Deal Won — ₹${effectiveWonAmount.toLocaleString("en-IN")}\n\nBy: ${user.name}\n${ts}`,
         `Order Created — ${orderNumber}\n\nAuto-created from Deal Won\n${ts}`,
-        productionOrder ? `Production Order Created — Unit: ${productionUnit}\n\nBy: ${user.name}\n${ts}` : null,
-        `Production Unit Assigned — ${productionUnit}\n\nBy: ${user.name}\n${ts}`,
+        productionOrder ? `Production Order Created — Unit: ${effectiveProductionUnit}\n\nBy: ${user.name}\n${ts}` : null,
+        `Production Unit Assigned — ${effectiveProductionUnit}\n\nBy: ${user.name}\n${ts}`,
         productionNotes ? `Production Notes Added — ${productionNotes}\n\nBy: ${user.name}\n${ts}` : null,
         voiceNoteId ? `Voice Note Attached — sent by ${user.name} with Deal Won\n\nDuration: see attached audio\n${ts}` : null,
       ].filter(Boolean);
@@ -787,11 +808,11 @@ router.post("/deals/:id/mark-won", async (req, res) => {
       // 8. Notifications — using centralized helpers
       // 8a+b. Notify sales owner + admins (single shared helper)
       await notifyProductionUsers({
-        productionUnit,
+        productionUnit: effectiveProductionUnit,
         title: "New Production Order (Deal Won)",
         message: [
           `Created By: ${user.name} (${user.role === "production_and_support" ? "Production & Support" : "Sales"})`,
-          `Production Unit: ${productionUnit}`,
+          `Production Unit: ${effectiveProductionUnit}`,
           ``,
           `Customer: ${contact?.name || "Unknown"}`,
           `Company: ${contact?.companyName || "N/A"}`,
@@ -858,6 +879,91 @@ router.delete("/deals/:id", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Delete deal error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ============================================================
+// POST /deals/:id/change-production-unit
+// Change the Production Unit on a Deal + sync to Order/Production Order + audit trail
+// ============================================================
+router.post("/deals/:id/change-production-unit", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const dealId = Number(req.params.id);
+    if (isNaN(dealId)) { res.status(400).json({ error: "Invalid deal id" }); return; }
+
+    const { productionUnit, reason } = req.body as Record<string, any>;
+    if (!productionUnit || typeof productionUnit !== "string") {
+      res.status(400).json({ error: "Production Unit is required" }); return;
+    }
+    const validUnit = await validateProductionUnit(db, productionUnit);
+    if (!validUnit) {
+      res.status(400).json({ error: "Invalid Production Unit. Valid units: Himatnagar, Surat, Rajkot" }); return;
+    }
+
+    const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, dealId));
+    if (!deal) { res.status(404).json({ error: "Deal not found" }); return; }
+
+    if (user.role === "sales" && deal.salesOwnerId !== user.id) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+
+    const previousUnit = deal.productionUnit;
+    if (previousUnit === productionUnit) {
+      res.status(400).json({ error: "New unit is the same as the current unit" }); return;
+    }
+
+    await db.transaction(async (tx) => {
+      // 1. Update deal
+      await tx.update(dealsTable).set({ productionUnit }).where(eq(dealsTable.id, dealId));
+
+      // 2. Sync to contact
+      const [contact] = await tx.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+      if (contact && contact.unit !== productionUnit) {
+        await tx.update(contactsTable).set({ unit: productionUnit }).where(eq(contactsTable.id, contact.id));
+        await tx.insert(unitHistoryTable).values({
+          contactId: contact.id,
+          previousUnit: contact.unit || null,
+          newUnit: productionUnit,
+          changedBy: user.id,
+          reason: reason || `Production Unit changed on Deal #${dealId}`,
+        });
+      }
+
+      // 3. Sync to order (if exists)
+      const [order] = await tx.select().from(ordersTable).where(eq(ordersTable.dealId, dealId)).limit(1);
+      if (order && order.productionUnit !== productionUnit) {
+        await tx.update(ordersTable).set({ productionUnit }).where(eq(ordersTable.id, order.id));
+      }
+
+      // 4. Sync to production order (if exists)
+      const [po] = await tx.select().from(productionOrdersTable).where(eq(productionOrdersTable.dealId, dealId)).limit(1);
+      if (po && po.productionUnit !== productionUnit) {
+        await tx.update(productionOrdersTable).set({ productionUnit }).where(eq(productionOrdersTable.id, po.id));
+        await tx.insert(productionTimelineTable).values({
+          productionOrderId: po.id,
+          status: po.status,
+          notes: `Production Unit changed from "${previousUnit || "None"}" to "${productionUnit}" by ${user.name}${reason ? ` — ${reason}` : ""}`,
+          createdBy: user.id,
+        });
+      }
+
+      // 5. Audit trail activity
+      await logActivity(tx, {
+        dealId: deal.id,
+        contactId: deal.contactId,
+        type: "Note",
+        notes: `Production Unit changed: "${previousUnit || "None"}" → "${productionUnit}"\n\nReason: ${reason || "Not specified"}\nBy: ${user.name}`,
+        createdBy: user.id,
+      });
+    });
+
+    res.json({ success: true, message: `Production Unit changed to "${productionUnit}"`, previousUnit });
+  } catch (err) {
+    req.log.error({ err }, "Change production unit error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

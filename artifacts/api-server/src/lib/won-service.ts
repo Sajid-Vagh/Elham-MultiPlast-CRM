@@ -63,10 +63,12 @@ export async function validateWonPrerequisites(params: {
 
   // Validate production unit (mark-won endpoint only)
   if (isMarkWonEndpoint) {
-    if (!productionUnit || isPendingUnit(productionUnit)) {
-      return { valid: false, status: 400, error: "Production Unit is required. Please select a Production Unit before marking this Deal as Won. Available Units: Himatnagar, Surat, Rajkot" };
+    // Use deal.productionUnit if already set (from Deal creation/edit); only ask if null
+    const effectiveUnit = productionUnit || deal.productionUnit;
+    if (!effectiveUnit || isPendingUnit(effectiveUnit)) {
+      return { valid: false, status: 400, error: "Production Unit is required. Please assign a Production Unit to this Deal before marking as Won. Available Units: Himatnagar, Surat, Rajkot" };
     }
-    const validUnit = await validateProductionUnit(exec, productionUnit);
+    const validUnit = await validateProductionUnit(exec, effectiveUnit);
     if (!validUnit) {
       return { valid: false, status: 400, error: "Invalid Production Unit. Please select a valid unit." };
     }

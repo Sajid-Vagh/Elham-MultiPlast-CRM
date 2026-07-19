@@ -1803,11 +1803,21 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
       if (!existing) {
         const creatorRoleLabel = user.role === "production_and_support" ? "Production & Support" : "Sales";
 
+        // Inherit productionUnit from deal (single source of truth) if not explicitly provided
+        let effectiveProductionUnit = productionUnit || null;
+        if (!effectiveProductionUnit && invoice.dealId) {
+          const [dealRow] = await db.select().from(dealsTable).where(eq(dealsTable.id, invoice.dealId)).limit(1);
+          if (dealRow?.productionUnit) {
+            effectiveProductionUnit = dealRow.productionUnit;
+          }
+        }
+
         await db.insert(productionOrdersTable).values({
           proformaInvoiceId: id,
+          dealId: invoice.dealId || null,
           status: "Pending",
           priority: "Medium",
-          productionUnit: productionUnit || null,
+          productionUnit: effectiveProductionUnit,
           productionRemarks: productionRemarks || null,
           updatedBy: user.id,
           createdById: user.id,
@@ -1840,14 +1850,14 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
 
           // Notify production users based on unit permissions (single shared helper)
           // Only send notification if a real production unit is assigned (not PENDING_UNIT_ASSIGNMENT)
-          const notifyUnit = productionUnit && productionUnit !== PENDING_UNIT_ASSIGNMENT ? productionUnit : null;
+          const notifyUnit = effectiveProductionUnit && effectiveProductionUnit !== PENDING_UNIT_ASSIGNMENT ? effectiveProductionUnit : null;
           if (notifyUnit) {
             await notifyProductionUsers({
               productionUnit: notifyUnit,
               title: "New Production Order",
               message: [
                 `Created By: ${user.name} (${creatorRoleLabel})`,
-                `Production Unit: ${productionUnit}`,
+                `Production Unit: ${effectiveProductionUnit}`,
                 ``,
                 `Customer: ${invoice.customerName}`,
                 `Company: ${invoice.companyName || "N/A"}`,

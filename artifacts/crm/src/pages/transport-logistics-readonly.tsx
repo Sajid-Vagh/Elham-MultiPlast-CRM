@@ -33,7 +33,7 @@ export default function TransportLogisticsLookup() {
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
-    enabled: !!(pinCode || city || state),
+    enabled: true,
   });
 
   // Bundle data for packing tab
@@ -141,7 +141,7 @@ export default function TransportLogisticsLookup() {
                     <TableRow><TableCell colSpan={8} className="text-center py-8">Searching...</TableCell></TableRow>
                   ) : !lookupData?.data?.length ? (
                     <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                      {pinCode || city || state ? "No transport routes found for this destination" : "Enter a PIN code or city to search"}
+                      {pinCode || city || state ? "No transport routes found for this destination" : "No transport records found"}
                     </TableCell></TableRow>
                   ) : (
                     lookupData.data.map((item: any, idx: number) => (

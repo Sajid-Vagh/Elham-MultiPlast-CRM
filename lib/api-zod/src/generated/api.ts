@@ -679,6 +679,8 @@ export const ListDealsResponseItem = zod.object({
   "totalValue": zod.number().nullish(),
   "lostReason": zod.union([zod.literal('Price High'),zod.literal('Need Different Shape'),zod.literal('No Requirement Now'),zod.literal('Quality Problem'),zod.literal('Transport Concern'),zod.literal('Need in Future'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "notes": zod.string().nullish(),
+  "wonAmount": zod.number().nullish(),
+  "productionUnit": zod.string().nullish(),
   "salesOwnerId": zod.number().nullish(),
   "salesOwner": zod.object({
   "id": zod.number(),
@@ -706,6 +708,7 @@ export const CreateDealBody = zod.object({
   "stage": zod.enum(['New', 'CL Sent', 'Price Given', 'Samples Sent', 'Samples Received', 'PI Sent', 'Won', 'Lost']),
   "probability": zod.number().optional(),
   "totalValue": zod.number().nullish(),
+  "productionUnit": zod.string().nullish(),
   "lostReason": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "salesOwnerId": zod.number().nullish(),
@@ -753,6 +756,7 @@ export const CreateDealResponse = zod.object({
   "lostReason": zod.union([zod.literal('Price High'),zod.literal('Need Different Shape'),zod.literal('No Requirement Now'),zod.literal('Quality Problem'),zod.literal('Transport Concern'),zod.literal('Need in Future'),zod.literal('Other'),zod.literal(null)]).nullish(),
   "notes": zod.string().nullish(),
   "wonAmount": zod.number().nullish(),
+  "productionUnit": zod.string().nullish(),
   "salesOwnerId": zod.number().nullish(),
   "salesOwner": zod.object({
   "id": zod.number(),
@@ -840,6 +844,7 @@ export const UpdateDealBody = zod.object({
   "stage": zod.enum(['New', 'CL Sent', 'Price Given', 'Samples Sent', 'Samples Received', 'PI Sent', 'Won', 'Lost']).optional(),
   "probability": zod.number().optional(),
   "totalValue": zod.number().nullish(),
+  "productionUnit": zod.string().nullish(),
   "lostReason": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "salesOwnerId": zod.number().nullish(),

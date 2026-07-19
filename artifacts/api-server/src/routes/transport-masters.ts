@@ -122,11 +122,23 @@ router.get("/transport-masters/destinations/lookup", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const { pinCode, city, state, productionUnit } = req.query as Record<string, string>;
-    if (!pinCode && !city && !state) {
-      res.status(400).json({ error: "At least one of pinCode, city, or state is required" }); return;
-    }
-
     const activeOnly = eq(transportDestinationMasterTable.isActive, true);
+
+    // If no search params, return all active destinations
+    if (!pinCode && !city && !state) {
+      const conditions: any[] = [activeOnly];
+      if (productionUnit) {
+        conditions.push(or(
+          eq(transportDestinationMasterTable.productionUnit, productionUnit),
+          isNull(transportDestinationMasterTable.productionUnit),
+        ));
+      }
+      const results = await db.select().from(transportDestinationMasterTable)
+        .where(and(...conditions))
+        .orderBy(transportDestinationMasterTable.productionUnit, transportDestinationMasterTable.city);
+      res.json({ data: results });
+      return;
+    }
 
     // Priority 1: PIN code match
     if (pinCode) {

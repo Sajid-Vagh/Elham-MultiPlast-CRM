@@ -54,6 +54,7 @@ export function VoiceNotePlayer({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showTranscript, setShowTranscript] = useState(false);
+  const [sourceError, setSourceError] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -63,15 +64,18 @@ export function VoiceNotePlayer({
     const onTimeUpdate = () => setCurrentTime(audio.currentTime);
     const onDurationChange = () => setDuration(audio.duration);
     const onEnded = () => setIsPlaying(false);
+    const onError = () => setSourceError(true);
 
     audio.addEventListener("timeupdate", onTimeUpdate);
     audio.addEventListener("durationchange", onDurationChange);
     audio.addEventListener("ended", onEnded);
+    audio.addEventListener("error", onError);
 
     return () => {
       audio.removeEventListener("timeupdate", onTimeUpdate);
       audio.removeEventListener("durationchange", onDurationChange);
       audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("error", onError);
     };
   }, []);
 
@@ -79,10 +83,14 @@ export function VoiceNotePlayer({
     if (!audioRef.current) return;
     if (isPlaying) {
       audioRef.current.pause();
+      setIsPlaying(false);
     } else {
-      audioRef.current.play();
+      audioRef.current.play().catch(() => {
+        setSourceError(true);
+        setIsPlaying(false);
+      });
+      setIsPlaying(true);
     }
-    setIsPlaying(!isPlaying);
   };
 
   const seek = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -100,25 +108,31 @@ export function VoiceNotePlayer({
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
+  const hasValidSource = note.url && !sourceError;
+
   return (
     <div className="border rounded-lg p-3 bg-muted/30 space-y-2">
-      <audio ref={audioRef} src={note.url} preload="metadata" />
+      {hasValidSource && (
+        <audio ref={audioRef} src={note.url} preload="metadata" />
+      )}
 
       {/* Row 1: play button + waveform + duration */}
       <div className="flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={togglePlay}
-          className="h-8 w-8 p-0 rounded-full shrink-0"
-        >
-          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-        </Button>
+        {hasValidSource ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={togglePlay}
+            className="h-8 w-8 p-0 rounded-full shrink-0"
+          >
+            {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          </Button>
+        ) : null}
 
         {/* Waveform / progress bar */}
         <div
           className="flex-1 h-6 bg-muted rounded cursor-pointer relative overflow-hidden"
-          onClick={seek}
+          onClick={hasValidSource ? seek : undefined}
         >
           <div
             className="absolute inset-y-0 left-0 bg-primary/30 rounded transition-all"
@@ -140,9 +154,13 @@ export function VoiceNotePlayer({
         </div>
 
         <span className="text-xs text-muted-foreground font-mono tabular-nums shrink-0 w-10 text-right">
-          {fmt(currentTime)}
+          {hasValidSource ? fmt(currentTime) : "0:00"}
         </span>
       </div>
+
+      {!hasValidSource && (
+        <p className="text-xs text-muted-foreground italic">No voice note available.</p>
+      )}
 
       {/* Row 2: metadata + actions */}
       <div className="flex items-center justify-between">
@@ -225,9 +243,9 @@ export function VoiceNoteList({
   const queryClient = useQueryClient();
 
   const endpoint = productionOrderId
-    ? `/voice-notes/production/${productionOrderId}`
+    ? `/api/voice-notes/production/${productionOrderId}`
     : dealId
-      ? `/voice-notes/deal/${dealId}`
+      ? `/api/voice-notes/deal/${dealId}`
       : null;
 
   const { data: notes = [], isLoading } = useQuery<VoiceNoteData[]>({
@@ -238,7 +256,7 @@ export function VoiceNoteList({
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) =>
-      fetch(`/voice-notes/${id}`, {
+      fetch(`/api/voice-notes/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
       }).then((r) => { if (!r.ok) throw new Error("Failed"); return r.json(); }),

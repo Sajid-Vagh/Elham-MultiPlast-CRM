@@ -837,7 +837,7 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string) {
       )!);
     }
   }
-  if (unitFilter && unitFilter !== "all") {
+  if (unitFilter && unitFilter !== "All" && unitFilter !== "all") {
     conditions.length = 0;
     conditions.push(eq(productionOrdersTable.productionUnit, unitFilter));
   }
@@ -886,7 +886,7 @@ export async function listOrders(
       )!);
     }
   }
-  if (filters.unit && filters.unit !== "all" && (user.role === "admin" || (user as any).unit === "All")) {
+  if (filters.unit && filters.unit !== "all" && filters.unit !== "All" && (user.role === "admin" || (user as any).unit === "All")) {
     conditions.push(eq(productionOrdersTable.productionUnit, filters.unit));
   }
   if (filters.status && filters.status !== "all") conditions.push(eq(productionOrdersTable.status, filters.status));
@@ -964,7 +964,8 @@ export async function getAuditTrail(orderId: number) {
 
 export async function getPendingSummary(user: PermissionUser, unitFilter?: string) {
   const effectiveUnit = ((user as any).unit !== "All" && user.role !== "admin")
-    ? (user as any).unit : unitFilter;
+    ? (user as any).unit
+    : (unitFilter && unitFilter !== "All" && unitFilter !== "all" ? unitFilter : undefined);
 
   const results = await db.execute(sql`
     WITH resolved_invoices AS (
@@ -1012,9 +1013,11 @@ export async function getPendingSummary(user: PermissionUser, unitFilter?: strin
 
 // ── Pending Requirements ──
 
-export async function getPendingRequirements(user: PermissionUser) {
+export async function getPendingRequirements(user: PermissionUser, unitFilter?: string) {
   const conditions: SQL[] = [];
-  if (user.role !== "admin") {
+  if (unitFilter && unitFilter !== "All" && unitFilter !== "all") {
+    conditions.push(sql`o.production_unit = ${unitFilter}`);
+  } else if (user.role !== "admin") {
     const u = (user as any).unit || "All";
     if (u !== "All") {
       conditions.push(sql`o.production_unit = ${u}`);

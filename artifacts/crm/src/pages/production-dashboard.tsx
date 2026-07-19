@@ -27,32 +27,32 @@ export default function ProductionDashboard() {
   const { data: user, isLoading: userLoading } = useGetMe();
   const [, setLocation] = useLocation();
   const { units: accessibleUnits, locked: unitLocked } = useUserUnits();
-  const [unitFilter, setUnitFilter] = useState("all");
+  const [unitFilter, setUnitFilter] = useState("All");
 
   useProductionSyncAlert(!!user);
 
   useEffect(() => {
     if (unitLocked && accessibleUnits.length === 1) {
-      setUnitFilter(accessibleUnits[0].toLowerCase());
+      setUnitFilter(accessibleUnits[0]);
     }
   }, [unitLocked, accessibleUnits]);
 
   const { data: kpi, isLoading } = useQuery({
     queryKey: ["production-dashboard", unitFilter],
-    queryFn: () => customFetch<any>(`/production/dashboard${unitFilter !== "all" ? `?unit=${unitFilter}` : ""}`),
+    queryFn: () => customFetch<any>(`/production/dashboard${unitFilter !== "All" ? `?unit=${unitFilter}` : ""}`),
     enabled: !!user,
     refetchInterval: 10_000,
   });
 
   const { data: pendingReqs, isLoading: reqsLoading } = useQuery({
     queryKey: ["production-pending-requirements", unitFilter],
-    queryFn: () => customFetch<any[]>(`/production/pending-requirements${unitFilter !== "all" ? `?unit=${unitFilter}` : ""}`),
+    queryFn: () => customFetch<any[]>(`/production/pending-requirements${unitFilter !== "All" ? `?unit=${unitFilter}` : ""}`),
     enabled: !!user,
   });
 
   const { data: pendingSummary, isLoading: summaryLoading } = useQuery({
     queryKey: ["production-pending-summary", unitFilter],
-    queryFn: () => customFetch<any>(`/production/pending-summary${unitFilter !== "all" ? `?unit=${unitFilter}` : ""}`),
+    queryFn: () => customFetch<any>(`/production/pending-summary${unitFilter !== "All" ? `?unit=${unitFilter}` : ""}`),
     enabled: !!user,
   });
 
@@ -81,7 +81,7 @@ export default function ProductionDashboard() {
             <SelectTrigger className="w-[160px]"><SelectValue placeholder="Select Unit" /></SelectTrigger>
             <SelectContent>
               {accessibleUnits.map((u) => (
-                <SelectItem key={u} value={u.toLowerCase()}>{u}</SelectItem>
+                <SelectItem key={u} value={u}>{u}</SelectItem>
               ))}
             </SelectContent>
           </Select>

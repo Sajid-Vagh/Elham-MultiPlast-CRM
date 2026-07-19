@@ -443,6 +443,8 @@ export interface Deal {
   /** @nullable */
   wonAmount?: number | null;
   /** @nullable */
+  productionUnit?: string | null;
+  /** @nullable */
   completedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
@@ -489,6 +491,8 @@ export interface DealInput {
   salesOwnerId?: number | null;
   /** @nullable */
   wonAmount?: number | null;
+  /** @nullable */
+  productionUnit?: string | null;
 }
 
 export type DealUpdateStage = typeof DealUpdateStage[keyof typeof DealUpdateStage];
@@ -520,6 +524,8 @@ export interface DealUpdate {
   salesOwnerId?: number | null;
   /** @nullable */
   wonAmount?: number | null;
+  /** @nullable */
+  productionUnit?: string | null;
 }
 
 export interface DealProduct {

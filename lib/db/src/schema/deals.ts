@@ -12,6 +12,7 @@ export const dealsTable = pgTable("deals", {
   probability: integer("probability").notNull().default(10),
   totalValue: numeric("total_value", { precision: 14, scale: 2 }),
   wonAmount: numeric("won_amount", { precision: 14, scale: 2 }),
+  productionUnit: text("production_unit"),
   lostReason: text("lost_reason"),
   otherReason: text("other_reason"),
   lostNotes: text("lost_notes"),
