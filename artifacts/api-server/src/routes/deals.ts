@@ -29,7 +29,7 @@ const VALID_STAGE_TRANSITIONS: Record<string, string[]> = {
   "Price Given":      ["Samples Sent", "Samples Received", "PI Sent", "Won", "Lost"],
   "Samples Sent":     ["Samples Received", "PI Sent", "Won", "Lost"],
   "Samples Received": ["PI Sent", "Won", "Lost"],
-  "PI Sent":          ["Won", "Lost"],
+  "PI Sent":          ["New", "CL Sent", "Price Given", "Samples Sent", "Samples Received", "Won", "Lost"],
   "Won":              ["Lost", "New"],
   "Lost":             ["New", "CL Sent", "Price Given", "Samples Sent", "Samples Received", "PI Sent", "Won"],
 };
@@ -266,10 +266,27 @@ router.get("/deals/:id/validate-won", async (req, res) => {
 });
 
 router.patch("/deals/:id", async (req, res) => {
+  console.log("[DEAL-PATCH-DEBUG] === PATCH /deals/:id START ===");
+  console.log("[DEAL-PATCH-DEBUG] req.params:", JSON.stringify(req.params));
+  console.log("[DEAL-PATCH-DEBUG] req.body:", JSON.stringify(req.body));
+  console.log("[DEAL-PATCH-DEBUG] req.body types:", JSON.stringify(Object.fromEntries(Object.entries(req.body || {}).map(([k, v]) => [k, typeof v]))));
+
   const params = UpdateDealParams.safeParse({ id: Number(req.params.id) });
-  if (!params.success) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!params.success) {
+    console.log("[DEAL-PATCH-DEBUG] FAIL: ParamsValidation", JSON.stringify(params.error));
+    res.status(400).json({ failedAt: "ParamsValidation", issues: params.error.issues, message: "Invalid id" }); return;
+  }
+  console.log("[DEAL-PATCH-DEBUG] Params OK:", JSON.stringify(params.data));
+
   const parsed = UpdateDealBody.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: "Invalid input" }); return; }
+  if (!parsed.success) {
+    console.log("[DEAL-PATCH-DEBUG] FAIL: BodyValidation", JSON.stringify(parsed.error));
+    console.log("[DEAL-PATCH-DEBUG] FAIL: BodyValidation issues:", JSON.stringify(parsed.error.issues));
+    res.status(400).json({ failedAt: "BodyValidation", issues: parsed.error.issues, message: "Invalid input" }); return;
+  }
+  console.log("[DEAL-PATCH-DEBUG] Body OK:", JSON.stringify(parsed.data));
+  console.log("[DEAL-PATCH-DEBUG] Body field types:", JSON.stringify(Object.fromEntries(Object.entries(parsed.data).map(([k, v]) => [k, `${typeof v}=${v}`]))));
+
   const updateData: any = { ...parsed.data };
   if (parsed.data.stage && !parsed.data.probability) {
     updateData.probability = STAGE_PROBS[parsed.data.stage] ?? 10;
@@ -278,7 +295,11 @@ router.patch("/deals/:id", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
     const [oldDeal] = await db.select().from(dealsTable).where(eq(dealsTable.id, params.data.id));
-    if (!oldDeal) { res.status(404).json({ error: "Not found" }); return; }
+    if (!oldDeal) {
+      console.log("[DEAL-PATCH-DEBUG] FAIL: DealNotFound id=", params.data.id);
+      res.status(404).json({ error: "Not found" }); return;
+    }
+    console.log("[DEAL-PATCH-DEBUG] oldDeal.stage:", oldDeal.stage, "oldDeal.id:", oldDeal.id);
     if (user.role === "sales" && oldDeal.salesOwnerId !== user.id) {
       res.status(403).json({ error: "Forbidden" });
       return;
@@ -287,42 +308,54 @@ router.patch("/deals/:id", async (req, res) => {
       delete updateData.salesOwnerId;
     }
 
+    console.log("[DEAL-PATCH-DEBUG] updateData after cleanup:", JSON.stringify(updateData));
+
     // Validate stage transition
     if (updateData.stage && updateData.stage !== oldDeal.stage) {
+      console.log("[DEAL-PATCH-DEBUG] Stage transition:", oldDeal.stage, "->", updateData.stage);
       if (!isValidStageTransition(oldDeal.stage, updateData.stage)) {
-        res.status(400).json({ error: `Cannot move deal from "${oldDeal.stage}" to "${updateData.stage}". Valid transitions: ${VALID_STAGE_TRANSITIONS[oldDeal.stage]?.join(", ") || "none"}` });
+        console.log("[DEAL-PATCH-DEBUG] FAIL: StageTransition");
+        res.status(400).json({ failedAt: "StageTransition", message: `Cannot move deal from "${oldDeal.stage}" to "${updateData.stage}". Valid transitions: ${VALID_STAGE_TRANSITIONS[oldDeal.stage]?.join(", ") || "none"}` });
         return;
       }
     }
 
     // Validate Won: Active PI must exist, status must be Sent/Approved, taxableAmount used as Won Value
     if (updateData.stage === "Won") {
+      console.log("[DEAL-PATCH-DEBUG] Validating Won prerequisites for deal", params.data.id);
       const piValidation = await validateWonPrerequisites({
         exec: db, dealId: params.data.id, isMarkWonEndpoint: false,
       });
       if (!piValidation.valid) {
-        res.status(piValidation.status).json({ error: piValidation.error });
+        console.log("[DEAL-PATCH-DEBUG] FAIL: WonPrerequisites", JSON.stringify(piValidation));
+        res.status(piValidation.status).json({ failedAt: "WonPrerequisites", error: piValidation.error, details: piValidation });
         return;
       }
+      console.log("[DEAL-PATCH-DEBUG] Won prerequisites OK, piTaxableAmount:", piValidation.piTaxableAmount);
       // Won Value = PI Subtotal only — never GST, freight, or other charges
       updateData.wonAmount = String(piValidation.piTaxableAmount);
     }
     // Validate PI Sent: Active Proforma Invoice must exist for this deal
     if (updateData.stage === "PI Sent") {
+      console.log("[DEAL-PATCH-DEBUG] Validating PI Sent prerequisites for deal", params.data.id);
       const piSentValidation = await validateActivePiForPiSent(db, params.data.id);
       if (!piSentValidation.valid) {
-        res.status(400).json({ error: piSentValidation.error });
+        console.log("[DEAL-PATCH-DEBUG] FAIL: PiSentPrerequisites", JSON.stringify(piSentValidation));
+        res.status(400).json({ failedAt: "PiSentPrerequisites", error: piSentValidation.error, details: piSentValidation });
         return;
       }
+      console.log("[DEAL-PATCH-DEBUG] PI Sent prerequisites OK");
     }
 
     // Validate Lost: lostReason is mandatory
     if (updateData.stage === "Lost") {
       const reason = parsed.data.lostReason;
       if (!reason) {
-        res.status(400).json({ error: "Lost reason is required before marking as Lost." });
+        console.log("[DEAL-PATCH-DEBUG] FAIL: LostReasonRequired");
+        res.status(400).json({ failedAt: "LostReasonRequired", message: "Lost reason is required before marking as Lost." });
         return;
       }
+      console.log("[DEAL-PATCH-DEBUG] Lost reason OK:", reason);
       // Read otherReason and lostNotes from req.body (not in generated schema)
       const body = req.body as Record<string, any>;
       updateData.otherReason = body.otherReason || null;
@@ -336,7 +369,9 @@ router.patch("/deals/:id", async (req, res) => {
       updateData.completedAt = null;
     }
 
+    console.log("[DEAL-PATCH-DEBUG] All validations passed. Final updateData:", JSON.stringify(updateData));
     const [deal] = await db.update(dealsTable).set(updateData).where(eq(dealsTable.id, params.data.id)).returning();
+    console.log("[DEAL-PATCH-DEBUG] DB update result:", deal ? "SUCCESS id=" + deal.id : "NOT FOUND");
     if (!deal) { res.status(404).json({ error: "Not found" }); return; }
 
     // Auto-update active PI status to "Sent" when deal moves to PI Sent
@@ -517,8 +552,10 @@ router.patch("/deals/:id", async (req, res) => {
       }
     }
 
+    console.log("[DEAL-PATCH-DEBUG] === PATCH /deals/:id SUCCESS === deal.id:", deal.id);
     res.json(await enrichDeal(deal));
   } catch (err) {
+    console.error("[DEAL-PATCH-DEBUG] === PATCH /deals/:id CATCH ERROR ===", err);
     req.log.error({ err }, "Update deal error");
     res.status(500).json({ error: "Internal server error" });
   }
