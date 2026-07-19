@@ -21,7 +21,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import {
   Plus, Download, Printer, Share2, Mail, Eye, FileText, Save, ArrowLeft, Trash2, Search,
   ChevronLeft, ChevronRight, Send, Loader2, CheckCircle2, RefreshCw, Building2, Calendar, Clock,
-  Shield, Store, MapPin, Verified, History, GitBranch, ArrowRight, Link as LinkIcon,
+  Shield, Store, MapPin, Verified, History, GitBranch, ArrowRight, Link as LinkIcon, Copy,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ProductionProgressSection } from "@/components/production-progress";
@@ -105,6 +105,10 @@ export default function ProformaInvoicesPage() {
     const p = new URLSearchParams(window.location.search).get("dealId");
     return p ? Number(p) : null;
   })();
+  const urlRepeat = (() => {
+    if (typeof window === "undefined") return false;
+    return new URLSearchParams(window.location.search).get("repeat") === "true";
+  })();
 
   const preventSpinHandlers = {
     onKeyDown: (e: React.KeyboardEvent) => {
@@ -184,6 +188,10 @@ export default function ProformaInvoicesPage() {
   const [showProductSearch, setShowProductSearch] = useState(false);
   const [activeProductIdx, setActiveProductIdx] = useState(-1);
   const [productSearchPos, setProductSearchPos] = useState({ top: 0, left: 0, width: 0 });
+
+  const [gstProfiles, setGstProfiles] = useState<any[]>([]);
+  const [selectedProfileIndex, setSelectedProfileIndex] = useState(0);
+  const [previousInvoices, setPreviousInvoices] = useState<any[]>([]);
 
   const [statusFilter, setStatusFilter] = useState("all");
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
@@ -333,6 +341,9 @@ export default function ProformaInvoicesPage() {
     setDealSelectOpen(false);
     setMobileFetchError("");
     setCustomerHistory(null);
+    setGstProfiles([]);
+    setSelectedProfileIndex(0);
+    setPreviousInvoices([]);
   };
 
   // Product search autocomplete
@@ -357,7 +368,39 @@ export default function ProformaInvoicesPage() {
     return () => clearTimeout(timer);
   }, [productSearchQuery, token]);
 
-  // Debounced mobile number search — auto-fetches contact + active deals (PART 1 + PART 2)
+  // ── Centralized GST Profile Loader ──
+  // Works from ANY customer selection trigger: mobile, company, deal, profile, lead conversion.
+  // Customer Master is the ONLY source of GST data.
+  const loadCustomerGstProfile = async (contactId: number, currentGst?: string) => {
+    // 1. Fetch GST profiles (Customer Master records linked to this contact)
+    try {
+      const profilesRes = await fetch(`/api/customer-master/by-contact/${contactId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (profilesRes.ok) {
+        const profiles = await profilesRes.json();
+        setGstProfiles(Array.isArray(profiles) ? profiles : []);
+        // Auto-fill from latest profile if no GST already set on the contact
+        if (profiles.length > 0 && !currentGst) {
+          const latest = profiles[0];
+          applyExistingCustomer(latest);
+          setSelectedProfileIndex(0);
+        }
+      }
+    } catch { }
+    // 2. Fetch previous proforma invoices for "Repeat Previous Order"
+    try {
+      const prevRes = await fetch(`/api/proforma-invoices/previous-by-contact/${contactId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (prevRes.ok) {
+        const prev = await prevRes.json();
+        setPreviousInvoices(Array.isArray(prev) ? prev : []);
+      }
+    } catch { }
+  };
+
+  // Debounced mobile number search — auto-fetches contact + active deals
   useEffect(() => {
     const m = mobile.replace(/\s/g, "");
     if (m.length < 10) {
@@ -366,6 +409,9 @@ export default function ProformaInvoicesPage() {
       setActiveDeals([]);
       setCustomerHistory(null);
       setMobileFetchError("");
+      setGstProfiles([]);
+      setSelectedProfileIndex(0);
+      setPreviousInvoices([]);
       return;
     }
     const timer = setTimeout(async () => {
@@ -374,7 +420,7 @@ export default function ProformaInvoicesPage() {
       try {
         const contact = await searchContactByMobile({ mobile: m });
         setSelectedLead(contact);
-        // Auto-fill ALL party details from contact
+        // Auto-fill basic party details from contact
         setCustomerName(contact.name || "");
         setCompanyName(contact.companyName || "");
         setCity(contact.city || "");
@@ -418,11 +464,16 @@ export default function ProformaInvoicesPage() {
           });
           if (histRes.ok) setCustomerHistory(await histRes.json());
         } catch { }
+        // Load GST profiles + previous PIs (centralized function)
+        await loadCustomerGstProfile(contact.id, gst);
       } catch (err: any) {
         setSelectedLead(null);
         setSelectedDeal(null);
         setActiveDeals([]);
         setCustomerHistory(null);
+        setGstProfiles([]);
+        setSelectedProfileIndex(0);
+        setPreviousInvoices([]);
         setMobileFetchError(err?.status === 404 ? "No contact found with this mobile number" : err?.message || "Search failed");
       } finally {
         setMobileFetchLoading(false);
@@ -430,6 +481,40 @@ export default function ProformaInvoicesPage() {
     }, 500);
     return () => clearTimeout(timer);
   }, [mobile, token]);
+
+  // Handle ?contactId=X&repeat=true — load profile + copy products from latest PI
+  useEffect(() => {
+    if (!urlContactId || !urlRepeat) return;
+    // Auto-load GST profile and previous PIs
+    loadCustomerGstProfile(urlContactId).then(() => {
+      // After profiles load, also fetch the latest PI to copy products
+      fetch(`/api/proforma-invoices/previous-by-contact/${urlContactId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then(r => r.json())
+        .then((prev: any[]) => {
+          if (Array.isArray(prev) && prev.length > 0) {
+            const latest = prev[0];
+            // Copy products from latest PI
+            if (latest.items && latest.items.length > 0) {
+              setItems(latest.items.map((it: any) => ({
+                productName: it.productName,
+                hsnCode: it.hsnCode || "",
+                quantity: Number(it.quantity),
+                unit: it.unit || "Pcs",
+                rate: Number(it.rate),
+                gstPercent: Number(it.gstPercent || 0),
+                amount: Number(it.amount),
+              })));
+            }
+            if (latest.freight) setFreight(Number(latest.freight));
+            if (latest.notes) setNotes(latest.notes);
+            toast({ title: "Repeat Order", description: `Copied products from ${latest.invoiceNumber}. GST profile loaded from Customer Master.` });
+          }
+        })
+        .catch(() => {});
+    });
+  }, [urlContactId, urlRepeat, token]);
 
   const MATERIAL_HSN: Record<string, string> = {
     PET: "39233090",
@@ -1436,6 +1521,129 @@ ${pagesHtml}
                   <p className="text-sm font-medium">{customerHistory.productionUnit || "—"}</p>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Existing Customer Found — GST Profile + Previous Proformas */}
+        {gstProfiles.length > 0 && !editMode && (
+          <Card className="border-green-200 bg-green-50/50">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-semibold text-green-800 flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  Existing Customer Found
+                </CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    className="bg-green-600 hover:bg-green-700 text-white gap-1 text-xs"
+                    onClick={() => {
+                      // Create Fresh PI — GST profile already loaded, clear products
+                      setItems([{ productName: "", hsnCode: "", quantity: 0, unit: "Pcs", rate: 0, gstPercent: 0, amount: 0 }]);
+                      setInvoiceNumber("");
+                      toast({ title: "Fresh PI Ready", description: "GST profile loaded. Add your products." });
+                    }}
+                  >
+                    <FileText className="h-3 w-3" />
+                    Create Fresh PI
+                  </Button>
+                  {previousInvoices.length > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1 text-xs border-green-300 text-green-700 hover:bg-green-100"
+                      onClick={() => {
+                        // Repeat Previous Order — copy ONLY business data from latest PI
+                        const latest = previousInvoices[0];
+                        // Copy products
+                        if (latest.items && latest.items.length > 0) {
+                          setItems(latest.items.map((it: any) => ({
+                            productName: it.productName,
+                            hsnCode: it.hsnCode || "",
+                            quantity: Number(it.quantity),
+                            unit: it.unit || "Pcs",
+                            rate: Number(it.rate),
+                            gstPercent: Number(it.gstPercent || 0),
+                            amount: Number(it.amount),
+                          })));
+                        }
+                        // Copy freight and notes (business data only)
+                        if (latest.freight) setFreight(Number(latest.freight));
+                        if (latest.notes) setNotes(latest.notes);
+                        setInvoiceNumber("");
+                        toast({ title: "Previous Order Loaded", description: `Copied products & terms from ${latest.invoiceNumber}. GST profile preserved from Customer Master.` });
+                      }}
+                    >
+                      <Copy className="h-3 w-3" />
+                      Repeat Previous Order
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* GST Profile section */}
+              <div>
+                <p className="text-xs font-medium text-green-700 uppercase tracking-wide mb-2">GST Profile {gstProfiles.length > 1 ? `(${gstProfiles.length} found)` : "Found"}</p>
+                <div className="bg-white border border-green-200 rounded-lg p-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className="text-muted-foreground text-xs">Company:</span>
+                      <p className="font-medium">{gstProfiles[selectedProfileIndex]?.companyName || "—"}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground text-xs">GSTIN:</span>
+                      <p className="font-mono text-xs">{gstProfiles[selectedProfileIndex]?.gstin || "—"}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground text-xs">Billing Address:</span>
+                      <p className="text-xs">{[gstProfiles[selectedProfileIndex]?.addressLine1, gstProfiles[selectedProfileIndex]?.addressLine2, gstProfiles[selectedProfileIndex]?.addressLine3].filter(Boolean).join(", ") || "—"}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground text-xs">State / City:</span>
+                      <p className="text-xs">{[gstProfiles[selectedProfileIndex]?.state, gstProfiles[selectedProfileIndex]?.city].filter(Boolean).join(", ") || "—"}</p>
+                    </div>
+                  </div>
+                  {gstProfiles.length > 1 && (
+                    <div className="mt-3">
+                      <Label className="text-xs text-muted-foreground">Select Profile</Label>
+                      <Select value={String(selectedProfileIndex)} onValueChange={(v) => {
+                        const idx = Number(v);
+                        setSelectedProfileIndex(idx);
+                        applyExistingCustomer(gstProfiles[idx]);
+                      }}>
+                        <SelectTrigger className="mt-1 bg-white"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {gstProfiles.map((p: any, i: number) => (
+                            <SelectItem key={p.id} value={String(i)}>
+                              {p.companyName} — {p.gstin}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Previous Proformas list (read-only, for reference) */}
+              {previousInvoices.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-green-700 uppercase tracking-wide mb-2">Previous Proformas</p>
+                  <div className="space-y-1.5">
+                    {previousInvoices.map((pi: any) => (
+                      <div key={pi.id} className="bg-white border border-green-200 rounded-lg px-3 py-2 flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-4">
+                          <span className="font-mono font-medium">{pi.invoiceNumber}</span>
+                          <span className="text-muted-foreground">{new Date(pi.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
+                        </div>
+                        <span className="font-bold">₹{Number(pi.grandTotal).toLocaleString("en-IN")} <span className="text-xs text-muted-foreground font-normal">({pi.items?.length || 0} items)</span></span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

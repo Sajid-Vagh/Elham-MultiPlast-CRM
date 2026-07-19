@@ -744,7 +744,10 @@ export default function LeadDetail() {
                   <Plus className="h-3.5 w-3.5 shrink-0" /> Create Deal
                 </Button>
                 <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setLocation(`/proforma-invoices?contactId=${contactId}`)}>
-                  <FileText className="h-3.5 w-3.5 shrink-0" /> Proforma Invoice
+                  <FileText className="h-3.5 w-3.5 shrink-0" /> Create Proforma
+                </Button>
+                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setLocation(`/proforma-invoices?contactId=${contactId}&repeat=true`)}>
+                  <Copy className="h-3.5 w-3.5 shrink-0" /> Repeat Order
                 </Button>
                 <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setUploadDocOpen(true)}>
                   <Paperclip className="h-3.5 w-3.5 shrink-0" /> Upload Document

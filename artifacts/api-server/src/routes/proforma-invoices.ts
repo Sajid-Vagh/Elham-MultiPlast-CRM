@@ -1630,6 +1630,85 @@ router.get("/proforma-invoices/last-by-phone/:phone", async (req, res) => {
   }
 });
 
+// GET /proforma-invoices/previous-by-contact/:contactId — previous PIs for "Repeat Previous Order"
+router.get("/proforma-invoices/previous-by-contact/:contactId", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const contactId = Number(req.params.contactId);
+    if (isNaN(contactId)) { res.status(400).json({ error: "Invalid contact ID" }); return; }
+
+    const previousInvoices = await db
+      .select({
+        id: proformaInvoicesTable.id,
+        invoiceNumber: proformaInvoicesTable.invoiceNumber,
+        customerName: proformaInvoicesTable.customerName,
+        companyName: proformaInvoicesTable.companyName,
+        tradeName: proformaInvoicesTable.tradeName,
+        gstNumber: proformaInvoicesTable.gstNumber,
+        gstStatus: proformaInvoicesTable.gstStatus,
+        customerType: proformaInvoicesTable.customerType,
+        address: proformaInvoicesTable.address,
+        addressLine1: proformaInvoicesTable.addressLine1,
+        addressLine2: proformaInvoicesTable.addressLine2,
+        addressLine3: proformaInvoicesTable.addressLine3,
+        city: proformaInvoicesTable.city,
+        district: proformaInvoicesTable.district,
+        state: proformaInvoicesTable.state,
+        pincode: proformaInvoicesTable.pincode,
+        mobile: proformaInvoicesTable.mobile,
+        freight: proformaInvoicesTable.freight,
+        taxableAmount: proformaInvoicesTable.taxableAmount,
+        grandTotal: proformaInvoicesTable.grandTotal,
+        notes: proformaInvoicesTable.notes,
+        status: proformaInvoicesTable.status,
+        createdAt: proformaInvoicesTable.createdAt,
+        customerMasterId: proformaInvoicesTable.customerMasterId,
+      })
+      .from(proformaInvoicesTable)
+      .where(and(
+        eq(proformaInvoicesTable.contactId, contactId),
+        eq(proformaInvoicesTable.isDeleted, false),
+      ))
+      .orderBy(desc(proformaInvoicesTable.createdAt))
+      .limit(10);
+
+    // Enrich each invoice with its items
+    const enriched = await Promise.all(previousInvoices.map(async (inv) => {
+      const items = await db
+        .select()
+        .from(proformaInvoiceItemsTable)
+        .where(eq(proformaInvoiceItemsTable.invoiceId, inv.id));
+      return {
+        ...inv,
+        taxableAmount: Number(inv.taxableAmount),
+        freight: Number(inv.freight),
+        grandTotal: Number(inv.grandTotal),
+        items: items.map(i => ({
+          productName: i.productName,
+          hsnCode: i.hsnCode || "",
+          bottleType: i.bottleType || "",
+          capacity: i.capacity || "",
+          weight: i.weight || "",
+          quantity: Number(i.quantity),
+          unit: i.unit || "Pcs",
+          rate: Number(i.rate),
+          discountPercent: Number(i.discountPercent || 0),
+          discount: Number(i.discount || 0),
+          gstPercent: Number(i.gstPercent || 0),
+          amount: Number(i.amount),
+        })),
+      };
+    }));
+
+    res.json(enriched);
+  } catch (err) {
+    console.error("Previous by contact lookup error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.post("/proforma-invoices/:id/status", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);

@@ -247,6 +247,28 @@ router.get("/customer-master/:id/proforma-history", async (req, res) => {
   }
 });
 
+// GET /customer-master/by-contact/:contactId — return all GST profiles linked to a contact
+router.get("/customer-master/by-contact/:contactId", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const contactId = Number(req.params.contactId);
+    if (isNaN(contactId)) { res.status(400).json({ error: "Invalid contact ID" }); return; }
+
+    const profiles = await db
+      .select()
+      .from(customerMasterTable)
+      .where(eq(customerMasterTable.linkedContactId, contactId))
+      .orderBy(desc(customerMasterTable.createdAt));
+
+    res.json(profiles);
+  } catch (err) {
+    req.log.error({ err }, "Get customer master by contact error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // Delete customer master
 router.delete("/customer-master/:id", async (req, res) => {
   try {
