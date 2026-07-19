@@ -861,6 +861,7 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string) {
       return t && t >= todayStart;
     }).length,
     delayedOrders: allOrders.filter(o => o.isDelayed).length,
+    activeOrders: allOrders.filter(o => o.status !== "Completed" && o.status !== "Cancelled").length,
     totalOrders: allOrders.length,
   };
 }
@@ -1037,6 +1038,16 @@ export async function getPendingRequirements(user: PermissionUser, unitFilter?: 
     WHERE o.is_deleted = false
       AND oi.status NOT IN ('Completed', 'Cancelled', 'Dispatched')
       AND o.status NOT IN ('Cancelled', 'Completed')
+      AND (
+        NOT EXISTS (
+          SELECT 1 FROM production_orders po WHERE po.deal_id = o.deal_id
+        )
+        OR EXISTS (
+          SELECT 1 FROM production_orders po
+          WHERE po.deal_id = o.deal_id
+            AND po.status NOT IN ('Completed', 'Cancelled')
+        )
+      )
       ${conditions.length > 0 ? sql`AND ${conditions[0]}` : sql``}
     GROUP BY oi.product_name, gramage
     HAVING SUM(oi.quantity::numeric) - SUM(oi.dispatched_quantity::numeric) > 0

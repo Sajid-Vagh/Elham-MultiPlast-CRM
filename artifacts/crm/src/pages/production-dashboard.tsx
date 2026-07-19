@@ -135,7 +135,7 @@ export default function ProductionDashboard() {
               <div>
                 <span className="text-muted-foreground">Active Orders</span>
                 <p className="text-2xl font-bold mt-1">
-                  {kpi.totalOrders - (kpi.pendingCount + kpi.completedToday + (kpi.delayedOrders))}
+                  {kpi.activeOrders}
                 </p>
               </div>
               <div>
