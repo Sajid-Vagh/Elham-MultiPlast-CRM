@@ -36,6 +36,7 @@ import CustomerProfile from "@/pages/customer-profile";
 import ExistingCustomers from "@/pages/existing-customers";
 import ExistingCustomerDetail from "@/pages/existing-customer-detail";
 import GlobalSearch from "@/pages/global-search";
+import SupportDashboard from "@/pages/support-dashboard";
 import TransportLogistics from "@/pages/transport-logistics";
 import TransportLogisticsLookup from "@/pages/transport-logistics-readonly";
 import MastersPage from "@/pages/masters";
@@ -56,8 +57,10 @@ function RoleGuard({ allowedRoles, children }: { allowedRoles: string[]; childre
   const role = localStorage.getItem("crm_user_role") ?? "";
 
   if (!allowedRoles.includes(role)) {
-    if (role === "production" || role === "production_and_support") {
+    if (role === "production") {
       setLocation("/production/dashboard");
+    } else if (role === "production_and_support") {
+      setLocation("/support-dashboard");
     } else if (role === "inventory") {
       setLocation("/inventory");
     } else {
@@ -72,6 +75,7 @@ function RoleGuard({ allowedRoles, children }: { allowedRoles: string[]; childre
 const SALES_ADMIN_ROLES = ["admin", "sales"];
 const PRODUCTION_ROLES = ["production", "production_and_support", "admin"];
 const SUPPORT_ROLES = ["admin", "sales", "production_and_support"];
+const SUPPORT_DASHBOARD_ROLES = ["admin", "production_and_support"];
 const INVENTORY_ROLES = ["admin", "sales", "inventory"];
 
 function Router() {
@@ -84,8 +88,10 @@ function Router() {
             const token = localStorage.getItem("crm_token");
             const role = localStorage.getItem("crm_user_role");
             if (token) {
-              if (role === "production" || role === "production_and_support") {
+              if (role === "production") {
                 window.location.replace("/production/dashboard");
+              } else if (role === "production_and_support") {
+                window.location.replace("/support-dashboard");
               } else if (role === "inventory") {
                 window.location.replace("/inventory");
               } else {
@@ -103,6 +109,13 @@ function Router() {
       <Route path="/inventory">
         <ProtectedLayout>
           <RoleGuard allowedRoles={INVENTORY_ROLES}><Inventory /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+
+      {/* Support Dashboard */}
+      <Route path="/support-dashboard">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={SUPPORT_DASHBOARD_ROLES}><SupportDashboard /></RoleGuard>
         </ProtectedLayout>
       </Route>
 

@@ -938,7 +938,9 @@ export default function ProformaInvoicesPage() {
     } else {
       setMobileError("");
     }
-    if (!editMode && !selectedDeal?.id && !urlDealId) {
+    const userRole = me?.role || localStorage.getItem("crm_user_role");
+    const isSupportUser = userRole === "production_and_support" || userRole === "admin";
+    if (!editMode && !isSupportUser && !selectedDeal?.id && !urlDealId) {
       toast({ title: "Error", description: "No active Deal linked. Please search by mobile to find and attach a Deal.", variant: "destructive" });
       hasError = true;
     }

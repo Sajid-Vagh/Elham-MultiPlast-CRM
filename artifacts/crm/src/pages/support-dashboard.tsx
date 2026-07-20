@@ -1,0 +1,171 @@
+﻿import { useState, useEffect } from "react";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Users, DollarSign, RefreshCw, AlertTriangle, Truck, Package } from "lucide-react";
+
+export default function SupportDashboardPage() {
+  const token = localStorage.getItem("crm_token");
+  const [kpi, setKpi] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!token) return;
+    (async () => {
+      try {
+        const res = await fetch("/api/dashboard/support-kpi", {
+          headers: { Authorization: "Bearer " + token },
+        });
+        if (res.ok) setKpi(await res.json());
+      } catch { } finally {
+        setLoading(false);
+      }
+    })();
+  }, [token]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-muted-foreground">Loading support dashboard...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-8 space-y-8">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Support Dashboard</h1>
+          <p className="text-muted-foreground mt-1">Overview of support operations</p>
+        </div>
+        <Badge variant="outline" className="text-xs gap-1.5 px-3 py-1">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500" />
+          </span>
+          Live
+        </Badge>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="h-full rounded-xl border bg-card text-card-foreground shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Repeat Orders</CardTitle>
+            <RefreshCw className="h-4 w-4 text-blue-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{kpi?.totalRepeatOrders ?? 0}</div>
+            <p className="text-xs text-muted-foreground">+{kpi?.repeatOrdersThisMonth ?? 0} this month</p>
+          </CardContent>
+        </Card>
+
+        <Card className="h-full rounded-xl border bg-card text-card-foreground shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Repeat Revenue</CardTitle>
+            <DollarSign className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{(kpi?.totalRepeatRevenue ?? 0).toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">{(kpi?.repeatRevenueThisMonth ?? 0).toLocaleString()} this month</p>
+          </CardContent>
+        </Card>
+
+        <Card className="h-full rounded-xl border bg-card text-card-foreground shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Repeat Customers</CardTitle>
+            <Users className="h-4 w-4 text-purple-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{kpi?.repeatCustomers ?? 0}</div>
+            <p className="text-xs text-muted-foreground">Unique customers with repeat orders</p>
+          </CardContent>
+        </Card>
+
+        <Card className="h-full rounded-xl border bg-card text-card-foreground shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Complaints</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-red-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-red-600">{kpi?.activeComplaints ?? 0}</div>
+            <p className="text-xs text-muted-foreground">Requires attention</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Card className="h-full border-blue-200 rounded-xl border bg-card text-card-foreground shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out cursor-pointer">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-xs font-medium">Pending Dispatch</CardTitle>
+            <Truck className="h-4 w-4 text-orange-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold text-orange-600">{kpi?.pendingDispatch ?? 0}</div>
+          </CardContent>
+        </Card>
+
+        <Card className="h-full border-indigo-200 rounded-xl border bg-card text-card-foreground shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out cursor-pointer">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-xs font-medium">In Production</CardTitle>
+            <Package className="h-4 w-4 text-indigo-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold text-indigo-600">{kpi?.inProduction ?? 0}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div>
+        <h2 className="text-sm font-semibold mb-3">Quick Actions</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <a href="/existing-customers" className="block hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out">
+            <Card className="h-full border-blue-200 rounded-xl border bg-card text-card-foreground shadow hover:bg-blue-50/40">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-xs font-medium text-blue-700">Customers</CardTitle>
+                <Users className="h-4 w-4 text-blue-500" />
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-muted-foreground">View existing customers</p>
+              </CardContent>
+            </Card>
+          </a>
+
+          <a href="/complaints" className="block hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out">
+            <Card className="h-full border-red-200 rounded-xl border bg-card text-card-foreground shadow hover:bg-red-50/40">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-xs font-medium text-red-700">Complaints</CardTitle>
+                <AlertTriangle className="h-4 w-4 text-red-500" />
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-muted-foreground">Manage complaints</p>
+              </CardContent>
+            </Card>
+          </a>
+
+          <a href="/proforma-invoices" className="block hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out">
+            <Card className="h-full border-green-200 rounded-xl border bg-card text-card-foreground shadow hover:bg-green-50/40">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-xs font-medium text-green-700">Proforma Invoices</CardTitle>
+                <DollarSign className="h-4 w-4 text-green-500" />
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-muted-foreground">Create and manage PIs</p>
+              </CardContent>
+            </Card>
+          </a>
+
+          <a href="/dispatch" className="block hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out">
+            <Card className="h-full border-orange-200 rounded-xl border bg-card text-card-foreground shadow hover:bg-orange-50/40">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-xs font-medium text-orange-700">Dispatch</CardTitle>
+                <Truck className="h-4 w-4 text-orange-500" />
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-muted-foreground">Track dispatches</p>
+              </CardContent>
+            </Card>
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}

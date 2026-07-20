@@ -81,8 +81,8 @@ router.get("/production/dashboard", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
     if (!user) return;
-    const { unit: unitFilter } = req.query as Record<string, string | undefined>;
-    res.json(await getDashboard(user, unitFilter));
+    const { unit: unitFilter, origin: originFilter } = req.query as Record<string, string | undefined>;
+    res.json(await getDashboard(user, unitFilter, originFilter));
   } catch (err) {
     console.error("Production dashboard error:", err);
     res.status(500).json({ error: "Internal server error" });
@@ -94,8 +94,8 @@ router.get("/production/orders", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
     if (!user) return;
-    const { status, priority, search, dateFrom, dateTo, createdBy, unit, page, limit } = req.query as Record<string, string | undefined>;
-    res.json(await listOrders(user, { status, priority, search, dateFrom, dateTo, createdBy, unit, page, limit }));
+    const { status, priority, search, dateFrom, dateTo, createdBy, unit, origin, page, limit } = req.query as Record<string, string | undefined>;
+    res.json(await listOrders(user, { status, priority, search, dateFrom, dateTo, createdBy, unit, origin, page, limit }));
   } catch (err) {
     console.error("List production orders error:", err);
     res.status(500).json({ error: "Internal server error" });
@@ -400,8 +400,8 @@ router.get("/production/reports", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
     if (!user) return;
-    const { unit, status, dateFrom, dateTo } = req.query as Record<string, string | undefined>;
-    res.json(await getReports(user, { unit, status, dateFrom, dateTo }));
+    const { unit, status, dateFrom, dateTo, origin } = req.query as Record<string, string | undefined>;
+    res.json(await getReports(user, { unit, status, dateFrom, dateTo, origin }));
   } catch (err) {
     console.error("Production reports error:", err);
     res.status(500).json({ error: "Internal server error" });

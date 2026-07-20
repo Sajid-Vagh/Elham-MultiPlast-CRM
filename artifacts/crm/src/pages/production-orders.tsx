@@ -49,6 +49,7 @@ export default function ProductionOrders() {
   const [priorityFilter, setPriorityFilter] = useState(searchParams.get("priority") || "all");
   const [unitFilter, setUnitFilter] = useState("All");
   const [createdByFilter, setCreatedByFilter] = useState("all");
+  const [originFilter, setOriginFilter] = useState("all");
   const [search, setSearch] = useState(searchParams.get("search") || "");
   const [page, setPage] = useState(1);
 
@@ -71,8 +72,9 @@ export default function ProductionOrders() {
     if (unitFilter !== "All") p.unit = unitFilter;
     if (createdByFilter !== "all") p.createdBy = createdByFilter;
     if (search.trim()) p.search = search.trim();
+    if (originFilter !== "all") p.origin = originFilter;
     return p;
-  }, [statusFilter, priorityFilter, unitFilter, createdByFilter, search, page]);
+  }, [statusFilter, priorityFilter, unitFilter, createdByFilter, originFilter, search, page]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["production-orders", queryParams],
@@ -151,6 +153,15 @@ export default function ProductionOrders() {
             ))}
           </SelectContent>
         </Select>
+
+        <Select value={originFilter} onValueChange={(v) => { setOriginFilter(v); setPage(1); }}>
+          <SelectTrigger className="w-[140px]"><SelectValue placeholder="Origin" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Origins</SelectItem>
+            <SelectItem value="sales">Sales</SelectItem>
+            <SelectItem value="production_and_support">Support</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {isLoading ? (
@@ -176,6 +187,7 @@ export default function ProductionOrders() {
                   <TableHead>Bottle Size</TableHead>
                   <TableHead>Bottle Color</TableHead>
                   <TableHead>Quantity</TableHead>
+                  <TableHead>Origin</TableHead>
                   <TableHead>Production Unit</TableHead>
                   <TableHead>Created By</TableHead>
                   <TableHead>Priority</TableHead>
@@ -202,6 +214,13 @@ export default function ProductionOrders() {
                       <TableCell>{firstItem?.bottleType || "-"}</TableCell>
                       <TableCell>{firstItem ? Number(firstItem.quantity).toFixed(2) : "-"}</TableCell>
                       <TableCell>
+                        {order.createdByRole ? (
+                          <Badge variant="outline" className={`text-[10px] py-0 ${order.createdByRole === "production_and_support" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-blue-50 text-blue-700 border-blue-200"}`}>
+                            {order.createdByRole === "production_and_support" ? "SUPPORT" : "SALES"}
+                          </Badge>
+                        ) : "-"}
+                      </TableCell>
+                      <TableCell>
                         {order.productionUnit ? (
                           <Badge variant="outline" className="text-xs bg-indigo-50 text-indigo-700 border-indigo-200">{order.productionUnit}</Badge>
                         ) : (
@@ -210,11 +229,11 @@ export default function ProductionOrders() {
                       </TableCell>
                       <TableCell>
                         {order.createdByName ? (
-                          <div className="text-xs">
+                          <div className="text-xs flex items-center gap-1">
                             <span className="font-medium">{order.createdByName}</span>
                             {order.createdByRole && (
-                              <Badge variant="outline" className="ml-1 text-[10px] py-0">
-                                {order.createdByRole === "production_and_support" ? "Production & Support" : "Sales"}
+                              <Badge variant="outline" className={`text-[10px] py-0 ${order.createdByRole === "production_and_support" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-blue-50 text-blue-700 border-blue-200"}`}>
+                                {order.createdByRole === "production_and_support" ? "SUPPORT" : "SALES"}
                               </Badge>
                             )}
                           </div>

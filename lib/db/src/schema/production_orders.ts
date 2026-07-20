@@ -76,6 +76,7 @@ export const productionOrdersTable = pgTable("production_orders", {
   startedAt: timestamp("started_at", { withTimezone: true }),
   isFrozen: boolean("is_frozen").notNull().default(false),
   piVersionAtCreation: integer("pi_version_at_creation"),
+  requestedUnit: text("requested_unit"),
   previousProductionUnit: text("previous_production_unit"),
   isDelayed: boolean("is_delayed").notNull().default(false),
   delayedAt: timestamp("delayed_at", { withTimezone: true }),

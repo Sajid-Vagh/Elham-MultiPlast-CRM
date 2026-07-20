@@ -1818,6 +1818,7 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
           status: "Pending",
           priority: "Medium",
           productionUnit: effectiveProductionUnit,
+          requestedUnit: effectiveProductionUnit,
           productionRemarks: productionRemarks || null,
           updatedBy: user.id,
           createdById: user.id,

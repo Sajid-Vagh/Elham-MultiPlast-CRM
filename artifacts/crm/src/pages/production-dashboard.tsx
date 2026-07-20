@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
-import { Factory, PackageCheck, Settings2, ShieldCheck, Truck, CheckCircle2, Clock, AlertTriangle, ListOrdered, BoxSelect } from "lucide-react";
+import { Factory, PackageCheck, Settings2, ShieldCheck, Truck, CheckCircle2, Clock, AlertTriangle, ListOrdered, BoxSelect, LayoutDashboard } from "lucide-react";
 import { useUserUnits } from "@/lib/use-user-units";
 import { useProductionSyncAlert } from "@/lib/use-production-sync-alert";
 
@@ -28,6 +28,7 @@ export default function ProductionDashboard() {
   const [, setLocation] = useLocation();
   const { units: accessibleUnits, locked: unitLocked } = useUserUnits();
   const [unitFilter, setUnitFilter] = useState("All");
+  const [originFilter, setOriginFilter] = useState("all");
 
   useProductionSyncAlert(!!user);
 
@@ -38,8 +39,13 @@ export default function ProductionDashboard() {
   }, [unitLocked, accessibleUnits]);
 
   const { data: kpi, isLoading } = useQuery({
-    queryKey: ["production-dashboard", unitFilter],
-    queryFn: () => customFetch<any>(`/production/dashboard${unitFilter !== "All" ? `?unit=${unitFilter}` : ""}`),
+    queryKey: ["production-dashboard", unitFilter, originFilter],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (unitFilter !== "All") params.set("unit", unitFilter);
+      if (originFilter !== "all") params.set("origin", originFilter);
+      return customFetch<any>(`/production/dashboard?${params.toString()}`);
+    },
     enabled: !!user,
     refetchInterval: 10_000,
   });
@@ -77,6 +83,14 @@ export default function ProductionDashboard() {
           <p className="text-sm text-muted-foreground mt-1">Overview of all production orders</p>
         </div>
         <div className="flex items-center gap-2">
+          <Select value={originFilter} onValueChange={setOriginFilter}>
+            <SelectTrigger className="w-[140px]"><SelectValue placeholder="All Origins" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Orders</SelectItem>
+              <SelectItem value="sales">Sales Orders</SelectItem>
+              <SelectItem value="production_and_support">Support Orders</SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={unitFilter} onValueChange={setUnitFilter} disabled={unitLocked}>
             <SelectTrigger className="w-[160px]"><SelectValue placeholder="Select Unit" /></SelectTrigger>
             <SelectContent>

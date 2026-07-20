@@ -375,8 +375,8 @@ export default function ProductionOrderDetail() {
                   <div className="font-medium mt-1 flex items-center gap-1">
                     {order.createdByName || "-"}
                     {order.createdByRole && (
-                      <Badge variant="outline" className="text-[10px] py-0">
-                        {order.createdByRole === "production_and_support" ? "Production & Support" : "Sales"}
+                      <Badge variant="outline" className={`text-[10px] py-0 ${order.createdByRole === "production_and_support" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-blue-50 text-blue-700 border-blue-200"}`}>
+                        {order.createdByRole === "production_and_support" ? "SUPPORT" : "SALES"}
                       </Badge>
                     )}
                   </div>
@@ -386,7 +386,17 @@ export default function ProductionOrderDetail() {
                   <p className="font-medium mt-1">{order.assignedManager?.name || "-"}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Production Unit</span>
+                  <span className="text-muted-foreground">Requested Unit</span>
+                  <div className="font-medium mt-1">
+                    {order.requestedUnit ? (
+                      <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200">{order.requestedUnit}</Badge>
+                    ) : (
+                      <span className="text-muted-foreground">Unassigned</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Current Unit</span>
                   <div className="font-medium mt-1">
                     {order.productionUnit ? (
                       <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200">{order.productionUnit}</Badge>

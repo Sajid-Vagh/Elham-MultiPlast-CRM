@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, dealsTable, usersTable, activitiesTable, CATEGORIES, DEAL_STAGES } from "@workspace/db";
-import { eq, inArray, and } from "drizzle-orm";
+import { db, contactsTable, dealsTable, usersTable, activitiesTable, ordersTable, complaintsTable, CATEGORIES, DEAL_STAGES } from "@workspace/db";
+import { eq, inArray, and, desc } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 
@@ -116,6 +116,25 @@ router.get("/dashboard/kpi", async (req, res) => {
     const myClientsCount = filteredContacts.filter(c => c.category === "My Client").length;
     const conversionRate = totalContacts > 0 ? Math.round((myClientsCount / totalContacts) * 100) : 0;
 
+    // Order-based KPIs: NEW vs REPEAT revenue
+    const accessUnitFilter = unitFilter;
+    let allOrders = await db.select().from(ordersTable);
+    let filteredOrders = allOrders;
+    if (effectiveOwnerId) {
+      filteredOrders = allOrders.filter(o => o.revenueOwnerId === effectiveOwnerId || o.salesOwnerId === effectiveOwnerId);
+    }
+    if (accessUnitFilter) {
+      const unitContactIds = new Set(filterContactsByUnit(allContacts, accessUnitFilter).map(c => c.id));
+      filteredOrders = filteredOrders.filter(o => unitContactIds.has(o.contactId));
+    }
+
+    const newOrders = filteredOrders.filter(o => o.orderType === "NEW");
+    const repeatOrders = filteredOrders.filter(o => o.orderType === "REPEAT");
+
+    const newOrderRevenue = newOrders.reduce((s, o) => s + Number(o.grandTotal || 0), 0);
+    const repeatOrderRevenue = repeatOrders.reduce((s, o) => s + Number(o.grandTotal || 0), 0);
+    const totalOrderRevenue = newOrderRevenue + repeatOrderRevenue;
+
     res.json({
       totalContacts,
       totalDeals,
@@ -133,6 +152,12 @@ router.get("/dashboard/kpi", async (req, res) => {
       newLeadsThisMonth,
       myClientsCount,
       conversionRate,
+      // Order-based KPIs
+      newOrders: newOrders.length,
+      newOrderRevenue,
+      repeatOrders: repeatOrders.length,
+      repeatOrderRevenue,
+      totalOrderRevenue,
     });
   } catch (err) {
     req.log.error({ err }, "Dashboard KPI error");
@@ -324,6 +349,64 @@ router.get("/dashboard/recent-activities", async (req, res) => {
     res.json(result);
   } catch (err) {
     req.log.error({ err }, "Recent activities error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Support Dashboard KPI ──
+router.get("/dashboard/support-kpi", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (user.role !== "admin" && user.role !== "production_and_support") {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Repeat orders
+    const allOrders = await db.select().from(ordersTable);
+    const repeatOrders = allOrders.filter(o => o.orderType === "REPEAT" && !o.isDeleted);
+    const repeatOrdersThisMonth = repeatOrders.filter(o => o.createdAt >= monthStart);
+    const totalRepeatRevenue = repeatOrders.reduce((s, o) => s + Number(o.grandTotal || 0), 0);
+    const repeatRevenueThisMonth = repeatOrdersThisMonth.reduce((s, o) => s + Number(o.grandTotal || 0), 0);
+
+    // Repeat customers (unique contacts with REPEAT orders)
+    const repeatCustomerIds = new Set(repeatOrders.map(o => o.contactId).filter(Boolean));
+
+    // Active complaints
+    const complaints = await db.select().from(complaintsTable);
+    const activeComplaints = complaints.filter(c => c.status !== "Resolved" && c.status !== "Closed").length;
+
+    // Pending dispatch orders (non-deleted, non-cancelled, not fully dispatched)
+    const pendingDispatch = allOrders.filter(o =>
+      !o.isDeleted &&
+      o.status !== "Cancelled" &&
+      o.status !== "Completed" &&
+      o.status !== "Delivered" &&
+      (o.status === "Production Started" || o.status === "Production Running" || o.status === "Quality Check" || o.status === "Ready for Dispatch" || o.status === "Partially Dispatched")
+    ).length;
+
+    // Production tracking (orders in production)
+    const inProduction = allOrders.filter(o =>
+      !o.isDeleted &&
+      (o.status === "Production Started" || o.status === "Production Running")
+    ).length;
+
+    res.json({
+      totalRepeatOrders: repeatOrders.length,
+      repeatOrdersThisMonth: repeatOrdersThisMonth.length,
+      totalRepeatRevenue,
+      repeatRevenueThisMonth,
+      repeatCustomers: repeatCustomerIds.size,
+      activeComplaints,
+      pendingDispatch,
+      inProduction,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Support KPI error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

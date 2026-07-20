@@ -112,8 +112,9 @@ async function notifySalesOfProductionEvent(params: {
   title: string;
   message: string;
   excludeUserId: number;
+  createdByRole?: string | null;
 }) {
-  const { invoiceId, title, message, excludeUserId, productionOrderId } = params;
+  const { invoiceId, title, message, excludeUserId, productionOrderId, createdByRole } = params;
   if (!invoiceId) return;
 
   const [invoice] = await db
@@ -134,6 +135,17 @@ async function notifySalesOfProductionEvent(params: {
       .where(eq(contactsTable.id, invoice.contactId));
     if (contact?.salesOwnerId && contact.salesOwnerId !== excludeUserId) {
       userIds.add(contact.salesOwnerId);
+    }
+  }
+
+  // If origin is SUPPORT, also notify support users
+  if (createdByRole === "production_and_support") {
+    const supportUsers = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.role, "production_and_support"));
+    for (const su of supportUsers) {
+      if (su.id !== excludeUserId) userIds.add(su.id);
     }
   }
 
@@ -349,7 +361,7 @@ export async function acceptOrder(
     productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
     title: "Production Order Accepted",
     message: `Order #${invoice?.invoiceNumber || orderId} has been accepted by ${user.name}`,
-    excludeUserId: user.id,
+    excludeUserId: user.id, createdByRole: order.createdByRole,
   });
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
@@ -449,7 +461,7 @@ export async function startProduction(
     productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
     title: "Production Started",
     message: `Order #${order.id} has entered Machine Running stage. PI is now frozen.`,
-    excludeUserId: user.id,
+    excludeUserId: user.id, createdByRole: order.createdByRole,
   });
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
@@ -560,7 +572,7 @@ export async function approveModification(
       productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
       title: "Modification Approved",
       message: `Order #${orderId}: Production has accepted the PI modification.`,
-      excludeUserId: user.id,
+      excludeUserId: user.id, createdByRole: order.createdByRole,
     });
 
     await logProductionActivity(db, {
@@ -578,7 +590,7 @@ export async function approveModification(
       productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
       title: "Modification Rejected",
       message: `Order #${orderId}: Production rejected the PI modification. Please review.`,
-      excludeUserId: user.id,
+      excludeUserId: user.id, createdByRole: order.createdByRole,
     });
 
     await logProductionActivity(db, {
@@ -645,7 +657,7 @@ export async function updateStatus(
       productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
       title: `Production ${notifyInfo.title}`,
       message: `Order #${inv?.invoiceNumber || orderId} is now: ${targetStatus}${notes ? ` - ${notes}` : ""}`,
-      excludeUserId: user.id,
+      excludeUserId: user.id, createdByRole: order.createdByRole,
     });
   }
 
@@ -692,7 +704,7 @@ export async function cancelOrder(
     productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
     title: "Production Order Cancelled",
     message: `Order #${orderId} has been cancelled. Reason: ${reason}`,
-    excludeUserId: user.id,
+    excludeUserId: user.id, createdByRole: order.createdByRole,
   });
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
@@ -757,7 +769,7 @@ export async function checkDelayedOrders(): Promise<{ checked: number; markedDel
         productionOrderId: order.id, invoiceId: order.proformaInvoiceId,
         title: "Production Order Delayed",
         message: `Order #${order.id} has passed its expected completion date (${order.expectedCompletionDate}).`,
-        excludeUserId: 0,
+        excludeUserId: 0, createdByRole: order.createdByRole,
       });
 
       markedDelayed++;
@@ -826,7 +838,7 @@ export async function sendMessage(
 
 // ── Dashboard KPIs ──
 
-export async function getDashboard(user: PermissionUser, unitFilter?: string) {
+export async function getDashboard(user: PermissionUser, unitFilter?: string, originFilter?: string) {
   const conditions: SQL[] = [];
   if (user.role !== "admin") {
     const u = (user as any).unit || "All";
@@ -840,6 +852,9 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string) {
   if (unitFilter && unitFilter !== "All" && unitFilter !== "all") {
     conditions.length = 0;
     conditions.push(eq(productionOrdersTable.productionUnit, unitFilter));
+  }
+  if (originFilter && originFilter !== "all") {
+    conditions.push(eq(productionOrdersTable.createdByRole, originFilter));
   }
 
   const allOrders = await db.select().from(productionOrdersTable)
@@ -873,7 +888,7 @@ export async function listOrders(
   filters: {
     status?: string; priority?: string; search?: string;
     dateFrom?: string; dateTo?: string; createdBy?: string;
-    unit?: string; page?: string; limit?: string;
+    unit?: string; origin?: string; page?: string; limit?: string;
   }
 ) {
   const conditions: SQL[] = [];
@@ -892,6 +907,9 @@ export async function listOrders(
   }
   if (filters.status && filters.status !== "all") conditions.push(eq(productionOrdersTable.status, filters.status));
   if (filters.priority && filters.priority !== "all") conditions.push(eq(productionOrdersTable.priority, filters.priority));
+  if (filters.origin && filters.origin !== "all") {
+    conditions.push(eq(productionOrdersTable.createdByRole, filters.origin));
+  }
   if (filters.createdBy && filters.createdBy !== "all") {
     if (filters.createdBy === "sales") conditions.push(eq(productionOrdersTable.createdByRole, "sales"));
     else if (filters.createdBy === "production_and_support") conditions.push(eq(productionOrdersTable.createdByRole, "production_and_support"));
@@ -1059,7 +1077,7 @@ export async function getPendingRequirements(user: PermissionUser, unitFilter?: 
 
 // ── Reports ──
 
-export async function getReports(user: PermissionUser, filters: { unit?: string; status?: string; dateFrom?: string; dateTo?: string }) {
+export async function getReports(user: PermissionUser, filters: { unit?: string; status?: string; dateFrom?: string; dateTo?: string; origin?: string }) {
   const conditions: SQL[] = [];
   if (user.role !== "admin") {
     const u = (user as any).unit || "All";
@@ -1074,6 +1092,7 @@ export async function getReports(user: PermissionUser, filters: { unit?: string;
   if (filters.status && filters.status !== "all") conditions.push(eq(productionOrdersTable.status, filters.status));
   if (filters.dateFrom) conditions.push(gte(productionOrdersTable.createdAt, new Date(filters.dateFrom)));
   if (filters.dateTo) conditions.push(lte(productionOrdersTable.createdAt, new Date(filters.dateTo + "T23:59:59")));
+  if (filters.origin && filters.origin !== "all") conditions.push(eq(productionOrdersTable.createdByRole, filters.origin));
 
   const allOrders = await db.select().from(productionOrdersTable)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
@@ -1313,7 +1332,7 @@ export async function completeDispatch(
     productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
     title: "Dispatch Completed",
     message: `Order #${invoice?.invoiceNumber || orderId} has been dispatched. Transport: ${data.transportName || "-"}${data.transportDetails ? `\nDetails: ${data.transportDetails}` : ""}`,
-    excludeUserId: user.id,
+    excludeUserId: user.id, createdByRole: order.createdByRole,
   });
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));

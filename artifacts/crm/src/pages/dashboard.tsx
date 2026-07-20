@@ -3,7 +3,7 @@ import { useGetMe } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {   Briefcase, Users, DollarSign, TrendingUp, AlertCircle, PhoneCall, X, Clock, Phone, CheckCircle2, FolderTree, UserCheck, Activity, BarChart3, ChevronRight, UserPlus } from "lucide-react";
+import {   Briefcase, Users, DollarSign, TrendingUp, AlertCircle, PhoneCall, X, Clock, Phone, CheckCircle2, FolderTree, UserCheck, Activity, BarChart3, ChevronRight, UserPlus, RefreshCw } from "lucide-react";
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -53,9 +53,10 @@ export default function Dashboard() {
       if (!res.ok) return null;
       return res.json() as Promise<{
         totalContacts: number; totalDeals: number; wonDeals: number; lostDeals: number; lostLeads: number;
-        activeDeals: number; totalWonValue: number; totalLostValue: number; categoryCounts: { category: string; count: number }[];
+        activeDeals: number; totalWonValue: number; totalLostValue: number;         categoryCounts: { category: string; count: number }[];
         unitStats: Record<string, number>; todayTotal: number; todayCompleted: number; todayPending: number;
         overdueCount: number; newLeadsThisMonth: number; myClientsCount: number; conversionRate: number;
+        newOrders: number; newOrderRevenue: number; repeatOrders: number; repeatOrderRevenue: number; totalOrderRevenue: number;
       }>;
     },
     enabled: !!token,
@@ -328,6 +329,62 @@ export default function Dashboard() {
           </Card>
         </Link>
       </div>
+
+      {/* Revenue Breakdown (admin only) */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <Card className="border-green-200 hover:shadow-lg cursor-pointer transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-xs font-medium">New Orders</CardTitle>
+              <TrendingUp className="h-4 w-4 text-green-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-lg font-bold text-green-600">{kpi?.newOrders ?? 0}</div>
+              <p className="text-xs text-muted-foreground">₹{(kpi?.newOrderRevenue ?? 0).toLocaleString()}</p>
+            </CardContent>
+          </Card>
+          <Card className="border-blue-200 hover:shadow-lg cursor-pointer transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-xs font-medium">Repeat Orders</CardTitle>
+              <RefreshCw className="h-4 w-4 text-blue-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-lg font-bold text-blue-600">{kpi?.repeatOrders ?? 0}</div>
+              <p className="text-xs text-muted-foreground">₹{(kpi?.repeatOrderRevenue ?? 0).toLocaleString()}</p>
+            </CardContent>
+          </Card>
+          <Card className="border-purple-200 hover:shadow-lg cursor-pointer transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-xs font-medium">Total Orders</CardTitle>
+              <DollarSign className="h-4 w-4 text-purple-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-lg font-bold text-purple-600">{kpi?.newOrders !== undefined ? (kpi.newOrders + (kpi.repeatOrders ?? 0)) : 0}</div>
+              <p className="text-xs text-muted-foreground">₹{(kpi?.totalOrderRevenue ?? 0).toLocaleString()}</p>
+            </CardContent>
+          </Card>
+          <Card className="border-amber-200 hover:shadow-lg cursor-pointer transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-xs font-medium">New Revenue</CardTitle>
+              <BarChart3 className="h-4 w-4 text-amber-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-lg font-bold text-amber-600">₹{(kpi?.newOrderRevenue ?? 0).toLocaleString()}</div>
+              <p className="text-xs text-muted-foreground">{kpi?.newOrders ?? 0} orders</p>
+            </CardContent>
+          </Card>
+          <Card className="border-teal-200 hover:shadow-lg cursor-pointer transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-xs font-medium">Repeat Revenue</CardTitle>
+              <RefreshCw className="h-4 w-4 text-teal-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-lg font-bold text-teal-600">₹{(kpi?.repeatOrderRevenue ?? 0).toLocaleString()}</div>
+              <p className="text-xs text-muted-foreground">{kpi?.repeatOrders ?? 0} orders</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* ── SALES PERFORMANCE (admin only) ── */}
       {isAdmin && salesPerformance && salesPerformance.length > 0 && (

@@ -211,10 +211,19 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - **Query invalidation** updated to include `production-pending-summary` key
 - **Generated types** updated: `Product`, `ProductInput`, `ProductUpdate` interfaces + Zod schemas now include `status` field
 - **Migration `027_production_enhancements.sql`** adds creator info columns, product status, and performance indexes
+- **Unified Production Order Workflow (Sales + Support):** All production features work identically regardless of origin
+  - `requestedUnit` column added to `production_orders` (original unit, never changes on transfer)
+  - Migration `047_add_requested_unit.sql` — adds `requested_unit`, `created_by_role` index, backfills existing rows
+  - Auto-creation in `proforma-invoices.ts` and `deals.ts` sets `requestedUnit` = `productionUnit` on creation
+  - `production-service.ts` `getDashboard`, `listOrders`, `getReports` accept `origin` filter (`createdByRole`)
+  - `notifySalesOfProductionEvent` notifies support users when `createdByRole === "production_and_support"`
+  - Frontend `production-dashboard.tsx`: Origin filter dropdown (Sales Orders / Support Orders / All)
+  - Frontend `production-orders.tsx`: Origin filter + Origin column (SALES/SUPPORT badge)
+  - Frontend `production-order-detail.tsx`: Origin badge (SALES/SUPPORT), Requested Unit vs Current Unit display
 
 ### In Progress
+- Run migration `047_add_requested_unit.sql` against Supabase database
 - Run migration `027_production_enhancements.sql` against Supabase database
-- Deploy and test Production module end-to-end
 
 ### Blocked
 - (none)
@@ -227,7 +236,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - No mock provider exists anywhere.
 
 ## Relevant Files
-- `artifacts/api-server/src/routes/proforma-invoices.ts`: gst-lookup (4-tier), renderInvoiceHtml, soft-delete DELETE.
+- `artifacts/api-server/src/routes/proforma-invoices.ts`: gst-lookup (4-tier), renderInvoiceHtml, soft-delete DELETE, **production order auto-creation with requestedUnit + origin**
 - `artifacts/api-server/src/lib/gst-provider.ts`: GstProvider interface + ApiGstProvider (GSTZen).
 - `artifacts/api-server/src/routes/customer-master.ts`: CRUD + lookup endpoints.
 - `artifacts/api-server/src/routes/products.ts`: GET /products/search?q=.
@@ -242,15 +251,16 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `lib/db/src/schema/products.ts`: products table schema (with `status` field)
 - `lib/db/migrations/017_add_production_orders.sql`: migration to create production tables
 - `lib/db/migrations/027_production_enhancements.sql`: migration for creator info, product status, indexes
+- `lib/db/migrations/047_add_requested_unit.sql`: migration for requested_unit, created_by_role index
 - `artifacts/api-server/src/routes/production.ts`: all production API endpoints (dashboard, orders, **pending-summary**, status, notes, **creator filter**)
 - `artifacts/api-server/src/routes/proforma-invoices.ts`: auto-create production order on "Converted to Order" with **creator info** + **real-time notifications to production users**
 - `artifacts/api-server/src/routes/products.ts`: CRUD + search, **admin-only POST/PATCH/DELETE**
 - `lib/api-zod/src/generated/types/userRole.ts`, `userInputRole.ts`, `userUpdateRole.ts`: role types updated
 - `lib/api-zod/src/generated/api.ts`: updated role enums + **Product status in Zod schemas**
 - `lib/api-client-react/src/generated/api.schemas.ts`: updated UserRole const + **Product status in interfaces**
-- `artifacts/crm/src/pages/production-dashboard.tsx`: Production Dashboard with 8 KPI cards + **Pending Production Summary widget**
-- `artifacts/crm/src/pages/production-orders.tsx`: Production Orders list with filters + **creator filter** + **Created By column**
-- `artifacts/crm/src/pages/production-order-detail.tsx`: Production Order detail with timeline, notes, status update + **creator info**
+- `artifacts/crm/src/pages/production-dashboard.tsx`: Production Dashboard with 8 KPI cards + **Pending Production Summary widget** + **Origin filter**
+- `artifacts/crm/src/pages/production-orders.tsx`: Production Orders list with filters + **origin filter** + **Origin column (SALES/SUPPORT badge)**
+- `artifacts/crm/src/pages/production-order-detail.tsx`: Production Order detail with timeline, notes, status update + **origin badge** + **Requested Unit / Current Unit display**
 - `artifacts/crm/src/pages/products.tsx`: Product Management — **admin-only controls**, **Status column**
 - `artifacts/crm/src/components/production-progress.tsx`: read-only Production Progress for Sales users
 - `artifacts/crm/src/App.tsx`: RoleGuard component, production routes

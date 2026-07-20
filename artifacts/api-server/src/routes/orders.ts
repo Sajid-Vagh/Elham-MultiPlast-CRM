@@ -119,6 +119,20 @@ router.post("/orders", async (req, res) => {
 
     const orderNumber = await generateId("order");
 
+    // Determine order type and revenue ownership
+    const orderType = orderData.orderType || (orderData.source === "Repeat Order" ? "REPEAT" : "NEW");
+    const createdByRole = user.role === "admin" || user.role === "sales" ? "SALES" : "SUPPORT";
+    // Revenue owner: NEW → sales owner, REPEAT → support user who created it
+    let revenueOwnerId = orderData.revenueOwnerId || null;
+    if (!revenueOwnerId) {
+      if (orderType === "NEW") {
+        revenueOwnerId = orderData.salesOwnerId || (user.role === "sales" ? user.id : null);
+      } else {
+        // REPEAT order revenue belongs to the support user who created it
+        revenueOwnerId = user.id;
+      }
+    }
+
     // Transport snapshot: preserve master data at time of order
     const transportSnapshotData: any = {};
     if (transportSnapshot) {
@@ -132,6 +146,9 @@ router.post("/orders", async (req, res) => {
       ...orderData,
       ...transportSnapshotData,
       orderNumber,
+      orderType,
+      createdByRole,
+      revenueOwnerId: revenueOwnerId || null,
       createdBy: user.id,
       salesOwnerId: orderData.salesOwnerId || (user.role === "sales" ? user.id : null),
       status: orderData.status || "Draft",
