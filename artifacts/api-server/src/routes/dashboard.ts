@@ -88,14 +88,6 @@ router.get("/dashboard/kpi", async (req, res) => {
       unitStats[u] = (unitStats[u] || 0) + 1;
     }
 
-    // Pending Unit Assignment = active Deals (not Won/Lost) where contact has no unit
-    const contactMap = new Map(allContacts.map(c => [c.id, c]));
-    const pendingUnitCount = filteredDeals.filter(d => {
-      if (d.stage === "Won" || d.stage === "Lost") return false;
-      const contact = contactMap.get(d.contactId);
-      return contact && !contact.unit;
-    }).length;
-
     // Activities: scope to owner and apply unit filter via contacts
     let activitiesQuery = db.select().from(activitiesTable);
     const activityConditions: any[] = [];
@@ -134,7 +126,6 @@ router.get("/dashboard/kpi", async (req, res) => {
       totalWonValue,
       totalLostValue,
       unitStats,
-      pendingUnitCount,
       todayTotal,
       todayCompleted,
       todayPending,

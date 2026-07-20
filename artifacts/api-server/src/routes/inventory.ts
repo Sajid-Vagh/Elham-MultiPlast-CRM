@@ -6,7 +6,7 @@ import { getUserFromRequest } from "./auth";
 const router: IRouter = Router();
 
 function canManageInventory(user: { role: string }): boolean {
-  return user.role === "admin" || user.role === "inventory" || user.role === "sales";
+  return user.role === "admin" || user.role === "inventory";
 }
 
 // ── GET /inventory — Fetch inventory rows, filtered by unit ──
@@ -99,7 +99,7 @@ router.post("/inventory/save", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     if (!canManageInventory(user)) {
-      res.status(403).json({ error: "Only inventory, sales, or admin users can modify stock" });
+      res.status(403).json({ error: "Only inventory or admin users can modify stock" });
       return;
     }
 
@@ -191,7 +191,7 @@ router.post("/inventory/save-bulk", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     if (!canManageInventory(user)) {
-      res.status(403).json({ error: "Only inventory, sales, or admin users can modify stock" });
+      res.status(403).json({ error: "Only inventory or admin users can modify stock" });
       return;
     }
 
@@ -289,7 +289,7 @@ router.post("/inventory/bulk-save", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     if (!canManageInventory(user)) {
-      res.status(403).json({ error: "Only inventory, sales, or admin users can modify stock" });
+      res.status(403).json({ error: "Only inventory or admin users can modify stock" });
       return;
     }
 
@@ -401,7 +401,7 @@ router.patch("/inventory/:id/formatting", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     if (!canManageInventory(user)) {
-      res.status(403).json({ error: "Only inventory, sales, or admin users can modify formatting" });
+      res.status(403).json({ error: "Only inventory or admin users can modify formatting" });
       return;
     }
 
@@ -433,7 +433,7 @@ router.delete("/inventory/clear-all", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     if (!canManageInventory(user)) {
-      res.status(403).json({ error: "Only inventory, sales, or admin users can clear inventory" });
+      res.status(403).json({ error: "Only inventory or admin users can clear inventory" });
       return;
     }
 
@@ -464,7 +464,7 @@ router.delete("/inventory/:id", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     if (!canManageInventory(user)) {
-      res.status(403).json({ error: "Only inventory, sales, or admin users can delete stock" });
+      res.status(403).json({ error: "Only inventory or admin users can delete stock" });
       return;
     }
 
@@ -490,7 +490,7 @@ router.post("/inventory/insert-row", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     if (!canManageInventory(user)) {
-      res.status(403).json({ error: "Only inventory, sales, or admin users can insert rows" });
+      res.status(403).json({ error: "Only inventory or admin users can insert rows" });
       return;
     }
 

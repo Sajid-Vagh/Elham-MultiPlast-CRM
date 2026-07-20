@@ -233,7 +233,6 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
 
   const inventoryNavItems = [
     { icon: Package, label: "Inventory", href: "/inventory", color: "#0ea5e9" },
-    { icon: Database, label: "Masters", href: "/masters", color: "#14b8a6" },
     { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
   ];
 

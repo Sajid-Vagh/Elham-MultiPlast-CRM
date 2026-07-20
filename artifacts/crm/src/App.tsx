@@ -243,7 +243,7 @@ function Router() {
       {/* Masters page (transport, packing, import) */}
       <Route path="/masters">
         <ProtectedLayout>
-          <RoleGuard allowedRoles={[...SUPPORT_ROLES, "production", "inventory"]}><MastersPage /></RoleGuard>
+          <RoleGuard allowedRoles={[...SUPPORT_ROLES, "production"]}><MastersPage /></RoleGuard>
         </ProtectedLayout>
       </Route>
 

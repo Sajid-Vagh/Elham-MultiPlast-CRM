@@ -154,7 +154,7 @@ export function canAccessUnit(
  * Admin and inventory roles can manage. Sales and production are view-only.
  */
 export function canManageMaster(user: PermissionUser): boolean {
-  return user.role === "admin" || user.role === "inventory";
+  return user.role === "admin";
 }
 
 /**
@@ -162,7 +162,7 @@ export function canManageMaster(user: PermissionUser): boolean {
  * Admin and inventory roles only.
  */
 export function canImportMaster(user: PermissionUser): boolean {
-  return user.role === "admin" || user.role === "inventory";
+  return user.role === "admin";
 }
 
 /**

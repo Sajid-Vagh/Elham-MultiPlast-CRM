@@ -165,7 +165,7 @@ export default function Inventory() {
   const queryClient = useQueryClient();
   const { units: activeUnits } = useActiveUnits();
 
-  const canEdit = (user as any)?.role === "admin" || (user as any)?.role === "inventory" || (user as any)?.role === "sales";
+  const canEdit = (user as any)?.role === "admin" || (user as any)?.role === "inventory";
 
   // Unit filter
   const [unitFilter, setUnitFilter] = useState<string>("all");
