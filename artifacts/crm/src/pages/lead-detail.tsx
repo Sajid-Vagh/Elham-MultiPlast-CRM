@@ -24,6 +24,8 @@ import { CategoryBadge } from "@/components/category-badge";
 import { MoveCategoryDialog } from "@/components/move-category-dialog";
 import { DocumentManager } from "@/components/document-manager";
 import { DocumentUploadDialog } from "@/components/document-upload-dialog";
+import { VoiceNoteSection } from "@/components/voice-note-player";
+import { VoiceNoteUploader } from "@/components/voice-note-uploader";
 import { ScheduleFollowUpDialog } from "@/components/schedule-follow-up-dialog";
 import { PiSentDialog } from "@/components/pi-sent-dialog";
 import { STAGE_BADGE_COLORS } from "@/lib/deal-stages";
@@ -729,6 +731,21 @@ export default function LeadDetail() {
               <DocumentManager contactId={contactId} compact />
             </CardContent>
           </Card>
+
+          {/* Voice Notes */}
+          {deal && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <Phone className="h-3.5 w-3.5" /> Voice Notes
+                </CardTitle>
+                <VoiceNoteUploader entityType="deal" entityId={deal.id} label="Record" />
+              </CardHeader>
+              <CardContent>
+                <VoiceNoteSection entityType="deal" entityId={deal.id} canDelete={false} />
+              </CardContent>
+            </Card>
+          )}
 
           {/* Section 11: Quick Actions */}
           <Card>

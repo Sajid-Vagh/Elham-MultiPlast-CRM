@@ -12,7 +12,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Phone, Mail, MapPin, Building, Calendar, Package, ShoppingCart, Repeat, MessageSquare, StickyNote, Clock, Truck, AlertTriangle, ClipboardList, User } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, Building, Calendar, Package, ShoppingCart, Repeat, MessageSquare, StickyNote, Clock, Truck, AlertTriangle, ClipboardList, User, Mic } from "lucide-react";
+import { VoiceNoteSection } from "@/components/voice-note-player";
+import { VoiceNoteUploader } from "@/components/voice-note-uploader";
 import { useToast } from "@/hooks/use-toast";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -414,6 +416,7 @@ export default function ExistingCustomerDetail() {
           <TabsTrigger value="communications">Communications ({communications.length})</TabsTrigger>
           <TabsTrigger value="timeline">Timeline ({timeline.length})</TabsTrigger>
           <TabsTrigger value="notes">Notes ({notes.length})</TabsTrigger>
+          <TabsTrigger value="voice-notes"><Mic className="h-3.5 w-3.5" /> Voice</TabsTrigger>
         </TabsList>
 
         <TabsContent value="orders">
@@ -621,6 +624,21 @@ export default function ExistingCustomerDetail() {
                   </div>
                 ))
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Voice Notes */}
+        <TabsContent value="voice-notes">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between py-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Mic className="h-3.5 w-3.5" /> Voice Notes
+              </CardTitle>
+              <VoiceNoteUploader entityType="customer" entityId={id} label="Record" />
+            </CardHeader>
+            <CardContent>
+              <VoiceNoteSection entityType="customer" entityId={id} canDelete={false} />
             </CardContent>
           </Card>
         </TabsContent>

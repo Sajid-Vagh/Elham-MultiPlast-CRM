@@ -29,7 +29,7 @@ import { createNotification } from "../routes/notifications";
 
 /**
  * Valid production statuses that allow cancellation by production users.
- * "Machine Running" and beyond cannot be cancelled by production.
+ * "In Production" and beyond cannot be cancelled by production.
  */
 const PRODUCTION_CANCELLABLE_STATUSES = [
   "Pending", "Accepted", "Planning",
@@ -74,10 +74,10 @@ export function validateCancellationPermission(
     return { allowed: true };
   }
 
-  // Production can cancel before Machine Running
+  // Production can cancel before In Production
   if (role === "production") {
     if (!PRODUCTION_CANCELLABLE_STATUSES.includes(order.status)) {
-      return { allowed: false, status: 403, error: "Production can only cancel orders before Machine Running. Current status: " + order.status };
+      return { allowed: false, status: 403, error: "Production can only cancel orders before In Production. Current status: " + order.status };
     }
     return { allowed: true };
   }

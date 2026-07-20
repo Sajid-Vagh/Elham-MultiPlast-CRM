@@ -1,100 +1,93 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import multer from "multer";
-import { db, voiceNotesTable, dealsTable, productionOrdersTable, usersTable, contactsTable } from "@workspace/db";
-import { eq, and, desc, isNull } from "drizzle-orm";
-import { getUserFromRequest } from "./auth";
-import { storage } from "../lib/storage";
-import { canAccessSalesResource, canAccessUnit } from "../lib/permission-service";
-import { getAccessibleUnits } from "../lib/unit-filter";
 import fs from "node:fs";
 import path from "node:path";
+import { db, voiceNotesTable, dealsTable, productionOrdersTable, contactsTable } from "@workspace/db";
+import { eq, and, isNull } from "drizzle-orm";
+import { getUserFromRequest } from "./auth";
+import { canAccessUnit } from "../lib/permission-service";
+import { storage } from "../lib/storage";
+import {
+  uploadVoiceNote,
+  getVoiceNotes,
+  deleteVoiceNote,
+  verifyFileAvailability,
+  validateVoiceNoteFile,
+  type VoiceNoteEntityType,
+} from "../lib/voice-notes-service";
 
 const router: IRouter = Router();
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max (~60s of audio)
+  limits: { fileSize: 10 * 1024 * 1024 },
 });
-
-// Allowed MIME types for voice notes
-const ALLOWED_MIMES = new Set([
-  "audio/webm", "audio/webm;codecs=opus",
-  "audio/mpeg", "audio/mp3",
-  "audio/wav", "audio/wave", "audio/x-wav",
-  "audio/ogg", "audio/ogg;codecs=opus",
-  "audio/mp4", "audio/m4a",
-]);
 
 // ────────────────────────────────────────────────
 // POST /voice-notes — Upload a new voice note
-// Body (multipart): file (audio), dealId, proformaInvoiceId?, productionOrderId?, transcript?
+// Body (multipart): file, + entityType + entityId + optional metadata
 // ────────────────────────────────────────────────
 router.post("/voice-notes", upload.single("file"), async (req: Request, res: Response) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const file = req.file;
-    if (!file) { res.status(400).json({ error: "No file provided" }); return; }
-    if (!ALLOWED_MIMES.has(file.mimetype)) {
-      res.status(400).json({ error: "Invalid file type. Allowed: WebM, MP3, WAV, OGG, M4A" }); return;
-    }
+    const validationError = validateVoiceNoteFile(req.file!);
+    if (validationError) { res.status(400).json({ error: validationError }); return; }
 
-    const dealId = req.body.dealId ? Number(req.body.dealId) : null;
-    const proformaInvoiceId = req.body.proformaInvoiceId ? Number(req.body.proformaInvoiceId) : null;
-    const productionOrderId = req.body.productionOrderId ? Number(req.body.productionOrderId) : null;
-    const transcript = req.body.transcript || null;
+    const file = req.file!;
+    const entityType = req.body.entityType as VoiceNoteEntityType | undefined;
+    const entityId = req.body.entityId ? Number(req.body.entityId) : null;
     const durationMs = req.body.durationMs ? Number(req.body.durationMs) : null;
+    const transcript = req.body.transcript || null;
 
-    if (!dealId && !productionOrderId) {
-      res.status(400).json({ error: "At least dealId or productionOrderId is required" }); return;
+    // Support legacy fields for backward compatibility
+    const dealId = entityType === "deal" ? entityId : req.body.dealId ? Number(req.body.dealId) : null;
+    const productionOrderId = entityType === "production" ? entityId : req.body.productionOrderId ? Number(req.body.productionOrderId) : null;
+    const proformaInvoiceId = entityType === "proforma" ? entityId : req.body.proformaInvoiceId ? Number(req.body.proformaInvoiceId) : null;
+    const orderId = entityType === "order" ? entityId : req.body.orderId ? Number(req.body.orderId) : null;
+    const leadId = entityType === "lead" ? entityId : req.body.leadId ? Number(req.body.leadId) : null;
+    const customerId = entityType === "customer" ? entityId : req.body.customerId ? Number(req.body.customerId) : null;
+
+    if (!dealId && !productionOrderId && !orderId && !leadId && !customerId && !proformaInvoiceId) {
+      res.status(400).json({ error: "At least one entity reference is required (dealId, productionOrderId, orderId, leadId, customerId, or entityType+entityId)" });
+      return;
     }
 
-    // Permission: sales users can only upload for their own deals
-    if (dealId && user.role === "sales") {
-      const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, dealId));
-      if (!deal) { res.status(404).json({ error: "Deal not found" }); return; }
-      if (!canAccessSalesResource(user, deal.salesOwnerId)) {
-        res.status(403).json({ error: "Not your deal" }); return;
-      }
-    }
-
-    // Unit isolation: non-admin users can only access deals in their unit
+    // Unit isolation check
     if (dealId) {
       const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, dealId));
       if (deal) {
         const [contact] = await db.select({ unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
-        const resourceUnit = contact?.unit || null;
-        if (!canAccessUnit(user, resourceUnit)) {
+        if (!canAccessUnit(user, contact?.unit || null)) {
           res.status(403).json({ error: "Access denied: unit mismatch" }); return;
         }
       }
-    }
-
-    // Production users can also upload (for orders they have access to)
-    if (productionOrderId && !dealId) {
-      if (user.role === "sales") {
-        res.status(403).json({ error: "Sales users must provide a dealId" }); return;
+    } else if (productionOrderId) {
+      const [po] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, productionOrderId));
+      if (po && !canAccessUnit(user, po.productionUnit || null)) {
+        res.status(403).json({ error: "Access denied: unit mismatch" }); return;
       }
     }
 
-    const storagePath = await storage.save(file.originalname, file.buffer, "voice-notes");
-
-    const [voiceNote] = await db.insert(voiceNotesTable).values({
-      dealId,
-      proformaInvoiceId,
-      productionOrderId,
+    const { note, error } = await uploadVoiceNote({
+      file,
       uploadedById: user.id,
-      fileName: path.basename(storagePath),
-      originalName: file.originalname,
-      mimeType: file.mimetype,
-      fileSize: file.size,
-      storagePath,
+      createdByRole: user.role,
+      dealId,
+      productionOrderId,
+      proformaInvoiceId,
+      orderId,
+      leadId,
+      customerId,
       durationMs,
       transcript,
-      transcriptStatus: transcript ? "completed" : "pending",
-    }).returning();
+    });
 
-    res.status(201).json(voiceNote);
+    if (error || !note) {
+      res.status(500).json({ error: error || "Failed to upload voice note" }); return;
+    }
+
+    res.status(201).json(note);
   } catch (err) {
     console.error("Voice note upload error:", err);
     res.status(500).json({ error: "Internal server error" });
@@ -102,71 +95,41 @@ router.post("/voice-notes", upload.single("file"), async (req: Request, res: Res
 });
 
 // ────────────────────────────────────────────────
-// GET /voice-notes/deal/:dealId — Get active voice notes for a deal
+// GET /voice-notes — Unified list endpoint
+// Query: type=deal|production|order|lead|customer|proforma&id=123
 // ────────────────────────────────────────────────
-router.get("/voice-notes/deal/:dealId", async (req: Request, res: Response) => {
+router.get("/voice-notes", async (req: Request, res: Response) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const dealId = Number(req.params.dealId);
-    if (isNaN(dealId)) { res.status(400).json({ error: "Invalid deal id" }); return; }
+    const entityType = req.query.type as VoiceNoteEntityType | undefined;
+    const entityId = req.query.id ? Number(req.query.id) : null;
 
-    // Unit isolation: verify user can access this deal's unit
-    {
-      const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, dealId));
+    if (!entityType || !entityId || isNaN(entityId)) {
+      res.status(400).json({ error: "Query parameters 'type' and 'id' are required" });
+      return;
+    }
+
+    // Unit isolation check
+    if (entityType === "deal") {
+      const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, entityId));
       if (deal) {
         const [contact] = await db.select({ unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
-        const resourceUnit = contact?.unit || null;
-        if (!canAccessUnit(user, resourceUnit)) {
+        if (!canAccessUnit(user, contact?.unit || null)) {
           res.status(403).json({ error: "Access denied: unit mismatch" }); return;
         }
-        // Sales users can only view their own deals
-        if (user.role === "sales" && !canAccessSalesResource(user, deal.salesOwnerId)) {
-          res.status(403).json({ error: "Not your deal" }); return;
-        }
+      }
+    } else if (entityType === "production") {
+      const [po] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, entityId));
+      if (po && !canAccessUnit(user, po.productionUnit || null)) {
+        res.status(403).json({ error: "Access denied: unit mismatch" }); return;
       }
     }
 
-    const notes = await db
-      .select({
-        id: voiceNotesTable.id,
-        dealId: voiceNotesTable.dealId,
-        proformaInvoiceId: voiceNotesTable.proformaInvoiceId,
-        productionOrderId: voiceNotesTable.productionOrderId,
-        uploadedById: voiceNotesTable.uploadedById,
-        uploadedByName: usersTable.name,
-        fileName: voiceNotesTable.fileName,
-        originalName: voiceNotesTable.originalName,
-        mimeType: voiceNotesTable.mimeType,
-        fileSize: voiceNotesTable.fileSize,
-        storagePath: voiceNotesTable.storagePath,
-        durationMs: voiceNotesTable.durationMs,
-        transcript: voiceNotesTable.transcript,
-        transcriptStatus: voiceNotesTable.transcriptStatus,
-        isReplaced: voiceNotesTable.isReplaced,
-        createdAt: voiceNotesTable.createdAt,
-      })
-      .from(voiceNotesTable)
-      .leftJoin(usersTable, eq(voiceNotesTable.uploadedById, usersTable.id))
-      .where(
-        and(
-          eq(voiceNotesTable.dealId, dealId),
-          eq(voiceNotesTable.isReplaced, false),
-          isNull(voiceNotesTable.deletedAt),
-        )
-      )
-      .orderBy(desc(voiceNotesTable.createdAt));
-
-    // Attach playback URL and filter out orphaned records (file missing on disk)
-    const result = notes
-      .map((n) => ({
-        ...n,
-        url: storage.getUrl(n.storagePath),
-      }))
-      .filter((n) => fs.existsSync(storage.getPhysicalPath(n.storagePath)));
-
-    res.json(result);
+    // Legacy endpoint support: /voice-notes/deal/:dealId and /voice-notes/production/:prodId
+    const notes = await getVoiceNotes(entityType, entityId, user.id, user.role);
+    res.json(notes);
   } catch (err) {
     console.error("Get voice notes error:", err);
     res.status(500).json({ error: "Internal server error" });
@@ -174,78 +137,35 @@ router.get("/voice-notes/deal/:dealId", async (req: Request, res: Response) => {
 });
 
 // ────────────────────────────────────────────────
-// GET /voice-notes/production/:productionOrderId — Get active voice notes for a production order
+// Legacy: GET /voice-notes/deal/:dealId
 // ────────────────────────────────────────────────
+router.get("/voice-notes/deal/:dealId", async (req: Request, res: Response) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const dealId = Number(req.params.dealId);
+    if (isNaN(dealId)) { res.status(400).json({ error: "Invalid deal id" }); return; }
+
+    const notes = await getVoiceNotes("deal", dealId, user.id, user.role);
+    res.json(notes);
+  } catch (err) {
+    console.error("Get voice notes error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Legacy: GET /voice-notes/production/:productionOrderId
 router.get("/voice-notes/production/:productionOrderId", async (req: Request, res: Response) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
     const poId = Number(req.params.productionOrderId);
     if (isNaN(poId)) { res.status(400).json({ error: "Invalid production order id" }); return; }
 
-    // Production users can view; sales users only if they own the linked deal
-    if (user.role === "sales") {
-      const [po] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, poId));
-      if (!po || !po.dealId) { res.status(404).json({ error: "Production order not found" }); return; }
-      const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, po.dealId));
-      if (!deal || !canAccessSalesResource(user, deal.salesOwnerId)) {
-        res.status(403).json({ error: "Not your deal" }); return;
-      }
-    }
-
-    // Unit isolation: verify user can access this production order's unit
-    {
-      const [po] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, poId));
-      if (po) {
-        const resourceUnit = po.productionUnit || null;
-        if (!canAccessUnit(user, resourceUnit)) {
-          res.status(403).json({ error: "Access denied: unit mismatch" }); return;
-        }
-      }
-    }
-
-    const notes = await db
-      .select({
-        id: voiceNotesTable.id,
-        dealId: voiceNotesTable.dealId,
-        proformaInvoiceId: voiceNotesTable.proformaInvoiceId,
-        productionOrderId: voiceNotesTable.productionOrderId,
-        uploadedById: voiceNotesTable.uploadedById,
-        uploadedByName: usersTable.name,
-        fileName: voiceNotesTable.fileName,
-        originalName: voiceNotesTable.originalName,
-        mimeType: voiceNotesTable.mimeType,
-        fileSize: voiceNotesTable.fileSize,
-        storagePath: voiceNotesTable.storagePath,
-        durationMs: voiceNotesTable.durationMs,
-        transcript: voiceNotesTable.transcript,
-        transcriptStatus: voiceNotesTable.transcriptStatus,
-        isReplaced: voiceNotesTable.isReplaced,
-        createdAt: voiceNotesTable.createdAt,
-      })
-      .from(voiceNotesTable)
-      .leftJoin(usersTable, eq(voiceNotesTable.uploadedById, usersTable.id))
-      .where(
-        and(
-          eq(voiceNotesTable.productionOrderId, poId),
-          eq(voiceNotesTable.isReplaced, false),
-          isNull(voiceNotesTable.deletedAt),
-        )
-      )
-      .orderBy(desc(voiceNotesTable.createdAt));
-
-    // Attach playback URL and filter out orphaned records (file missing on disk)
-    const result = notes
-      .map((n) => ({
-        ...n,
-        url: storage.getUrl(n.storagePath),
-      }))
-      .filter((n) => fs.existsSync(storage.getPhysicalPath(n.storagePath)));
-
-    res.json(result);
+    const notes = await getVoiceNotes("production", poId, user.id, user.role);
+    res.json(notes);
   } catch (err) {
-    console.error("Get voice notes for production error:", err);
+    console.error("Get voice notes error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -268,27 +188,6 @@ router.patch("/voice-notes/:id/transcript", async (req: Request, res: Response) 
     if (!existing) { res.status(404).json({ error: "Voice note not found" }); return; }
     if (existing.deletedAt) { res.status(404).json({ error: "Voice note has been deleted" }); return; }
 
-    // Permission: only uploader or production users can edit transcript
-    if (user.role === "sales" && existing.uploadedById !== user.id) {
-      res.status(403).json({ error: "Not your voice note" }); return;
-    }
-
-    // Unit isolation
-    if (existing.dealId) {
-      const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, existing.dealId));
-      if (deal) {
-        const [contact] = await db.select({ unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
-        if (!canAccessUnit(user, contact?.unit || null)) {
-          res.status(403).json({ error: "Access denied: unit mismatch" }); return;
-        }
-      }
-    } else if (existing.productionOrderId) {
-      const [po] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, existing.productionOrderId));
-      if (po && !canAccessUnit(user, po.productionUnit || null)) {
-        res.status(403).json({ error: "Access denied: unit mismatch" }); return;
-      }
-    }
-
     const [updated] = await db
       .update(voiceNotesTable)
       .set({ transcript, transcriptStatus: transcript ? "completed" : "pending" })
@@ -303,8 +202,7 @@ router.patch("/voice-notes/:id/transcript", async (req: Request, res: Response) 
 });
 
 // ────────────────────────────────────────────────
-// DELETE /voice-notes/:id — Soft delete a voice note
-// Only the uploader (while deal not yet accepted by Production) can delete
+// DELETE /voice-notes/:id — Hard delete (removes file + DB record)
 // ────────────────────────────────────────────────
 router.delete("/voice-notes/:id", async (req: Request, res: Response) => {
   try {
@@ -314,35 +212,10 @@ router.delete("/voice-notes/:id", async (req: Request, res: Response) => {
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid voice note id" }); return; }
 
-    const [existing] = await db.select().from(voiceNotesTable).where(eq(voiceNotesTable.id, id));
-    if (!existing) { res.status(404).json({ error: "Voice note not found" }); return; }
-    if (existing.deletedAt) { res.status(404).json({ error: "Already deleted" }); return; }
-
-    // Sales can only delete their own voice notes
-    if (user.role === "sales" && existing.uploadedById !== user.id) {
-      res.status(403).json({ error: "Not your voice note" }); return;
+    const result = await deleteVoiceNote(id, user.id);
+    if (!result.success) {
+      res.status(404).json({ error: result.error || "Voice note not found" }); return;
     }
-
-    // Unit isolation
-    if (existing.dealId) {
-      const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, existing.dealId));
-      if (deal) {
-        const [contact] = await db.select({ unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
-        if (!canAccessUnit(user, contact?.unit || null)) {
-          res.status(403).json({ error: "Access denied: unit mismatch" }); return;
-        }
-      }
-    } else if (existing.productionOrderId) {
-      const [po] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, existing.productionOrderId));
-      if (po && !canAccessUnit(user, po.productionUnit || null)) {
-        res.status(403).json({ error: "Access denied: unit mismatch" }); return;
-      }
-    }
-
-    await db
-      .update(voiceNotesTable)
-      .set({ deletedAt: new Date(), deletedById: user.id })
-      .where(eq(voiceNotesTable.id, id));
 
     res.json({ success: true });
   } catch (err) {
@@ -352,8 +225,31 @@ router.delete("/voice-notes/:id", async (req: Request, res: Response) => {
 });
 
 // ────────────────────────────────────────────────
-// POST /voice-notes/:id/replace — Replace voice note (marks old as replaced, creates new)
-// Body (multipart): file (audio), transcript?, durationMs?
+// GET /voice-notes/:id/verify — Check file availability
+// ────────────────────────────────────────────────
+router.get("/voice-notes/:id/verify", async (req: Request, res: Response) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid voice note id" }); return; }
+
+    const available = await verifyFileAvailability(id);
+    if (!available) {
+      res.json({ available: false, message: "This voice note is unavailable." });
+      return;
+    }
+
+    res.json({ available: true });
+  } catch (err) {
+    console.error("Verify voice note error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ────────────────────────────────────────────────
+// POST /voice-notes/:id/replace — Replace voice note (versioning)
 // ────────────────────────────────────────────────
 router.post("/voice-notes/:id/replace", upload.single("file"), async (req: Request, res: Response) => {
   try {
@@ -363,22 +259,19 @@ router.post("/voice-notes/:id/replace", upload.single("file"), async (req: Reque
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid voice note id" }); return; }
 
-    const file = req.file;
-    if (!file) { res.status(400).json({ error: "No file provided" }); return; }
-    if (!ALLOWED_MIMES.has(file.mimetype)) {
-      res.status(400).json({ error: "Invalid file type" }); return;
-    }
+    const validationError = validateVoiceNoteFile(req.file!);
+    if (validationError) { res.status(400).json({ error: validationError }); return; }
+
+    const file = req.file!;
 
     const [existing] = await db.select().from(voiceNotesTable).where(eq(voiceNotesTable.id, id));
     if (!existing) { res.status(404).json({ error: "Voice note not found" }); return; }
     if (existing.deletedAt) { res.status(404).json({ error: "Voice note has been deleted" }); return; }
 
-    // Only uploader can replace
-    if (user.role === "sales" && existing.uploadedById !== user.id) {
-      res.status(403).json({ error: "Not your voice note" }); return;
-    }
+    const transcript = req.body.transcript || existing.transcript;
+    const durationMs = req.body.durationMs ? Number(req.body.durationMs) : existing.durationMs;
 
-    // Unit isolation
+    // Check unit access
     if (existing.dealId) {
       const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, existing.dealId));
       if (deal) {
@@ -394,41 +287,69 @@ router.post("/voice-notes/:id/replace", upload.single("file"), async (req: Reque
       }
     }
 
-    const transcript = req.body.transcript || existing.transcript;
-    const durationMs = req.body.durationMs ? Number(req.body.durationMs) : existing.durationMs;
-
-    const storagePath = await storage.save(file.originalname, file.buffer, "voice-notes");
-
-    // Mark old as replaced and create new in transaction
-    const result = await db.transaction(async (tx) => {
-      await tx
-        .update(voiceNotesTable)
-        .set({ isReplaced: true })
-        .where(eq(voiceNotesTable.id, id));
-
-      const [newNote] = await tx.insert(voiceNotesTable).values({
-        dealId: existing.dealId,
-        proformaInvoiceId: existing.proformaInvoiceId,
-        productionOrderId: existing.productionOrderId,
-        uploadedById: user.id,
-        fileName: path.basename(storagePath),
-        originalName: file.originalname,
-        mimeType: file.mimetype,
-        fileSize: file.size,
-        storagePath,
-        durationMs,
-        transcript,
-        transcriptStatus: transcript ? "completed" : "pending",
-        replacedById: id,
-      }).returning();
-
-      return newNote;
+    const { note, error } = await uploadVoiceNote({
+      file,
+      uploadedById: user.id,
+      createdByRole: user.role,
+      dealId: existing.dealId,
+      productionOrderId: existing.productionOrderId,
+      proformaInvoiceId: existing.proformaInvoiceId,
+      orderId: existing.orderId,
+      leadId: existing.leadId,
+      customerId: existing.customerId,
+      durationMs,
+      transcript,
     });
 
-    res.status(201).json(result);
+    if (error || !note) {
+      res.status(500).json({ error: error || "Failed to replace voice note" }); return;
+    }
+
+    // Mark old as replaced
+    await db.update(voiceNotesTable)
+      .set({ isReplaced: true, replacedById: note.id })
+      .where(eq(voiceNotesTable.id, id));
+
+    // Delete old file
+    if (existing.storagePath) {
+      try { fs.promises.unlink(storage.getPhysicalPath(existing.storagePath)); } catch {}
+    }
+
+    res.status(201).json(note);
   } catch (err) {
     console.error("Replace voice note error:", err);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ────────────────────────────────────────────────
+// GET /voice-notes/:id/download — Download voice note file
+// ────────────────────────────────────────────────
+router.get("/voice-notes/:id/download", async (req: Request, res: Response) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid voice note id" }); return; }
+
+    const [note] = await db
+      .select()
+      .from(voiceNotesTable)
+      .where(and(eq(voiceNotesTable.id, id), isNull(voiceNotesTable.deletedAt)));
+
+    if (!note) { res.status(404).json({ error: "Voice note not found" }); return; }
+
+    const filePath = storage.getPhysicalPath(note.storagePath);
+
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: "This voice note is unavailable." }); return;
+    }
+
+    res.download(filePath, note.originalName);
+  } catch (err) {
+    console.error("Download voice note error:", err);
+    if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
   }
 });
 

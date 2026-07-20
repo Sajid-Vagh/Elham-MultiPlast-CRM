@@ -47,6 +47,7 @@ export function onDealChange(queryClient: QueryClient, dealId?: number, contactI
     queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) });
     queryClient.invalidateQueries({ queryKey: getListDealProductsQueryKey(dealId) });
     queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ dealId }) });
+    queryClient.invalidateQueries({ queryKey: ["voice-notes", "deal", dealId] });
   }
   if (contactId) {
     queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
@@ -67,6 +68,7 @@ export function onActivityChange(queryClient: QueryClient, dealId?: number, cont
   if (dealId) {
     queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ dealId }) });
     queryClient.invalidateQueries({ queryKey: getListDealsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: ["voice-notes", "deal", dealId] });
   }
   if (contactId) {
     queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });
@@ -97,11 +99,13 @@ export function onProductionChange(queryClient: QueryClient, orderId?: string, d
   queryClient.invalidateQueries({ queryKey: ["production-progress-by-deal"] });
   if (orderId) {
     queryClient.invalidateQueries({ queryKey: ["production-order", orderId] });
+    queryClient.invalidateQueries({ queryKey: ["voice-notes", "production", Number(orderId)] });
   }
   if (dealId) {
     queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) });
     queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey({ dealId }) });
     queryClient.invalidateQueries({ queryKey: ["production-progress-by-deal", dealId] });
+    queryClient.invalidateQueries({ queryKey: ["voice-notes", "deal", dealId] });
   }
   if (contactId) {
     queryClient.invalidateQueries({ queryKey: ["production-by-contact", contactId] });

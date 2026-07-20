@@ -12,12 +12,12 @@ import { storage } from "../lib/storage";
 import { canAccessProduction, type PermissionUser } from "../lib/permission-service";
 import {
   enrichProductionOrder, acceptOrder, updatePlanning, startProduction,
-  updateStatus, cancelOrder, addNote, getMessages, sendMessage,
+  completePacking, markReadyForDispatch, bookTransport, completeOrder,
+  cancelOrder, addNote, getMessages, sendMessage,
   getDashboard, listOrders, getOrderDetail, getAuditTrail,
   getPendingSummary, getPendingRequirements, getReports,
   getProgressByDeal, getProductionByContact, getModifiedSince,
   handlePiModification, approveModification, addTimelineEntry,
-  completeDispatch,
 } from "../lib/production-service";
 import { transferOrder, getTransferHistory } from "../lib/production-transfer-service";
 
@@ -153,7 +153,7 @@ router.get("/production/by-contact/:contactId", async (req, res) => {
   }
 });
 
-// ── Scenario 2: Accept Order ──
+// ── Accept Order ──
 router.post("/production/orders/:id/accept", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
@@ -169,7 +169,7 @@ router.post("/production/orders/:id/accept", async (req, res) => {
   }
 });
 
-// ── Scenario 3: Update Planning ──
+// ── Update Planning ──
 router.patch("/production/orders/:id/planning", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
@@ -186,14 +186,15 @@ router.patch("/production/orders/:id/planning", async (req, res) => {
   }
 });
 
-// ── Scenario 4: Start Production (Machine Running) ──
+// ── Start Production (In Production) ──
 router.post("/production/orders/:id/start", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
     if (!user) return;
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-    const result = await startProduction(user, id);
+    const { machine, operatorName, notes } = req.body;
+    const result = await startProduction(user, id, { machine, operatorName, notes });
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result.order);
   } catch (err) {
@@ -202,24 +203,98 @@ router.post("/production/orders/:id/start", async (req, res) => {
   }
 });
 
-// ── Update Status (generic) ──
+// ── Complete Packing ──
+router.post("/production/orders/:id/packing", async (req, res) => {
+  try {
+    const user = await requireProductionUser(req, res);
+    if (!user) return;
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    const { packingType, notes } = req.body;
+    if (!packingType || !["Bundle", "Packet"].includes(packingType)) {
+      res.status(400).json({ error: "packingType must be 'Bundle' or 'Packet'" }); return;
+    }
+    const result = await completePacking(user, id, { packingType, notes });
+    if (result.error) { res.status(result.status).json({ error: result.error }); return; }
+    res.json(result.order);
+  } catch (err) {
+    console.error("Packing error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Mark Ready For Dispatch ──
+router.post("/production/orders/:id/ready-for-dispatch", async (req, res) => {
+  try {
+    const user = await requireProductionUser(req, res);
+    if (!user) return;
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    const { notes } = req.body;
+    const result = await markReadyForDispatch(user, id, notes);
+    if (result.error) { res.status(result.status).json({ error: result.error }); return; }
+    res.json(result.order);
+  } catch (err) {
+    console.error("Ready for dispatch error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Book Transport (Support team) ──
+router.post("/production/orders/:id/transport", async (req, res) => {
+  try {
+    const user = await requireAuth(req, res);
+    if (!user) return;
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    const { transportCompany, bookingNumber } = req.body;
+    if (!transportCompany || !transportCompany.trim()) {
+      res.status(400).json({ error: "Transport company is required" }); return;
+    }
+    if (!bookingNumber || !bookingNumber.trim()) {
+      res.status(400).json({ error: "Booking/Bilty number is required" }); return;
+    }
+    const result = await bookTransport(user, id, { transportCompany: transportCompany.trim(), bookingNumber: bookingNumber.trim() });
+    if (result.error) { res.status(result.status).json({ error: result.error }); return; }
+    res.json(result.order);
+  } catch (err) {
+    console.error("Book transport error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Complete Order ──
+router.post("/production/orders/:id/complete", async (req, res) => {
+  try {
+    const user = await requireAuth(req, res);
+    if (!user) return;
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    const result = await completeOrder(user, id);
+    if (result.error) { res.status(result.status).json({ error: result.error }); return; }
+    res.json(result.order);
+  } catch (err) {
+    console.error("Complete order error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Update Status (generic fallback) ──
 router.patch("/production/orders/:id/status", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
     if (!user) return;
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-    const { status, notes } = req.body;
-    const result = await updateStatus(user, id, status, notes);
-    if (result.error) { res.status(result.status).json({ error: result.error }); return; }
-    res.json(result.order);
+
+    res.status(400).json({ error: "Use specific endpoints: /accept, /start, /packing, /ready-for-dispatch, /transport, /complete, /cancel" });
   } catch (err) {
     console.error("Update production status error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// ── Scenario 10: Cancel Order ──
+// ── Cancel Order ──
 router.post("/production/orders/:id/cancel", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
@@ -237,7 +312,7 @@ router.post("/production/orders/:id/cancel", async (req, res) => {
   }
 });
 
-// ── Scenario 6: Approve/Reject PI Modification ──
+// ── Approve/Reject PI Modification ──
 router.post("/production/orders/:id/approve-modification", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
@@ -255,7 +330,7 @@ router.post("/production/orders/:id/approve-modification", async (req, res) => {
   }
 });
 
-// ── Scenario 5: Transfer Order ──
+// ── Transfer Order ──
 router.patch("/production/orders/:id/transfer", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
@@ -286,7 +361,7 @@ router.get("/production/orders/:id/transfers", async (req, res) => {
   }
 });
 
-// ── Scenario 13: Audit Trail ──
+// ── Audit Trail ──
 router.get("/production/orders/:id/audit-trail", async (req, res) => {
   try {
     const user = await requireAuth(req, res);
@@ -300,7 +375,7 @@ router.get("/production/orders/:id/audit-trail", async (req, res) => {
   }
 });
 
-// ── Scenario 8: Add Note ──
+// ── Add Note ──
 router.post("/production/orders/:id/notes", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
@@ -314,51 +389,6 @@ router.post("/production/orders/:id/notes", async (req, res) => {
     res.status(201).json(result.note);
   } catch (err) {
     console.error("Add production note error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// ── Complete Dispatch (Support team) ──
-router.patch("/production/orders/:id/dispatch", async (req, res) => {
-  try {
-    const user = await requireAuth(req, res);
-    if (!user) return;
-
-    const id = Number(req.params.id);
-    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-
-    const { transportName, transportDetails, builtyUrl } = req.body;
-    const result = await completeDispatch(user, id, { transportName, transportDetails, builtyUrl });
-    if (result.error) { res.status(result.status).json({ error: result.error }); return; }
-    res.json(result.order);
-  } catch (err) {
-    console.error("Complete dispatch error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// ── Upload Builty ──
-router.post("/production/orders/:id/builty", builtyUpload.single("file"), async (req, res) => {
-  try {
-    const user = await requireAuth(req, res);
-    if (!user) return;
-    if (user.role !== "admin" && user.role !== "production_and_support") {
-      res.status(403).json({ error: "Only production & support or admin users can upload builty" });
-      return;
-    }
-    const id = Number(req.params.id);
-    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-    const file = req.file;
-    if (!file) { res.status(400).json({ error: "No file provided" }); return; }
-
-    const storagePath = await storage.save(file.originalname, file.buffer, "builty");
-    const fileUrl = `/uploads/builty/${path.basename(storagePath)}`;
-    await db.update(productionOrdersTable).set({ builtyUrl: fileUrl, updatedAt: new Date() })
-      .where(eq(productionOrdersTable.id, id));
-
-    res.json({ url: fileUrl, originalName: file.originalname });
-  } catch (err) {
-    console.error("Builty upload error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

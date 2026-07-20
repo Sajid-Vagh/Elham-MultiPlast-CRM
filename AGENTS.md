@@ -184,24 +184,34 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - Migration `017_add_production_orders.sql` — creates 3 tables + indexes
 - Role `production_manager` added to `UserRole`, `UserInputRole`, `UserUpdateRole` types
 - Backend `production.ts` routes:
-  - `GET /production/dashboard` — KPI cards (pending, material ready, in production, QC, packing, ready for dispatch, completed today, delayed)
-  - `GET /production/orders` — list with search, status filter, priority filter, **creator filter**, pagination
-  - `GET /production/orders/:id` — single order detail with invoice, items, timeline, notes, **creator info**
+  - `GET /production/dashboard` — KPI cards (pending, accepted, planning, in production, packing, ready for dispatch, in transport, completed today, delayed)
+  - `GET /production/orders` — list with search, status filter, priority filter, **creator filter**, **origin filter**, pagination
+  - `GET /production/orders/:id` — single order detail with invoice, items, timeline, notes, **creator info**, planning/production/packing/transport detail cards
   - `GET /production/pending-summary` — product-wise pending production quantity (SQL GROUP BY)
   - `GET /production/by-invoice/:invoiceId` — lookup by proforma invoice (used by Sales read-only view)
-  - `PATCH /production/orders/:id/status` — update status with timeline record + notification
+  - `POST /production/orders/:id/start` — start production (In Production), sets productionMachine/operatorName/inProductionNotes
+  - `POST /production/orders/:id/packing` — complete packing step with packingType (Bundle/Packet) + packingNotes
+  - `POST /production/orders/:id/ready-for-dispatch` — mark as Ready For Dispatch, notifies Support
+  - `POST /production/orders/:id/transport` — book transport (Support role), sets transportName/transportDetails, moves to In Transport
+  - `POST /production/orders/:id/complete` — complete order (terminal state)
   - `POST /production/orders/:id/notes` — add internal production note
+  - `PATCH /production/orders/:id/status` — REMOVED (returns 400, directs to specific endpoints)
+- **Production Workflow v2:** New chronological status flow: Pending → Accepted → Planning → In Production → Packing → Ready For Dispatch → In Transport → Completed
+- **Status migration:** "Machine Running" → "In Production", "Quality Check" → "Packing", "Ready For Dispatch" with existing transport data → "In Transport"
+- **New DB columns:** `productionMachine`, `operatorName`, `inProductionNotes`, `packingType` (Bundle/Packet with CHECK constraint), `packingNotes`, `packingCompletedById`, `packingCompletedAt`, `transportBookedById`, `transportBookedAt`. Orders frozen (`isFrozen: true`) when In Production.
+- **Migration `048_production_workflow_v2.sql`** — adds new columns, migrates old statuses, adds indexes + constraints
 - Auto-create Production Order in `proforma-invoices.ts` when status → "Converted to Order"
 - **Permanent creator info** stored on production_orders: `createdById`, `createdByName`, `createdByRole`
 - **Real-time notifications** to all production managers/admins when new production order is created (via existing SSE infrastructure)
 - Notification includes: creator name, role, customer, company, product, quantity, order number
 - **Admin-only Product Management**: POST/PATCH/DELETE on `/products` restricted to admin role
 - Frontend pages:
-  - `production-dashboard.tsx` — 8 KPI cards + **Pending Production Summary widget** (product-wise grouped quantities)
-  - `production-orders.tsx` — full list with search, status/priority/creator filters, **Created By column**
-  - `production-order-detail.tsx` — order details, product table, timeline, notes, status update dialog, note dialog, **creator info display**
+  - `production-dashboard.tsx` — 8 KPI cards (Pending, Accepted, Planning, In Production, Packing, Ready for Dispatch, In Transport, Delayed) + **Pending Production Summary widget** + **Origin filter**
+  - `production-orders.tsx` — full list with search, status/priority/origin/creator filters, **Created By column**, **Origin badge**, status badges matching new color scheme
+  - `production-order-detail.tsx` — full rewrite with new workflow dialogs (Planning, Start Production, Packing, Transport Booking, Cancel); detail cards (Planning Details, Production Details, Packing Details, Transport Details); Support-specific "Dispatch Action" card at Ready For Dispatch
   - `products.tsx` — **admin-only Create/Edit/Delete**, **Status column** (Active/Inactive)
-- `production-progress.tsx` — read-only Production Progress card for Sales users in proforma invoice detail
+- `production-progress.tsx` — read-only Production Progress card for Sales users with v2 workflow steps, detail fields (plannedMachine, productionMachine, packingType, transport details), activity log timeline
+- `support-dashboard.tsx` — Ready for Dispatch + In Transport KPI cards added (from production_orders); navigates to filtered production orders
 - `App.tsx` — `RoleGuard` component redirects users based on role; production routes guarded
 - `layout.tsx` — dynamic sidebar: Sales shows only Sales nav, Production shows only Production nav, Admin shows both
 - `login.tsx` — stores `crm_user_role` in localStorage, redirects to correct dashboard based on role
@@ -210,7 +220,6 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - Backend 403 enforcement: all `/api/production/*` endpoints return 403 for non-production/non-admin users
 - **Query invalidation** updated to include `production-pending-summary` key
 - **Generated types** updated: `Product`, `ProductInput`, `ProductUpdate` interfaces + Zod schemas now include `status` field
-- **Migration `027_production_enhancements.sql`** adds creator info columns, product status, and performance indexes
 - **Unified Production Order Workflow (Sales + Support):** All production features work identically regardless of origin
   - `requestedUnit` column added to `production_orders` (original unit, never changes on transfer)
   - Migration `047_add_requested_unit.sql` — adds `requested_unit`, `created_by_role` index, backfills existing rows
@@ -222,8 +231,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
   - Frontend `production-order-detail.tsx`: Origin badge (SALES/SUPPORT), Requested Unit vs Current Unit display
 
 ### In Progress
-- Run migration `047_add_requested_unit.sql` against Supabase database
-- Run migration `027_production_enhancements.sql` against Supabase database
+- (none)
 
 ### Blocked
 - (none)
@@ -247,22 +255,26 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `.env`: `GSTVERIFY_API_KEY` (primary), `GST_API_URL` + `GST_API_KEY` (fallback).
 
 ## Production Module Relevant Files
-- `lib/db/src/schema/production_orders.ts`: production_orders, production_timeline, production_notes table schemas
+- `lib/db/src/schema/production_orders.ts`: production_orders, production_timeline, production_notes table schemas (updated with v2 statuses, PACKING_TYPES, new columns)
 - `lib/db/src/schema/products.ts`: products table schema (with `status` field)
 - `lib/db/migrations/017_add_production_orders.sql`: migration to create production tables
 - `lib/db/migrations/027_production_enhancements.sql`: migration for creator info, product status, indexes
 - `lib/db/migrations/047_add_requested_unit.sql`: migration for requested_unit, created_by_role index
-- `artifacts/api-server/src/routes/production.ts`: all production API endpoints (dashboard, orders, **pending-summary**, status, notes, **creator filter**)
+- `lib/db/migrations/048_production_workflow_v2.sql`: migration for new v2 columns (productionMachine, operatorName, packingType, transportBookedBy/At, packingCompletedBy/At), status migration (Machine Running→In Production, QC→Packing, RFD w/ transport→In Transport)
+- `artifacts/api-server/src/routes/production.ts`: all production API endpoints (dashboard, orders, **pending-summary**, **new v2 endpoints**: start, packing, ready-for-dispatch, transport, complete; **old PATCH status removed**)
+- `artifacts/api-server/src/lib/production-service.ts`: full rewrite with v2 workflow functions (startProduction, completePacking, markReadyForDispatch, bookTransport, completeOrder; **completeDispatch removed**)
 - `artifacts/api-server/src/routes/proforma-invoices.ts`: auto-create production order on "Converted to Order" with **creator info** + **real-time notifications to production users**
-- `artifacts/api-server/src/routes/products.ts`: CRUD + search, **admin-only POST/PATCH/DELETE**
+- `artifacts/api-server/src/routes/products.ts`: CRUD + search, **admin-only POST/PATCH/DELETE**, updated isInProduction check
+- `artifacts/api-server/src/lib/order-cancellation-service.ts`: updated cancellation rules references from "Machine Running" to "In Production"
 - `lib/api-zod/src/generated/types/userRole.ts`, `userInputRole.ts`, `userUpdateRole.ts`: role types updated
 - `lib/api-zod/src/generated/api.ts`: updated role enums + **Product status in Zod schemas**
 - `lib/api-client-react/src/generated/api.schemas.ts`: updated UserRole const + **Product status in interfaces**
-- `artifacts/crm/src/pages/production-dashboard.tsx`: Production Dashboard with 8 KPI cards + **Pending Production Summary widget** + **Origin filter**
-- `artifacts/crm/src/pages/production-orders.tsx`: Production Orders list with filters + **origin filter** + **Origin column (SALES/SUPPORT badge)**
-- `artifacts/crm/src/pages/production-order-detail.tsx`: Production Order detail with timeline, notes, status update + **origin badge** + **Requested Unit / Current Unit display**
+- `artifacts/crm/src/pages/production-dashboard.tsx`: Production Dashboard with 8 KPI cards (Pending, Accepted, Planning, In Production, Packing, Ready for Dispatch, In Transport, Delayed) + **Pending Production Summary widget** + **Origin filter**
+- `artifacts/crm/src/pages/production-orders.tsx`: Production Orders list with search, status/priority/origin/creator filters, **Origin column (SALES/SUPPORT badge)**, status badges matching v2 color scheme
+- `artifacts/crm/src/pages/production-order-detail.tsx`: Full rewrite — Planning/Start/Packing/Transport/Cancel dialogs; Planning/Production/Packing/Transport detail cards; Support-specific Dispatch Action card; v2 STATUS_COLORS
 - `artifacts/crm/src/pages/products.tsx`: Product Management — **admin-only controls**, **Status column**
-- `artifacts/crm/src/components/production-progress.tsx`: read-only Production Progress for Sales users
+- `artifacts/crm/src/components/production-progress.tsx`: read-only Production Progress for Sales users (v2 workflow steps: Pending→Accepted→Planning→In Production→Packing→Ready For Dispatch→In Transport→Completed; detail fields: plannedMachine, productionMachine, packingType, transport details; activity log timeline)
+- `artifacts/crm/src/pages/support-dashboard.tsx`: Ready for Dispatch + In Transport KPI cards (navigate to filtered production orders); Pending Dispatch + In Production cards retained
 - `artifacts/crm/src/App.tsx`: RoleGuard component, production routes
 - `artifacts/crm/src/components/layout.tsx`: dynamic role-based sidebar
 - `artifacts/crm/src/pages/login.tsx`: login redirect based on role

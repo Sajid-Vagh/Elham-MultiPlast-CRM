@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, dealsTable, usersTable, activitiesTable, ordersTable, complaintsTable, CATEGORIES, DEAL_STAGES } from "@workspace/db";
+import { db, contactsTable, dealsTable, usersTable, activitiesTable, ordersTable, complaintsTable, productionOrdersTable, CATEGORIES, DEAL_STAGES } from "@workspace/db";
 import { eq, inArray, and, desc } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
@@ -395,6 +395,21 @@ router.get("/dashboard/support-kpi", async (req, res) => {
       (o.status === "Production Started" || o.status === "Production Running")
     ).length;
 
+    // Production orders tracking
+    const allProductionOrders = await db.select().from(productionOrdersTable);
+    const readyForDispatch = allProductionOrders.filter(o => o.status === "Ready For Dispatch").length;
+    const inTransport = allProductionOrders.filter(o => o.status === "In Transport").length;
+
+    // Active complaints list for the dashboard
+    const activeComplaintList = complaints.filter(c => c.status !== "Resolved" && c.status !== "Closed").slice(0, 10);
+
+    const pendingDispatchOrders = allOrders.filter(o =>
+      !o.isDeleted &&
+      o.status !== "Cancelled" &&
+      o.status !== "Completed" &&
+      o.status !== "Delivered"
+    );
+
     res.json({
       totalRepeatOrders: repeatOrders.length,
       repeatOrdersThisMonth: repeatOrdersThisMonth.length,
@@ -402,8 +417,23 @@ router.get("/dashboard/support-kpi", async (req, res) => {
       repeatRevenueThisMonth,
       repeatCustomers: repeatCustomerIds.size,
       activeComplaints,
-      pendingDispatch,
+      pendingDispatch: pendingDispatchOrders.length,
       inProduction,
+      readyForDispatch,
+      inTransport,
+      collections: {
+        repeatOrders: repeatOrders.slice(0, 10),
+        pendingDispatch: pendingDispatchOrders.slice(0, 10),
+        complaints: activeComplaintList,
+        productionOrders: allProductionOrders.filter(o => o.status === "Active" || o.status === "In Production").slice(0, 10),
+        customers: [],
+      },
+      stats: {
+        repeatRevenue: totalRepeatRevenue,
+        repeatCustomers: repeatCustomerIds.size,
+        pendingDispatch: pendingDispatchOrders.length,
+        inProduction,
+      },
     });
   } catch (err) {
     req.log.error({ err }, "Support KPI error");

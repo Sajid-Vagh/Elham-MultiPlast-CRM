@@ -3,6 +3,7 @@ import {
   db, existingCustomersTable, contactsTable, ordersTable, orderItemsTable,
   usersTable, complaintsTable, orderTimelineTable, customerCommunicationsTable,
   internalNotesTable, activitiesTable, dealProductsTable, dealsTable,
+  voiceNotesTable,
 } from "@workspace/db";
 import { eq, and, or, ilike, desc, sql, inArray, isNull, asc } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
@@ -669,6 +670,33 @@ router.get("/existing-customers/:id/timeline", async (req, res) => {
         user: comm.createdBy || "System",
         createdAt: comm.createdAt,
       });
+    }
+
+    // Voice note events
+    const dealRecords = await db.select().from(dealsTable).where(eq(dealsTable.contactId, contactId));
+    for (const deal of dealRecords) {
+      const vnNotes = await db.select({
+        id: voiceNotesTable.id,
+        fileName: voiceNotesTable.fileName,
+        originalName: voiceNotesTable.originalName,
+        durationMs: voiceNotesTable.durationMs,
+        uploadedById: voiceNotesTable.uploadedById,
+        createdByRole: voiceNotesTable.createdByRole,
+        createdAt: voiceNotesTable.createdAt,
+      }).from(voiceNotesTable)
+        .where(and(eq(voiceNotesTable.dealId, deal.id), eq(voiceNotesTable.isReplaced, false), isNull(voiceNotesTable.deletedAt)))
+        .orderBy(asc(voiceNotesTable.createdAt));
+      for (const vn of vnNotes) {
+        const user = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, vn.uploadedById)).then(r => r[0]?.name || "Unknown");
+        events.push({
+          id: `voice-note-${vn.id}`,
+          type: "voice_note",
+          description: `Voice note uploaded by ${user} (${vn.createdByRole})`,
+          user,
+          durationMs: vn.durationMs,
+          createdAt: vn.createdAt,
+        });
+      }
     }
 
     // Follow-up (activity) events

@@ -1,245 +1,204 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Clock, User, CheckCircle2, Circle, Loader2, MessageSquare, FileText } from "lucide-react";
+import { CheckCircle2, Circle, Loader2, Clock, User } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { customFetch } from "@workspace/api-client-react/custom-fetch";
 
 const PRODUCTION_STEPS = [
   "Pending",
   "Accepted",
   "Planning",
-  "Machine Running",
-  "Quality Check",
+  "In Production",
+  "Packing",
   "Ready For Dispatch",
+  "In Transport",
   "Completed",
 ];
 
-const STATUS_BADGE: Record<string, { label: string; className: string }> = {
-  "Pending": { label: "Pending", className: "bg-gray-100 text-gray-700 border-gray-300" },
-  "Accepted": { label: "Accepted", className: "bg-blue-100 text-blue-700 border-blue-300" },
-  "Planning": { label: "Planning", className: "bg-indigo-100 text-indigo-700 border-indigo-300" },
-  "Machine Running": { label: "Machine Running", className: "bg-orange-100 text-orange-700 border-orange-300" },
-  "Quality Check": { label: "Quality Check", className: "bg-yellow-100 text-yellow-700 border-yellow-300" },
-  "Ready For Dispatch": { label: "Ready For Dispatch", className: "bg-green-100 text-green-700 border-green-300" },
-  "Completed": { label: "Completed", className: "bg-emerald-100 text-emerald-700 border-emerald-300" },
-  "Cancelled": { label: "Cancelled", className: "bg-red-100 text-red-700 border-red-300" },
+const STATUS_BADGE: Record<string, string> = {
+  "Pending": "bg-gray-100 text-gray-700 border-gray-300",
+  "Accepted": "bg-blue-100 text-blue-700 border-blue-300",
+  "Planning": "bg-purple-100 text-purple-700 border-purple-300",
+  "In Production": "bg-orange-100 text-orange-700 border-orange-300",
+  "Packing": "bg-yellow-100 text-yellow-700 border-yellow-300",
+  "Ready For Dispatch": "bg-green-100 text-green-700 border-green-300",
+  "In Transport": "bg-indigo-100 text-indigo-700 border-indigo-300",
+  "Completed": "bg-emerald-100 text-emerald-700 border-emerald-300",
+  "Cancelled": "bg-red-100 text-red-700 border-red-300",
 };
 
-function getProgressPercent(status: string): number {
-  const idx = PRODUCTION_STEPS.indexOf(status);
-  if (idx === -1) return 0;
-  return Math.round((idx / (PRODUCTION_STEPS.length - 1)) * 100);
-}
-
-function formatDate(d: string | null | undefined): string {
-  if (!d) return "-";
-  return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-}
-
-function formatDateTime(d: string | null | undefined): string {
-  if (!d) return "-";
-  return new Date(d).toLocaleDateString("en-IN", {
-    day: "2-digit", month: "short", year: "numeric",
-    hour: "2-digit", minute: "2-digit", hour12: true,
-  });
+interface Props {
+  dealId: number;
 }
 
 export function ProductionProgressSection({ invoiceId }: { invoiceId: number }) {
-  const token = localStorage.getItem("crm_token");
-
-  const { data: prod, isLoading } = useQuery({
-    queryKey: ["production-progress", invoiceId],
-    queryFn: async () => {
-      const res = await fetch(`/api/proforma-invoices/${invoiceId}/production-progress`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return null;
-      return res.json();
-    },
-    enabled: !!token,
-    refetchInterval: 30000,
+  const { data: productionOrder } = useQuery({
+    queryKey: ["production-by-invoice", invoiceId],
+    queryFn: () => customFetch<any>(`/production/by-invoice/${invoiceId}`),
+    enabled: !!invoiceId,
   });
+
+  if (!productionOrder) return null;
+
+  return <ProductionProgress dealId={productionOrder.dealId} />;
+}
+
+export default function ProductionProgress({ dealId }: Props) {
+  const { data: progress, isLoading } = useQuery({
+    queryKey: ["production-progress", dealId],
+    queryFn: () => customFetch<any>(`/production/progress-by-deal/${dealId}`),
+    enabled: !!dealId,
+  });
+
+  const currentStepIndex = useMemo(() => {
+    if (!progress?.status) return 0;
+    const idx = PRODUCTION_STEPS.indexOf(progress.status);
+    return idx >= 0 ? idx : 0;
+  }, [progress]);
 
   if (isLoading) {
     return (
       <Card>
-        <CardHeader><CardTitle className="text-sm">Production Progress</CardTitle></CardHeader>
-        <CardContent><Skeleton className="h-48 w-full" /></CardContent>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium">Production Progress</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-4 w-full mb-2" />
+          <Skeleton className="h-4 w-3/4" />
+        </CardContent>
       </Card>
     );
   }
 
-  if (!prod) return null;
+  if (!progress) return null;
 
-  const pct = getProgressPercent(prod.status);
-  const statusInfo = STATUS_BADGE[prod.status] || { label: prod.status, className: "bg-gray-100 text-gray-700 border-gray-300" };
-  const completedSet = new Set(
-    (prod.timeline || []).map((t: any) => t.status)
-  );
+  const isCancelled = progress.status === "Cancelled";
 
   return (
-    <Card className="border-l-4 border-l-purple-500">
+    <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm flex items-center justify-between">
-          <span className="flex items-center gap-2">Production Progress</span>
-          <Badge className={`text-xs ${statusInfo.className} border`} variant="outline">
-            {statusInfo.label}
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium">Production Progress</CardTitle>
+          <Badge variant="outline" className={`text-xs ${STATUS_BADGE[progress.status] || "bg-gray-100"} border`}>
+            {progress.status}
           </Badge>
-        </CardTitle>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div>
-          <div className="flex justify-between text-xs text-muted-foreground mb-1">
-            <span>Progress</span>
-            <span>{pct}%</span>
-          </div>
-          <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${pct}%`,
-                background: pct === 100
-                  ? "linear-gradient(90deg, #10b981, #059669)"
-                  : "linear-gradient(90deg, #8b5cf6, #6366f1)",
-              }}
-            />
-          </div>
+        {/* Progress Steps */}
+        <div className="flex items-center gap-1">
+          {PRODUCTION_STEPS.map((step, idx) => {
+            const isCompleted = idx < currentStepIndex;
+            const isCurrent = idx === currentStepIndex;
+            const isFuture = idx > currentStepIndex;
+
+            let icon;
+            if (isCompleted) icon = <CheckCircle2 className="h-4 w-4 text-emerald-500" />;
+            else if (isCurrent && !isCancelled) icon = <Loader2 className="h-4 w-4 text-purple-500 animate-spin" />;
+            else icon = <Circle className={`h-4 w-4 ${isFuture ? "text-gray-300" : isCancelled ? "text-red-300" : "text-gray-400"}`} />;
+
+            return (
+              <div key={step} className="flex items-center gap-1 flex-1 last:flex-none">
+                <div className="flex flex-col items-center">
+                  {icon}
+                  <span className={`text-[8px] mt-0.5 whitespace-nowrap ${isCurrent ? "font-semibold text-foreground" : isCompleted ? "text-emerald-600" : "text-muted-foreground"}`}>
+                    {step === "In Production" ? "In Prod" : step === "Ready For Dispatch" ? "Dispatch" : step === "In Transport" ? "Transit" : step}
+                  </span>
+                </div>
+                {idx < PRODUCTION_STEPS.length - 1 && (
+                  <div className={`flex-1 h-0.5 mx-1 rounded ${isCompleted ? "bg-emerald-400" : isCurrent ? "bg-purple-400" : "bg-gray-200"}`} />
+                )}
+              </div>
+            );
+          })}
         </div>
 
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-          {prod.assignedProductionManager && (
+        {/* Info Grid */}
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          {progress.assignedProductionManager && (
             <div>
-              <span className="text-xs text-muted-foreground">Assigned Production Manager</span>
-              <p className="font-medium flex items-center gap-1">
-                <User className="h-3.5 w-3.5 text-muted-foreground" />
-                {prod.assignedProductionManager.name}
-              </p>
+              <span className="text-xs text-muted-foreground">Production Manager</span>
+              <p className="font-medium">{progress.assignedProductionManager.name}</p>
             </div>
           )}
-          {prod.productionUnit && (
+          {progress.productionUnit && (
             <div>
               <span className="text-xs text-muted-foreground">Production Unit</span>
-              <p className="font-medium">{prod.productionUnit}</p>
+              <p className="font-medium">{progress.productionUnit}</p>
             </div>
           )}
-          <div>
-            <span className="text-xs text-muted-foreground">Expected Dispatch</span>
-            <p className="font-medium">{formatDate(prod.expectedDispatchDate)}</p>
-          </div>
-          <div>
-            <span className="text-xs text-muted-foreground">Last Updated</span>
-            <p className="font-medium flex items-center gap-1">
-              <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-              {formatDateTime(prod.updatedAt)}
-            </p>
-          </div>
-          {prod.lastUpdatedBy && (
+          {progress.expectedDispatchDate && (
             <div>
-              <span className="text-xs text-muted-foreground">Updated By</span>
-              <p className="font-medium flex items-center gap-1">
-                <User className="h-3.5 w-3.5 text-muted-foreground" />
-                {prod.lastUpdatedBy.name}
-              </p>
+              <span className="text-xs text-muted-foreground">Expected Dispatch</span>
+              <p className="font-medium">{new Date(progress.expectedDispatchDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</p>
             </div>
           )}
-          {prod.productionRemarks && (
-            <div className="col-span-2">
-              <span className="text-xs text-muted-foreground">Production Remarks</span>
-              <p className="font-medium text-sm bg-amber-50 border border-amber-200 rounded-md px-3 py-1.5 mt-1">{prod.productionRemarks}</p>
+          {progress.lastUpdatedBy && (
+            <div>
+              <span className="text-xs text-muted-foreground">Last Updated By</span>
+              <p className="font-medium">{progress.lastUpdatedBy.name}</p>
+            </div>
+          )}
+          {progress.plannedMachine && (
+            <div>
+              <span className="text-xs text-muted-foreground">Planned Machine</span>
+              <p className="font-medium">{progress.plannedMachine}</p>
+            </div>
+          )}
+          {progress.productionMachine && (
+            <div>
+              <span className="text-xs text-muted-foreground">Production Machine</span>
+              <p className="font-medium">{progress.productionMachine}</p>
+            </div>
+          )}
+          {progress.expectedStartDate && (
+            <div>
+              <span className="text-xs text-muted-foreground">Expected Start</span>
+              <p className="font-medium">{new Date(progress.expectedStartDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</p>
+            </div>
+          )}
+          {progress.expectedCompletionDate && (
+            <div>
+              <span className="text-xs text-muted-foreground">Expected Completion</span>
+              <p className="font-medium">{new Date(progress.expectedCompletionDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</p>
+            </div>
+          )}
+          {progress.packingType && (
+            <div>
+              <span className="text-xs text-muted-foreground">Packing Type</span>
+              <p className="font-medium">{progress.packingType}</p>
+            </div>
+          )}
+          {progress.transportName && (
+            <div>
+              <span className="text-xs text-muted-foreground">Transport</span>
+              <p className="font-medium">{progress.transportName}</p>
+            </div>
+          )}
+          {progress.transportDetails && (
+            <div>
+              <span className="text-xs text-muted-foreground">Booking No.</span>
+              <p className="font-medium">{progress.transportDetails}</p>
             </div>
           )}
         </div>
 
-        <div>
-          <span className="text-xs text-muted-foreground font-medium">Timeline</span>
-          <div className="mt-2 space-y-1">
-            {PRODUCTION_STEPS.map((step) => {
-              const isCurrent = step === prod.status;
-              const isPast = PRODUCTION_STEPS.indexOf(step) < PRODUCTION_STEPS.indexOf(prod.status);
-              const stepCompleted = isPast || (isCurrent && prod.status === "Completed");
-
-              let icon: React.ReactNode;
-              let textClass = "text-muted-foreground";
-              if (step === "Completed" && prod.status === "Completed") {
-                icon = <CheckCircle2 className="h-4 w-4 text-emerald-500 flex-shrink-0" />;
-                textClass = "text-emerald-600 font-medium";
-              } else if (stepCompleted) {
-                icon = <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />;
-                textClass = "text-green-600";
-              } else if (isCurrent) {
-                icon = <Loader2 className="h-4 w-4 text-purple-500 flex-shrink-0 animate-spin" />;
-                textClass = "text-purple-600 font-medium";
-              } else {
-                icon = <Circle className="h-4 w-4 text-gray-300 flex-shrink-0" />;
-                textClass = "text-gray-400";
-              }
-
-              const timelineEntry = (prod.timeline || []).find((t: any) => t.status === step);
-
-              return (
-                <div key={step} className="flex items-center gap-2 py-0.5">
-                  {icon}
-                  <span className={`text-xs ${textClass}`}>{step}</span>
-                  {timelineEntry && (
-                    <span className="text-[10px] text-muted-foreground ml-auto flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {formatDateTime(timelineEntry.createdAt)}
-                      {timelineEntry.createdByName && (
-                        <>by {timelineEntry.createdByName}</>
-                      )}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {prod.notes && prod.notes.length > 0 && (
+        {/* Timeline */}
+        {progress.timeline && progress.timeline.length > 0 && (
           <div>
-            <span className="text-xs text-muted-foreground font-medium flex items-center gap-1">
-              <MessageSquare className="h-3.5 w-3.5" />
-              Production Notes ({prod.notes.length})
-            </span>
-            <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
-              {prod.notes.map((note: any) => (
-                <div key={note.id} className="bg-blue-50 border border-blue-200 rounded-md px-3 py-2">
-                  <p className="text-xs text-blue-900">{note.note}</p>
-                  <div className="flex items-center gap-2 mt-1 text-[10px] text-blue-600">
-                    <Clock className="h-3 w-3" />
-                    {formatDateTime(note.createdAt)}
-                    {note.createdByName && (
-                      <span className="flex items-center gap-0.5">
-                        <User className="h-3 w-3" />
-                        {note.createdByName}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {prod.timeline && prod.timeline.length > 0 && (
-          <div>
-            <span className="text-xs text-muted-foreground font-medium flex items-center gap-1">
-              <FileText className="h-3.5 w-3.5" />
-              Activity Log ({prod.timeline.length})
-            </span>
-            <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
-              {prod.timeline.map((entry: any) => (
-                <div key={entry.id} className="flex items-start gap-2 text-[11px] py-0.5">
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">
+            <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Activity Log</p>
+            <div className="space-y-2 max-h-40 overflow-y-auto">
+              {progress.timeline.slice(0, 10).map((entry: any) => (
+                <div key={entry.id} className="flex items-start gap-2 text-xs">
+                  <Badge variant="outline" className={`text-[9px] py-0 px-1.5 ${STATUS_BADGE[entry.status] || "bg-gray-100"} border`}>
                     {entry.status}
                   </Badge>
-                  <span className="text-muted-foreground">{formatDateTime(entry.createdAt)}</span>
-                  {entry.createdByName && (
-                    <span className="text-muted-foreground">by {entry.createdByName}</span>
-                  )}
-                  {entry.notes && (
-                    <span className="text-muted-foreground italic ml-1">— {entry.notes}</span>
-                  )}
+                  <span className="text-muted-foreground flex-1">{entry.notes}</span>
+                  <span className="text-muted-foreground/60 whitespace-nowrap">
+                    {new Date(entry.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  </span>
                 </div>
               ))}
             </div>

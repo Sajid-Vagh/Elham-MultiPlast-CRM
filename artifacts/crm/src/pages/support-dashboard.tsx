@@ -1,28 +1,53 @@
-﻿import { useState, useEffect } from "react";
+﻿import { useQuery } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Users, DollarSign, RefreshCw, AlertTriangle, Truck, Package } from "lucide-react";
+import { useLocation } from "wouter";
+import { Users, DollarSign, RefreshCw, AlertTriangle, Truck, Package, CheckCircle2, Ship } from "lucide-react";
+
+const defaultDashboard = {
+  totalRepeatOrders: 0,
+  repeatOrdersThisMonth: 0,
+  totalRepeatRevenue: 0,
+  repeatRevenueThisMonth: 0,
+  repeatCustomers: 0,
+  activeComplaints: 0,
+  pendingDispatch: 0,
+  inProduction: 0,
+  readyForDispatch: 0,
+  inTransport: 0,
+  collections: {
+    repeatOrders: [],
+    pendingDispatch: [],
+    complaints: [],
+    productionOrders: [],
+    customers: [],
+  },
+  stats: {
+    repeatRevenue: 0,
+    repeatCustomers: 0,
+    pendingDispatch: 0,
+    inProduction: 0,
+  },
+};
 
 export default function SupportDashboardPage() {
-  const token = localStorage.getItem("crm_token");
-  const [kpi, setKpi] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [, setLocation] = useLocation();
 
-  useEffect(() => {
-    if (!token) return;
-    (async () => {
-      try {
-        const res = await fetch("/api/dashboard/support-kpi", {
-          headers: { Authorization: "Bearer " + token },
-        });
-        if (res.ok) setKpi(await res.json());
-      } catch { } finally {
-        setLoading(false);
-      }
-    })();
-  }, [token]);
+  const { data: dash = defaultDashboard, isLoading } = useQuery({
+    queryKey: ["support-dashboard-kpi"],
+    queryFn: async () => {
+      const res = await fetch("/api/dashboard/support-kpi", {
+        headers: { Authorization: "Bearer " + localStorage.getItem("crm_token") },
+      });
+      if (!res.ok) return defaultDashboard;
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
 
-  if (loading) {
+  const stats = dash.stats || defaultDashboard.stats;
+
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-muted-foreground">Loading support dashboard...</div>
@@ -53,8 +78,8 @@ export default function SupportDashboardPage() {
             <RefreshCw className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{kpi?.totalRepeatOrders ?? 0}</div>
-            <p className="text-xs text-muted-foreground">+{kpi?.repeatOrdersThisMonth ?? 0} this month</p>
+            <div className="text-2xl font-bold">{dash.totalRepeatOrders ?? 0}</div>
+            <p className="text-xs text-muted-foreground">+{dash.repeatOrdersThisMonth ?? 0} this month</p>
           </CardContent>
         </Card>
 
@@ -64,8 +89,8 @@ export default function SupportDashboardPage() {
             <DollarSign className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{(kpi?.totalRepeatRevenue ?? 0).toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">{(kpi?.repeatRevenueThisMonth ?? 0).toLocaleString()} this month</p>
+            <div className="text-2xl font-bold">{(dash.totalRepeatRevenue ?? 0).toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">{(dash.repeatRevenueThisMonth ?? 0).toLocaleString()} this month</p>
           </CardContent>
         </Card>
 
@@ -75,7 +100,7 @@ export default function SupportDashboardPage() {
             <Users className="h-4 w-4 text-purple-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{kpi?.repeatCustomers ?? 0}</div>
+            <div className="text-2xl font-bold">{dash.repeatCustomers ?? 0}</div>
             <p className="text-xs text-muted-foreground">Unique customers with repeat orders</p>
           </CardContent>
         </Card>
@@ -86,33 +111,91 @@ export default function SupportDashboardPage() {
             <AlertTriangle className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">{kpi?.activeComplaints ?? 0}</div>
+            <div className="text-2xl font-bold text-red-600">{dash.activeComplaints ?? 0}</div>
             <p className="text-xs text-muted-foreground">Requires attention</p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Card className="h-full border-blue-200 rounded-xl border bg-card text-card-foreground shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out cursor-pointer">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card
+          className="h-full border-green-200 rounded-xl border bg-card text-card-foreground shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out cursor-pointer"
+          onClick={() => setLocation("/production/orders?status=Ready For Dispatch")}
+        >
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-xs font-medium">Ready for Dispatch</CardTitle>
+            <CheckCircle2 className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold text-green-600">{dash.readyForDispatch ?? 0}</div>
+          </CardContent>
+        </Card>
+
+        <Card
+          className="h-full border-indigo-200 rounded-xl border bg-card text-card-foreground shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out cursor-pointer"
+          onClick={() => setLocation("/production/orders?status=In Transport")}
+        >
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-xs font-medium">In Transport</CardTitle>
+            <Ship className="h-4 w-4 text-indigo-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold text-indigo-600">{dash.inTransport ?? 0}</div>
+          </CardContent>
+        </Card>
+
+        <Card
+          className="h-full border-orange-200 rounded-xl border bg-card text-card-foreground shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out cursor-pointer"
+          onClick={() => setLocation("/production/orders?status=Pending")}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-xs font-medium">Pending Dispatch</CardTitle>
             <Truck className="h-4 w-4 text-orange-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-xl font-bold text-orange-600">{kpi?.pendingDispatch ?? 0}</div>
+            <div className="text-xl font-bold text-orange-600">{dash.pendingDispatch ?? 0}</div>
           </CardContent>
         </Card>
 
-        <Card className="h-full border-indigo-200 rounded-xl border bg-card text-card-foreground shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out cursor-pointer">
+        <Card
+          className="h-full border-purple-200 rounded-xl border bg-card text-card-foreground shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out cursor-pointer"
+          onClick={() => setLocation("/production/orders?status=In Production")}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-xs font-medium">In Production</CardTitle>
-            <Package className="h-4 w-4 text-indigo-500" />
+            <Package className="h-4 w-4 text-purple-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-xl font-bold text-indigo-600">{kpi?.inProduction ?? 0}</div>
+            <div className="text-xl font-bold text-purple-600">{dash.inProduction ?? 0}</div>
           </CardContent>
         </Card>
       </div>
+
+      {dash.collections && dash.collections.repeatOrders && dash.collections.repeatOrders.length > 0 && (
+        <Card>
+          <CardHeader className="py-3">
+            <CardTitle className="text-sm">Recent Repeat Orders ({dash.collections.repeatOrders.length})</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {dash.collections.repeatOrders.map((order: any, i: number) => (
+              <div key={i} className="text-sm text-muted-foreground">{order.orderNumber || order.id} - ₹{Number(order.grandTotal || 0).toLocaleString("en-IN")}</div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {dash.collections && dash.collections.complaints && dash.collections.complaints.length > 0 && (
+        <Card>
+          <CardHeader className="py-3">
+            <CardTitle className="text-sm">Open Complaints ({dash.collections.complaints.length})</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {dash.collections.complaints.map((c: any, i: number) => (
+              <div key={i} className="text-sm text-muted-foreground">{c.complaintNumber || c.id} - {c.complaintType} ({c.status})</div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <div>
         <h2 className="text-sm font-semibold mb-3">Quick Actions</h2>

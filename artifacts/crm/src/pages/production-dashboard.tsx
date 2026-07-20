@@ -1,75 +1,61 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useGetMe } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { customFetch } from "@workspace/api-client-react/custom-fetch";
-import { Factory, PackageCheck, Settings2, ShieldCheck, Truck, CheckCircle2, Clock, AlertTriangle, ListOrdered, BoxSelect, LayoutDashboard } from "lucide-react";
 import { useUserUnits } from "@/lib/use-user-units";
-import { useProductionSyncAlert } from "@/lib/use-production-sync-alert";
+import { Badge } from "@/components/ui/badge";
+import { Calendar, Clock, AlertTriangle } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { customFetch } from "@workspace/api-client-react/custom-fetch";
 
-const STATUS_CARDS = [
-  { key: "pendingCount", label: "Pending Orders", icon: Clock, color: "bg-gray-100 text-gray-700 border-gray-300", hoverStatus: "Pending" },
-  { key: "acceptedCount", label: "Accepted", icon: PackageCheck, color: "bg-blue-100 text-blue-700 border-blue-300", hoverStatus: "Accepted" },
-  { key: "planningCount", label: "Planning", icon: Settings2, color: "bg-purple-100 text-purple-700 border-purple-300", hoverStatus: "Planning" },
-  { key: "machineRunningCount", label: "Machine Running", icon: Factory, color: "bg-orange-100 text-orange-700 border-orange-300", hoverStatus: "Machine Running" },
-  { key: "qualityCheckCount", label: "Quality Check", icon: ShieldCheck, color: "bg-yellow-100 text-yellow-700 border-yellow-300", hoverStatus: "Quality Check" },
-  { key: "readyForDispatchCount", label: "Ready for Dispatch", icon: Truck, color: "bg-green-100 text-green-700 border-green-300", hoverStatus: "Ready For Dispatch" },
-  { key: "completedToday", label: "Completed Today", icon: CheckCircle2, color: "bg-emerald-100 text-emerald-700 border-emerald-300", hoverStatus: "completed-today" },
-  { key: "delayedOrders", label: "Delayed Orders", icon: AlertTriangle, color: "bg-red-100 text-red-700 border-red-300", hoverStatus: "delayed" },
+const STATUS_COLORS: Record<string, string> = {
+  "Accepted": "bg-blue-100 text-blue-700 border-blue-300",
+  "Planning": "bg-purple-100 text-purple-700 border-purple-300",
+  "In Production": "bg-orange-100 text-orange-700 border-orange-300",
+  "Packing": "bg-yellow-100 text-yellow-700 border-yellow-300",
+  "Ready For Dispatch": "bg-green-100 text-green-700 border-green-300",
+  "In Transport": "bg-indigo-100 text-indigo-700 border-indigo-300",
+};
+
+const KPI_CONFIG = [
+  { key: "pendingCount", label: "Pending", color: "bg-gray-100 text-gray-700 border-gray-300", hoverStatus: "Pending" },
+  { key: "acceptedCount", label: "Accepted", color: "bg-blue-100 text-blue-700 border-blue-300", hoverStatus: "Accepted" },
+  { key: "planningCount", label: "Planning", color: "bg-purple-100 text-purple-700 border-purple-300", hoverStatus: "Planning" },
+  { key: "inProductionCount", label: "In Production", color: "bg-orange-100 text-orange-700 border-orange-300", hoverStatus: "In Production" },
+  { key: "packingCount", label: "Packing", color: "bg-yellow-100 text-yellow-700 border-yellow-300", hoverStatus: "Packing" },
+  { key: "readyForDispatchCount", label: "Ready for Dispatch", color: "bg-green-100 text-green-700 border-green-300", hoverStatus: "Ready For Dispatch" },
+  { key: "inTransportCount", label: "In Transport", color: "bg-indigo-100 text-indigo-700 border-indigo-300", hoverStatus: "In Transport" },
+  { key: "delayedOrders", label: "Delayed", color: "bg-red-100 text-red-700 border-red-300", hoverStatus: "delayed" },
+];
+
+const QUICK_ACTIONS = [
+  { label: "Pending Orders", status: "Pending", icon: Clock, color: "gray" },
+  { label: "Ready to Dispatch", status: "Ready For Dispatch", icon: Calendar, color: "green" },
+  { label: "Delayed Orders", status: "delayed", icon: AlertTriangle, color: "red" },
 ];
 
 export default function ProductionDashboard() {
-  const { data: user, isLoading: userLoading } = useGetMe();
+  const { data: user } = useGetMe();
   const [, setLocation] = useLocation();
-  const { units: accessibleUnits, locked: unitLocked } = useUserUnits();
-  const [unitFilter, setUnitFilter] = useState("All");
+  const { units: userUnits, locked, userUnit } = useUserUnits();
+  const [selectedUnit, setSelectedUnit] = useState(userUnit);
+  useEffect(() => { setSelectedUnit(userUnit); }, [userUnit]);
   const [originFilter, setOriginFilter] = useState("all");
 
-  useProductionSyncAlert(!!user);
-
-  useEffect(() => {
-    if (unitLocked && accessibleUnits.length === 1) {
-      setUnitFilter(accessibleUnits[0]);
-    }
-  }, [unitLocked, accessibleUnits]);
-
-  const { data: kpi, isLoading } = useQuery({
-    queryKey: ["production-dashboard", unitFilter, originFilter],
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (unitFilter !== "All") params.set("unit", unitFilter);
-      if (originFilter !== "all") params.set("origin", originFilter);
-      return customFetch<any>(`/production/dashboard?${params.toString()}`);
-    },
+  const { data: dashboard, isLoading } = useQuery({
+    queryKey: ["production-dashboard", selectedUnit, originFilter],
+    queryFn: () => customFetch<any>(`/production/dashboard?${selectedUnit && selectedUnit !== "All" ? `unit=${selectedUnit}&` : ""}${originFilter !== "all" ? `origin=${originFilter}&` : ""}`),
     enabled: !!user,
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,
   });
 
-  const { data: pendingReqs, isLoading: reqsLoading } = useQuery({
-    queryKey: ["production-pending-requirements", unitFilter],
-    queryFn: () => customFetch<any[]>(`/production/pending-requirements${unitFilter !== "All" ? `?unit=${unitFilter}` : ""}`),
-    enabled: !!user,
-  });
-
-  const { data: pendingSummary, isLoading: summaryLoading } = useQuery({
-    queryKey: ["production-pending-summary", unitFilter],
-    queryFn: () => customFetch<any>(`/production/pending-summary${unitFilter !== "All" ? `?unit=${unitFilter}` : ""}`),
-    enabled: !!user,
-  });
-
-  if (userLoading || isLoading) {
+  if (isLoading) {
     return (
       <div className="p-6 space-y-6">
-        <Skeleton className="h-8 w-64" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 rounded-xl" />
-          ))}
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24" />)}
         </div>
       </div>
     );
@@ -77,203 +63,104 @@ export default function ProductionDashboard() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Production Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-1">Overview of all production orders</p>
+          <p className="text-sm text-muted-foreground mt-1">Monitor production orders across all statuses</p>
         </div>
         <div className="flex items-center gap-2">
-          <Select value={originFilter} onValueChange={setOriginFilter}>
-            <SelectTrigger className="w-[140px]"><SelectValue placeholder="All Origins" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Orders</SelectItem>
-              <SelectItem value="sales">Sales Orders</SelectItem>
-              <SelectItem value="production_and_support">Support Orders</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={unitFilter} onValueChange={setUnitFilter} disabled={unitLocked}>
-            <SelectTrigger className="w-[160px]"><SelectValue placeholder="Select Unit" /></SelectTrigger>
-            <SelectContent>
-              {accessibleUnits.map((u) => (
-                <SelectItem key={u} value={u}>{u}</SelectItem>
+          <select
+            className="text-sm border rounded-md px-3 py-1.5 bg-background"
+            value={originFilter}
+            onChange={(e) => setOriginFilter(e.target.value)}
+          >
+            <option value="all">All Orders</option>
+            <option value="sales">Sales Orders</option>
+            <option value="production_and_support">Support Orders</option>
+          </select>
+          {userUnits.length > 1 && (
+            <select
+              className="text-sm border rounded-md px-3 py-1.5 bg-background"
+              value={selectedUnit}
+              onChange={(e) => setSelectedUnit(e.target.value)}
+            >
+              <option value="All">All Units</option>
+              {userUnits.filter(u => u !== "All").map(u => (
+                <option key={u} value={u}>{u}</option>
               ))}
-            </SelectContent>
-          </Select>
-          {unitLocked && <span className="text-xs text-muted-foreground">Locked to {accessibleUnits[0]}</span>}
+            </select>
+          )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {STATUS_CARDS.map((card) => {
-          const count = kpi?.[card.key] ?? 0;
-          const Icon = card.icon;
+      {/* Status Count Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3">
+        {KPI_CONFIG.map((kpi) => {
+          const Icon = kpi.key === "delayedOrders" ? AlertTriangle : Clock;
           return (
             <Card
-              key={card.key}
-              className="cursor-pointer hover:shadow-md transition-shadow border-2 border-transparent hover:border-primary/20"
-              onClick={() => {
-                const params = new URLSearchParams();
-                if (card.hoverStatus === "completed-today") {
-                  params.set("completedToday", "true");
-                } else if (card.hoverStatus === "delayed") {
-                  params.set("delayed", "true");
-                } else {
-                  params.set("status", card.hoverStatus);
-                }
-                setLocation(`/production/orders?${params.toString()}`);
-              }}
+              key={kpi.key}
+              className="cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
+              onClick={() => setLocation(kpi.hoverStatus === "delayed" ? "/production/orders?status=delayed" : `/production/orders?status=${encodeURIComponent(kpi.hoverStatus)}`)}
             >
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">{card.label}</CardTitle>
-                <Icon className="h-5 w-5 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{count}</div>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`text-[10px] font-semibold uppercase tracking-wider ${kpi.color.split(" ")[1]}`}>{kpi.label}</span>
+                  <Icon className={`h-3.5 w-3.5 ${kpi.color.split(" ")[1]}`} />
+                </div>
+                <p className="text-xl font-bold">{dashboard?.[kpi.key] ?? 0}</p>
               </CardContent>
             </Card>
           );
         })}
       </div>
 
-      {kpi && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Summary</CardTitle>
+      {/* Summary + Quick Actions */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <Card className="lg:col-span-3">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Summary</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
-                <span className="text-muted-foreground">Total Orders</span>
-                <p className="text-2xl font-bold mt-1">{kpi.totalOrders}</p>
+                <p className="text-xs text-muted-foreground">Total Orders</p>
+                <p className="text-xl font-bold">{dashboard?.totalOrders ?? 0}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Active Orders</span>
-                <p className="text-2xl font-bold mt-1">
-                  {kpi.activeOrders}
-                </p>
+                <p className="text-xs text-muted-foreground">Active Orders</p>
+                <p className="text-xl font-bold">{dashboard?.activeOrders ?? 0}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Completed Today</span>
-                <p className="text-2xl font-bold mt-1 text-green-600">{kpi.completedToday}</p>
+                <p className="text-xs text-muted-foreground">Completed Today</p>
+                <p className="text-xl font-bold">{dashboard?.completedToday ?? 0}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">Delayed</span>
-                <p className="text-2xl font-bold mt-1 text-red-600">{kpi.delayedOrders}</p>
+                <p className="text-xs text-muted-foreground">Delayed</p>
+                <p className="text-xl font-bold text-red-600">{dashboard?.delayedOrders ?? 0}</p>
               </div>
             </div>
           </CardContent>
         </Card>
-      )}
 
-      {/* Pending Production Summary Widget */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div className="flex items-center gap-2">
-            <BoxSelect className="h-5 w-5 text-purple-500" />
-            <CardTitle className="text-lg">Pending Production Summary</CardTitle>
-          </div>
-          <div className="flex gap-2">
-            <Badge variant="outline" className="text-xs">
-              {pendingSummary?.totalPendingProducts ?? 0} products
-            </Badge>
-            <Badge variant="outline" className="text-xs font-semibold text-purple-600">
-              {(pendingSummary?.totalPendingPieces ?? 0).toLocaleString("en-IN")} total pcs
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {summaryLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
-            </div>
-          ) : !pendingSummary?.products?.length ? (
-            <p className="text-sm text-muted-foreground text-center py-6">No pending production quantities</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Product Name</TableHead>
-                    <TableHead className="text-right">Pending Quantity</TableHead>
-                    <TableHead className="text-right">Active Orders</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pendingSummary.products.map((p: any) => (
-                    <TableRow key={p.productName}>
-                      <TableCell className="font-medium">{p.productName}</TableCell>
-                      <TableCell className="text-right">
-                        <span className="font-bold text-purple-600">
-                          {p.totalPendingQuantity.toLocaleString("en-IN")} pcs
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right text-muted-foreground">{p.orderCount}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Pending Production Requirements */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div className="flex items-center gap-2">
-            <ListOrdered className="h-5 w-5 text-orange-500" />
-            <CardTitle className="text-lg">Pending Production Requirements</CardTitle>
-          </div>
-          <Badge variant="outline" className="text-xs">
-            {pendingReqs?.length ?? 0} items
-          </Badge>
-        </CardHeader>
-        <CardContent>
-          {reqsLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
-            </div>
-          ) : !pendingReqs?.length ? (
-            <p className="text-sm text-muted-foreground text-center py-6">No pending production requirements</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Product Name</TableHead>
-                    <TableHead>Gramage</TableHead>
-                    <TableHead className="text-right">Total Ordered</TableHead>
-                    <TableHead className="text-right">Total Dispatched</TableHead>
-                    <TableHead className="text-right">Pending to Produce</TableHead>
-                    <TableHead className="text-right">Orders</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pendingReqs.map((req: any, idx: number) => {
-                    const pending = Number(req.pending || 0);
-                    return (
-                      <TableRow key={idx}>
-                        <TableCell className="font-medium">{req.productName}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-xs">{req.gramage}</Badge>
-                        </TableCell>
-                        <TableCell className="text-right">{Number(req.totalOrdered || 0).toLocaleString("en-IN")}</TableCell>
-                        <TableCell className="text-right">{Number(req.totalDispatched || 0).toLocaleString("en-IN")}</TableCell>
-                        <TableCell className="text-right">
-                          <span className={`font-bold ${pending > 0 ? "text-red-600" : "text-green-600"}`}>
-                            {pending.toLocaleString("en-IN")}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right text-muted-foreground">{req.orderCount}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Quick Actions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {QUICK_ACTIONS.map(action => (
+              <button
+                key={action.label}
+                onClick={() => setLocation(action.status === "delayed" ? "/production/orders?status=delayed" : `/production/orders?status=${encodeURIComponent(action.status)}`)}
+                className="w-full text-left px-3 py-2 text-sm rounded-lg border hover:bg-muted/50 transition-colors flex items-center gap-2"
+              >
+                <action.icon className="h-3.5 w-3.5 text-muted-foreground" />
+                {action.label}
+              </button>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

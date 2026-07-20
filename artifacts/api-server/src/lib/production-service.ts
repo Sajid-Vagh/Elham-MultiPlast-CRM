@@ -12,8 +12,6 @@ import { notifyProductionUsers, notifyDealEvent } from "./notification-service";
 import { logActivity, formatTimestamp } from "./activity-logger";
 import { canAccessProduction, type PermissionUser } from "./permission-service";
 
-// ── Status Machine ──
-
 export function isValidTransition(from: string, to: string): boolean {
   const allowed = VALID_STATUS_TRANSITIONS[from];
   if (!allowed) return false;
@@ -23,8 +21,6 @@ export function isValidTransition(from: string, to: string): boolean {
 export function getValidNextStatuses(currentStatus: string): string[] {
   return VALID_STATUS_TRANSITIONS[currentStatus] || [];
 }
-
-// ── Audit Trail ──
 
 async function writeAuditTrail(
   exec: { insert: Function },
@@ -57,8 +53,6 @@ async function writeAuditTrail(
   });
 }
 
-// ── Timeline Helper ──
-
 export async function addTimelineEntry(
   exec: { insert: Function },
   productionOrderId: number,
@@ -73,8 +67,6 @@ export async function addTimelineEntry(
     createdBy: userId,
   });
 }
-
-// ── Activity Log Helper ──
 
 async function logProductionActivity(
   exec: { insert: Function },
@@ -103,8 +95,6 @@ async function logProductionActivity(
     createdBy,
   });
 }
-
-// ── Notification Helpers ──
 
 async function notifySalesOfProductionEvent(params: {
   productionOrderId: number;
@@ -138,7 +128,6 @@ async function notifySalesOfProductionEvent(params: {
     }
   }
 
-  // If origin is SUPPORT, also notify support users
   if (createdByRole === "production_and_support") {
     const supportUsers = await db
       .select({ id: usersTable.id })
@@ -162,7 +151,34 @@ async function notifySalesOfProductionEvent(params: {
   }
 }
 
-// ── Order Enrichment ──
+async function notifySupportOfReadyForDispatch(params: {
+  productionOrderId: number;
+  invoiceId: number | null;
+  title: string;
+  message: string;
+  excludeUserId: number;
+}) {
+  const { productionOrderId, title, message, excludeUserId } = params;
+
+  const supportUsers = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(or(eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
+
+  for (const su of supportUsers) {
+    if (su.id !== excludeUserId) {
+      await db.insert(notificationsTable).values({
+        userId: su.id,
+        type: "production_status",
+        title,
+        message,
+        link: `/production/orders/${productionOrderId}`,
+        relatedId: productionOrderId,
+        relatedType: "production_order",
+      });
+    }
+  }
+}
 
 export async function enrichProductionOrder(order: any) {
   let invoice: any = null;
@@ -243,10 +259,16 @@ export async function enrichProductionOrder(order: any) {
     if (u) cancelledBy = u;
   }
 
-  let dispatchCompletedByUser = null;
-  if (order.dispatchCompletedBy) {
-    const [u] = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, order.dispatchCompletedBy));
-    if (u) dispatchCompletedByUser = u;
+  let packingCompletedBy = null;
+  if (order.packingCompletedById) {
+    const [u] = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, order.packingCompletedById));
+    if (u) packingCompletedBy = u;
+  }
+
+  let transportBookedBy = null;
+  if (order.transportBookedById) {
+    const [u] = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, order.transportBookedById));
+    if (u) transportBookedBy = u;
   }
 
   const timeline = await db
@@ -312,14 +334,13 @@ export async function enrichProductionOrder(order: any) {
     acceptedBy,
     startedBy,
     cancelledBy,
-    dispatchCompletedByUser,
+    packingCompletedBy,
+    transportBookedBy,
     timeline: timelineWithUsers,
     notes: notesWithUsers,
     validNextStatuses: getValidNextStatuses(order.status),
   };
 }
-
-// ── Scenario 2: Accept Order ──
 
 export async function acceptOrder(
   user: PermissionUser,
@@ -368,8 +389,6 @@ export async function acceptOrder(
   return { order: await enrichProductionOrder(updated!) };
 }
 
-// ── Scenario 3: Update Planning ──
-
 export async function updatePlanning(
   user: PermissionUser,
   orderId: number,
@@ -380,7 +399,7 @@ export async function updatePlanning(
 
   const planningStatuses = ["Pending", "Accepted", "Planning"];
   if (!planningStatuses.includes(order.status)) {
-    return { error: `Cannot update planning for order in "${order.status}" status. Planning is only editable before Machine Running.`, status: 400 };
+    return { error: `Cannot update planning for order in "${order.status}" status. Planning is only editable before In Production.`, status: 400 };
   }
 
   const now = new Date();
@@ -408,6 +427,23 @@ export async function updatePlanning(
     });
   }
 
+  if (data.expectedStartDate !== undefined && data.expectedStartDate !== order.expectedStartDate) {
+    await notifySalesOfProductionEvent({
+      productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
+      title: "Expected Date Changed",
+      message: `Order #${orderId}: Expected start date changed to ${data.expectedStartDate}`,
+      excludeUserId: user.id, createdByRole: order.createdByRole,
+    });
+  }
+  if (data.expectedCompletionDate !== undefined && data.expectedCompletionDate !== order.expectedCompletionDate) {
+    await notifySalesOfProductionEvent({
+      productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
+      title: "Expected Date Changed",
+      message: `Order #${orderId}: Expected completion date changed to ${data.expectedCompletionDate}`,
+      excludeUserId: user.id, createdByRole: order.createdByRole,
+    });
+  }
+
   await writeAuditTrail(db, {
     productionOrderId: orderId, action: "planning_update",
     oldValue: order.plannedMachine || null, newValue: data.machine || null,
@@ -419,48 +455,67 @@ export async function updatePlanning(
     orderId, userName: user.name || "", createdBy: user.id,
   });
 
+  // Notify Sales that planning was created
+  if (order.status === "Pending" || order.status === "Accepted") {
+    await notifySalesOfProductionEvent({
+      productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
+      title: "Planning Created",
+      message: `Order #${orderId}: Production planning has been created with expected dates.`,
+      excludeUserId: user.id, createdByRole: order.createdByRole,
+    });
+  }
+
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
   return { order: await enrichProductionOrder(updated!) };
 }
 
-// ── Scenario 4: Start Production (Machine Running) ──
-
 export async function startProduction(
   user: PermissionUser,
-  orderId: number
+  orderId: number,
+  data?: { machine?: string; operatorName?: string; notes?: string }
 ): Promise<any> {
   const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
   if (!order) return { error: "Production order not found", status: 404 };
-  if (!isValidTransition(order.status, "Machine Running")) {
+  if (!isValidTransition(order.status, "In Production")) {
     return { error: `Cannot start production from "${order.status}" status`, status: 400 };
   }
 
   const now = new Date();
-  await db.update(productionOrdersTable).set({
-    status: "Machine Running",
+  const updateData: any = {
+    status: "In Production",
     startedById: user.id,
     startedAt: now,
     isFrozen: true,
     updatedBy: user.id,
     updatedAt: now,
-  }).where(eq(productionOrdersTable.id, orderId));
+  };
 
-  await addTimelineEntry(db, orderId, "Machine Running", `Production started by ${user.name}. Machine frozen.`, user.id);
+  if (data?.machine) updateData.productionMachine = data.machine;
+  if (data?.operatorName) updateData.operatorName = data.operatorName;
+  if (data?.notes) updateData.inProductionNotes = data.notes;
+
+  await db.update(productionOrdersTable).set(updateData).where(eq(productionOrdersTable.id, orderId));
+
+  const timelineNotes = [`Production started by ${user.name}. Machine frozen.`];
+  if (data?.machine) timelineNotes.push(`Machine: ${data.machine}`);
+  if (data?.operatorName) timelineNotes.push(`Operator: ${data.operatorName}`);
+
+  await addTimelineEntry(db, orderId, "In Production", timelineNotes.join("\n"), user.id);
   await logProductionActivity(db, {
-    dealId: order.dealId, contactId: null, eventName: "Production Started (Machine Running)",
+    dealId: order.dealId, contactId: null, eventName: "Production Started",
     orderId, userName: user.name || "", createdBy: user.id,
   });
 
   await writeAuditTrail(db, {
     productionOrderId: orderId, action: "status_change",
-    oldValue: order.status, newValue: "Machine Running",
+    oldValue: order.status, newValue: "In Production",
     changedById: user.id, changedByName: user.name || "",
   });
 
   await notifySalesOfProductionEvent({
     productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
     title: "Production Started",
-    message: `Order #${order.id} has entered Machine Running stage. PI is now frozen.`,
+    message: `Order #${order.id} has entered In Production stage.${data?.machine ? ` Machine: ${data.machine}` : ""}`,
     excludeUserId: user.id, createdByRole: order.createdByRole,
   });
 
@@ -468,7 +523,220 @@ export async function startProduction(
   return { order: await enrichProductionOrder(updated!) };
 }
 
-// ── Scenario 6: Handle PI Modification (Freeze Logic) ──
+export async function completePacking(
+  user: PermissionUser,
+  orderId: number,
+  data: { packingType: string; notes?: string }
+): Promise<any> {
+  const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
+  if (!order) return { error: "Production order not found", status: 404 };
+  if (!isValidTransition(order.status, "Packing")) {
+    return { error: `Cannot pack from "${order.status}" status`, status: 400 };
+  }
+  if (!["Bundle", "Packet"].includes(data.packingType)) {
+    return { error: "Packing type must be 'Bundle' or 'Packet'", status: 400 };
+  }
+
+  const now = new Date();
+  await db.update(productionOrdersTable).set({
+    status: "Packing",
+    packingType: data.packingType,
+    packingNotes: data.notes || null,
+    packingCompletedById: user.id,
+    packingCompletedAt: now,
+    updatedBy: user.id,
+    updatedAt: now,
+  }).where(eq(productionOrdersTable.id, orderId));
+
+  const timelineText = [
+    `Packing started by ${user.name}`,
+    `Packing type: ${data.packingType}`,
+  ];
+  if (data.notes) timelineText.push(`Notes: ${data.notes}`);
+
+  await addTimelineEntry(db, orderId, "Packing", timelineText.join("\n"), user.id);
+
+  await logProductionActivity(db, {
+    dealId: order.dealId, contactId: null, eventName: "Packing Started",
+    orderId, details: `Type: ${data.packingType}${data.notes ? `\nNotes: ${data.notes}` : ""}`,
+    userName: user.name || "", createdBy: user.id,
+  });
+
+  await writeAuditTrail(db, {
+    productionOrderId: orderId, action: "status_change",
+    oldValue: order.status, newValue: "Packing",
+    changedById: user.id, changedByName: user.name || "",
+    reason: `Packing type: ${data.packingType}`,
+  });
+
+  await notifySalesOfProductionEvent({
+    productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
+    title: "Packing Started",
+    message: `Order #${order.id} is now in Packing. Type: ${data.packingType}`,
+    excludeUserId: user.id, createdByRole: order.createdByRole,
+  });
+
+  const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
+  return { order: await enrichProductionOrder(updated!) };
+}
+
+export async function markReadyForDispatch(
+  user: PermissionUser,
+  orderId: number,
+  notes?: string
+): Promise<any> {
+  const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
+  if (!order) return { error: "Production order not found", status: 404 };
+  if (!isValidTransition(order.status, "Ready For Dispatch")) {
+    return { error: `Cannot mark ready from "${order.status}" status`, status: 400 };
+  }
+
+  const now = new Date();
+  await db.update(productionOrdersTable).set({
+    status: "Ready For Dispatch",
+    updatedBy: user.id,
+    updatedAt: now,
+  }).where(eq(productionOrdersTable.id, orderId));
+
+  await addTimelineEntry(db, orderId, "Ready For Dispatch",
+    `Ready for dispatch. Marked by ${user.name}${notes ? `\n${notes}` : ""}`,
+    user.id);
+
+  await logProductionActivity(db, {
+    dealId: order.dealId, contactId: null, eventName: "Ready For Dispatch",
+    orderId, details: notes || undefined, userName: user.name || "", createdBy: user.id,
+  });
+
+  await writeAuditTrail(db, {
+    productionOrderId: orderId, action: "status_change",
+    oldValue: order.status, newValue: "Ready For Dispatch",
+    changedById: user.id, changedByName: user.name || "", reason: notes,
+  });
+
+  // Notify Support that order is ready for dispatch
+  const [invoice] = order.proformaInvoiceId
+    ? await db.select({ invoiceNumber: proformaInvoicesTable.invoiceNumber })
+        .from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, order.proformaInvoiceId))
+    : [];
+
+  await notifySupportOfReadyForDispatch({
+    productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
+    title: "Ready For Dispatch",
+    message: `Order #${invoice?.invoiceNumber || orderId} is ready for dispatch. Support action required.`,
+    excludeUserId: user.id,
+  });
+
+  // Also notify Sales
+  await notifySalesOfProductionEvent({
+    productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
+    title: "Ready For Dispatch",
+    message: `Order #${invoice?.invoiceNumber || orderId} is ready for dispatch. Support team has been notified.`,
+    excludeUserId: user.id, createdByRole: order.createdByRole,
+  });
+
+  const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
+  return { order: await enrichProductionOrder(updated!) };
+}
+
+export async function bookTransport(
+  user: PermissionUser,
+  orderId: number,
+  data: { transportCompany: string; bookingNumber: string }
+): Promise<any> {
+  const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
+  if (!order) return { error: "Production order not found", status: 404 };
+  if (order.status !== "Ready For Dispatch") {
+    return { error: "Order must be in 'Ready For Dispatch' status to book transport", status: 400 };
+  }
+  if (user.role !== "admin" && user.role !== "production_and_support") {
+    return { error: "Only support or admin users can book transport", status: 403 };
+  }
+
+  const now = new Date();
+  await db.update(productionOrdersTable).set({
+    status: "In Transport",
+    transportName: data.transportCompany,
+    transportDetails: data.bookingNumber,
+    transportBookedById: user.id,
+    transportBookedAt: now,
+    updatedBy: user.id,
+    updatedAt: now,
+  }).where(eq(productionOrdersTable.id, orderId));
+
+  await addTimelineEntry(db, orderId, "In Transport",
+    `Transport booked by ${user.name}\nCompany: ${data.transportCompany}\nBooking: ${data.bookingNumber}`,
+    user.id);
+
+  await logProductionActivity(db, {
+    dealId: order.dealId, contactId: null, eventName: "Transport Booked",
+    orderId,
+    details: `Company: ${data.transportCompany}\nBooking: ${data.bookingNumber}`,
+    userName: user.name || "", createdBy: user.id,
+  });
+
+  await writeAuditTrail(db, {
+    productionOrderId: orderId, action: "transport_booked",
+    oldValue: null, newValue: `${data.transportCompany} / ${data.bookingNumber}`,
+    changedById: user.id, changedByName: user.name || "",
+  });
+
+  // Notify Sales + Production that transport is booked
+  const [invoice] = order.proformaInvoiceId
+    ? await db.select({ invoiceNumber: proformaInvoicesTable.invoiceNumber, createdBy: proformaInvoicesTable.createdBy, contactId: proformaInvoicesTable.contactId })
+        .from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, order.proformaInvoiceId))
+    : [];
+
+  await notifySalesOfProductionEvent({
+    productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
+    title: "Transport Booked",
+    message: `Order #${invoice?.invoiceNumber || orderId} is in transit. Transport: ${data.transportCompany}, Booking: ${data.bookingNumber}`,
+    excludeUserId: user.id, createdByRole: order.createdByRole,
+  });
+
+  const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
+  return { order: await enrichProductionOrder(updated!) };
+}
+
+export async function completeOrder(
+  user: PermissionUser,
+  orderId: number
+): Promise<any> {
+  const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
+  if (!order) return { error: "Production order not found", status: 404 };
+  if (!isValidTransition(order.status, "Completed")) {
+    return { error: `Cannot complete order from "${order.status}" status`, status: 400 };
+  }
+
+  const now = new Date();
+  await db.update(productionOrdersTable).set({
+    status: "Completed",
+    updatedBy: user.id,
+    updatedAt: now,
+  }).where(eq(productionOrdersTable.id, orderId));
+
+  await addTimelineEntry(db, orderId, "Completed", `Order completed by ${user.name}`, user.id);
+
+  await logProductionActivity(db, {
+    dealId: order.dealId, contactId: null, eventName: "Production Order Completed",
+    orderId, userName: user.name || "", createdBy: user.id,
+  });
+
+  await writeAuditTrail(db, {
+    productionOrderId: orderId, action: "status_change",
+    oldValue: order.status, newValue: "Completed",
+    changedById: user.id, changedByName: user.name || "",
+  });
+
+  await notifySalesOfProductionEvent({
+    productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
+    title: "Order Completed",
+    message: `Order #${orderId} has been completed.`,
+    excludeUserId: user.id, createdByRole: order.createdByRole,
+  });
+
+  const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
+  return { order: await enrichProductionOrder(updated!) };
+}
 
 export async function handlePiModification(
   user: PermissionUser,
@@ -478,7 +746,10 @@ export async function handlePiModification(
   const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, productionOrderId));
   if (!order) return { error: "Production order not found", status: 404 };
 
-  if (order.status === "Pending" || order.status === "Accepted" || order.status === "Planning") {
+  const preProductionStatuses = ["Pending", "Accepted", "Planning"];
+  const inProductionStatuses = ["In Production", "Packing"];
+
+  if (preProductionStatuses.includes(order.status)) {
     await db.update(productionOrdersTable).set({
       piVersionAtCreation: newPiVersion, updatedAt: new Date(), updatedBy: user.id,
     }).where(eq(productionOrdersTable.id, productionOrderId));
@@ -490,7 +761,7 @@ export async function handlePiModification(
     return { action: "auto_synced", order: await enrichProductionOrder(order) };
   }
 
-  if (order.status === "Machine Running" || order.status === "Quality Check") {
+  if (inProductionStatuses.includes(order.status)) {
     await db.update(productionOrdersTable).set({
       piVersionAtCreation: newPiVersion, updatedAt: new Date(), updatedBy: user.id,
     }).where(eq(productionOrdersTable.id, productionOrderId));
@@ -517,8 +788,7 @@ export async function handlePiModification(
     return { action: "rejected", message: "Production already completed. Suggest creating a new deal." };
   }
 
-  // Ready For Dispatch: notify but don't auto-sync
-  if (order.status === "Ready For Dispatch") {
+  if (order.status === "Ready For Dispatch" || order.status === "In Transport") {
     await addTimelineEntry(db, productionOrderId, order.status, `PI modified to Version ${newPiVersion}. Dispatch stage — review required.`, user.id);
     await notifyProductionUsers({
       productionUnit: order.productionUnit || "Himatnagar",
@@ -533,8 +803,6 @@ export async function handlePiModification(
 
   return { action: "no_action" };
 }
-
-// ── Scenario 6: Approve/Reject Modification ──
 
 export async function approveModification(
   user: PermissionUser,
@@ -552,7 +820,6 @@ export async function approveModification(
     if (order.dealId) {
       const pi = await getActivePiForDeal(db, order.dealId);
       if (pi) {
-        // Sync production order to point to the approved PI
         await db.update(productionOrdersTable).set({
           proformaInvoiceId: pi.id,
           piVersionAtCreation: pi.version,
@@ -603,74 +870,6 @@ export async function approveModification(
   return { order: await enrichProductionOrder(updated!) };
 }
 
-// ── Generic Status Update ──
-
-export async function updateStatus(
-  user: PermissionUser,
-  orderId: number,
-  targetStatus: string,
-  notes?: string
-): Promise<any> {
-  if (!PRODUCTION_STATUSES.includes(targetStatus as ProductionStatus)) {
-    return { error: "Invalid status", status: 400 };
-  }
-
-  const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
-  if (!order) return { error: "Production order not found", status: 404 };
-  if (!isValidTransition(order.status, targetStatus)) {
-    return { error: `Cannot move from "${order.status}" to "${targetStatus}"`, status: 400 };
-  }
-
-  const now = new Date();
-  await db.update(productionOrdersTable).set({
-    status: targetStatus, updatedBy: user.id, updatedAt: now,
-  }).where(eq(productionOrdersTable.id, orderId));
-
-  await addTimelineEntry(db, orderId, targetStatus, notes || null, user.id);
-
-  await logProductionActivity(db, {
-    dealId: order.dealId, contactId: null, eventName: `Production Status Changed → ${targetStatus}`,
-    orderId, details: notes || undefined, userName: user.name || "", createdBy: user.id,
-  });
-
-  await writeAuditTrail(db, {
-    productionOrderId: orderId, action: "status_change",
-    oldValue: order.status, newValue: targetStatus,
-    changedById: user.id, changedByName: user.name || "",
-    reason: notes,
-  });
-
-  const statusNotifications: Record<string, { title: string; toSales: boolean }> = {
-    "Quality Check": { title: "Quality Check", toSales: true },
-    "Ready For Dispatch": { title: "Ready For Dispatch", toSales: true },
-    "Completed": { title: "Completed", toSales: true },
-  };
-
-  const notifyInfo = statusNotifications[targetStatus];
-  if (notifyInfo) {
-    const [inv] = order.proformaInvoiceId
-      ? await db.select({ invoiceNumber: proformaInvoicesTable.invoiceNumber, createdBy: proformaInvoicesTable.createdBy })
-          .from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, order.proformaInvoiceId))
-      : [];
-
-    await notifySalesOfProductionEvent({
-      productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
-      title: `Production ${notifyInfo.title}`,
-      message: `Order #${inv?.invoiceNumber || orderId} is now: ${targetStatus}${notes ? ` - ${notes}` : ""}`,
-      excludeUserId: user.id, createdByRole: order.createdByRole,
-    });
-  }
-
-  if (targetStatus === "Ready For Dispatch") {
-    await createDispatchRecord(orderId, order, user);
-  }
-
-  const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
-  return { order: await enrichProductionOrder(updated!) };
-}
-
-// ── Scenario 10: Cancel Order ──
-
 export async function cancelOrder(
   user: PermissionUser,
   orderId: number,
@@ -711,8 +910,6 @@ export async function cancelOrder(
   return { order: await enrichProductionOrder(updated!) };
 }
 
-// ── Scenario 8: Add Note ──
-
 export async function addNote(
   user: PermissionUser,
   orderId: number,
@@ -741,8 +938,6 @@ export async function addNote(
   return { note: { ...newNote, createdByUser } };
 }
 
-// ── Scenario 9: Check Delayed Orders ──
-
 export async function checkDelayedOrders(): Promise<{ checked: number; markedDelayed: number }> {
   const today = new Date();
   const todayStr = today.toISOString().split("T")[0];
@@ -751,7 +946,7 @@ export async function checkDelayedOrders(): Promise<{ checked: number; markedDel
     .select()
     .from(productionOrdersTable)
     .where(and(
-      inArray(productionOrdersTable.status, ["Accepted", "Planning", "Machine Running", "Quality Check"]),
+      inArray(productionOrdersTable.status, ["Accepted", "Planning", "In Production", "Packing"]),
       eq(productionOrdersTable.isDelayed, false),
       sql`${productionOrdersTable.expectedCompletionDate} IS NOT NULL`,
     ));
@@ -778,8 +973,6 @@ export async function checkDelayedOrders(): Promise<{ checked: number; markedDel
 
   return { checked: activeOrders.length, markedDelayed };
 }
-
-// ── Messages ──
 
 export async function getMessages(orderId: number) {
   return db.select().from(productionMessagesTable)
@@ -836,8 +1029,6 @@ export async function sendMessage(
   return { message: newMessage };
 }
 
-// ── Dashboard KPIs ──
-
 export async function getDashboard(user: PermissionUser, unitFilter?: string, originFilter?: string) {
   const conditions: SQL[] = [];
   if (user.role !== "admin") {
@@ -867,9 +1058,10 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
     pendingCount: allOrders.filter(o => o.status === "Pending").length,
     acceptedCount: allOrders.filter(o => o.status === "Accepted").length,
     planningCount: allOrders.filter(o => o.status === "Planning").length,
-    machineRunningCount: allOrders.filter(o => o.status === "Machine Running").length,
-    qualityCheckCount: allOrders.filter(o => o.status === "Quality Check").length,
+    inProductionCount: allOrders.filter(o => o.status === "In Production").length,
+    packingCount: allOrders.filter(o => o.status === "Packing").length,
     readyForDispatchCount: allOrders.filter(o => o.status === "Ready For Dispatch").length,
+    inTransportCount: allOrders.filter(o => o.status === "In Transport").length,
     completedToday: allOrders.filter(o => {
       if (o.status !== "Completed") return false;
       const t = o.updatedAt ? new Date(o.updatedAt) : null;
@@ -880,8 +1072,6 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
     totalOrders: allOrders.length,
   };
 }
-
-// ── List Orders ──
 
 export async function listOrders(
   user: PermissionUser,
@@ -950,8 +1140,6 @@ export async function listOrders(
   return { data: enriched, total: count, page: pageNum, totalPages: Math.ceil(count / pageSize) };
 }
 
-// ── Single Order Detail ──
-
 export async function getOrderDetail(user: PermissionUser, orderId: number) {
   const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
   if (!order) return { error: "Production order not found", status: 404 };
@@ -966,8 +1154,6 @@ export async function getOrderDetail(user: PermissionUser, orderId: number) {
   return { order: await enrichProductionOrder(order) };
 }
 
-// ── Audit Trail ──
-
 export async function getAuditTrail(orderId: number) {
   const trail = await db.execute(sql`
     SELECT pat.*, u.name as "changedByName"
@@ -978,8 +1164,6 @@ export async function getAuditTrail(orderId: number) {
   `);
   return trail.rows || [];
 }
-
-// ── Pending Summary ──
 
 export async function getPendingSummary(user: PermissionUser, unitFilter?: string) {
   const effectiveUnit = ((user as any).unit !== "All" && user.role !== "admin")
@@ -998,7 +1182,7 @@ export async function getPendingSummary(user: PermissionUser, unitFilter?: strin
            ORDER BY pi2.created_at DESC LIMIT 1)
         ) AS resolved_invoice_id
       FROM production_orders po
-      WHERE po.status NOT IN ('Completed', 'Cancelled')
+      WHERE po.status NOT IN ('Completed', 'Cancelled', 'In Transport')
     )
     SELECT
       pii.product_name AS "productName",
@@ -1029,8 +1213,6 @@ export async function getPendingSummary(user: PermissionUser, unitFilter?: strin
     totalPendingPieces: summary.reduce((s: number, r: any) => s + r.totalPendingQuantity, 0),
   };
 }
-
-// ── Pending Requirements ──
 
 export async function getPendingRequirements(user: PermissionUser, unitFilter?: string) {
   const conditions: SQL[] = [];
@@ -1063,7 +1245,7 @@ export async function getPendingRequirements(user: PermissionUser, unitFilter?: 
         OR EXISTS (
           SELECT 1 FROM production_orders po
           WHERE po.deal_id = o.deal_id
-            AND po.status NOT IN ('Completed', 'Cancelled')
+            AND po.status NOT IN ('Completed', 'Cancelled', 'In Transport')
         )
       )
       ${conditions.length > 0 ? sql`AND ${conditions[0]}` : sql``}
@@ -1074,8 +1256,6 @@ export async function getPendingRequirements(user: PermissionUser, unitFilter?: 
 
   return results.rows || [];
 }
-
-// ── Reports ──
 
 export async function getReports(user: PermissionUser, filters: { unit?: string; status?: string; dateFrom?: string; dateTo?: string; origin?: string }) {
   const conditions: SQL[] = [];
@@ -1109,8 +1289,6 @@ export async function getReports(user: PermissionUser, filters: { unit?: string;
 
   return { data: enriched, stats: { totalOrders: enriched.length, byStatus, byUnit } };
 }
-
-// ── Progress by Deal (Sales view) ──
 
 export async function getProgressByDeal(user: PermissionUser, dealId: number) {
   const [invoice] = await db.select().from(proformaInvoicesTable)
@@ -1162,13 +1340,17 @@ export async function getProgressByDeal(user: PermissionUser, dealId: number) {
     productionUnit: po.productionUnit, productionRemarks: po.productionRemarks,
     updatedAt: po.updatedAt, lastUpdatedBy, timeline, notes,
     invoiceNumber: invoice.invoiceNumber,
-    plannedMachine: po.plannedMachine, expectedStartDate: po.expectedStartDate,
+    plannedMachine: po.plannedMachine, productionMachine: po.productionMachine,
+    operatorName: po.operatorName, inProductionNotes: po.inProductionNotes,
+    packingType: po.packingType, packingNotes: po.packingNotes,
+    expectedStartDate: po.expectedStartDate,
     expectedCompletionDate: po.expectedCompletionDate, isFrozen: po.isFrozen,
     isDelayed: po.isDelayed, startedAt: po.startedAt, acceptedAt: po.acceptedAt,
+    transportName: po.transportName, transportDetails: po.transportDetails,
+    packingCompletedAt: po.packingCompletedAt,
+    transportBookedAt: po.transportBookedAt,
   };
 }
-
-// ── Production by Contact ──
 
 export async function getProductionByContact(user: PermissionUser, contactId: number) {
   const invoices = await db.select().from(proformaInvoicesTable)
@@ -1222,10 +1404,11 @@ async function buildContactResponse(po: any, invoice: any) {
     lastUpdatedBy, assignedManager, createdByName: po.createdByName, createdByRole: po.createdByRole,
     timeline, invoiceId: invoice?.id, invoiceNumber: invoice?.invoiceNumber,
     isFrozen: po.isFrozen, isDelayed: po.isDelayed,
+    plannedMachine: po.plannedMachine, productionMachine: po.productionMachine,
+    expectedStartDate: po.expectedStartDate, expectedCompletionDate: po.expectedCompletionDate,
+    packingType: po.packingType, transportName: po.transportName, transportDetails: po.transportDetails,
   };
 }
-
-// ── Modified Since (polling helper) ──
 
 export async function getModifiedSince(user: PermissionUser, since?: string) {
   const sinceDate = since ? new Date(since) : new Date(0);
@@ -1237,104 +1420,4 @@ export async function getModifiedSince(user: PermissionUser, since?: string) {
       eq(productionOrdersTable.status, "Pending"),
     ));
   return { count: Number(count) || 0 };
-}
-
-// ── Dispatch Record Creation (auto on Ready For Dispatch) ──
-
-async function createDispatchRecord(orderId: number, order: any, user: PermissionUser) {
-  try {
-    const { dispatchTable, dispatchItemsTable } = await import("@workspace/db");
-    const { generateId } = await import("../lib/id-generator");
-
-    const [existingDispatch] = await db.select().from(dispatchTable)
-      .where(eq(dispatchTable.productionOrderId, orderId)).limit(1);
-    if (existingDispatch) return;
-
-    const dispatchNumber = await generateId("dispatch");
-    const [invoice] = order.proformaInvoiceId
-      ? await db.select().from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, order.proformaInvoiceId))
-      : [];
-
-    const [newDispatch] = await db.insert(dispatchTable).values({
-      dispatchNumber, productionOrderId: orderId, status: "Pending",
-      dispatchAddress: invoice?.address || invoice?.addressLine1 || null,
-      remarks: order.productionRemarks || null, createdBy: user.id,
-    }).returning();
-
-    if (order.proformaInvoiceId) {
-      const piItems = await db.select().from(proformaInvoiceItemsTable)
-        .where(eq(proformaInvoiceItemsTable.invoiceId, order.proformaInvoiceId));
-      for (const item of piItems) {
-        await db.insert(dispatchItemsTable).values({
-          dispatchId: newDispatch.id, productName: item.productName,
-          quantity: String(item.quantity || 0), batchNumber: (item as any).productCode || null,
-        });
-      }
-    }
-  } catch (err) {
-    console.error("Auto-create dispatch record failed:", err);
-  }
-}
-
-// ── Scenario 11: Complete Dispatch ──
-
-export async function completeDispatch(
-  user: PermissionUser,
-  orderId: number,
-  data: { transportName?: string; transportDetails?: string; builtyUrl?: string }
-): Promise<any> {
-  if (user.role !== "admin" && user.role !== "production_and_support") {
-    return { error: "Only production & support or admin users can complete dispatch", status: 403 };
-  }
-
-  const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
-  if (!order) return { error: "Production order not found", status: 404 };
-  if (order.status !== "Ready For Dispatch") {
-    return { error: "Order must be in 'Ready For Dispatch' status to complete dispatch", status: 400 };
-  }
-
-  const now = new Date();
-
-  await db.update(productionOrdersTable).set({
-    status: "Completed",
-    transportName: data.transportName || null,
-    transportDetails: data.transportDetails || null,
-    builtyUrl: data.builtyUrl || null,
-    dispatchCompletedAt: now,
-    dispatchCompletedBy: user.id,
-    updatedBy: user.id,
-    updatedAt: now,
-  }).where(eq(productionOrdersTable.id, orderId));
-
-  await addTimelineEntry(db, orderId, "Completed",
-    `Dispatch completed by ${user.name}${data.transportName ? `. Transport: ${data.transportName}` : ""}`,
-    user.id);
-
-  await writeAuditTrail(db, {
-    productionOrderId: orderId, action: "dispatch_completed",
-    oldValue: order.status, newValue: "Completed",
-    changedById: user.id, changedByName: user.name || "",
-    reason: data.transportName ? `Transport: ${data.transportName}` : undefined,
-  });
-
-  await logProductionActivity(db, {
-    dealId: order.dealId, contactId: null, eventName: "Dispatch Completed",
-    orderId, details: `Transport: ${data.transportName || "-"}\nDetails: ${data.transportDetails || "-"}`,
-    userName: user.name || "", createdBy: user.id,
-  });
-
-  const [invoice] = order.proformaInvoiceId
-    ? await db.select({ invoiceNumber: proformaInvoicesTable.invoiceNumber, createdBy: proformaInvoicesTable.createdBy, contactId: proformaInvoicesTable.contactId })
-        .from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, order.proformaInvoiceId))
-    : [];
-
-  await notifySalesOfProductionEvent({
-    productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
-    title: "Dispatch Completed",
-    message: `Order #${invoice?.invoiceNumber || orderId} has been dispatched. Transport: ${data.transportName || "-"}${data.transportDetails ? `\nDetails: ${data.transportDetails}` : ""}`,
-    excludeUserId: user.id, createdByRole: order.createdByRole,
-  });
-
-  const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
-  return { order: await enrichProductionOrder(updated!) };
 }

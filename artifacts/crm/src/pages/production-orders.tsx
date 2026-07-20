@@ -1,126 +1,110 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
-import { useLocation, Link } from "wouter";
+import { useLocation } from "wouter";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Search, ChevronLeft, ChevronRight } from "lucide-react";
-import { ExportDropdown } from "@/components/export-dropdown";
+import { Search, ArrowLeft, ArrowRight } from "lucide-react";
 import { useUserUnits } from "@/lib/use-user-units";
-import { useProductionSyncAlert } from "@/lib/use-production-sync-alert";
+import { useActiveUnits } from "@/lib/use-active-units";
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
   "Accepted": "bg-blue-100 text-blue-700 border-blue-300",
-  "Planning": "bg-indigo-100 text-indigo-700 border-indigo-300",
-  "Machine Running": "bg-orange-100 text-orange-700 border-orange-300",
-  "Quality Check": "bg-yellow-100 text-yellow-700 border-yellow-300",
+  "Planning": "bg-purple-100 text-purple-700 border-purple-300",
+  "In Production": "bg-orange-100 text-orange-700 border-orange-300",
+  "Packing": "bg-yellow-100 text-yellow-700 border-yellow-300",
   "Ready For Dispatch": "bg-green-100 text-green-700 border-green-300",
+  "In Transport": "bg-indigo-100 text-indigo-700 border-indigo-300",
   "Completed": "bg-emerald-100 text-emerald-700 border-emerald-300",
   "Cancelled": "bg-red-100 text-red-700 border-red-300",
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
-  Low: "bg-gray-100 text-gray-600",
-  Medium: "bg-blue-100 text-blue-700",
-  High: "bg-orange-100 text-orange-700",
-  Urgent: "bg-red-100 text-red-700",
+  "Low": "bg-gray-100 text-gray-600",
+  "Medium": "bg-blue-100 text-blue-700",
+  "High": "bg-orange-100 text-orange-700",
+  "Urgent": "bg-red-100 text-red-700",
 };
+
+const STATUSES = [
+  "all", "Pending", "Accepted", "Planning", "In Production", "Packing",
+  "Ready For Dispatch", "In Transport", "Completed", "Cancelled",
+];
 
 export default function ProductionOrders() {
   const { data: user } = useGetMe();
   const [, setLocation] = useLocation();
-  const searchParams = new URLSearchParams(window.location.search);
-  const { units: accessibleUnits, locked: unitLocked } = useUserUnits();
+  const params = new URLSearchParams(window.location.search);
+  const { units: userUnits, userUnit, locked } = useUserUnits();
+  const [selectedUnit, setSelectedUnit] = useState<string>(userUnit);
 
-  useProductionSyncAlert(!!user);
+  const [status, setStatus] = useState(params.get("status") || "all");
+  const [priority, setPriority] = useState("all");
+  const [origin, setOrigin] = useState("all");
+  const [search, setSearch] = useState(params.get("search") || "");
+  const [page, setPage] = useState(Number(params.get("page")) || 1);
 
-  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all");
-  const [priorityFilter, setPriorityFilter] = useState(searchParams.get("priority") || "all");
-  const [unitFilter, setUnitFilter] = useState("All");
-  const [createdByFilter, setCreatedByFilter] = useState("all");
-  const [originFilter, setOriginFilter] = useState("all");
-  const [search, setSearch] = useState(searchParams.get("search") || "");
-  const [page, setPage] = useState(1);
-
-  useEffect(() => {
-    if (unitLocked && accessibleUnits.length === 1) {
-      setUnitFilter(accessibleUnits[0]);
-    }
-  }, [unitLocked, accessibleUnits]);
-
-  const { data: usersList } = useQuery({
-    queryKey: ["users-list"],
-    queryFn: () => customFetch<any[]>("/users"),
-    enabled: !!user,
-  });
-
-  const queryParams = useMemo(() => {
-    const p: Record<string, string> = { page: String(page), limit: "15" };
-    if (statusFilter !== "all") p.status = statusFilter;
-    if (priorityFilter !== "all") p.priority = priorityFilter;
-    if (unitFilter !== "All") p.unit = unitFilter;
-    if (createdByFilter !== "all") p.createdBy = createdByFilter;
-    if (search.trim()) p.search = search.trim();
-    if (originFilter !== "all") p.origin = originFilter;
-    return p;
-  }, [statusFilter, priorityFilter, unitFilter, createdByFilter, originFilter, search, page]);
+  const buildUrl = () => {
+    const p: Record<string, string> = {};
+    if (status !== "all") p.status = status;
+    if (priority !== "all") p.priority = priority;
+    if (origin !== "all") p.origin = origin;
+    if (selectedUnit && selectedUnit !== "All") p.unit = selectedUnit;
+    if (search) p.search = search;
+    p.page = String(page);
+    p.limit = "15";
+    return "/production/orders?" + new URLSearchParams(p).toString();
+  };
 
   const { data, isLoading } = useQuery({
-    queryKey: ["production-orders", queryParams],
-    queryFn: () => customFetch<any>(`/production/orders?${new URLSearchParams(queryParams)}`),
+    queryKey: ["production-orders", status, priority, origin, selectedUnit, search, page],
+    queryFn: () => customFetch<any>(buildUrl()),
     enabled: !!user,
-    refetchInterval: 10_000,
   });
-
-  const orders = data?.data ?? [];
-  const totalPages = data?.totalPages ?? 1;
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Production Orders</h1>
-        <ExportDropdown exportUrl="/api/exports/production" filename="Production_Orders" />
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Production Orders</h1>
+          <p className="text-sm text-muted-foreground mt-1">Manage and track all production orders</p>
+        </div>
+        <Button variant="outline" onClick={() => setLocation("/production/dashboard")}>
+          <ArrowLeft className="h-4 w-4 mr-1" /> Dashboard
+        </Button>
       </div>
 
+      {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by customer, invoice, mobile..."
+            placeholder="Search by customer, company, invoice..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             className="pl-9"
           />
         </div>
 
-        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-          <SelectTrigger className="w-[160px]"><SelectValue placeholder="All Statuses" /></SelectTrigger>
+        <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1); }}>
+          <SelectTrigger className="w-[150px]"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
-            <SelectItem value="Pending">Pending</SelectItem>
-            <SelectItem value="Accepted">Accepted</SelectItem>
-            <SelectItem value="Planning">Planning</SelectItem>
-            <SelectItem value="Machine Running">Machine Running</SelectItem>
-            <SelectItem value="Quality Check">Quality Check</SelectItem>
-            <SelectItem value="Ready For Dispatch">Ready For Dispatch</SelectItem>
-            <SelectItem value="Completed">Completed</SelectItem>
-            <SelectItem value="Cancelled">Cancelled</SelectItem>
+            {STATUSES.map(s => (
+              <SelectItem key={s} value={s}>{s === "all" ? "All Statuses" : s}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
-        <Select value={priorityFilter} onValueChange={(v) => { setPriorityFilter(v); setPage(1); }}>
-          <SelectTrigger className="w-[140px]"><SelectValue placeholder="All Priorities" /></SelectTrigger>
+        <Select value={priority} onValueChange={(v) => { setPriority(v); setPage(1); }}>
+          <SelectTrigger className="w-[140px]"><SelectValue placeholder="Priority" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Priorities</SelectItem>
             <SelectItem value="Low">Low</SelectItem>
@@ -130,31 +114,7 @@ export default function ProductionOrders() {
           </SelectContent>
         </Select>
 
-        <div className="flex items-center gap-2">
-          <Select value={unitFilter} onValueChange={(v) => { setUnitFilter(v); setPage(1); }} disabled={unitLocked}>
-            <SelectTrigger className="w-[160px]"><SelectValue placeholder="Select Unit" /></SelectTrigger>
-            <SelectContent>
-              {accessibleUnits.map((u) => (
-                <SelectItem key={u} value={u}>{u}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {unitLocked && <span className="text-xs text-muted-foreground">Locked</span>}
-        </div>
-
-        <Select value={createdByFilter} onValueChange={(v) => { setCreatedByFilter(v); setPage(1); }}>
-          <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Users" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Users</SelectItem>
-            <SelectItem value="sales">Sales Users</SelectItem>
-            <SelectItem value="production_and_support">Prod & Support Users</SelectItem>
-            {usersList?.filter((u: any) => u.role === "sales" || u.role === "production_and_support").map((u: any) => (
-              <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={originFilter} onValueChange={(v) => { setOriginFilter(v); setPage(1); }}>
+        <Select value={origin} onValueChange={(v) => { setOrigin(v); setPage(1); }}>
           <SelectTrigger className="w-[140px]"><SelectValue placeholder="Origin" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Origins</SelectItem>
@@ -162,122 +122,117 @@ export default function ProductionOrders() {
             <SelectItem value="production_and_support">Support</SelectItem>
           </SelectContent>
         </Select>
+
+        {!locked && userUnits.length > 1 && (
+          <Select value={selectedUnit} onValueChange={(v) => { setSelectedUnit(v); setPage(1); }}>
+            <SelectTrigger className="w-[140px]"><SelectValue placeholder="Unit" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="All">All Units</SelectItem>
+              {userUnits.filter(u => u !== "All").map(u => (
+                <SelectItem key={u} value={u}>{u}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
-      {isLoading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
-        </div>
-      ) : orders.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            No production orders found
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Production ID</TableHead>
-                  <TableHead>Order ID</TableHead>
-                  <TableHead>Company Name</TableHead>
-                  <TableHead>Product Name</TableHead>
-                  <TableHead>Bottle Size</TableHead>
-                  <TableHead>Bottle Color</TableHead>
-                  <TableHead>Quantity</TableHead>
-                  <TableHead>Origin</TableHead>
-                  <TableHead>Production Unit</TableHead>
-                  <TableHead>Created By</TableHead>
-                  <TableHead>Priority</TableHead>
-                  <TableHead>Order Date</TableHead>
-                  <TableHead>Exp. Dispatch</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Last Updated</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {orders.map((order: any) => {
-                  const firstItem = order.items?.[0];
-                  return (
-                    <TableRow
+      {/* Table */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">
+            {data ? `${data.total} order${data.total !== 1 ? "s" : ""} found` : "Loading..."}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-6 space-y-3">
+              {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+            </div>
+          ) : !data?.data?.length ? (
+            <div className="py-12 text-center text-muted-foreground">No production orders found</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">ID</th>
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Customer</th>
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Product</th>
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Origin</th>
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Unit</th>
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Created By</th>
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Priority</th>
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Status</th>
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.data.map((order: any) => (
+                    <tr
                       key={order.id}
-                      className="cursor-pointer hover:bg-muted/50"
+                      className="border-b last:border-0 hover:bg-muted/30 cursor-pointer transition-colors"
                       onClick={() => setLocation(`/production/orders/${order.id}`)}
                     >
-                      <TableCell className="font-mono text-xs">#{order.id}</TableCell>
-                      <TableCell className="font-mono text-xs">{order.invoice?.invoiceNumber || "-"}</TableCell>
-                      <TableCell className="font-medium">{order.invoice?.companyName || order.invoice?.customerName || "-"}</TableCell>
-                      <TableCell>{firstItem?.productName || "-"}</TableCell>
-                      <TableCell>{firstItem?.capacity || firstItem?.weight || "-"}</TableCell>
-                      <TableCell>{firstItem?.bottleType || "-"}</TableCell>
-                      <TableCell>{firstItem ? Number(firstItem.quantity).toFixed(2) : "-"}</TableCell>
-                      <TableCell>
+                      <td className="py-3 px-4 font-medium">#{order.id}</td>
+                      <td className="py-3 px-4 max-w-[180px] truncate">
+                        {order.invoice?.companyName || order.invoice?.customerName || "-"}
+                      </td>
+                      <td className="py-3 px-4 max-w-[150px] truncate">
+                        {order.items?.[0]?.productName || "-"}
+                      </td>
+                      <td className="py-3 px-4">
                         {order.createdByRole ? (
-                          <Badge variant="outline" className={`text-[10px] py-0 ${order.createdByRole === "production_and_support" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-blue-50 text-blue-700 border-blue-200"}`}>
+                          <Badge variant="outline" className={`text-[10px] ${order.createdByRole === "production_and_support" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-blue-50 text-blue-700 border-blue-200"}`}>
                             {order.createdByRole === "production_and_support" ? "SUPPORT" : "SALES"}
                           </Badge>
                         ) : "-"}
-                      </TableCell>
-                      <TableCell>
-                        {order.productionUnit ? (
-                          <Badge variant="outline" className="text-xs bg-indigo-50 text-indigo-700 border-indigo-200">{order.productionUnit}</Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">Unassigned</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {order.createdByName ? (
-                          <div className="text-xs flex items-center gap-1">
-                            <span className="font-medium">{order.createdByName}</span>
-                            {order.createdByRole && (
-                              <Badge variant="outline" className={`text-[10px] py-0 ${order.createdByRole === "production_and_support" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-blue-50 text-blue-700 border-blue-200"}`}>
-                                {order.createdByRole === "production_and_support" ? "SUPPORT" : "SALES"}
-                              </Badge>
-                            )}
-                          </div>
-                        ) : "-"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={`${PRIORITY_COLORS[order.priority] || "bg-gray-100"} border-0`}>
+                      </td>
+                      <td className="py-3 px-4">{order.productionUnit || "-"}</td>
+                      <td className="py-3 px-4">{order.createdByName || "-"}</td>
+                      <td className="py-3 px-4">
+                        <Badge variant="outline" className={`text-xs ${PRIORITY_COLORS[order.priority] || "bg-gray-100"} border-0`}>
                           {order.priority}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {order.createdAt ? new Date(order.createdAt).toLocaleDateString("en-IN") : "-"}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {order.expectedDispatchDate ? new Date(order.expectedDispatchDate).toLocaleDateString("en-IN") : "-"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={`${STATUS_COLORS[order.status] || "bg-gray-100"} border whitespace-nowrap`} variant="outline">
+                      </td>
+                      <td className="py-3 px-4">
+                        <Badge variant="outline" className={`text-xs ${STATUS_COLORS[order.status] || "bg-gray-100"} border`}>
                           {order.status}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {order.updatedAt ? new Date(order.updatedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+                      </td>
+                      <td className="py-3 px-4 text-muted-foreground text-xs">
+                        {order.createdAt ? new Date(order.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "-"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      {totalPages > 1 && (
+      {/* Pagination */}
+      {data && data.totalPages > 1 && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Page {page} of {totalPages} ({data?.total || 0} total)
+            Page {data.page} of {data.totalPages}
           </p>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
-              <ChevronLeft className="h-4 w-4 mr-1" /> Previous
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage(p => p - 1)}
+            >
+              <ArrowLeft className="h-4 w-4 mr-1" /> Previous
             </Button>
-            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
-              Next <ChevronRight className="h-4 w-4 ml-1" />
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= data.totalPages}
+              onClick={() => setPage(p => p + 1)}
+            >
+              Next <ArrowRight className="h-4 w-4 ml-1" />
             </Button>
           </div>
         </div>

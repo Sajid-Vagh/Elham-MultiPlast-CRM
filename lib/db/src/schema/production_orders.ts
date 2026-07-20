@@ -9,9 +9,10 @@ export const PRODUCTION_STATUSES = [
   "Pending",
   "Accepted",
   "Planning",
-  "Machine Running",
-  "Quality Check",
+  "In Production",
+  "Packing",
   "Ready For Dispatch",
+  "In Transport",
   "Completed",
   "Cancelled",
 ] as const;
@@ -21,10 +22,11 @@ export type ProductionStatus = typeof PRODUCTION_STATUSES[number];
 export const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
   "Pending": ["Accepted", "Cancelled"],
   "Accepted": ["Planning", "Cancelled"],
-  "Planning": ["Machine Running", "Cancelled"],
-  "Machine Running": ["Quality Check", "Cancelled"],
-  "Quality Check": ["Ready For Dispatch", "Machine Running", "Cancelled"],
-  "Ready For Dispatch": ["Completed"],
+  "Planning": ["In Production", "Cancelled"],
+  "In Production": ["Packing", "Cancelled"],
+  "Packing": ["Ready For Dispatch", "Cancelled"],
+  "Ready For Dispatch": ["In Transport", "Cancelled"],
+  "In Transport": ["Completed"],
   "Completed": [],
   "Cancelled": [],
 };
@@ -45,6 +47,9 @@ export type NoteType = typeof NOTE_TYPES[number];
 
 export const PRIORITY_LEVELS = ["Low", "Medium", "High", "Urgent"] as const;
 export type PriorityLevel = typeof PRIORITY_LEVELS[number];
+
+export const PACKING_TYPES = ["Bundle", "Packet"] as const;
+export type PackingType = typeof PACKING_TYPES[number];
 
 export const productionOrdersTable = pgTable("production_orders", {
   id: serial("id").primaryKey(),
@@ -86,6 +91,16 @@ export const productionOrdersTable = pgTable("production_orders", {
   cancelReason: text("cancel_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  // New v2 columns
+  productionMachine: text("production_machine"),
+  operatorName: text("operator_name"),
+  inProductionNotes: text("in_production_notes"),
+  packingType: text("packing_type"),
+  packingNotes: text("packing_notes"),
+  packingCompletedById: integer("packing_completed_by_id").references(() => usersTable.id, { onDelete: "set null" }),
+  packingCompletedAt: timestamp("packing_completed_at", { withTimezone: true }),
+  transportBookedById: integer("transport_booked_by_id").references(() => usersTable.id, { onDelete: "set null" }),
+  transportBookedAt: timestamp("transport_booked_at", { withTimezone: true }),
 });
 
 export const productionTimelineTable = pgTable("production_timeline", {
