@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable, unitHistoryTable, activitiesTable, DEAL_STAGES, STAGE_PROBS, ordersTable, orderItemsTable, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable } from "@workspace/db";
-import { eq, and, SQL, sql, desc, gte, between, isNull } from "drizzle-orm";
+import { eq, and, or, inArray, SQL, sql, desc, gte, between, isNull } from "drizzle-orm";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import {
   CreateDealBody, UpdateDealBody, GetDealParams, UpdateDealParams, DeleteDealParams,
@@ -19,6 +19,82 @@ import { canAccessSalesResource } from "../lib/permission-service";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 
 const router: IRouter = Router();
+
+// GET /deals/by-mobile/:mobile — search active deals by contact mobile number
+router.get("/deals/by-mobile/:mobile", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const mobile = req.params.mobile?.replace(/\s/g, "");
+    if (!mobile || mobile.length < 10) {
+      res.status(400).json({ error: "Valid mobile number required (min 10 digits)" });
+      return;
+    }
+
+    // Find contacts with this mobile or otherPhone
+    const contacts = await db
+      .select({ id: contactsTable.id, name: contactsTable.name, companyName: contactsTable.companyName, mobile: contactsTable.mobile, unit: contactsTable.unit, category: contactsTable.category, salesOwnerId: contactsTable.salesOwnerId })
+      .from(contactsTable)
+      .where(
+        or(
+          eq(contactsTable.mobile, mobile),
+          eq(contactsTable.otherPhone, mobile)
+        )
+      );
+
+    if (contacts.length === 0) {
+      res.json({ contacts: [], deals: [], message: "No contact found with this mobile number" });
+      return;
+    }
+
+    const contactIds = contacts.map(c => c.id);
+    const accessibleUnits = getAccessibleUnits(user);
+
+    // Filter contacts by unit accessibility
+    let allowedContactIds = contactIds;
+    if (accessibleUnits) {
+      allowedContactIds = contacts
+        .filter(c => accessibleUnits.includes(c.unit))
+        .map(c => c.id);
+    }
+
+    if (allowedContactIds.length === 0) {
+      res.json({ contacts: [], deals: [], message: "No accessible contacts found" });
+      return;
+    }
+
+    // Fetch active deals for allowed contacts (not Won, not Lost)
+    const allDeals = await db
+      .select()
+      .from(dealsTable)
+      .where(
+        and(
+          inArray(dealsTable.contactId, allowedContactIds),
+          sql`${dealsTable.stage} NOT IN ('Won', 'Lost')`
+        )
+      )
+      .orderBy(desc(dealsTable.createdAt));
+
+    // Enrich deals with contact info and active PI summary
+    const enrichedDeals = [];
+    for (const deal of allDeals) {
+      const contact = contacts.find(c => c.id === deal.contactId) || null;
+      let salesOwner = null;
+      if (deal.salesOwnerId) {
+        const [u] = await db.select().from(usersTable).where(eq(usersTable.id, deal.salesOwnerId));
+        if (u) { const { passwordHash: _, ...safe } = u; salesOwner = safe; }
+      }
+      const activePI = await getActivePiSummary(db, deal.id);
+      enrichedDeals.push({ ...deal, contact, salesOwner, activeProformaInvoice: activePI ?? null });
+    }
+
+    res.json({ contacts, deals: enrichedDeals });
+  } catch (err) {
+    req.log.error({ err }, "Search deals by mobile error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 // ── Deal Stage Transition Rules ──
 // Each key maps to the set of stages it can transition TO.

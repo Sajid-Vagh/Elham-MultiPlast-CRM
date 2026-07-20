@@ -110,7 +110,10 @@ router.get("/contacts", async (req, res) => {
       return [u.id, safe];
     }));
 
-    res.json(contacts.map(c => ({ ...c, salesOwner: userMap.get(c.salesOwnerId) ?? null })));
+    const enriched = contacts.map(c => ({ ...c, salesOwner: userMap.get(c.salesOwnerId) ?? null }));
+    // Debug: log unit values for every contact returned
+    console.log("[DEBUG] GET /contacts - unit values:", JSON.stringify(enriched.map(c => ({ id: c.id, name: c.name, unit: c.unit }))));
+    res.json(enriched);
   } catch (err) {
     req.log.error({ err }, "List contacts error");
     res.status(500).json({ error: "Internal server error" });
@@ -129,6 +132,7 @@ router.post("/contacts", async (req, res) => {
     return;
   }
   const values = parsed.data;
+  console.log("[DEBUG] POST /contacts - parsed body:", JSON.stringify({ unit: values.unit, name: values.name, mobile: values.mobile }));
   // Sales users auto-assign to themselves
   if (user.role === "sales") {
     values.salesOwnerId = user.id;

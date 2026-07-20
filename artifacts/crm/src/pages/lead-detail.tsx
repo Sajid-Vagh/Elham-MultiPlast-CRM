@@ -96,6 +96,11 @@ export default function LeadDetail() {
   const [newDealLostReason, setNewDealLostReason] = useState("");
   const [newDealProductionUnit, setNewDealProductionUnit] = useState("");
   const [dealDialogOpen, setDealDialogOpen] = useState(false);
+
+  const openDealDialog = () => {
+    setNewDealProductionUnit(contact?.unit || "");
+    setDealDialogOpen(true);
+  };
   const [piSentDialogOpen, setPiSentDialogOpen] = useState(false);
   const [piSentDealId, setPiSentDealId] = useState<number | null>(null);
 
@@ -683,7 +688,7 @@ export default function LeadDetail() {
               ) : (
                 <div>
                   <p className="text-xs text-muted-foreground mb-2">No deal exists for this contact.</p>
-                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setDealDialogOpen(true)}>
+                   <Button size="sm" variant="outline" className="h-7 text-xs" onClick={openDealDialog}>
                     <Plus className="h-3 w-3 mr-1" /> Create Deal
                   </Button>
                 </div>
@@ -743,7 +748,7 @@ export default function LeadDetail() {
                     <FolderTree className="h-3.5 w-3.5 shrink-0" /> Move Category
                   </Button>
                 )}
-                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setDealDialogOpen(true)}>
+                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={openDealDialog}>
                   <Plus className="h-3.5 w-3.5 shrink-0" /> Create Deal
                 </Button>
                 <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setLocation(`/proforma-invoices?contactId=${contactId}`)}>
@@ -1271,7 +1276,17 @@ export default function LeadDetail() {
           <div className="space-y-4 pt-2">
             <div>
               <Label>{editField}</Label>
-              <Input value={editValue} onChange={e => setEditValue(e.target.value)} />
+              {editField === "unit" ? (
+                <Select value={editValue || PENDING_UNIT_ASSIGNMENT} onValueChange={(v) => setEditValue(v === PENDING_UNIT_ASSIGNMENT ? "" : v)}>
+                  <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={PENDING_UNIT_ASSIGNMENT}>Not assigned</SelectItem>
+                    {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input value={editValue} onChange={e => setEditValue(e.target.value)} />
+              )}
             </div>
             {editField === "unit" && (
               <div>

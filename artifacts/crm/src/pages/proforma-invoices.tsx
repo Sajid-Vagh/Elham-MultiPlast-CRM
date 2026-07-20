@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useGetMe, searchContactByMobile } from "@workspace/api-client-react";
+import { useGetMe } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -400,7 +400,11 @@ export default function ProformaInvoicesPage() {
     } catch { }
   };
 
-  // Debounced mobile number search — auto-fetches contact + active deals
+  // Debounced mobile number search — NEW ARCHITECTURE:
+  // 1. Search Deals by mobile (using backend /api/deals/by-mobile/:mobile)
+  // 2. Select Deal → internal linking only (no auto-fill of billing fields)
+  // 3. Search GST Profiles by mobile → selected profile auto-fills ONLY billing fields
+  // Lead/Contact data NEVER auto-fills billing fields.
   useEffect(() => {
     const m = mobile.replace(/\s/g, "");
     if (m.length < 10) {
@@ -418,54 +422,71 @@ export default function ProformaInvoicesPage() {
       setMobileFetchLoading(true);
       setMobileFetchError("");
       try {
-        const contact = await searchContactByMobile({ mobile: m });
-        setSelectedLead(contact);
-        // Auto-fill basic party details from contact
-        setCustomerName(contact.name || "");
-        setCompanyName(contact.companyName || "");
-        setCity(contact.city || "");
-        setAddress(contact.address || "");
-        setState(contact.state || "");
-        setDistrict(contact.district || "");
-        setPincode(contact.pincode || "");
-        setTradeName((contact as any).tradeName || "");
-        setNotes((contact as any).customerComments || "");
-        const gst = (contact as any).gstNumber;
-        if (gst) {
-          setGstNumber(gst);
-          setCustomerType("GST");
-          if ((contact as any).gstStatus) setGstStatus((contact as any).gstStatus);
+        // Step 1: Search deals by mobile
+        const dealsRes = await fetch(`/api/deals/by-mobile/${encodeURIComponent(m)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!dealsRes.ok) {
+          setMobileFetchError("Search failed. Please try again.");
+          setMobileFetchLoading(false);
+          return;
         }
-        // Fetch active deals for this contact
-        try {
-          const dealsRes = await fetch(`/api/contacts/${contact.id}/active-deals`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (dealsRes.ok) {
-            const deals = await dealsRes.json();
-            setActiveDeals(deals);
-            if (deals.length === 1) {
-              setSelectedDeal(deals[0]);
-              setDealSelectOpen(false);
-            } else if (deals.length > 1) {
-              setSelectedDeal(null);
-              setDealSelectOpen(true);
-            } else {
-              setSelectedDeal(null);
-              setDealSelectOpen(false);
-              setMobileFetchError("No active Deal found. Please create a Deal first.");
-            }
+        const data = await dealsRes.json();
+
+        if (data.contacts && data.contacts.length > 0) {
+          const firstContact = data.contacts[0];
+          setSelectedLead(firstContact);
+
+          // Set active deals
+          setActiveDeals(data.deals || []);
+          if (data.deals && data.deals.length === 1) {
+            setSelectedDeal(data.deals[0]);
+            setDealSelectOpen(false);
+          } else if (data.deals && data.deals.length > 1) {
+            setSelectedDeal(null);
+            setDealSelectOpen(true);
+          } else {
+            setSelectedDeal(null);
+            setDealSelectOpen(false);
+            setMobileFetchError("No active Deal found. Please create a Deal first.");
           }
-        } catch { }
-        // Fetch customer history
-        try {
-          const histRes = await fetch(`/api/contacts/${contact.id}/customer-history`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (histRes.ok) setCustomerHistory(await histRes.json());
-        } catch { }
-        // Load GST profiles + previous PIs (centralized function)
-        await loadCustomerGstProfile(contact.id, gst);
+
+          // Step 2: Load GST profiles by mobile (NOT from contact data)
+          try {
+            const gstRes = await fetch(`/api/customer-master/search-by-mobile/${encodeURIComponent(m)}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (gstRes.ok) {
+              const profiles = await gstRes.json();
+              setGstProfiles(Array.isArray(profiles) ? profiles : []);
+              if (profiles.length > 0) {
+                setSelectedProfileIndex(0);
+                applyExistingCustomer(profiles[0]);
+              } else {
+                setSelectedProfileIndex(0);
+              }
+            }
+          } catch { }
+
+          // Step 3: Fetch previous PIs for repeat order support
+          try {
+            const prevRes = await fetch(`/api/proforma-invoices/previous-by-contact/${firstContact.id}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (prevRes.ok) {
+              const prev = await prevRes.json();
+              setPreviousInvoices(Array.isArray(prev) ? prev : []);
+            }
+          } catch { }
+        } else {
+          setSelectedLead(null);
+          setSelectedDeal(null);
+          setActiveDeals([]);
+          setGstProfiles([]);
+          setSelectedProfileIndex(0);
+          setPreviousInvoices([]);
+          setMobileFetchError("No contact found with this mobile number");
+        }
       } catch (err: any) {
         setSelectedLead(null);
         setSelectedDeal(null);
@@ -474,7 +495,7 @@ export default function ProformaInvoicesPage() {
         setGstProfiles([]);
         setSelectedProfileIndex(0);
         setPreviousInvoices([]);
-        setMobileFetchError(err?.status === 404 ? "No contact found with this mobile number" : err?.message || "Search failed");
+        setMobileFetchError(err?.message || "Search failed");
       } finally {
         setMobileFetchLoading(false);
       }
@@ -1648,10 +1669,69 @@ ${pagesHtml}
           </Card>
         )}
 
+          {/* Attached Deal Card */}
+          {selectedDeal && (
+            <Card className="border-blue-200 bg-blue-50/40">
+              <CardHeader className="py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <LinkIcon className="h-4 w-4 text-blue-600" />
+                    <span className="text-sm font-semibold text-blue-800">Attached Deal</span>
+                  </div>
+                  <Badge variant="outline" className="text-xs bg-blue-100 text-blue-700 border-blue-200">
+                    {selectedDeal.stage}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="py-2 px-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <div>
+                    <span className="text-muted-foreground">Deal #</span>
+                    <span className="ml-1 font-medium">{selectedDeal.id}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Customer</span>
+                    <span className="ml-1 font-medium">{selectedDeal.contact?.name || selectedLead?.name || "-"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Company</span>
+                    <span className="ml-1 font-medium">{selectedDeal.contact?.companyName || selectedLead?.companyName || "-"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Sales Person</span>
+                    <span className="ml-1 font-medium">{selectedDeal.salesOwner?.name || "-"}</span>
+                  </div>
+                  {selectedDeal.contact?.mobile && (
+                    <div>
+                      <span className="text-muted-foreground">Mobile</span>
+                      <span className="ml-1 font-medium">{selectedDeal.contact.mobile}</span>
+                    </div>
+                  )}
+                  {selectedDeal.contact?.category && (
+                    <div>
+                      <span className="text-muted-foreground">Category</span>
+                      <span className="ml-1 font-medium">{selectedDeal.contact.category}</span>
+                    </div>
+                  )}
+                  {selectedDeal.activeProformaInvoice && (
+                    <div>
+                      <span className="text-muted-foreground">Active PI</span>
+                      <span className="ml-1 font-medium">{selectedDeal.activeProformaInvoice.invoiceNumber}</span>
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-muted-foreground">Total Value</span>
+                    <span className="ml-1 font-medium">₹{Number(selectedDeal.totalValue || 0).toLocaleString("en-IN")}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle>Party Details</CardTitle>
+                <CardTitle>Customer & Billing Details</CardTitle>
                 {selectedDeal && (
                   <Badge variant="outline" className="text-xs gap-1">
                     <LinkIcon className="h-3 w-3" />
@@ -1664,7 +1744,7 @@ ${pagesHtml}
               <div className="sm:col-span-2">
                 <Label>Mobile Number <span className="text-destructive">*</span></Label>
                 <div className="relative">
-                  <Input value={mobile} onChange={(e) => { setMobile(e.target.value); setMobileError(""); setMobileFetchError(""); }} placeholder="Enter 10-digit mobile to search customer & attach Deal" className={mobileError || mobileFetchError ? "border-destructive" : ""} />
+                  <Input value={mobile} onChange={(e) => { setMobile(e.target.value); setMobileError(""); setMobileFetchError(""); }} placeholder="Enter 10-digit mobile to search Deal & GST Profile" className={mobileError || mobileFetchError ? "border-destructive" : ""} />
                   {mobileFetchLoading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />}
                 </div>
                 {mobileError && <p className="text-xs text-destructive mt-1">{mobileError}</p>}
@@ -1676,9 +1756,64 @@ ${pagesHtml}
                   </div>
                 )}
               </div>
+
+              {/* Deal Selection for multiple active deals */}
+              {dealSelectOpen && activeDeals.length > 1 && (
+                <div className="sm:col-span-2">
+                  <Label>Select Active Deal <span className="text-destructive">*</span></Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">Multiple active deals found for this contact. Select one to attach the Proforma Invoice.</p>
+                  <div className="space-y-2 mt-1">
+                    {activeDeals.map((d: any) => (
+                      <div key={d.id} className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${selectedDeal?.id === d.id ? "border-blue-500 bg-blue-50" : "hover:bg-muted/50"}`} onClick={() => { setSelectedDeal(d); setDealSelectOpen(false); }}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">Deal #{d.id}</span>
+                            <Badge variant="outline" className="text-xs">{d.stage}</Badge>
+                            {d.totalValue ? <span className="text-xs text-muted-foreground">₹{Number(d.totalValue).toLocaleString("en-IN")}</span> : null}
+                          </div>
+                          {d.title && <p className="text-xs text-muted-foreground mt-0.5 truncate">{d.title}</p>}
+                        </div>
+                        <div className="ml-3 shrink-0">
+                          {d.activeProformaInvoice ? (
+                            <Badge className={`text-[10px] px-1.5 py-0 ${d.activeProformaInvoice.status === "Sent" ? "bg-blue-100 text-blue-700" : d.activeProformaInvoice.status === "Approved" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+                              PI: {d.activeProformaInvoice.invoiceNumber} ({d.activeProformaInvoice.status})
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] text-muted-foreground">No PI</Badge>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* GST Profile Selector */}
+              {gstProfiles.length > 1 && (
+                <div className="sm:col-span-2">
+                  <Label>Select GST Profile</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">Multiple GST profiles found for this mobile number. Select the billing profile.</p>
+                  <div className="space-y-2 mt-1">
+                    {gstProfiles.map((profile: any, idx: number) => (
+                      <div key={profile.id} className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${selectedProfileIndex === idx ? "border-green-500 bg-green-50" : "hover:bg-muted/50"}`} onClick={() => { setSelectedProfileIndex(idx); applyExistingCustomer(profile); }}>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium">{profile.companyName}</span>
+                          {profile.tradeName && <span className="text-xs text-muted-foreground ml-2">({profile.tradeName})</span>}
+                          <div className="flex gap-3 mt-1">
+                            <span className="text-xs text-muted-foreground">{profile.gstin}</span>
+                            <span className="text-xs text-muted-foreground">{profile.city || ""}</span>
+                          </div>
+                        </div>
+                        {selectedProfileIndex === idx && <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 ml-2" />}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="sm:col-span-2">
               <Label>Party Name *</Label>
-              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Auto-filled from contact" />
+              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Auto-filled from GST Profile" />
             </div>
             <div className="sm:col-span-2">
               <Label>Invoice Number (leave empty for auto-generated)</Label>
@@ -1840,37 +1975,6 @@ ${pagesHtml}
               <Label>Notes</Label>
               <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Internal notes" />
             </div>
-
-            {/* Deal Selection for multiple active deals */}
-            {dealSelectOpen && activeDeals.length > 1 && (
-              <div className="sm:col-span-2">
-                <Label>Select Active Deal <span className="text-destructive">*</span></Label>
-                <p className="text-xs text-muted-foreground mt-0.5">Multiple active deals found for this contact. Select one to attach the Proforma Invoice.</p>
-                <div className="space-y-2 mt-1">
-                  {activeDeals.map((d: any) => (
-                    <div key={d.id} className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${selectedDeal?.id === d.id ? "border-blue-500 bg-blue-50" : "hover:bg-muted/50"}`} onClick={() => { setSelectedDeal(d); setDealSelectOpen(false); }}>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">Deal #{d.id}</span>
-                          <Badge variant="outline" className="text-xs">{d.stage}</Badge>
-                          {d.totalValue ? <span className="text-xs text-muted-foreground">₹{Number(d.totalValue).toLocaleString("en-IN")}</span> : null}
-                        </div>
-                        {d.title && <p className="text-xs text-muted-foreground mt-0.5 truncate">{d.title}</p>}
-                      </div>
-                      <div className="ml-3 shrink-0">
-                        {d.activeProformaInvoice ? (
-                          <Badge className={`text-[10px] px-1.5 py-0 ${d.activeProformaInvoice.status === "Sent" ? "bg-blue-100 text-blue-700" : d.activeProformaInvoice.status === "Approved" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
-                            PI: {d.activeProformaInvoice.invoiceNumber} ({d.activeProformaInvoice.status})
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-[10px] text-muted-foreground">No PI</Badge>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Customer Master actions */}
             {!customerMasterId && !existingCustomer && gstNumber.trim().length >= 15 && companyName.trim() && (

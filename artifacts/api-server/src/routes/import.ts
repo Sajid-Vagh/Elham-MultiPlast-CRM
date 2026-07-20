@@ -236,6 +236,7 @@ const IndiaMartImportSchema = z.object({
   quantity: z.string().nullish(),
   salesOwnerId: z.number().nullish(),
   unit: z.string().nullish(),
+  industry: z.string().nullish(),
   category: z.enum(CATEGORY_VALUES),
 });
 
@@ -288,6 +289,8 @@ router.post("/import/indiamart", async (req, res) => {
       salesOwnerId: ownerId,
       leadSource: "IndiaMart",
       inquiryDate: new Date().toISOString().split("T")[0]!,
+      unit: fields.unit?.trim() ?? null,
+      industry: fields.industry?.trim() ?? null,
       category: contactCategory,
     }).returning();
 

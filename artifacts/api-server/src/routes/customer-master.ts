@@ -269,6 +269,40 @@ router.get("/customer-master/by-contact/:contactId", async (req, res) => {
   }
 });
 
+// GET /customer-master/search-by-mobile/:mobile — search GST profiles by mobile number
+// Searches customer_master.mobile AND customer_master.linkedContactId → contact mobile/otherPhone
+router.get("/customer-master/search-by-mobile/:mobile", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const mobile = req.params.mobile?.replace(/\s/g, "");
+    if (!mobile || mobile.length < 10) {
+      res.status(400).json({ error: "Valid mobile number required (min 10 digits)" });
+      return;
+    }
+
+    // Search by direct mobile match AND by linked contact's mobile/otherPhone
+    const profiles = await db
+      .select()
+      .from(customerMasterTable)
+      .where(
+        or(
+          eq(customerMasterTable.mobile, mobile),
+          sql`${customerMasterTable.linkedContactId} IN (
+            SELECT id FROM contacts WHERE mobile = ${mobile} OR other_phone = ${mobile}
+          )`
+        )
+      )
+      .orderBy(desc(customerMasterTable.createdAt));
+
+    res.json(profiles);
+  } catch (err) {
+    req.log.error({ err }, "Search customer master by mobile error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // Delete customer master
 router.delete("/customer-master/:id", async (req, res) => {
   try {

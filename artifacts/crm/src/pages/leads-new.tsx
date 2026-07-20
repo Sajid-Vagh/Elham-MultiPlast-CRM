@@ -19,22 +19,25 @@ export default function LeadsNew() {
   const { toast } = useToast();
 
   const onSubmit = (data: LeadFormData) => {
+    const contactInput = {
+      name: data.name,
+      mobile: data.mobile,
+      email: data.email || null,
+      companyName: data.companyName || null,
+      salesOwnerId: Number(data.salesOwnerId),
+      leadSource: data.leadSource || null,
+      city: data.city || null,
+      address: data.address || null,
+      unit: data.unit || null,
+      industry: data.industry || null,
+      tags: data.tags || null,
+    };
+    console.log("[DEBUG] leads-new onSubmit - unit being sent:", contactInput.unit);
     createContact.mutate({
-      data: {
-        name: data.name,
-        mobile: data.mobile,
-        email: data.email || null,
-        companyName: data.companyName || null,
-        salesOwnerId: Number(data.salesOwnerId),
-        leadSource: data.leadSource || null,
-        city: data.city || null,
-        address: data.address || null,
-        unit: data.unit || null,
-        industry: data.industry || null,
-        tags: data.tags || null,
-      },
+      data: contactInput,
     }, {
       onSuccess: (contact) => {
+        console.log("[DEBUG] leads-new onSuccess - contact.unit from response:", contact.unit);
         onContactChange(queryClient);
         toast({ title: "Lead created successfully" });
         setLocation(`/leads/${contact.id}`);

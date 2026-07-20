@@ -84,7 +84,9 @@ export default function Leads() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Failed to fetch");
-      return res.json() as Promise<any[]>;
+      const data = await res.json() as any[];
+      console.log("[DEBUG] leads-list - unit values:", JSON.stringify(data.map((c: any) => ({ id: c.id, name: c.name, unit: c.unit, unitType: typeof c.unit }))));
+      return data;
     },
     staleTime: 10_000,
   });
@@ -337,26 +339,6 @@ export default function Leads() {
                     <TableCell>{contact.mobile}</TableCell>
                     <TableCell>{contact.city || "-"}</TableCell>
                     <TableCell>{contact.state || "-"}</TableCell>
-                    <TableCell className="max-w-[150px]">
-                      {contact.customerComments ? (
-                        <div className="group relative">
-                          <span className="text-xs text-muted-foreground cursor-pointer block truncate">
-                            {contact.customerComments.length > 100
-                              ? `${contact.customerComments.slice(0, 100)}...`
-                              : contact.customerComments}
-                          </span>
-                          {contact.customerComments.length > 100 && (
-                            <div className="fixed z-50 hidden group-hover:block">
-                              <div className="absolute bottom-0 left-0 bg-popover border rounded-md shadow-lg p-3 text-xs whitespace-pre-wrap max-w-xs max-h-48 overflow-y-auto">
-                                {contact.customerComments}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
                     <TableCell>
                       {contact.salesOwner && (
                         <div className="flex items-center gap-2">
@@ -384,6 +366,26 @@ export default function Leads() {
                       )}
                     </TableCell>
                     <TableCell>{contact.unit || PENDING_UNIT_ASSIGNMENT}</TableCell>
+                    <TableCell className="max-w-[150px]">
+                      {contact.customerComments ? (
+                        <div className="group relative">
+                          <span className="text-xs text-muted-foreground cursor-pointer block truncate">
+                            {contact.customerComments.length > 100
+                              ? `${contact.customerComments.slice(0, 100)}...`
+                              : contact.customerComments}
+                          </span>
+                          {contact.customerComments.length > 100 && (
+                            <div className="fixed z-50 hidden group-hover:block">
+                              <div className="absolute bottom-0 left-0 bg-popover border rounded-md shadow-lg p-3 text-xs whitespace-pre-wrap max-w-xs max-h-48 overflow-y-auto">
+                                {contact.customerComments}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>

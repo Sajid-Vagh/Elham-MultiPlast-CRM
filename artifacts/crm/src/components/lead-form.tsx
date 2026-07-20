@@ -108,7 +108,9 @@ export default function LeadForm({
 
   const handleSubmit = (data: LeadFormData) => {
     // Convert "To Be Assigned" to null for DB storage
-    onSubmit({ ...data, unit: data.unit === PENDING_UNIT_ASSIGNMENT ? "" : data.unit });
+    const transformed = { ...data, unit: data.unit === PENDING_UNIT_ASSIGNMENT ? "" : data.unit };
+    console.log("[DEBUG] LeadForm handleSubmit - data.unit:", data.unit, "transformed.unit:", transformed.unit);
+    onSubmit(transformed);
   };
 
   const handleClosePopup = () => {
