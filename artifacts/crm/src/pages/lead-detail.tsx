@@ -3,7 +3,7 @@ import { useParams, useLocation, Link } from "wouter";
 import {
   useGetContact, useListDeals, useListActivities, useCreateDeal, useCreateActivity,
   useUpdateContact, useDeleteContact, useListUsers, useListContactProformaInvoices, getListContactProformaInvoicesQueryKey,
-  getGetContactQueryKey, useGetMe
+  getGetContactQueryKey, useGetMe, useUpdateDeal
 } from "@workspace/api-client-react";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -92,6 +92,7 @@ export default function LeadDetail() {
   const createActivity = useCreateActivity();
   const deleteContact = useDeleteContact();
   const updateContact = useUpdateContact();
+  const updateDeal = useUpdateDeal();
 
   const [newDealStage, setNewDealStage] = useState("New");
   const [newDealTitle, setNewDealTitle] = useState("");
@@ -104,6 +105,10 @@ export default function LeadDetail() {
   };
   const [piSentDialogOpen, setPiSentDialogOpen] = useState(false);
   const [piSentDealId, setPiSentDealId] = useState<number | null>(null);
+
+  const [editTitleDealId, setEditTitleDealId] = useState<number | null>(null);
+  const [editTitleValue, setEditTitleValue] = useState("");
+  const [editTitleOpen, setEditTitleOpen] = useState(false);
 
   const [actType, setActType] = useState("Call");
   const [actNotes, setActNotes] = useState("");
@@ -372,6 +377,23 @@ export default function LeadDetail() {
       },
       onError: () => toast({ title: "Error creating deal", variant: "destructive" }),
     });
+  };
+
+  const handleSaveDealTitle = () => {
+    if (!editTitleDealId) return;
+    updateDeal.mutate(
+      { id: editTitleDealId, data: { title: editTitleValue || null } },
+      {
+        onSuccess: () => {
+          onDealChange(queryClient, editTitleDealId, contactId);
+          setEditTitleOpen(false);
+          setEditTitleDealId(null);
+          setEditTitleValue("");
+          toast({ title: "Deal title updated" });
+        },
+        onError: () => toast({ title: "Error updating deal title", variant: "destructive" }),
+      },
+    );
   };
 
   const handleCreateActivity = () => {
@@ -965,6 +987,26 @@ export default function LeadDetail() {
                 </DialogContent>
               </Dialog>
             </div>
+            <Dialog open={editTitleOpen} onOpenChange={setEditTitleOpen}>
+              <DialogContent className="sm:max-w-sm">
+                <DialogHeader><DialogTitle>Edit Deal Title</DialogTitle></DialogHeader>
+                <div className="space-y-4 pt-2">
+                  <div>
+                    <Label>Deal Title</Label>
+                    <Input
+                      value={editTitleValue}
+                      onChange={(e) => setEditTitleValue(e.target.value)}
+                      placeholder="Enter deal title"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button variant="outline" onClick={() => setEditTitleOpen(false)}>Cancel</Button>
+                    <Button onClick={handleSaveDealTitle} disabled={updateDeal.isPending}>Save</Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
             <div className="space-y-2">
               {deals?.length === 0 && <p className="text-sm text-muted-foreground text-center py-4 border rounded-lg bg-card">No deals yet.</p>}
               {deals?.map(d => (
@@ -974,9 +1016,23 @@ export default function LeadDetail() {
                       <p className="font-medium text-sm">{d.title || `Deal #${d.id}`}</p>
                       <p className="text-xs text-muted-foreground">{new Date(d.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       {d.totalValue && <span className="text-sm font-medium">₹{Number(d.totalValue).toLocaleString()}</span>}
                       <span className={`text-xs px-2 py-1 rounded-full font-medium ${STAGE_BADGE_COLORS[d.stage] || "bg-gray-100"}`}>{d.stage}</span>
+                      <button
+                        type="button"
+                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                        title="Edit deal title"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setEditTitleDealId(d.id);
+                          setEditTitleValue(d.title || "");
+                          setEditTitleOpen(true);
+                        }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   </div>
                 </Link>

@@ -11,13 +11,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Calendar, ArrowLeft, Phone, PhoneOff, X, Clock, Search, Eye, Pencil, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { onActivityChange } from "@/lib/query-invalidation";
 import { CategoryBadge } from "@/components/category-badge";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import ActivityDetailDrawer from "@/components/activity-detail-drawer";
 
 const PAGE_SIZE = 15;
 
@@ -89,12 +90,12 @@ export default function FollowUps() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [sortBy, setSortBy] = useState("date-desc");
   const [page, setPage] = useState(1);
+  const [drawerActivity, setDrawerActivity] = useState<FollowUpActivity | null>(null);
   const { toast } = useToast();
   const { data: me } = useGetMe();
   const { data: users } = useListUsers();
   const isAdmin = me?.role === "admin";
   const { units: activeUnits } = useActiveUnits();
-  const [, setLocation] = useLocation();
 
   const activeDate = useMemo(() => {
     if (showToday) return todayStr();
@@ -487,7 +488,7 @@ export default function FollowUps() {
                       <TableRow
                         key={activity.id}
                         className={`${isTerminal ? "opacity-60" : ""} cursor-pointer hover:bg-muted/50`}
-                        onClick={() => { if (leadUrl) setLocation(leadUrl); }}
+                        onClick={() => setDrawerActivity(activity)}
                       >
                         <TableCell>
                           <div className="flex flex-col">
@@ -526,7 +527,7 @@ export default function FollowUps() {
                         <TableCell className="hidden xl:table-cell text-sm">{salesPerson}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-0.5 justify-end" onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => { if (leadUrl) setLocation(leadUrl); }} title="View Lead">
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setDrawerActivity(activity)} title="Preview Activity">
                               <Eye className="h-3.5 w-3.5" />
                             </Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => openEditDialog(activity)} title="Edit Follow-up">
@@ -629,6 +630,13 @@ export default function FollowUps() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ActivityDetailDrawer
+        activity={drawerActivity as any}
+        open={drawerActivity !== null}
+        onClose={() => setDrawerActivity(null)}
+        onEdit={(act) => { setDrawerActivity(null); openEditDialog(act as FollowUpActivity); }}
+      />
     </div>
   );
 }
