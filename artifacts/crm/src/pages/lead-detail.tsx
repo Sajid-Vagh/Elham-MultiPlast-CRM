@@ -95,7 +95,6 @@ export default function LeadDetail() {
 
   const [newDealStage, setNewDealStage] = useState("New");
   const [newDealTitle, setNewDealTitle] = useState("");
-  const [newDealLostReason, setNewDealLostReason] = useState("");
   const [newDealProductionUnit, setNewDealProductionUnit] = useState("");
   const [dealDialogOpen, setDealDialogOpen] = useState(false);
 
@@ -365,17 +364,11 @@ export default function LeadDetail() {
 
   const handleCreateDeal = () => {
     if (!newDealStage) return;
-    createDeal.mutate({ data: { contactId, stage: newDealStage === "PI Sent" ? "Qualification" : newDealStage as any, title: newDealTitle || null, salesOwnerId: contact.salesOwnerId, lostReason: newDealStage === "Lost" ? newDealLostReason || null : null, productionUnit: newDealProductionUnit || null } }, {
-      onSuccess: (createdDeal: any) => {
+    createDeal.mutate({ data: { contactId, stage: newDealStage as any, title: newDealTitle || null, salesOwnerId: contact.salesOwnerId, productionUnit: newDealProductionUnit || null } }, {
+      onSuccess: () => {
         onDealChange(queryClient, undefined, contactId);
-        setDealDialogOpen(false); setNewDealTitle(""); setNewDealLostReason(""); setNewDealProductionUnit("");
-        if (newDealStage === "PI Sent") {
-          setPiSentDealId(createdDeal?.id || null);
-          setPiSentDialogOpen(true);
-          toast({ title: "Deal created. Now create a Proforma Invoice for it." });
-        } else {
-          toast({ title: "Deal created" });
-        }
+        setDealDialogOpen(false); setNewDealTitle(""); setNewDealProductionUnit("");
+        toast({ title: "Deal created" });
       },
       onError: () => toast({ title: "Error creating deal", variant: "destructive" }),
     });
@@ -955,10 +948,9 @@ export default function LeadDetail() {
                     <div><Label>Stage</Label>
                       <Select value={newDealStage} onValueChange={setNewDealStage}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>{["New","CL Sent","Price Given","Samples Sent","Samples Received","PI Sent","Won","Lost"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                        <SelectContent>{["New","CL Sent","Price Given","Samples Sent","Samples Received"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
-                    {newDealStage === "Lost" && <div><Label>Lost Reason *</Label><Textarea value={newDealLostReason} onChange={e => setNewDealLostReason(e.target.value)} placeholder="Reason for losing this deal" /></div>}
                     <div><Label>Production Unit</Label>
                       <Select value={newDealProductionUnit || PENDING_UNIT_ASSIGNMENT} onValueChange={(v) => setNewDealProductionUnit(v === PENDING_UNIT_ASSIGNMENT ? "" : v)}>
                         <SelectTrigger><SelectValue placeholder="Select production unit" /></SelectTrigger>
