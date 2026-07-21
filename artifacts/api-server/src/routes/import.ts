@@ -1,11 +1,43 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, usersTable, CATEGORIES } from "@workspace/db";
-import { eq, or, and } from "drizzle-orm";
+import { db, contactsTable, usersTable, CATEGORIES, dealsTable, activitiesTable } from "@workspace/db";
+import { eq, or, and, desc } from "drizzle-orm";
 import { z } from "zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 
 const router: IRouter = Router();
+
+async function getDuplicateMetadata(existingContactId: number) {
+  const [existing] = await db.select().from(contactsTable).where(eq(contactsTable.id, existingContactId)).limit(1);
+  if (!existing) return null;
+  const [owner] = await db.select({ id: usersTable.id, name: usersTable.name, role: usersTable.role, profilePhoto: usersTable.profilePhoto })
+    .from(usersTable).where(eq(usersTable.id, existing.salesOwnerId)).limit(1);
+  const [latestDeal] = await db.select({ stage: dealsTable.stage })
+    .from(dealsTable).where(eq(dealsTable.contactId, existing.id))
+    .orderBy(desc(dealsTable.updatedAt)).limit(1);
+  const [lastActivity] = await db.select({ followUpDate: activitiesTable.followUpDate, createdAt: activitiesTable.createdAt })
+    .from(activitiesTable).where(eq(activitiesTable.contactId, existing.id))
+    .orderBy(desc(activitiesTable.followUpDate)).limit(1);
+  return {
+    duplicate: true,
+    leadId: existing.id,
+    customerName: existing.name,
+    companyName: existing.companyName || null,
+    mobile: existing.mobile,
+    email: existing.email || null,
+    ownerId: existing.salesOwnerId,
+    ownerName: owner?.name || "Unknown",
+    ownerRole: owner?.role || "sales",
+    ownerProfilePhoto: owner?.profilePhoto || null,
+    unit: existing.unit || null,
+    category: existing.category,
+    dealStage: latestDeal?.stage || null,
+    status: existing.customerStatus || "Active",
+    lastFollowUp: lastActivity?.followUpDate || lastActivity?.createdAt || null,
+    createdAt: existing.createdAt,
+    viewUrl: `/leads/${existing.id}`,
+  };
+}
 
 const CATEGORY_VALUES = [...CATEGORIES] as const;
 type Category = (typeof CATEGORY_VALUES)[number];
@@ -65,6 +97,16 @@ router.post("/import/excel", async (req, res) => {
   let skipped = 0;
   let autoNamed = 0;
   const duplicates: string[] = [];
+  const duplicateDetails: Array<{
+    rowNum: number;
+    mobile: string;
+    name: string;
+    existingOwnerId: number;
+    existingOwnerName: string;
+    unit: string | null;
+    category: string;
+    action: "skipped" | "updated";
+  }> = [];
   const errors: string[] = [];
 
   const defaultCategory: Category = category;
@@ -137,6 +179,11 @@ router.post("/import/excel", async (req, res) => {
         if (contactCategory !== "My Client" && existing[0]!.isMyClient) {
           contactCategory = "My Client";
         }
+
+        // Fetch existing owner name for duplicate details
+        const [existingOwner] = await db.select({ id: usersTable.id, name: usersTable.name })
+          .from(usersTable).where(eq(usersTable.id, existing[0]!.salesOwnerId)).limit(1);
+
         try {
           await db.update(contactsTable)
             .set({
@@ -158,6 +205,16 @@ router.post("/import/excel", async (req, res) => {
           })
             .where(eq(contactsTable.id, existing[0]!.id));
           updated++;
+          duplicateDetails.push({
+            rowNum,
+            mobile: contactMobile,
+            name: existing[0]!.name,
+            existingOwnerId: existing[0]!.salesOwnerId,
+            existingOwnerName: existingOwner?.name || "Unknown",
+            unit: existing[0]!.unit || null,
+            category: existing[0]!.category,
+            action: "updated",
+          });
         } catch (err: any) {
           errors.push(`Error updating row ${rowNum} (${contactName}): ${err?.message}`);
           skipped++;
@@ -165,6 +222,21 @@ router.post("/import/excel", async (req, res) => {
       } else {
         duplicates.push(contactMobile);
         skipped++;
+
+        // Fetch existing owner name for duplicate details
+        const [existingOwner] = await db.select({ id: usersTable.id, name: usersTable.name })
+          .from(usersTable).where(eq(usersTable.id, existing[0]!.salesOwnerId)).limit(1);
+
+        duplicateDetails.push({
+          rowNum,
+          mobile: contactMobile,
+          name: existing[0]!.name,
+          existingOwnerId: existing[0]!.salesOwnerId,
+          existingOwnerName: existingOwner?.name || "Unknown",
+          unit: existing[0]!.unit || null,
+          category: existing[0]!.category,
+          action: "skipped",
+        });
       }
       continue;
     }
@@ -205,6 +277,25 @@ router.post("/import/excel", async (req, res) => {
       if (err?.code === "23505") {
         duplicates.push(contactMobile);
         skipped++;
+        // Try to find existing for duplicate details
+        try {
+          const [conflict] = await db.select().from(contactsTable)
+            .where(eq(contactsTable.mobile, contactMobile)).limit(1);
+          if (conflict) {
+            const [conflictOwner] = await db.select({ id: usersTable.id, name: usersTable.name })
+              .from(usersTable).where(eq(usersTable.id, conflict.salesOwnerId)).limit(1);
+            duplicateDetails.push({
+              rowNum,
+              mobile: contactMobile,
+              name: conflict.name,
+              existingOwnerId: conflict.salesOwnerId,
+              existingOwnerName: conflictOwner?.name || "Unknown",
+              unit: conflict.unit || null,
+              category: conflict.category,
+              action: "skipped",
+            });
+          }
+        } catch { /* ignore secondary errors */ }
       } else {
         errors.push(`Error importing row ${rowNum} (${contactName}): ${err?.message}`);
         skipped++;
@@ -220,6 +311,7 @@ router.post("/import/excel", async (req, res) => {
     skipped,
     autoNamed,
     duplicates,
+    duplicateDetails,
     errors,
     importedInto: defaultCategory,
   });
@@ -261,7 +353,8 @@ router.post("/import/indiamart", async (req, res) => {
 
   const existing = await db.select().from(contactsTable).where(eq(contactsTable.mobile, contactMobile));
   if (existing.length > 0) {
-    res.status(409).json({ error: "Contact with this mobile already exists", contact: existing[0] });
+    const meta = await getDuplicateMetadata(existing[0]!.id);
+    res.status(409).json(meta || { error: "Contact with this mobile already exists", duplicate: true });
     return;
   }
 
@@ -309,7 +402,15 @@ router.post("/import/indiamart", async (req, res) => {
     res.status(201).json({ ...contact, notes });
   } catch (err: any) {
     if (err?.code === "23505") {
-      res.status(409).json({ error: "Contact with this mobile or email already exists" });
+      // Try to find existing for rich metadata
+      const [conflict] = await db.select().from(contactsTable)
+        .where(eq(contactsTable.mobile, contactMobile)).limit(1);
+      if (conflict) {
+        const meta = await getDuplicateMetadata(conflict.id);
+        res.status(409).json(meta || { error: "Contact with this mobile or email already exists", duplicate: true });
+      } else {
+        res.status(409).json({ error: "Contact with this mobile or email already exists", duplicate: true });
+      }
       return;
     }
     req.log.error({ err }, "IndiaMart import error");

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useLocation } from "wouter";
 import { useCreateContact, useListUsers, useGetMe } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
@@ -8,7 +9,7 @@ import { Link } from "wouter";
 import LeadForm from "@/components/lead-form";
 import type { LeadFormData } from "@/components/lead-form";
 import { onContactChange } from "@/lib/query-invalidation";
-import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import { DuplicateWarningDialog, type DuplicateLeadInfo } from "@/components/duplicate-warning-dialog";
 
 export default function LeadsNew() {
   const [, setLocation] = useLocation();
@@ -17,6 +18,9 @@ export default function LeadsNew() {
   const { data: users } = useListUsers();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  const [duplicateData, setDuplicateData] = useState<DuplicateLeadInfo | null>(null);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
 
   const onSubmit = (data: LeadFormData) => {
     const contactInput = {
@@ -32,22 +36,43 @@ export default function LeadsNew() {
       industry: data.industry || null,
       tags: data.tags || null,
     };
-    console.log("[DEBUG] leads-new onSubmit - unit being sent:", contactInput.unit);
     createContact.mutate({
       data: contactInput,
     }, {
       onSuccess: (contact) => {
-        console.log("[DEBUG] leads-new onSuccess - contact.unit from response:", contact.unit);
         onContactChange(queryClient);
         toast({ title: "Lead created successfully" });
         setLocation(`/leads/${contact.id}`);
       },
       onError: (err: any) => {
-        const isDuplicate = err?.status === 409 || err?.data?.error?.toLowerCase().includes("already exists");
-        if (isDuplicate) {
-          toast({ title: "Duplicate", description: "This mobile or email already exists in CRM", variant: "destructive" });
+        const isDuplicate = err?.status === 409 && err?.data?.duplicate;
+        if (isDuplicate && err?.data?.leadId) {
+          setDuplicateData({
+            duplicate: true,
+            leadId: err.data.leadId,
+            customerName: err.data.customerName || "Unknown",
+            companyName: err.data.companyName || null,
+            mobile: err.data.mobile || data.mobile,
+            email: err.data.email || null,
+            ownerId: err.data.ownerId || 0,
+            ownerName: err.data.ownerName || "Unknown",
+            ownerRole: err.data.ownerRole || "sales",
+            ownerProfilePhoto: err.data.ownerProfilePhoto || null,
+            unit: err.data.unit || null,
+            category: err.data.category || "Regular Follow up",
+            dealStage: err.data.dealStage || null,
+            status: err.data.status || "Active",
+            lastFollowUp: err.data.lastFollowUp || null,
+            createdAt: err.data.createdAt || null,
+            viewUrl: err.data.viewUrl || null,
+          });
+          setDuplicateOpen(true);
         } else {
-          toast({ title: "Error", description: err?.data?.error || "Failed to create lead", variant: "destructive" });
+          toast({
+            title: "Duplicate",
+            description: err?.data?.error || "This mobile or email already exists in CRM",
+            variant: "destructive",
+          });
         }
       },
     });
@@ -72,6 +97,13 @@ export default function LeadsNew() {
         users={users}
         me={me}
         enableDuplicateDetection
+      />
+
+      <DuplicateWarningDialog
+        open={duplicateOpen}
+        onOpenChange={setDuplicateOpen}
+        data={duplicateData}
+        userRole={me?.role}
       />
     </div>
   );

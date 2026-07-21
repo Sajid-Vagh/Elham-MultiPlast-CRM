@@ -1,20 +1,17 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useListContacts, getListContactsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { AlertTriangle, ExternalLink } from "lucide-react";
-import { Link } from "wouter";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { UserAvatar } from "@/components/user-avatar";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import { DuplicateWarningDialog, type DuplicateLeadInfo } from "@/components/duplicate-warning-dialog";
 
 const schema = z.object({
   name: z.string().min(1, "Required"),
@@ -61,25 +58,56 @@ export default function LeadForm({
   const canAssign = me?.role === "admin";
   const { units: activeUnits } = useActiveUnits();
 
-  const [reEnquiryOpen, setReEnquiryOpen] = useState(false);
-  const [blurCheck, setBlurCheck] = useState("");
-  const [popupContact, setPopupContact] = useState<any>(null);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [duplicateData, setDuplicateData] = useState<DuplicateLeadInfo | null>(null);
+  const [checkingDuplicate, setCheckingDuplicate] = useState(false);
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastCheckedRef = useRef("");
 
-  const { data: blurContacts } = useListContacts(
-    { search: blurCheck },
-    { query: { enabled: !!blurCheck && enableDuplicateDetection, queryKey: getListContactsQueryKey({ search: blurCheck }) } }
-  );
+  const checkDuplicate = useCallback(async (mobile?: string, email?: string) => {
+    const key = `${mobile || ""}|${email || ""}`;
+    if (!mobile && !email) return;
+    if (key === lastCheckedRef.current) return;
+    lastCheckedRef.current = key;
 
-  const prevBlurCheck = useRef("");
-  useEffect(() => {
-    if (!blurCheck || !blurContacts || blurCheck === prevBlurCheck.current) return;
-    const exact = blurContacts.find(c => c.mobile === blurCheck || c.email === blurCheck);
-    if (exact) {
-      prevBlurCheck.current = blurCheck;
-      setPopupContact(exact);
-      setReEnquiryOpen(true);
+    setCheckingDuplicate(true);
+    try {
+      const res = await fetch("/api/contacts/check-duplicate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mobile, email }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.duplicate) {
+          setDuplicateData(data);
+          setDuplicateOpen(true);
+        }
+      }
+    } catch {
+      // Silently fail — duplicate check is a convenience, not a hard block
+    } finally {
+      setCheckingDuplicate(false);
     }
-  }, [blurContacts, blurCheck]);
+  }, []);
+
+  const handleMobileBlur = useCallback((val: string) => {
+    if (!enableDuplicateDetection) return;
+    const trimmed = val.trim();
+    if (trimmed.length >= 6) {
+      if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = setTimeout(() => checkDuplicate(trimmed, undefined), 300);
+    }
+  }, [enableDuplicateDetection, checkDuplicate]);
+
+  const handleEmailBlur = useCallback((val: string) => {
+    if (!enableDuplicateDetection) return;
+    const trimmed = val.trim();
+    if (trimmed.includes("@") && trimmed.includes(".")) {
+      if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = setTimeout(() => checkDuplicate(undefined, trimmed), 300);
+    }
+  }, [enableDuplicateDetection, checkDuplicate]);
 
   const form = useForm<LeadFormData>({
     resolver: zodResolver(schema),
@@ -106,18 +134,15 @@ export default function LeadForm({
     }
   }, [me, canAssign, form, initialData]);
 
-  const handleSubmit = (data: LeadFormData) => {
-    // Convert "To Be Assigned" to null for DB storage
-    const transformed = { ...data, unit: data.unit === PENDING_UNIT_ASSIGNMENT ? "" : data.unit };
-    console.log("[DEBUG] LeadForm handleSubmit - data.unit:", data.unit, "transformed.unit:", transformed.unit);
-    onSubmit(transformed);
-  };
+  useEffect(() => {
+    return () => {
+      if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+    };
+  }, []);
 
-  const handleClosePopup = () => {
-    setReEnquiryOpen(false);
-    setBlurCheck("");
-    prevBlurCheck.current = "";
-    setPopupContact(null);
+  const handleSubmit = (data: LeadFormData) => {
+    const transformed = { ...data, unit: data.unit === PENDING_UNIT_ASSIGNMENT ? "" : data.unit };
+    onSubmit(transformed);
   };
 
   return (
@@ -144,12 +169,13 @@ export default function LeadForm({
                       data-no-cap="1"
                       onBlur={(e) => {
                         field.onBlur();
-                        if (!enableDuplicateDetection) return;
-                        const val = e.target.value.trim();
-                        if (val.length >= 6) setBlurCheck(val);
+                        handleMobileBlur(e.target.value);
                       }}
                     />
                   </FormControl>
+                  {checkingDuplicate && (
+                    <p className="text-xs text-muted-foreground">Checking for duplicates...</p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )} />
@@ -170,9 +196,7 @@ export default function LeadForm({
                       data-no-cap="1"
                       onBlur={(e) => {
                         field.onBlur();
-                        if (!enableDuplicateDetection) return;
-                        const val = e.target.value.trim();
-                        if (val.includes("@") && val.includes(".")) setBlurCheck(val);
+                        handleEmailBlur(e.target.value);
                       }}
                     />
                   </FormControl>
@@ -307,61 +331,12 @@ export default function LeadForm({
         </form>
       </Form>
 
-      <Dialog open={reEnquiryOpen} onOpenChange={(open) => { if (!open) handleClosePopup(); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-amber-700">
-              <AlertTriangle className="h-5 w-5" />
-              Already in CRM
-            </DialogTitle>
-            <DialogDescription>
-              This {popupContact?.email === blurCheck ? "email" : "mobile number"} is already assigned to an existing lead in the CRM.
-            </DialogDescription>
-          </DialogHeader>
-          {popupContact ? (
-            <div className="bg-amber-50 border border-amber-200 rounded-md p-4 space-y-3">
-              <div className="flex items-center gap-3">
-                {popupContact.salesOwner && (
-                  <UserAvatar profilePhoto={popupContact.salesOwner.profilePhoto} name={popupContact.salesOwner.name} className="w-10 h-10 shrink-0" />
-                )}
-                <div>
-                  <p className="font-semibold text-base">{popupContact.name}</p>
-                  {popupContact.companyName && <p className="text-sm text-muted-foreground">{popupContact.companyName}</p>}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-sm pt-1">
-                <div><span className="text-muted-foreground">Mobile: </span><span className="font-medium">{popupContact.mobile}</span></div>
-                {popupContact.email && <div><span className="text-muted-foreground">Email: </span><span className="font-medium">{popupContact.email}</span></div>}
-                {popupContact.city && <div><span className="text-muted-foreground">City: </span>{popupContact.city}</div>}
-                {popupContact.salesOwner && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-muted-foreground">Assigned to: </span>
-                    <UserAvatar profilePhoto={popupContact.salesOwner.profilePhoto} name={popupContact.salesOwner.name} className="w-2.5 h-2.5" />
-                    <span className="font-medium text-primary">{popupContact.salesOwner.name}</span>
-                  </div>
-                )}
-                {popupContact.industry && <div><span className="text-muted-foreground">Industry: </span>{popupContact.industry}</div>}
-              </div>
-            </div>
-          ) : (
-            <div className="bg-amber-50 border border-amber-200 rounded-md p-4 text-sm text-amber-700">
-              <strong>{blurCheck}</strong> already exists in the CRM.
-            </div>
-          )}
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={handleClosePopup}>
-              Use Different Number
-            </Button>
-            {popupContact && (
-              <Link href={`/leads/${popupContact.id}`}>
-                <Button className="gap-2" onClick={handleClosePopup}>
-                  <ExternalLink className="h-4 w-4" /> Open Existing Lead
-                </Button>
-              </Link>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DuplicateWarningDialog
+        open={duplicateOpen}
+        onOpenChange={setDuplicateOpen}
+        data={duplicateData}
+        userRole={me?.role}
+      />
     </>
   );
 }

@@ -157,10 +157,190 @@ router.post("/contacts", async (req, res) => {
     res.status(201).json(await withOwner(contact!));
   } catch (err: any) {
     if (err?.code === "23505") {
-      res.status(409).json({ error: "Mobile or email already exists" });
+      // Try to find the existing contact for rich metadata
+      const existingContact = await db
+        .select()
+        .from(contactsTable)
+        .where(or(
+          eq(contactsTable.mobile, values.mobile),
+          ...(values.email ? [eq(contactsTable.email, values.email)] : []),
+        ))
+        .limit(1);
+
+      if (existingContact.length > 0) {
+        const existing = existingContact[0]!;
+        const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, existing.salesOwnerId));
+        const { passwordHash: _, ...safeOwner } = owner ?? {};
+        const [latestDeal] = await db.select().from(dealsTable)
+          .where(eq(dealsTable.contactId, existing.id))
+          .orderBy(desc(dealsTable.updatedAt)).limit(1);
+        const [lastActivity] = await db
+          .select({ followUpDate: activitiesTable.followUpDate, createdAt: activitiesTable.createdAt })
+          .from(activitiesTable)
+          .where(eq(activitiesTable.contactId, existing.id))
+          .orderBy(desc(activitiesTable.followUpDate)).limit(1);
+
+        res.status(409).json({
+          error: "Mobile or email already exists",
+          duplicate: true,
+          leadId: existing.id,
+          customerName: existing.name,
+          companyName: existing.companyName || null,
+          mobile: existing.mobile,
+          email: existing.email || null,
+          ownerId: existing.salesOwnerId,
+          ownerName: safeOwner?.name || "Unknown",
+          ownerRole: safeOwner?.role || "sales",
+          ownerProfilePhoto: safeOwner?.profilePhoto || null,
+          unit: existing.unit || null,
+          category: existing.category,
+          dealStage: latestDeal?.stage || null,
+          status: existing.customerStatus || "Active",
+          lastFollowUp: lastActivity?.followUpDate || lastActivity?.createdAt || null,
+          createdAt: existing.createdAt,
+          viewUrl: `/leads/${existing.id}`,
+        });
+      } else {
+        res.status(409).json({ error: "Mobile or email already exists", duplicate: true });
+      }
       return;
     }
     req.log.error({ err }, "Create contact error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /contacts/check-duplicate — Check if a mobile/email already exists, return rich metadata
+router.post("/contacts/check-duplicate", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const { mobile, email } = req.body as { mobile?: string; email?: string };
+    if (!mobile && !email) {
+      res.json({ duplicate: false });
+      return;
+    }
+
+    const conditions: SQL[] = [];
+    if (mobile?.trim()) {
+      conditions.push(eq(contactsTable.mobile, mobile.trim()));
+    }
+    if (email?.trim()) {
+      conditions.push(eq(contactsTable.email, email.trim()));
+    }
+    if (conditions.length === 0) {
+      res.json({ duplicate: false });
+      return;
+    }
+
+    const [existing] = await db
+      .select()
+      .from(contactsTable)
+      .where(or(...conditions))
+      .limit(1);
+
+    if (!existing) {
+      res.json({ duplicate: false });
+      return;
+    }
+
+    // Fetch owner
+    const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, existing.salesOwnerId));
+    const { passwordHash: _, ...safeOwner } = owner ?? {};
+
+    // Fetch latest deal for stage info
+    const [latestDeal] = await db
+      .select()
+      .from(dealsTable)
+      .where(eq(dealsTable.contactId, existing.id))
+      .orderBy(desc(dealsTable.updatedAt))
+      .limit(1);
+
+    // Fetch last follow-up activity
+    const [lastActivity] = await db
+      .select({ followUpDate: activitiesTable.followUpDate, createdAt: activitiesTable.createdAt })
+      .from(activitiesTable)
+      .where(eq(activitiesTable.contactId, existing.id))
+      .orderBy(desc(activitiesTable.followUpDate))
+      .limit(1);
+
+    const lastFollowUp = lastActivity?.followUpDate || lastActivity?.createdAt || null;
+
+    res.json({
+      duplicate: true,
+      leadId: existing.id,
+      customerName: existing.name,
+      companyName: existing.companyName || null,
+      mobile: existing.mobile,
+      email: existing.email || null,
+      ownerId: existing.salesOwnerId,
+      ownerName: safeOwner?.name || "Unknown",
+      ownerRole: safeOwner?.role || "sales",
+      ownerProfilePhoto: safeOwner?.profilePhoto || null,
+      unit: existing.unit || null,
+      category: existing.category,
+      dealStage: latestDeal?.stage || null,
+      status: existing.customerStatus || "Active",
+      lastFollowUp,
+      createdAt: existing.createdAt,
+      viewUrl: `/leads/${existing.id}`,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Check duplicate error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /contacts/:id/request-transfer — Request transfer of a lead to another owner
+router.post("/contacts/:id/request-transfer", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const id = Number(req.params.id);
+    if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, id));
+    if (!contact) { res.status(404).json({ error: "Lead not found" }); return; }
+
+    const [currentOwner] = await db.select({ id: usersTable.id, name: usersTable.name })
+      .from(usersTable).where(eq(usersTable.id, contact.salesOwnerId)).limit(1);
+
+    const requestTime = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+    // Notify current owner
+    if (currentOwner && currentOwner.id !== user.id) {
+      await createNotification({
+        userId: currentOwner.id,
+        type: "lead_transfer_requested",
+        title: "Transfer Requested",
+        message: `Lead "${contact.name}" (${contact.mobile})\nRequested By: ${user.name}\nDate & Time: ${requestTime}\n\nPlease reassign or reject this request.`,
+        link: `/leads/${contact.id}`,
+        relatedId: contact.id,
+        relatedType: "contact",
+      });
+    }
+
+    // Notify all admins
+    const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
+    for (const admin of admins) {
+      if (admin.id !== user.id && admin.id !== contact.salesOwnerId) {
+        await createNotification({
+          userId: admin.id,
+          type: "lead_transfer_requested",
+          title: "Transfer Requested",
+          message: `Lead "${contact.name}" (${contact.mobile})\nCurrent Owner: ${currentOwner?.name || "Unknown"}\nRequested By: ${user.name}\nDate & Time: ${requestTime}`,
+          link: `/leads/${contact.id}`,
+          relatedId: contact.id,
+          relatedType: "contact",
+        });
+      }
+    }
+
+    res.json({ success: true, message: "Transfer request sent to current owner and admins" });
+  } catch (err) {
+    req.log.error({ err }, "Request transfer error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

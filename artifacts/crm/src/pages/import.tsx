@@ -10,11 +10,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { onContactChange } from "@/lib/query-invalidation";
-import { CheckCircle, AlertCircle, Upload, FileSpreadsheet, X, Sparkles, ClipboardPaste } from "lucide-react";
+import { CheckCircle, AlertCircle, Upload, FileSpreadsheet, X, Sparkles, ClipboardPaste, Download, User, MapPin, Tag } from "lucide-react";
 import { UserAvatar } from "@/components/user-avatar";
 import { Link } from "wouter";
+import { DuplicateWarningDialog, type DuplicateLeadInfo } from "@/components/duplicate-warning-dialog";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
@@ -554,6 +556,8 @@ export default function ImportPage() {
   const [smartPasteText, setSmartPasteText] = useState("");
   const [parsePreview, setParsePreview] = useState<Partial<ParsedLead> | null>(null);
   const [imResult, setImResult] = useState<any>(null);
+  const [imDuplicateData, setImDuplicateData] = useState<DuplicateLeadInfo | null>(null);
+  const [imDuplicateOpen, setImDuplicateOpen] = useState(false);
 
   const imF = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setIm(p => ({ ...p, [k]: e.target.value }));
@@ -608,8 +612,31 @@ export default function ImportPage() {
         showBrowserNotification("New Enquiry Imported", `${im.clientName}${im.city ? ` from ${im.city}` : ""} — IndiaMart`, "crm-import");
       },
       onError: (e: any) => {
-        const isDup = e?.status === 409;
-        setImResult({ success: false, error: e?.data?.error || "Failed", isDup });
+        const isDup = e?.status === 409 && e?.data?.duplicate;
+        if (isDup && e?.data?.leadId) {
+          setImDuplicateData({
+            duplicate: true,
+            leadId: e.data.leadId,
+            customerName: e.data.customerName || "Unknown",
+            companyName: e.data.companyName || null,
+            mobile: e.data.mobile || im.clientMobile,
+            email: e.data.email || null,
+            ownerId: e.data.ownerId || 0,
+            ownerName: e.data.ownerName || "Unknown",
+            ownerRole: e.data.ownerRole || "sales",
+            ownerProfilePhoto: e.data.ownerProfilePhoto || null,
+            unit: e.data.unit || null,
+            category: e.data.category || "Regular Follow up",
+            dealStage: e.data.dealStage || null,
+            status: e.data.status || "Active",
+            lastFollowUp: e.data.lastFollowUp || null,
+            createdAt: e.data.createdAt || null,
+            viewUrl: e.data.viewUrl || null,
+          });
+          setImDuplicateOpen(true);
+        } else {
+          setImResult({ success: false, error: e?.data?.error || "Failed", isDup });
+        }
       },
     });
   };
@@ -632,6 +659,32 @@ export default function ImportPage() {
   const [useCategoryFromFile, setUseCategoryFromFile] = useState(false);
   const [duplicateAction, setDuplicateAction] = useState<"skip" | "update">("skip");
   const [showImportConfirm, setShowImportConfirm] = useState(false);
+  const [duplicateDetailsOpen, setDuplicateDetailsOpen] = useState(false);
+  const [activeDuplicateResult, setActiveDuplicateResult] = useState<any>(null);
+
+  const exportDuplicateDetails = (details: any[]) => {
+    if (!details?.length) return;
+    const headers = ["Row", "Mobile", "Customer Name", "Existing Owner", "Unit", "Category", "Action"];
+    const csvRows = [headers.join(",")];
+    for (const d of details) {
+      csvRows.push([
+        d.rowNum,
+        `"${d.mobile}"`,
+        `"${(d.name || "").replace(/"/g, '""')}"`,
+        `"${(d.existingOwnerName || "").replace(/"/g, '""')}"`,
+        `"${(d.unit || "").replace(/"/g, '""')}"`,
+        `"${(d.category || "").replace(/"/g, '""')}"`,
+        d.action,
+      ].join(","));
+    }
+    const blob = new Blob(["\uFEFF" + csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `import-duplicates-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -921,6 +974,13 @@ export default function ImportPage() {
           </Card>
         </TabsContent>
 
+        <DuplicateWarningDialog
+          open={imDuplicateOpen}
+          onOpenChange={setImDuplicateOpen}
+          data={imDuplicateData}
+          userRole={me?.role}
+        />
+
         {/* ── EXCEL UPLOAD ── */}
         <TabsContent value="excel-upload">
           <Card>
@@ -1106,18 +1166,70 @@ export default function ImportPage() {
               )}
 
               {excelResult && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg space-y-1 text-sm">
-                  <p className="font-medium text-green-800 flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4" /> Import complete
+                <div className={`p-3 rounded-lg space-y-1 text-sm ${(excelResult.imported > 0) ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}>
+                  <p className={`font-medium flex items-center gap-2 ${(excelResult.imported > 0) ? "text-green-800" : "text-amber-800"}`}>
+                    <CheckCircle className="h-4 w-4" />
+                    {excelResult.imported > 0 ? "Import Completed" : "Import Finished"}
                   </p>
-                  <p className="text-green-700">✓ {excelResult.imported} imported &nbsp;·&nbsp; {(excelResult as any).autoNamed > 0 ? `${(excelResult as any).autoNamed} auto-named · ` : ""}{(excelResult as any).updated > 0 ? `${(excelResult as any).updated} updated · ` : ""}{excelResult.skipped} skipped</p>
+                  <p className={`${(excelResult.imported > 0) ? "text-green-700" : "text-amber-700"}`}>
+                    {excelResult.imported > 0 && <span>Imported: <strong>{excelResult.imported}</strong></span>}
+                    {(excelResult as any).updated > 0 && <span> · Updated: <strong>{(excelResult as any).updated}</strong></span>}
+                    {(excelResult as any).autoNamed > 0 && <span> · Auto-named: <strong>{(excelResult as any).autoNamed}</strong></span>}
+                    {excelResult.duplicates?.length > 0 && <span> · Duplicates: <strong className="text-amber-700">{excelResult.duplicates.length}</strong></span>}
+                    {excelResult.skipped > 0 && !excelResult.duplicates?.length && <span> · Skipped: <strong>{excelResult.skipped}</strong></span>}
+                  </p>
                   {unit && <p className="text-green-600 text-xs">Unit: {unit}</p>}
                   <p className="text-green-600 text-xs">Imported Into: {(excelResult as any).importedInto}</p>
-                  {excelResult.duplicates?.length > 0 && (
-                    <p className="text-amber-700 text-xs">Duplicates: {excelResult.duplicates.length} ({excelResult.duplicates.slice(0, 5).join(", ")}{excelResult.duplicates.length > 5 ? "..." : ""})</p>
+
+                  {/* Detailed Duplicate Summary */}
+                  {(excelResult as any).duplicateDetails?.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-amber-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="font-medium text-amber-800 text-sm">
+                          Duplicate Details ({(excelResult as any).duplicateDetails.length} rows)
+                        </p>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-xs border-amber-300 text-amber-700 hover:bg-amber-100"
+                            onClick={() => exportDuplicateDetails((excelResult as any).duplicateDetails)}
+                          >
+                            <Download className="h-3 w-3 mr-1" />
+                            Export CSV
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-xs text-amber-700 hover:bg-amber-100"
+                            onClick={() => { setActiveDuplicateResult(excelResult); setDuplicateDetailsOpen(true); }}
+                          >
+                            View Details
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                        {(excelResult as any).duplicateDetails.slice(0, 5).map((d: any, i: number) => (
+                          <div key={i} className="flex items-center gap-2 text-xs bg-white/60 rounded-md px-2.5 py-1.5 border border-amber-200">
+                            <span className="font-mono text-amber-600 font-medium w-8 shrink-0">Row {d.rowNum}</span>
+                            <span className="font-medium text-foreground truncate">{d.mobile}</span>
+                            <span className="text-muted-foreground">·</span>
+                            <span className="text-muted-foreground truncate">{d.existingOwnerName}</span>
+                            {d.unit && <><span className="text-muted-foreground">·</span><span className="text-muted-foreground">{d.unit}</span></>}
+                            <span className="ml-auto text-amber-600 font-medium uppercase text-[10px]">{d.action}</span>
+                          </div>
+                        ))}
+                        {(excelResult as any).duplicateDetails.length > 5 && (
+                          <p className="text-xs text-amber-500 pl-2">
+                            +{(excelResult as any).duplicateDetails.length - 5} more duplicates
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   )}
+
                   {excelResult.errors?.length > 0 && (
-                    <p className="text-red-600 text-xs">Failed: {excelResult.errors.length} — {excelResult.errors.slice(0, 3).join(" · ")}</p>
+                    <p className="text-red-600 text-xs mt-1">Failed: {excelResult.errors.length} — {excelResult.errors.slice(0, 3).join(" · ")}</p>
                   )}
                 </div>
               )}
@@ -1180,13 +1292,66 @@ export default function ImportPage() {
               </div>
 
               {pasteResult && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
-                  <p className="font-medium text-green-800 flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4" /> Import complete
+                <div className={`p-3 rounded-lg text-sm ${(pasteResult.imported > 0) ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}>
+                  <p className={`font-medium flex items-center gap-2 ${(pasteResult.imported > 0) ? "text-green-800" : "text-amber-800"}`}>
+                    <CheckCircle className="h-4 w-4" />
+                    {pasteResult.imported > 0 ? "Import Completed" : "Import Finished"}
                   </p>
-                  <p className="text-green-700 mt-1">✓ {pasteResult.imported} imported &nbsp;·&nbsp; {(pasteResult as any).autoNamed > 0 ? `${(pasteResult as any).autoNamed} auto-named · ` : ""}{pasteResult.skipped} skipped</p>
+                  <p className={`${(pasteResult.imported > 0) ? "text-green-700" : "text-amber-700"} mt-1`}>
+                    {pasteResult.imported > 0 && <span>Imported: <strong>{pasteResult.imported}</strong></span>}
+                    {(pasteResult as any).autoNamed > 0 && <span> · Auto-named: <strong>{(pasteResult as any).autoNamed}</strong></span>}
+                    {pasteResult.duplicates?.length > 0 && <span> · Duplicates: <strong className="text-amber-700">{pasteResult.duplicates.length}</strong></span>}
+                    {pasteResult.skipped > 0 && !pasteResult.duplicates?.length && <span> · Skipped: <strong>{pasteResult.skipped}</strong></span>}
+                  </p>
                   {unit && <p className="text-green-600 text-xs mt-0.5">Unit: {unit}</p>}
                   <p className="text-green-600 text-xs">Imported Into: {(pasteResult as any).importedInto}</p>
+
+                  {(pasteResult as any).duplicateDetails?.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-amber-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="font-medium text-amber-800 text-sm">
+                          Duplicate Details ({(pasteResult as any).duplicateDetails.length} rows)
+                        </p>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-xs border-amber-300 text-amber-700 hover:bg-amber-100"
+                            onClick={() => exportDuplicateDetails((pasteResult as any).duplicateDetails)}
+                          >
+                            <Download className="h-3 w-3 mr-1" />
+                            Export CSV
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-xs text-amber-700 hover:bg-amber-100"
+                            onClick={() => { setActiveDuplicateResult(pasteResult); setDuplicateDetailsOpen(true); }}
+                          >
+                            View Details
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                        {(pasteResult as any).duplicateDetails.slice(0, 5).map((d: any, i: number) => (
+                          <div key={i} className="flex items-center gap-2 text-xs bg-white/60 rounded-md px-2.5 py-1.5 border border-amber-200">
+                            <span className="font-mono text-amber-600 font-medium w-8 shrink-0">Row {d.rowNum}</span>
+                            <span className="font-medium text-foreground truncate">{d.mobile}</span>
+                            <span className="text-muted-foreground">·</span>
+                            <span className="text-muted-foreground truncate">{d.existingOwnerName}</span>
+                            {d.unit && <><span className="text-muted-foreground">·</span><span className="text-muted-foreground">{d.unit}</span></>}
+                            <span className="ml-auto text-amber-600 font-medium uppercase text-[10px]">{d.action}</span>
+                          </div>
+                        ))}
+                        {(pasteResult as any).duplicateDetails.length > 5 && (
+                          <p className="text-xs text-amber-500 pl-2">
+                            +{(pasteResult as any).duplicateDetails.length - 5} more duplicates
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {pasteResult.errors?.length > 0 && (
                     <p className="text-red-600 text-xs mt-0.5">Failed: {pasteResult.errors.slice(0, 3).join(" · ")}</p>
                   )}
@@ -1196,6 +1361,74 @@ export default function ImportPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Duplicate Details Dialog */}
+      <Dialog open={duplicateDetailsOpen} onOpenChange={setDuplicateDetailsOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-800">
+              <AlertCircle className="h-5 w-5 text-amber-600" />
+              Duplicate Rows — Import Summary
+            </DialogTitle>
+            <DialogDescription>
+              {activeDuplicateResult?.duplicateDetails?.length || 0} duplicate row(s) were found and skipped during import.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+            {activeDuplicateResult?.duplicateDetails?.map((d: any, i: number) => (
+              <div key={i} className="border border-amber-200 rounded-lg bg-amber-50/50 p-3 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
+                    Row {d.rowNum}
+                  </span>
+                  <span className={`text-xs font-medium uppercase px-2 py-0.5 rounded ${
+                    d.action === "updated" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600"
+                  }`}>
+                    {d.action}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                  <span className="text-muted-foreground flex items-center gap-1">
+                    <User className="h-3 w-3" /> Customer:
+                  </span>
+                  <span className="font-medium">{d.name}</span>
+                  <span className="text-muted-foreground">Mobile:</span>
+                  <span className="font-medium font-mono">{d.mobile}</span>
+                  <span className="text-muted-foreground flex items-center gap-1">
+                    <User className="h-3 w-3" /> Existing Owner:
+                  </span>
+                  <span className="font-medium">{d.existingOwnerName}</span>
+                  <span className="text-muted-foreground flex items-center gap-1">
+                    <MapPin className="h-3 w-3" /> Unit:
+                  </span>
+                  <span className="font-medium">{d.unit || "-"}</span>
+                  <span className="text-muted-foreground flex items-center gap-1">
+                    <Tag className="h-3 w-3" /> Category:
+                  </span>
+                  <span className="font-medium">{d.category}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0 border-t pt-3 mt-2">
+            {activeDuplicateResult?.duplicateDetails?.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => exportDuplicateDetails(activeDuplicateResult.duplicateDetails)}
+              >
+                <Download className="h-4 w-4 mr-1" />
+                Export All as CSV
+              </Button>
+            )}
+            <Button size="sm" onClick={() => setDuplicateDetailsOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
