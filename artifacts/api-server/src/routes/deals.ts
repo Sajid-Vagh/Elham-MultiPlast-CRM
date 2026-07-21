@@ -216,7 +216,54 @@ router.get("/deals", async (req, res) => {
       resultDeals = resultDeals.filter(d => allowedContactIds.has(d.contactId));
     }
 
-    res.json(resultDeals.map(d => ({ ...d, contact: contactMap.get(d.contactId) ?? null, salesOwner: d.salesOwnerId ? userMap.get(d.salesOwnerId) ?? null : null })));
+    // Fetch deal products for all result deals
+    const dealIds = resultDeals.map(d => d.id);
+    let dealProductRows: { dealId: number; productId: number; quantity: string; productName: string }[] = [];
+    if (dealIds.length > 0) {
+      dealProductRows = await db
+        .select({
+          dealId: dealProductsTable.dealId,
+          productId: dealProductsTable.productId,
+          quantity: dealProductsTable.quantity,
+          productName: productsTable.name,
+        })
+        .from(dealProductsTable)
+        .innerJoin(productsTable, eq(dealProductsTable.productId, productsTable.id))
+        .where(inArray(dealProductsTable.dealId, dealIds));
+    }
+    const dealProductsMap = new Map<number, typeof dealProductRows>();
+    for (const row of dealProductRows) {
+      const arr = dealProductsMap.get(row.dealId) || [];
+      arr.push(row);
+      dealProductsMap.set(row.dealId, arr);
+    }
+
+    // Fetch PI counts per deal for badge logic
+    let piCounts: { dealId: number | null; count: number; maxVersion: number; latestStatus: string }[] = [];
+    if (dealIds.length > 0) {
+      piCounts = await db
+        .select({
+          dealId: proformaInvoicesTable.dealId,
+          count: sql<number>`count(*)::int`,
+          maxVersion: sql<number>`max(${proformaInvoicesTable.version})`,
+          latestStatus: sql<string>`(array_agg(${proformaInvoicesTable.status} ORDER BY ${proformaInvoicesTable.version} DESC))[1]`,
+        })
+        .from(proformaInvoicesTable)
+        .where(and(
+          inArray(proformaInvoicesTable.dealId, dealIds),
+          eq(proformaInvoicesTable.isDeleted, false),
+        ))
+        .groupBy(proformaInvoicesTable.dealId);
+    }
+    const piCountMap = new Map(piCounts.filter(p => p.dealId != null).map(p => [p.dealId!, p]));
+
+    res.json(resultDeals.map(d => ({
+      ...d,
+      contact: contactMap.get(d.contactId) ?? null,
+      salesOwner: d.salesOwnerId ? userMap.get(d.salesOwnerId) ?? null : null,
+      dealProducts: dealProductsMap.get(d.id) || [],
+      piSummary: piCountMap.get(d.id) || null,
+    })));
   } catch (err) {
     req.log.error({ err }, "List deals error");
     res.status(500).json({ error: "Internal server error" });

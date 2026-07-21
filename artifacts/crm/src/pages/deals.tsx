@@ -5,6 +5,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useListDeals, useListUsers, useGetMe, useUpdateDeal } from "@workspace/api-client-react";
 import type { Deal, DealStage } from "@workspace/api-client-react";
 import { useSearch, useLocation } from "wouter";
+
+// Extended deal type with backend-enriched fields
+interface DealWithExtras extends Deal {
+  dealProducts?: { dealId: number; productId: number; quantity: string; productName: string }[];
+  piSummary?: { dealId: number; count: number; maxVersion: number; latestStatus: string } | null;
+}
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -12,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { X, GripVertical, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { X, GripVertical, Loader2 } from "lucide-react";
 import { CategoryBadge } from "@/components/category-badge";
 import { useToast } from "@/hooks/use-toast";
 import { DEAL_STAGES } from "@/lib/deal-stages";
@@ -20,7 +26,6 @@ import DealDetailDrawer from "@/components/deal-detail-drawer";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
 import { DealWonCelebration } from "@/components/deal-won-celebration";
 import { onDealChange, onProductionChange } from "@/lib/query-invalidation";
-import { UserAvatar } from "@/components/user-avatar";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { PiSentDialog } from "@/components/pi-sent-dialog";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
@@ -28,18 +33,6 @@ import { useActiveUnits } from "@/lib/use-active-units";
 import { PENDING_UNIT_ASSIGNMENT, isPendingUnit } from "@/lib/unit-constants";
 import { VoiceRecorder } from "@/components/voice-recorder";
 import { Mic } from "lucide-react";
-
-const PI_STATUS_COLORS: Record<string, string> = {
-  "No PI": "bg-gray-100 text-gray-500 border-gray-200",
-  "Draft": "bg-slate-100 text-slate-600 border-slate-200",
-  "Sent": "bg-blue-100 text-blue-600 border-blue-200",
-  "Viewed": "bg-cyan-100 text-cyan-600 border-cyan-200",
-  "Approved": "bg-green-100 text-green-600 border-green-200",
-  "Rejected": "bg-red-100 text-red-600 border-red-200",
-  "Expired": "bg-yellow-100 text-yellow-600 border-yellow-200",
-  "Converted to Order": "bg-purple-100 text-purple-600 border-purple-200",
-  "Converted to Production": "bg-purple-100 text-purple-600 border-purple-200",
-};
 
 function DraggableCard({ deal, children }: { deal: Deal; children: ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -57,6 +50,12 @@ function DraggableCard({ deal, children }: { deal: Deal; children: ReactNode }) 
   );
 }
 
+function getDealTitle(deal: Deal, dealProducts?: { productName: string }[]): string {
+  if (deal.title?.trim()) return deal.title.trim();
+  if (dealProducts?.[0]?.productName) return dealProducts[0].productName;
+  return "Untitled Deal";
+}
+
 function DroppableColumn({ stage, children }: { stage: string; children: ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `stage-${stage}`,
@@ -71,50 +70,6 @@ function DroppableColumn({ stage, children }: { stage: string; children: ReactNo
     >
       {children}
     </div>
-  );
-}
-
-function CompletionBadge({ deal, visibility }: { deal: Deal; visibility: string }) {
-  if (deal.stage !== "Won" && deal.stage !== "Lost") return null;
-  if (!deal.completedAt) return null;
-
-  const completedDate = new Date(deal.completedAt);
-  const now = new Date();
-  const diffMs = now.getTime() - completedDate.getTime();
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  let label: string;
-  let variant: "default" | "secondary" | "outline" = "secondary";
-
-  if (visibility === "forever") {
-    label = deal.stage === "Won" ? "Won • Archived" : "Lost • Archived";
-    variant = "outline";
-  } else if (diffHours < 1) {
-    label = deal.stage === "Won" ? "Won • Just now" : "Lost • Just now";
-  } else if (diffHours < 24) {
-    if (visibility !== "hide") {
-      const maxHours = visibility === "3d" ? 72 : 24;
-      const remaining = maxHours - diffHours;
-      if (remaining > 0 && remaining <= 24) {
-        label = deal.stage === "Won" ? `Won • Expires in ${remaining}h` : `Lost • Expires in ${remaining}h`;
-      } else {
-        label = deal.stage === "Won" ? `Won • ${diffHours}h ago` : `Lost • ${diffHours}h ago`;
-      }
-    } else {
-      label = deal.stage === "Won" ? `Won • ${diffHours}h ago` : `Lost • ${diffHours}h ago`;
-    }
-  } else if (diffDays === 1) {
-    label = deal.stage === "Won" ? "Won • Yesterday" : "Lost • Yesterday";
-  } else {
-    label = deal.stage === "Won" ? `Won • ${diffDays}d ago` : `Lost • ${diffDays}d ago`;
-  }
-
-  return (
-    <Badge variant={variant} className={`text-[10px] px-1.5 py-0 ${deal.stage === "Won" ? "text-emerald-600 border-emerald-300" : "text-red-500 border-red-300"}`}>
-      {deal.stage === "Won" ? <CheckCircle className="h-2.5 w-2.5 mr-0.5" /> : <XCircle className="h-2.5 w-2.5 mr-0.5" />}
-      {label}
-    </Badge>
   );
 }
 
@@ -498,45 +453,39 @@ export default function Deals() {
                     <Badge variant="secondary" className="text-xs">{stageDeals.length}</Badge>
                   </div>
                   <div className="flex-1 overflow-y-auto space-y-3">
-                    {stageDeals.map(deal => (
+                    {stageDeals.map(d => {
+                      const deal = d as DealWithExtras;
+                      const dealTitle = getDealTitle(deal, deal.dealProducts);
+                      return (
                       <DraggableCard key={deal.id} deal={deal}>
                         <div
                           className="bg-card p-3 rounded shadow-sm border cursor-pointer hover:border-primary transition-colors"
                           onClick={() => setDrawerDealId(deal.id)}
                         >
-                          <div className="flex justify-between items-start mb-2">
-                            <span className="font-medium text-sm line-clamp-1">{deal.contact?.name || deal.title || 'Unnamed'}</span>
-                            {deal.salesOwner && (
-                              <UserAvatar profilePhoto={deal.salesOwner.profilePhoto} name={deal.salesOwner.name} className="w-2.5 h-2.5 shrink-0" />
-                            )}
+                          <div className="font-semibold text-sm line-clamp-1 mb-1" title={dealTitle}>
+                            {dealTitle}
+                          </div>
+                          <div className="text-xs text-muted-foreground line-clamp-1 mb-0.5" title={deal.contact?.name || ''}>
+                            {deal.contact?.name || 'Unknown Customer'}
                           </div>
                           {deal.contact?.companyName && (
-                            <div className="text-xs text-muted-foreground mb-1">{deal.contact.companyName}</div>
+                            <div className="text-xs text-muted-foreground line-clamp-1 mb-1.5" title={deal.contact.companyName}>
+                              {deal.contact.companyName}
+                            </div>
                           )}
-                          <div className="mt-1 flex items-center gap-2 flex-wrap">
+                          {!deal.contact?.companyName && <div className="mb-1.5" />}
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <CategoryBadge category={deal.contact?.category} />
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{deal.productionUnit || deal.contact?.unit || PENDING_UNIT_ASSIGNMENT}</Badge>
-                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 border ${PI_STATUS_COLORS[(deal as any).activeProformaInvoice?.status || "No PI"] || PI_STATUS_COLORS["No PI"]}`}>
-                              {(deal as any).activeProformaInvoice?.status || "No PI"}
-                              {(deal as any).activeProformaInvoice?.version > 1 ? ` v${(deal as any).activeProformaInvoice.version}` : ""}
-                            </Badge>
-                            <CompletionBadge deal={deal} visibility={completedDealVisibility} />
+                            {(deal.productionUnit || deal.contact?.unit) && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                                {deal.productionUnit || deal.contact?.unit}
+                              </Badge>
+                            )}
                           </div>
-                          {deal.contact?.customerComments && (
-                            <div className="mt-1 text-xs text-muted-foreground line-clamp-1" title={deal.contact.customerComments}>
-                              {deal.contact.customerComments.length > 80
-                                ? `${deal.contact.customerComments.slice(0, 80)}...`
-                                : deal.contact.customerComments}
-                            </div>
-                          )}
-                          {deal.totalValue != null && (
-                            <div className="mt-2 text-xs font-semibold text-primary">
-                              ₹{Number(deal.totalValue).toLocaleString()}
-                            </div>
-                          )}
                         </div>
                       </DraggableCard>
-                    ))}
+                      );
+                    })}
                     {stageDeals.length === 0 && (
                       <p className="text-xs text-muted-foreground text-center py-4">No deals</p>
                     )}
@@ -546,29 +495,34 @@ export default function Deals() {
             })}
           </div>
           <DragOverlay>
-            {activeDeal ? (
+            {activeDeal ? (() => {
+              const ad = activeDeal as DealWithExtras;
+              const adTitle = getDealTitle(ad, ad.dealProducts);
+              return (
               <div className="bg-card p-3 rounded shadow-sm border opacity-80 rotate-[2deg] shadow-xl">
-                <div className="flex justify-between items-start mb-2">
-                  <span className="font-medium text-sm line-clamp-1">{activeDeal.contact?.name || activeDeal.title || 'Unnamed'}</span>
-                  {activeDeal.salesOwner && (
-                    <UserAvatar profilePhoto={activeDeal.salesOwner.profilePhoto} name={activeDeal.salesOwner.name} className="w-2.5 h-2.5 shrink-0" />
+                <div className="font-semibold text-sm line-clamp-1 mb-1" title={adTitle}>
+                  {adTitle}
+                </div>
+                <div className="text-xs text-muted-foreground line-clamp-1 mb-0.5" title={ad.contact?.name || ''}>
+                  {ad.contact?.name || 'Unknown Customer'}
+                </div>
+                {ad.contact?.companyName && (
+                  <div className="text-xs text-muted-foreground line-clamp-1 mb-1.5" title={ad.contact.companyName}>
+                    {ad.contact.companyName}
+                  </div>
+                )}
+                {!ad.contact?.companyName && <div className="mb-1.5" />}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <CategoryBadge category={ad.contact?.category} />
+                  {(ad.productionUnit || ad.contact?.unit) && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                      {ad.productionUnit || ad.contact?.unit}
+                    </Badge>
                   )}
                 </div>
-                {activeDeal.contact?.companyName && (
-                  <div className="text-xs text-muted-foreground mb-1">{activeDeal.contact.companyName}</div>
-                )}
-                <div className="mt-1 flex items-center gap-2">
-                  <CategoryBadge category={activeDeal.contact?.category} />
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">{activeDeal.productionUnit || activeDeal.contact?.unit || PENDING_UNIT_ASSIGNMENT}</Badge>
-                </div>
-                {activeDeal.contact?.customerComments && (
-                  <div className="mt-1 text-xs text-muted-foreground line-clamp-1">{activeDeal.contact.customerComments}</div>
-                )}
-                {activeDeal.totalValue != null && (
-                  <div className="mt-2 text-xs font-semibold text-primary">₹{Number(activeDeal.totalValue).toLocaleString()}</div>
-                )}
               </div>
-            ) : null}
+              );
+            })() : null}
           </DragOverlay>
         </DndContext>
       </div>
