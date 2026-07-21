@@ -12,7 +12,19 @@ import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { onProductChange } from "@/lib/query-invalidation";
 
-type Product = { id: number; name: string; category?: string | null; industry?: string | null; machineType?: string | null; pricePerUnit?: number | null; productCode?: string | null; bottleWeight?: string | null; bottleColour?: string | null; capColour?: string | null; materialType?: string | null; hsnCode?: string | null; defaultUnit?: string | null; defaultGst?: number | null; status?: string | null };
+type Product = { id: number; name: string; category?: string | null; industry?: string | null; machineType?: string | null; pricePerUnit?: number | null; productCode?: string | null; bottleWeight?: string | null; bottleColour?: string | null; bottleColourCode?: string | null; capColour?: string | null; materialType?: string | null; hsnCode?: string | null; defaultUnit?: string | null; defaultGst?: number | null; status?: string | null };
+
+const COLOUR_PRESETS: { name: string; hex: string }[] = [
+  { name: "Purple", hex: "#800080" },
+  { name: "Blue", hex: "#2563EB" },
+  { name: "Green", hex: "#16A34A" },
+  { name: "Red", hex: "#DC2626" },
+  { name: "Yellow", hex: "#EAB308" },
+  { name: "Orange", hex: "#F97316" },
+  { name: "Black", hex: "#000000" },
+  { name: "White", hex: "#FFFFFF" },
+  { name: "Transparent", hex: "#E5E7EB" },
+];
 
 const INDUSTRY_OPTIONS = [
   "Liquid Detergents",
@@ -60,6 +72,7 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
     defaultGst: initial?.defaultGst?.toString() || "",
     bottleWeight: initial?.bottleWeight || "",
     bottleColour: initial?.bottleColour || "",
+    bottleColourCode: initial?.bottleColourCode || "",
     capColour: initial?.capColour || "",
     status: initial?.status || "active",
   });
@@ -107,7 +120,48 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
       </div>
       <div><Label>Default GST %</Label><Input type="number" value={form.defaultGst} onChange={f("defaultGst")} min={0} max={100} /></div>
       <div><Label>Bottle Weight</Label><Input value={form.bottleWeight} onChange={f("bottleWeight")} /></div>
-      <div><Label>Bottle Colour</Label><Input value={form.bottleColour} onChange={f("bottleColour")} /></div>
+      <div><Label>Bottle Colour</Label>
+        <div className="flex flex-wrap gap-1.5 mt-1">
+          {COLOUR_PRESETS.map(c => (
+            <button
+              key={c.name}
+              type="button"
+              onClick={() => setForm(p => ({ ...p, bottleColour: c.name, bottleColourCode: c.hex }))}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded border text-xs transition-colors ${
+                form.bottleColour === c.name
+                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                  : "border-input hover:border-primary/50"
+              }`}
+            >
+              <span
+                className="w-3 h-3 rounded-full border shrink-0"
+                style={{ backgroundColor: c.hex === "#FFFFFF" ? "#f3f4f6" : c.hex, borderColor: c.hex === "#FFFFFF" ? "#d1d5db" : c.hex }}
+              />
+              {c.name}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 mt-2">
+          <input
+            type="color"
+            value={form.bottleColourCode || "#800080"}
+            onChange={(e) => setForm(p => ({ ...p, bottleColourCode: e.target.value }))}
+            className="h-9 w-9 rounded border border-input cursor-pointer p-0.5"
+          />
+          <Input
+            value={form.bottleColour}
+            onChange={(e) => setForm(p => ({ ...p, bottleColour: e.target.value }))}
+            placeholder="Color name (e.g. Purple)"
+            className="flex-1"
+          />
+          <Input
+            value={form.bottleColourCode}
+            onChange={(e) => setForm(p => ({ ...p, bottleColourCode: e.target.value }))}
+            placeholder="#800080"
+            className="w-28 font-mono text-xs"
+          />
+        </div>
+      </div>
       <div><Label>Cap Colour</Label><Input value={form.capColour} onChange={f("capColour")} /></div>
       <div><Label>Status *</Label>
         <select value={form.status} onChange={f("status")} className={SELECT_CLASS}>
@@ -127,6 +181,7 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
           defaultGst: form.defaultGst ? Number(form.defaultGst) : null,
           bottleWeight: form.bottleWeight || null,
           bottleColour: form.bottleColour || null,
+          bottleColourCode: form.bottleColourCode || null,
           capColour: form.capColour || null,
         })}>
           {loading ? "Saving..." : "Save"}
@@ -233,7 +288,17 @@ export default function Products() {
                   <TableCell className="font-mono text-xs">{p.hsnCode || "-"}</TableCell>
                   <TableCell>{p.defaultUnit || "-"}</TableCell>
                   <TableCell>{p.defaultGst != null ? `${p.defaultGst}%` : "-"}</TableCell>
-                  <TableCell>{[p.bottleWeight, p.bottleColour].filter(Boolean).join(" · ") || "-"}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1.5">
+                      {(p as any).bottleColourCode && (
+                        <span
+                          className="w-2.5 h-2.5 rounded-full border shrink-0"
+                          style={{ backgroundColor: (p as any).bottleColourCode === "#FFFFFF" ? "#f3f4f6" : (p as any).bottleColourCode, borderColor: (p as any).bottleColourCode === "#FFFFFF" ? "#d1d5db" : (p as any).bottleColourCode }}
+                        />
+                      )}
+                      <span>{[p.bottleWeight, p.bottleColour].filter(Boolean).join(" · ") || "-"}</span>
+                    </div>
+                  </TableCell>
                   <TableCell>{p.capColour || "-"}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={`text-xs ${p.status === "inactive" ? "text-red-600 border-red-300" : "text-green-600 border-green-300"}`}>

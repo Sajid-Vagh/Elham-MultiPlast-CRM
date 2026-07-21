@@ -12,6 +12,7 @@ export const productsTable = pgTable("products", {
   productCode: text("product_code").unique(),
   bottleWeight: text("bottle_weight"),
   bottleColour: text("bottle_colour"),
+  bottleColourCode: text("bottle_colour_code"),
   capColour: text("cap_colour"),
   materialType: text("material_type"),
   hsnCode: text("hsn_code"),

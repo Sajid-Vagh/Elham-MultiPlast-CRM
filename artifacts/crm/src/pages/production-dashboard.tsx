@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, AlertTriangle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
+import { ManufacturingSummary } from "@/components/manufacturing-summary";
 
 const STATUS_COLORS: Record<string, string> = {
   "Accepted": "bg-blue-100 text-blue-700 border-blue-300",
@@ -114,6 +115,9 @@ export default function ProductionDashboard() {
           );
         })}
       </div>
+
+      {/* Manufacturing Summary */}
+      <ManufacturingSummary unitFilter={String(selectedUnit)} originFilter={originFilter} />
 
       {/* Summary + Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">

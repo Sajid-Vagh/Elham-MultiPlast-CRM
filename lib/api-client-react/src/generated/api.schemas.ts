@@ -319,6 +319,8 @@ export interface Product {
   /** @nullable */
   bottleColour?: string | null;
   /** @nullable */
+  bottleColourCode?: string | null;
+  /** @nullable */
   capColour?: string | null;
   /** @nullable */
   materialType?: string | null;
@@ -350,6 +352,8 @@ export interface ProductInput {
   /** @nullable */
   bottleColour?: string | null;
   /** @nullable */
+  bottleColourCode?: string | null;
+  /** @nullable */
   capColour?: string | null;
   /** @nullable */
   materialType?: string | null;
@@ -379,6 +383,8 @@ export interface ProductUpdate {
   bottleWeight?: string | null;
   /** @nullable */
   bottleColour?: string | null;
+  /** @nullable */
+  bottleColourCode?: string | null;
   /** @nullable */
   capColour?: string | null;
   /** @nullable */

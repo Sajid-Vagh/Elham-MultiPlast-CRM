@@ -18,6 +18,7 @@ import {
   getPendingSummary, getPendingRequirements, getReports,
   getProgressByDeal, getProductionByContact, getModifiedSince,
   handlePiModification, approveModification, addTimelineEntry,
+  getManufacturingSummary, getManufacturingSummaryDetail,
 } from "../lib/production-service";
 import { transferOrder, getTransferHistory } from "../lib/production-transfer-service";
 
@@ -450,6 +451,40 @@ router.get("/production/progress-by-deal/:dealId", async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error("Get production progress by deal error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Manufacturing Summary ──
+router.get("/production/manufacturing-summary", async (req, res) => {
+  try {
+    const user = await requireProductionUser(req, res);
+    if (!user) return;
+    const { unit: unitFilter, origin: originFilter } = req.query as Record<string, string | undefined>;
+    res.json(await getManufacturingSummary(user, unitFilter, originFilter));
+  } catch (err) {
+    console.error("Manufacturing summary error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Manufacturing Summary Detail ──
+router.get("/production/manufacturing-summary/detail", async (req, res) => {
+  try {
+    const user = await requireProductionUser(req, res);
+    if (!user) return;
+    const { productName, weight, colour, ids } = req.query as Record<string, string | undefined>;
+    if (productName && weight && colour) {
+      res.json(await getManufacturingSummaryDetail(user, { productName, weight, colour }));
+    } else if (ids) {
+      const orderIds = ids.split(",").map(Number).filter(n => !isNaN(n));
+      if (!orderIds.length) { res.json({ items: [] }); return; }
+      res.json(await getManufacturingSummaryDetail(user, { orderIds }));
+    } else {
+      res.status(400).json({ error: "productName, weight, colour params required (or ids)" });
+    }
+  } catch (err) {
+    console.error("Manufacturing summary detail error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

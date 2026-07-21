@@ -2,7 +2,7 @@ import {
   db, productionOrdersTable, productionTimelineTable, productionNotesTable,
   productionMessagesTable, proformaInvoicesTable, proformaInvoiceItemsTable,
   usersTable, contactsTable, dealsTable, activitiesTable,
-  productionAuditTrailTable, notificationsTable,
+  productionAuditTrailTable, notificationsTable, productsTable,
   PRODUCTION_STATUSES, VALID_STATUS_TRANSITIONS,
   type ProductionStatus, type NoteType,
 } from "@workspace/db";
@@ -1420,4 +1420,168 @@ export async function getModifiedSince(user: PermissionUser, since?: string) {
       eq(productionOrdersTable.status, "Pending"),
     ));
   return { count: Number(count) || 0 };
+}
+
+export async function getManufacturingSummary(user: PermissionUser, unitFilter?: string, originFilter?: string) {
+  const effectiveUnit = ((user as any).unit !== "All" && user.role !== "admin")
+    ? (user as any).unit
+    : (unitFilter && unitFilter !== "All" && unitFilter !== "all" ? unitFilter : undefined);
+
+  const results = await db.execute(sql`
+    WITH active_orders AS (
+      SELECT po.id AS po_id, po.status, po.production_unit, po.created_by_role,
+             COALESCE(
+               po.proforma_invoice_id,
+               (SELECT pi2.id FROM proforma_invoices pi2
+                JOIN deals d ON d.contact_id = pi2.contact_id
+                WHERE d.id = po.deal_id AND pi2.is_deleted = false
+                ORDER BY pi2.created_at DESC LIMIT 1)
+             ) AS resolved_invoice_id
+      FROM production_orders po
+      WHERE po.status NOT IN ('Completed', 'Cancelled', 'In Transport')
+        ${effectiveUnit && effectiveUnit !== "all" ? sql`AND po.production_unit = ${effectiveUnit}` : sql``}
+        ${originFilter && originFilter !== "all" ? sql`AND po.created_by_role = ${originFilter}` : sql``}
+    ),
+    order_quantities AS (
+      SELECT
+        ao.po_id,
+        pii.product_name,
+        COALESCE(NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, ''), '-') AS weight,
+        COALESCE(NULLIF(p.bottle_colour, ''), 'N/A') AS colour,
+        COALESCE(NULLIF(p.bottle_colour_code, ''), '') AS colour_code,
+        SUM(pii.quantity::numeric) AS qty
+      FROM active_orders ao
+      JOIN proforma_invoices pi ON pi.id = ao.resolved_invoice_id
+      JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
+      LEFT JOIN products p ON lower(p.name) = lower(pii.product_name)
+      WHERE ao.resolved_invoice_id IS NOT NULL
+        AND pi.is_deleted = false
+      GROUP BY ao.po_id, pii.product_name, pii.weight, p.bottle_weight, p.bottle_colour, p.bottle_colour_code
+    )
+    SELECT
+      product_name AS "productName",
+      weight,
+      colour,
+      colour_code AS "colourCode",
+      SUM(qty) AS "totalQuantity",
+      COUNT(DISTINCT po_id) AS "orderCount",
+      array_agg(DISTINCT po_id) AS "orderIds"
+    FROM order_quantities
+    GROUP BY product_name, weight, colour, colour_code
+    HAVING SUM(qty) > 0
+    ORDER BY SUM(qty) DESC
+  `);
+
+  const groups = (results.rows || []).map((r: any) => ({
+    productName: r.productName,
+    weight: r.weight,
+    colour: r.colour,
+    colourCode: r.colourCode || null,
+    totalQuantity: Number(r.totalQuantity),
+    orderCount: Number(r.orderCount),
+    orderIds: r.orderIds as number[],
+  }));
+
+  return {
+    groups,
+    totalGroups: groups.length,
+    totalPieces: groups.reduce((s: number, g: any) => s + g.totalQuantity, 0),
+  };
+}
+
+export async function getManufacturingSummaryDetail(
+  user: PermissionUser,
+  filter: { productName: string; weight: string; colour: string } | { orderIds: number[] }
+) {
+  if ("orderIds" in filter && !filter.orderIds.length) return { items: [] };
+
+  let results: any;
+
+  if ("productName" in filter) {
+    const colourFilter = filter.colour === "N/A"
+      ? sql`(p.bottle_colour IS NULL OR p.bottle_colour = '')`
+      : sql`lower(COALESCE(NULLIF(p.bottle_colour, ''), 'N/A')) = lower(${filter.colour})`;
+    const weightFilter = filter.weight === "-"
+      ? sql`(COALESCE(NULLIF(pii.weight, ''), p.bottle_weight) IS NULL OR COALESCE(NULLIF(pii.weight, ''), p.bottle_weight) = '')`
+      : sql`COALESCE(NULLIF(pii.weight, ''), p.bottle_weight, '') = ${filter.weight}`;
+
+    results = await db.execute(sql`
+      WITH active_orders AS (
+        SELECT po.id AS po_id
+        FROM production_orders po
+        WHERE po.status NOT IN ('Completed', 'Cancelled', 'In Transport')
+      )
+      SELECT DISTINCT
+        po.id AS "orderId",
+        po.status,
+        po.production_unit AS "productionUnit",
+        po.created_by_role AS "createdByRole",
+        po.is_delayed AS "isDelayed",
+        po.created_at AS "createdAt",
+        po.expected_dispatch_date AS "expectedDispatchDate",
+        po.priority,
+        COALESCE(pi.customer_name, '') AS "customerName",
+        COALESCE(pi.company_name, '') AS "companyName",
+        COALESCE(pi.invoice_number, '') AS "piNumber",
+        COALESCE(pi.sales_owner_id::text, '') AS "salesOwnerId",
+        (SELECT u.name FROM users u WHERE u.id = pi.sales_owner_id) AS "salesPerson",
+        pii.quantity::numeric AS "quantity",
+        pii.unit AS "unit"
+      FROM active_orders ao
+      JOIN production_orders po ON po.id = ao.po_id
+      JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
+      JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
+      LEFT JOIN products p ON lower(p.name) = lower(pii.product_name)
+      WHERE lower(pii.product_name) = lower(${filter.productName})
+        AND ${weightFilter}
+        AND ${colourFilter}
+        AND pi.is_deleted = false
+      ORDER BY po.created_at DESC
+    `);
+  } else {
+    results = await db.execute(sql`
+      SELECT DISTINCT
+        po.id AS "orderId",
+        po.status,
+        po.production_unit AS "productionUnit",
+        po.created_by_role AS "createdByRole",
+        po.is_delayed AS "isDelayed",
+        po.created_at AS "createdAt",
+        po.expected_dispatch_date AS "expectedDispatchDate",
+        po.priority,
+        COALESCE(pi.customer_name, '') AS "customerName",
+        COALESCE(pi.company_name, '') AS "companyName",
+        COALESCE(pi.invoice_number, '') AS "piNumber",
+        COALESCE(pi.sales_owner_id::text, '') AS "salesOwnerId",
+        (SELECT u.name FROM users u WHERE u.id = pi.sales_owner_id) AS "salesPerson",
+        pii.quantity::numeric AS "quantity",
+        pii.unit AS "unit"
+      FROM production_orders po
+      JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
+      JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
+      LEFT JOIN products p ON lower(p.name) = lower(pii.product_name)
+      WHERE po.id = ANY(${filter.orderIds}::int[])
+        AND pi.is_deleted = false
+      ORDER BY po.created_at DESC
+    `);
+  }
+
+  const items = (results.rows || []).map((r: any) => ({
+    orderId: Number(r.orderId),
+    customerName: r.customerName || "-",
+    companyName: r.companyName || "-",
+    piNumber: r.piNumber || "-",
+    salesPerson: r.salesPerson || "-",
+    quantity: Number(r.quantity),
+    unit: r.unit || "Pcs",
+    status: r.status,
+    productionUnit: r.productionUnit || "-",
+    createdByRole: r.createdByRole,
+    isDelayed: r.isDelayed,
+    createdAt: r.createdAt,
+    expectedDispatchDate: r.expectedDispatchDate,
+    priority: r.priority,
+  }));
+
+  return { items };
 }

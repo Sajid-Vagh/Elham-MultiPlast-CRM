@@ -17,12 +17,16 @@ router.get("/products/search", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
     const q = (req.query.q as string || "").trim();
     if (!q || q.length < 1) { res.json([]); return; }
+    const qLower = q.toLowerCase();
     const products = await db
       .select()
       .from(productsTable)
       .where(or(
-        sql`LOWER(${productsTable.name}) LIKE ${`%${q.toLowerCase()}%`}`,
-        sql`LOWER(${productsTable.productCode}) LIKE ${`%${q.toLowerCase()}%`}`,
+        sql`LOWER(${productsTable.name}) LIKE ${`%${qLower}%`}`,
+        sql`LOWER(${productsTable.productCode}) LIKE ${`%${qLower}%`}`,
+        sql`LOWER(${productsTable.bottleWeight}) LIKE ${`%${qLower}%`}`,
+        sql`LOWER(${productsTable.bottleColour}) LIKE ${`%${qLower}%`}`,
+        sql`LOWER(${productsTable.materialType}) LIKE ${`%${qLower}%`}`,
       ))
       .orderBy(productsTable.name)
       .limit(20);
