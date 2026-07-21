@@ -1,6 +1,6 @@
 import { useParams } from "wouter";
 import { useLocation } from "wouter";
-import { useGetContact, useUpdateContact, useListUsers, useGetMe } from "@workspace/api-client-react";
+import { useGetContact, useUpdateContact, useGetMe } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import LeadForm from "@/components/lead-form";
 import type { LeadFormData } from "@/components/lead-form";
 import { onContactChange } from "@/lib/query-invalidation";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 
 export default function LeadsEdit() {
   const { id } = useParams<{ id: string }>();
@@ -18,7 +19,7 @@ export default function LeadsEdit() {
   const { data: contact, isLoading } = useGetContact(contactId);
   const updateContact = useUpdateContact();
   const { data: me } = useGetMe();
-  const { data: users } = useListUsers();
+  const { data: users } = useCustomerFacingUsers();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 

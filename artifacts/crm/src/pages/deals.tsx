@@ -2,7 +2,7 @@ import { useState, useMemo, type ReactNode } from "react";
 import { DndContext, DragOverlay, useDraggable, useDroppable, closestCenter } from "@dnd-kit/core";
 import type { DragStartEvent, DragEndEvent } from "@dnd-kit/core";
 import { useQueryClient } from "@tanstack/react-query";
-import { useListDeals, useListUsers, useGetMe, useUpdateDeal } from "@workspace/api-client-react";
+import { useListDeals, useGetMe, useUpdateDeal } from "@workspace/api-client-react";
 import type { Deal, DealStage } from "@workspace/api-client-react";
 import { useSearch, useLocation } from "wouter";
 
@@ -27,6 +27,7 @@ import { MarkLostDialog } from "@/components/mark-lost-dialog";
 import { DealWonCelebration } from "@/components/deal-won-celebration";
 import { onDealChange, onProductionChange } from "@/lib/query-invalidation";
 import { ExportDropdown } from "@/components/export-dropdown";
+import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { PiSentDialog } from "@/components/pi-sent-dialog";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useActiveUnits } from "@/lib/use-active-units";
@@ -101,7 +102,7 @@ export default function Deals() {
     unit: unitFilter || undefined,
     completedDealVisibility: completedDealVisibility as "hide" | "24h" | "3d" | "forever" | undefined,
   });
-  const { data: users } = useListUsers();
+  const { data: users } = useCustomerFacingUsers();
 
   const updateDeal = useUpdateDeal();
 

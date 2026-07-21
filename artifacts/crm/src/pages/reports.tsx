@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
   useGetPipelineReport, useGetReportByOwner, useGetReportByCity,
-  useGetReportByProduct, useListUsers, useGetReportLostReasons, useGetMe
+  useGetReportByProduct, useGetReportLostReasons, useGetMe
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -21,6 +21,7 @@ import { STAGE_CHART_COLORS } from "@/lib/deal-stages";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 
 function MonthPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return <Input type="month" value={value} onChange={e => onChange(e.target.value)} className="w-40" />;
@@ -104,7 +105,7 @@ export default function Reports() {
   const { toast } = useToast();
   const { data: lostReasons } = useGetReportLostReasons({ month: month || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined, unit: unit || undefined });
   const { data: me } = useGetMe();
-  const { data: users } = useListUsers();
+  const { data: users } = useCustomerFacingUsers();
   const canViewAllReports = me?.role === "admin" || me?.canViewAllReports;
 
   const totalLost = lostReasons?.reduce((s, r) => s + r.count, 0) ?? 0;

@@ -134,14 +134,14 @@ export default function Dashboard() {
   });
 
   const { data: users } = useQuery({
-    queryKey: ["users-list"],
+    queryKey: ["users-customer-facing"],
     queryFn: async () => {
-      const res = await fetch("/api/users", { headers: authHeaders });
+      const res = await fetch("/api/users?roles=admin,sales,production_and_support", { headers: authHeaders });
       if (!res.ok) return [];
       return res.json() as Promise<any[]>;
     },
     enabled: !!token && isAdmin,
-    staleTime: 60_000,
+    staleTime: 300_000,
   });
 
   const unitStats = useMemo(() => {

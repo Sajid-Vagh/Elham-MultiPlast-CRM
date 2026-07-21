@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { useUpdateActivity, useGetMe, useListUsers } from "@workspace/api-client-react";
+import { useUpdateActivity, useGetMe } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Calendar, ArrowLeft, Phone, PhoneOff, X, Clock, Search, Eye, Pencil, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { onActivityChange } from "@/lib/query-invalidation";
 import { CategoryBadge } from "@/components/category-badge";
 import { ExportDropdown } from "@/components/export-dropdown";
@@ -93,7 +94,7 @@ export default function FollowUps() {
   const [drawerActivity, setDrawerActivity] = useState<FollowUpActivity | null>(null);
   const { toast } = useToast();
   const { data: me } = useGetMe();
-  const { data: users } = useListUsers();
+  const { data: users } = useCustomerFacingUsers();
   const isAdmin = me?.role === "admin";
   const { units: activeUnits } = useActiveUnits();
 

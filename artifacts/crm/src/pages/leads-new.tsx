@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { useCreateContact, useListUsers, useGetMe } from "@workspace/api-client-react";
+import { useCreateContact, useGetMe } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -10,12 +10,13 @@ import LeadForm from "@/components/lead-form";
 import type { LeadFormData } from "@/components/lead-form";
 import { onContactChange } from "@/lib/query-invalidation";
 import { DuplicateWarningDialog, type DuplicateLeadInfo } from "@/components/duplicate-warning-dialog";
+import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 
 export default function LeadsNew() {
   const [, setLocation] = useLocation();
   const createContact = useCreateContact();
   const { data: me } = useGetMe();
-  const { data: users } = useListUsers();
+  const { data: users } = useCustomerFacingUsers();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 

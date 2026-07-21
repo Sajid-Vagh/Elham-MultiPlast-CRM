@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import multer from "multer";
 import path from "node:path";
 import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { CreateUserBody, UpdateUserBody, GetUserParams, UpdateUserParams, DeleteUserParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -25,7 +25,16 @@ router.get("/users", async (req, res) => {
   try {
     const me = await getUserFromRequest(req);
     if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const users = await db.select().from(usersTable).orderBy(usersTable.name);
+    const rolesParam = req.query.roles as string | undefined;
+    let users;
+    if (rolesParam) {
+      const roles = rolesParam.split(",").map(r => r.trim()).filter(Boolean);
+      users = roles.length > 0
+        ? await db.select().from(usersTable).where(inArray(usersTable.role, roles)).orderBy(usersTable.name)
+        : await db.select().from(usersTable).orderBy(usersTable.name);
+    } else {
+      users = await db.select().from(usersTable).orderBy(usersTable.name);
+    }
     res.json(users.map(safeUser));
   } catch (err) {
     req.log.error({ err }, "List users error");

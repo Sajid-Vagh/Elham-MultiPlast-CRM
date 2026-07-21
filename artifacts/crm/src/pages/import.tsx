@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import * as XLSX from "xlsx";
-import { useImportIndiaMart, useImportExcel, useListUsers, useGetMe } from "@workspace/api-client-react";
+import { useImportIndiaMart, useImportExcel, useGetMe } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { playNotificationSound, showBrowserNotification } from "@/lib/notification-sound";
@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { onContactChange } from "@/lib/query-invalidation";
+import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { CheckCircle, AlertCircle, Upload, FileSpreadsheet, X, Sparkles, ClipboardPaste, Download, User, MapPin, Tag } from "lucide-react";
 import { UserAvatar } from "@/components/user-avatar";
 import { Link } from "wouter";
@@ -525,7 +526,7 @@ function FieldChip({ label, value, ok }: { label: string; value?: string; ok: bo
 }
 
 export default function ImportPage() {
-  const { data: users } = useListUsers();
+  const { data: users } = useCustomerFacingUsers();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { data: me } = useGetMe();

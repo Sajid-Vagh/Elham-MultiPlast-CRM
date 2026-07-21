@@ -1035,9 +1035,11 @@ const selectProduct = (idx: number, product: any) => {
       const invoice = await res.json();
       toast({ title: editMode ? "Invoice Updated" : "Invoice Created", description: `${invoice.invoiceNumber} saved as ${status}` });
 
-      // Auto-save customer to Customer Master if new GSTIN and not already saved
+      // Auto-save customer to Customer Master (GST or non-GST)
       const gstin = gstNumber.toUpperCase().trim();
-      if (!editMode && !customerMasterId && !existingCustomer && gstin && companyName && gstin.length === 15) {
+      const hasGstin = gstin.length === 15;
+      const hasMobileAndName = mobile && mobile.length >= 10 && companyName;
+      if (!editMode && !customerMasterId && !existingCustomer && (hasGstin || hasMobileAndName) && companyName) {
         try {
           await fetch("/api/customer-master", {
             method: "POST",
@@ -1045,7 +1047,7 @@ const selectProduct = (idx: number, product: any) => {
             body: JSON.stringify({
               companyName: customerName,
               tradeName: tradeName || null,
-              gstin,
+              gstin: hasGstin ? gstin : null,
               addressLine1: addressLine1 || null,
               addressLine2: addressLine2 || null,
               addressLine3: addressLine3 || null,
@@ -1054,8 +1056,8 @@ const selectProduct = (idx: number, product: any) => {
               state: state || null,
               pincode: pincode || null,
               mobile: mobile || null,
-              customerType,
-              gstStatus: gstStatus || "Active",
+              customerType: hasGstin ? "GST" : "Unregistered",
+              gstStatus: hasGstin ? (gstStatus || "Active") : null,
               linkedContactId: selectedLead?.id || urlContactId,
             }),
           });

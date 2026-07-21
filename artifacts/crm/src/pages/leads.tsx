@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
-import { useListContacts, useListUsers, useDeleteContact, useBulkDeleteContacts, getListContactsQueryKey, useGetMe } from "@workspace/api-client-react";
+import { useListContacts, useDeleteContact, useBulkDeleteContacts, getListContactsQueryKey, useGetMe } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { onContactChange, onDealChange } from "@/lib/query-invalidation";
 import { UserAvatar } from "@/components/user-avatar";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
 export default function Leads() {
@@ -90,7 +91,7 @@ export default function Leads() {
     },
     staleTime: 10_000,
   });
-  const { data: users } = useListUsers();
+  const { data: users } = useCustomerFacingUsers();
 
   const allIds = contacts?.map(c => c.id) ?? [];
   const allSelected = allIds.length > 0 && allIds.every(id => selectedIds.has(id));

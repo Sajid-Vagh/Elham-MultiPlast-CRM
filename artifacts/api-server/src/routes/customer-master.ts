@@ -40,27 +40,34 @@ router.post("/customer-master", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { companyName, tradeName, gstin, addressLine1, addressLine2, addressLine3, city, district, state, pincode, mobile, email, customerType, gstStatus, businessConstitution, notes } = req.body;
+    const { companyName, tradeName, contactPerson, gstin, addressLine1, addressLine2, addressLine3, city, district, state, pincode, mobile, email, customerType, gstStatus, businessConstitution, notes } = req.body;
 
-    if (!companyName && !gstin) {
-      res.status(400).json({ error: "Company name and GSTIN are required" });
-      return;
-    }
-    if (!gstin) {
-      res.status(400).json({ error: "GSTIN is required" });
+    if (!companyName && !mobile) {
+      res.status(400).json({ error: "Company name or mobile number is required" });
       return;
     }
 
-    const normalizedGstin = gstin.toUpperCase().trim();
+    const normalizedGstin = gstin ? gstin.toUpperCase().trim() : null;
+    const normalizedMobile = mobile ? mobile.replace(/\s/g, "").trim() : null;
 
-    // Duplicate check
-    const [existing] = await db
-      .select()
-      .from(customerMasterTable)
-      .where(eq(customerMasterTable.gstin, normalizedGstin));
+    // Duplicate check: by GSTIN if provided, else by mobile
+    let existing = null;
+    if (normalizedGstin) {
+      const [found] = await db
+        .select()
+        .from(customerMasterTable)
+        .where(eq(customerMasterTable.gstin, normalizedGstin));
+      existing = found;
+    } else if (normalizedMobile) {
+      const [found] = await db
+        .select()
+        .from(customerMasterTable)
+        .where(eq(customerMasterTable.mobile, normalizedMobile));
+      existing = found;
+    }
 
     if (existing) {
-      res.status(409).json({ error: "GSTIN already exists", existing });
+      res.status(409).json({ error: normalizedGstin ? "GSTIN already exists" : "Customer with this mobile number already exists", existing });
       return;
     }
 
@@ -69,6 +76,7 @@ router.post("/customer-master", async (req, res) => {
       .values({
         companyName: companyName || "",
         tradeName: tradeName || null,
+        contactPerson: contactPerson || null,
         gstin: normalizedGstin,
         addressLine1: addressLine1 || null,
         addressLine2: addressLine2 || null,
@@ -77,10 +85,10 @@ router.post("/customer-master", async (req, res) => {
         district: district || null,
         state: state || null,
         pincode: pincode || null,
-        mobile: mobile || null,
+        mobile: normalizedMobile,
         email: email || null,
-        customerType: customerType || "GST",
-        gstStatus: gstStatus || "Active",
+        customerType: customerType || (normalizedGstin ? "GST" : "Unregistered"),
+        gstStatus: gstStatus || (normalizedGstin ? "Active" : null),
         businessConstitution: businessConstitution || null,
         notes: notes || null,
         createdBy: user.id,
@@ -110,11 +118,13 @@ router.patch("/customer-master/:id", async (req, res) => {
 
     if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
-    const { companyName, tradeName, addressLine1, addressLine2, addressLine3, city, district, state, pincode, mobile, email, customerType, gstStatus, businessConstitution, notes } = req.body;
+    const { companyName, tradeName, contactPerson, gstin, addressLine1, addressLine2, addressLine3, city, district, state, pincode, mobile, email, customerType, gstStatus, businessConstitution, notes } = req.body;
 
     const updateData: any = {};
     if (companyName !== undefined) updateData.companyName = companyName;
     if (tradeName !== undefined) updateData.tradeName = tradeName;
+    if (contactPerson !== undefined) updateData.contactPerson = contactPerson;
+    if (gstin !== undefined) updateData.gstin = gstin ? gstin.toUpperCase().trim() : null;
     if (addressLine1 !== undefined) updateData.addressLine1 = addressLine1;
     if (addressLine2 !== undefined) updateData.addressLine2 = addressLine2;
     if (addressLine3 !== undefined) updateData.addressLine3 = addressLine3;
@@ -299,6 +309,36 @@ router.get("/customer-master/search-by-mobile/:mobile", async (req, res) => {
     res.json(profiles);
   } catch (err) {
     req.log.error({ err }, "Search customer master by mobile error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /customer-master/search-by-name/:name — search customer master by party name or trade name
+router.get("/customer-master/search-by-name/:name", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const name = req.params.name?.trim();
+    if (!name || name.length < 2) {
+      res.status(400).json({ error: "Search term required (min 2 characters)" });
+      return;
+    }
+
+    const s = `%${name.toLowerCase()}%`;
+    const profiles = await db
+      .select()
+      .from(customerMasterTable)
+      .where(or(
+        sql`LOWER(${customerMasterTable.companyName}) LIKE ${s}`,
+        sql`LOWER(${customerMasterTable.tradeName}) LIKE ${s}`,
+      ))
+      .orderBy(desc(customerMasterTable.createdAt))
+      .limit(20);
+
+    res.json(profiles);
+  } catch (err) {
+    req.log.error({ err }, "Search customer master by name error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCreateActivity, getListActivitiesQueryKey } from "@workspace/api-client-react";
-import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { onActivityChange } from "@/lib/query-invalidation";
 import { Calendar as CalendarIcon, Clock, Phone, MessageSquare, Video, Users, Bell, AlertTriangle, Mail, MapPin } from "lucide-react";
 import { UserAvatar } from "@/components/user-avatar";
+import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 
 interface ScheduleFollowUpDialogProps {
   open: boolean;
@@ -67,16 +67,7 @@ export function ScheduleFollowUpDialog({ open, onOpenChange, contactId, dealId }
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   }, []);
 
-  const { data: users } = useQuery({
-    queryKey: ["users-for-assign"],
-    queryFn: async () => {
-      const token = localStorage.getItem("crm_token");
-      const res = await fetch("/api/users", { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) return [];
-      return res.json() as Promise<Array<{ id: number; name: string; role: string; unit: string; colorCode: string; profilePhoto?: string | null }>>;
-    },
-    staleTime: 60_000,
-  });
+  const { data: users } = useCustomerFacingUsers();
 
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
