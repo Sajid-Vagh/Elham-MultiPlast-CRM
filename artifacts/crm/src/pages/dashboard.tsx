@@ -333,56 +333,66 @@ export default function Dashboard() {
       {/* Revenue Breakdown (admin only) */}
       {isAdmin && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          <Card className="border-green-200 hover:shadow-lg cursor-pointer transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-medium">New Orders</CardTitle>
-              <TrendingUp className="h-4 w-4 text-green-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-lg font-bold text-green-600">{kpi?.newOrders ?? 0}</div>
-              <p className="text-xs text-muted-foreground">₹{(kpi?.newOrderRevenue ?? 0).toLocaleString()}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-blue-200 hover:shadow-lg cursor-pointer transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-medium">Repeat Orders</CardTitle>
-              <RefreshCw className="h-4 w-4 text-blue-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-lg font-bold text-blue-600">{kpi?.repeatOrders ?? 0}</div>
-              <p className="text-xs text-muted-foreground">₹{(kpi?.repeatOrderRevenue ?? 0).toLocaleString()}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-purple-200 hover:shadow-lg cursor-pointer transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-medium">Total Orders</CardTitle>
-              <DollarSign className="h-4 w-4 text-purple-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-lg font-bold text-purple-600">{kpi?.newOrders !== undefined ? (kpi.newOrders + (kpi.repeatOrders ?? 0)) : 0}</div>
-              <p className="text-xs text-muted-foreground">₹{(kpi?.totalOrderRevenue ?? 0).toLocaleString()}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-amber-200 hover:shadow-lg cursor-pointer transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-medium">New Revenue</CardTitle>
-              <BarChart3 className="h-4 w-4 text-amber-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-lg font-bold text-amber-600">₹{(kpi?.newOrderRevenue ?? 0).toLocaleString()}</div>
-              <p className="text-xs text-muted-foreground">{kpi?.newOrders ?? 0} orders</p>
-            </CardContent>
-          </Card>
-          <Card className="border-teal-200 hover:shadow-lg cursor-pointer transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-medium">Repeat Revenue</CardTitle>
-              <RefreshCw className="h-4 w-4 text-teal-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-lg font-bold text-teal-600">₹{(kpi?.repeatOrderRevenue ?? 0).toLocaleString()}</div>
-              <p className="text-xs text-muted-foreground">{kpi?.repeatOrders ?? 0} orders</p>
-            </CardContent>
-          </Card>
+          <Link href="/proforma-invoices?type=new" className="block">
+            <Card className="border-green-200 hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-xs font-medium">New Orders</CardTitle>
+                <TrendingUp className="h-4 w-4 text-green-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-lg font-bold text-green-600">{kpi?.newOrders ?? 0}</div>
+                <p className="text-xs text-muted-foreground">₹{(kpi?.newOrderRevenue ?? 0).toLocaleString()}</p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/proforma-invoices?type=repeat" className="block">
+            <Card className="border-blue-200 hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-xs font-medium">Repeat Orders</CardTitle>
+                <RefreshCw className="h-4 w-4 text-blue-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-lg font-bold text-blue-600">{kpi?.repeatOrders ?? 0}</div>
+                <p className="text-xs text-muted-foreground">₹{(kpi?.repeatOrderRevenue ?? 0).toLocaleString()}</p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/proforma-invoices" className="block">
+            <Card className="border-purple-200 hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-xs font-medium">Total Orders</CardTitle>
+                <DollarSign className="h-4 w-4 text-purple-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-lg font-bold text-purple-600">{kpi?.newOrders !== undefined ? (kpi.newOrders + (kpi.repeatOrders ?? 0)) : 0}</div>
+                <p className="text-xs text-muted-foreground">₹{(kpi?.totalOrderRevenue ?? 0).toLocaleString()}</p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/proforma-invoices" className="block">
+            <Card className="border-amber-200 hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-xs font-medium">New Revenue</CardTitle>
+                <BarChart3 className="h-4 w-4 text-amber-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-lg font-bold text-amber-600">₹{(kpi?.newOrderRevenue ?? 0).toLocaleString()}</div>
+                <p className="text-xs text-muted-foreground">{kpi?.newOrders ?? 0} orders</p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/proforma-invoices" className="block">
+            <Card className="border-teal-200 hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-xs font-medium">Repeat Revenue</CardTitle>
+                <RefreshCw className="h-4 w-4 text-teal-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-lg font-bold text-teal-600">₹{(kpi?.repeatOrderRevenue ?? 0).toLocaleString()}</div>
+                <p className="text-xs text-muted-foreground">{kpi?.repeatOrders ?? 0} orders</p>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
       )}
 

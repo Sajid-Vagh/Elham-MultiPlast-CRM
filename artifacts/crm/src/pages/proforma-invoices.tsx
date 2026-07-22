@@ -112,6 +112,12 @@ export default function ProformaInvoicesPage() {
     if (typeof window === "undefined") return false;
     return new URLSearchParams(window.location.search).get("repeat") === "true";
   })();
+  const urlOrderType = (() => {
+    if (typeof window === "undefined") return null;
+    const t = new URLSearchParams(window.location.search).get("type");
+    if (t === "new" || t === "repeat") return t.toUpperCase();
+    return null;
+  })();
 
   const preventSpinHandlers = {
     onKeyDown: (e: React.KeyboardEvent) => {
@@ -197,6 +203,7 @@ export default function ProformaInvoicesPage() {
   const [previousInvoices, setPreviousInvoices] = useState<any[]>([]);
 
   const [statusFilter, setStatusFilter] = useState("all");
+  const [orderTypeFilter, setOrderTypeFilter] = useState<string | null>(urlOrderType);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
   const [statusDialog, setStatusDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
   const [newStatus, setNewStatus] = useState("");
@@ -218,7 +225,11 @@ export default function ProformaInvoicesPage() {
 
   const fetchInvoices = async () => {
     try {
-      const url = statusFilter !== "all" ? `/api/proforma-invoices?status=${statusFilter}` : "/api/proforma-invoices";
+      const params = new URLSearchParams();
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      if (orderTypeFilter) params.set("orderType", orderTypeFilter);
+      const qs = params.toString();
+      const url = qs ? `/api/proforma-invoices?${qs}` : "/api/proforma-invoices";
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -238,7 +249,7 @@ export default function ProformaInvoicesPage() {
 
   useEffect(() => {
     if (mode === "list") fetchInvoices();
-  }, [mode, statusFilter]);
+  }, [mode, statusFilter, orderTypeFilter]);
 
   const filteredInvoices = useMemo(() => {
     const list = Array.isArray(invoices) ? invoices : [];
@@ -2574,6 +2585,14 @@ ${pagesHtml}
             ))}
           </SelectContent>
         </Select>
+        {orderTypeFilter && (
+          <Badge
+            className={`cursor-pointer text-xs px-2.5 py-1 ${orderTypeFilter === "NEW" ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-blue-100 text-blue-700 hover:bg-blue-200"}`}
+            onClick={() => { setOrderTypeFilter(null); setPage(1); }}
+          >
+            {orderTypeFilter === "NEW" ? "New Orders" : "Repeat Orders"} ✕
+          </Badge>
+        )}
       </div>
 
       <Card>

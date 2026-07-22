@@ -239,7 +239,12 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
 
   let navItems: typeof salesNavItems;
   if (isAdmin) {
-    navItems = [...salesNavItems, { icon: LayoutDashboard, label: "Support Dashboard", href: "/support-dashboard", color: "#6366f1" }, ...productionNavItems, { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" }, { icon: Database, label: "Masters", href: "/masters", color: "#14b8a6" }];
+    const seen = new Set<string>();
+    navItems = [...salesNavItems, { icon: LayoutDashboard, label: "Support Dashboard", href: "/support-dashboard", color: "#6366f1" }, ...productionNavItems, { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" }, { icon: Database, label: "Masters", href: "/masters", color: "#14b8a6" }].filter(item => {
+      if (seen.has(item.href)) return false;
+      seen.add(item.href);
+      return true;
+    });
   } else if (isInventory) {
     navItems = inventoryNavItems;
   } else if (isProductionOnly) {

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable, productionNotesTable, usersTable, contactsTable, dealsTable, customerMasterTable, activitiesTable, INVOICE_STATUSES } from "@workspace/db";
+import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable, productionNotesTable, usersTable, contactsTable, dealsTable, customerMasterTable, activitiesTable, ordersTable, INVOICE_STATUSES } from "@workspace/db";
 import { eq, desc, and, or, SQL, sql, like, gte, lte, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -645,7 +645,7 @@ router.get("/proforma-invoices", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { status, search, dateFrom, dateTo, ownerId, customer, page, limit } = req.query as Record<string, string | undefined>;
+    const { status, search, dateFrom, dateTo, ownerId, customer, page, limit, orderType } = req.query as Record<string, string | undefined>;
     const conditions: SQL[] = [eq(proformaInvoicesTable.isDeleted, false)];
 
     if (user.role === "sales") {
@@ -674,6 +674,12 @@ router.get("/proforma-invoices", async (req, res) => {
     }
     if (dateFrom) conditions.push(gte(proformaInvoicesTable.createdAt, new Date(dateFrom)));
     if (dateTo) conditions.push(lte(proformaInvoicesTable.createdAt, new Date(dateTo + "T23:59:59")));
+    if (orderType && (orderType === "NEW" || orderType === "REPEAT")) {
+      conditions.push(sql`${proformaInvoicesTable.dealId} IN (
+        SELECT ${ordersTable.dealId} FROM ${ordersTable}
+        WHERE ${ordersTable.orderType} = ${orderType} AND ${ordersTable.isDeleted} = false
+      )`);
+    }
 
     const pageNum = Math.max(1, parseInt(page || "1", 10) || 1);
     const pageSize = Math.min(100, Math.max(1, parseInt(limit || "15", 10) || 15));
