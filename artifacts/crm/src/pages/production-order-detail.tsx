@@ -334,6 +334,7 @@ export default function ProductionOrderDetail() {
   const isReadyForDispatch = order.status === "Ready For Dispatch";
   const isInTransport = order.status === "In Transport";
   const hasTransport = order.transportName && order.transportDetails;
+  const isOutsourced = order.items?.some((item: any) => item.materialType === "PET");
 
   return (
     <div className="p-6 space-y-6">
@@ -445,14 +446,34 @@ export default function ProductionOrderDetail() {
           </Card>
 
           {/* Planning Details Card */}
-          {(order.plannedMachine || order.expectedStartDate || order.expectedCompletionDate) && (
+          {(order.plannedMachine || order.expectedStartDate || order.expectedCompletionDate || isOutsourced) && (
             <Card className="border-purple-200">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-purple-700">
                   <Calendar className="h-4 w-4" /> Planning Details
+                  {isOutsourced && <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs ml-2">Outsourced Production</Badge>}
                 </CardTitle>
               </CardHeader>
               <CardContent>
+                {isOutsourced ? (
+                  <div className="text-sm">
+                    <p className="text-muted-foreground">This order contains PET products manufactured by an external supplier.</p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-3">
+                      {order.expectedStartDate && (
+                        <div>
+                          <span className="text-muted-foreground">Expected Start</span>
+                          <p className="font-medium mt-1">{new Date(order.expectedStartDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</p>
+                        </div>
+                      )}
+                      {order.expectedCompletionDate && (
+                        <div>
+                          <span className="text-muted-foreground">Expected Completion</span>
+                          <p className="font-medium mt-1">{new Date(order.expectedCompletionDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                   {order.plannedMachine && (
                     <div>
@@ -473,12 +494,13 @@ export default function ProductionOrderDetail() {
                     </div>
                   )}
                 </div>
+                )}
               </CardContent>
             </Card>
           )}
 
           {/* In Production Details Card */}
-          {(order.status === "In Production" || order.productionMachine) && (
+          {(order.status === "In Production" || order.productionMachine) && !isOutsourced && (
             <Card className="border-orange-200">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-orange-700">
@@ -639,6 +661,7 @@ export default function ProductionOrderDetail() {
                         <th className="text-right py-2 px-2">Qty</th>
                         <th className="text-right py-2 px-2">Rate</th>
                         <th className="text-right py-2 px-2">Amount</th>
+                        <th className="text-left py-2 px-2">Manufacturing</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -653,6 +676,13 @@ export default function ProductionOrderDetail() {
                           <td className="py-2 px-2 text-right">{Number(item.quantity).toFixed(2)}</td>
                           <td className="py-2 px-2 text-right">{Number(item.rate).toFixed(2)}</td>
                           <td className="py-2 px-2 text-right">{Number(item.amount).toFixed(2)}</td>
+                          <td className="py-2 px-2">
+                            {item.materialType === "PET" ? (
+                              <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs">Outsourced</Badge>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">{item.machineType || "-"}</span>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -37,14 +37,6 @@ const INDUSTRY_OPTIONS = [
   "Other",
 ];
 
-const MACHINE_TYPE_OPTIONS = [
-  "250ml Machine",
-  "1L Machine",
-  "5L Machine",
-];
-
-const MATERIAL_OPTIONS = ["PET", "HDPE", "PP", "Other"];
-
 const HSN_BY_MATERIAL: Record<string, string> = {
   PET: "39239090",
   HDPE: "39233090",
@@ -55,6 +47,17 @@ const HSN_OPTIONS = [
   { value: "39239090", label: "PET → 39239090" },
   { value: "39233090", label: "HDPE → 39233090" },
 ];
+
+const MACHINE_TYPE_OPTIONS = [
+  "250ml Machine",
+  "1L Machine",
+  "5L Machine",
+];
+
+const MATERIAL_OPTIONS = ["PET", "HDPE", "PP", "Other"];
+
+const isP = (m: string) => m === "PET";
+const needsMachine = (m: string) => m === "HDPE" || m === "PP";
 
 const UNIT_OPTIONS = ["", "Pcs", "Kg", "Gms", "Ltr", "Mtr", "Box", "Pack", "Nos"];
 
@@ -80,115 +83,143 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
   const handleMaterialChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const mat = e.target.value;
     const autoHsn = HSN_BY_MATERIAL[mat];
-    setForm(p => ({ ...p, materialType: mat, hsnCode: autoHsn || p.hsnCode }));
+    setForm(p => ({
+      ...p,
+      materialType: mat,
+      hsnCode: autoHsn || p.hsnCode,
+      machineType: isP(mat) ? "Outsourced" : (isP(p.materialType) ? "" : p.machineType),
+    }));
   };
 
-  const canSave = form.name && form.industry && form.machineType && form.materialType && form.defaultUnit;
+  const isPet = isP(form.materialType);
+  const machineRequired = needsMachine(form.materialType);
+  const canSave = form.name && form.industry && form.materialType && form.defaultUnit && (isPet || (machineRequired ? form.machineType : true));
+
+  const handleSubmit = () => onSave({
+    ...form,
+    productCode: form.productCode || null,
+    industry: form.industry || null,
+    machineType: isP(form.materialType) ? "Outsourced" : (form.machineType || null),
+    materialType: form.materialType || null,
+    hsnCode: form.hsnCode || null,
+    defaultUnit: form.defaultUnit || null,
+    defaultGst: form.defaultGst ? Number(form.defaultGst) : null,
+    bottleWeight: form.bottleWeight || null,
+    bottleColour: form.bottleColour || null,
+    bottleColourCode: form.bottleColourCode || null,
+    capColour: form.capColour || null,
+  });
 
   return (
-    <div className="grid grid-cols-2 gap-3 pt-2">
-      <div><Label>Product Name *</Label><Input value={form.name} onChange={f("name")} /></div>
-      <div><Label>Product Code</Label><Input value={form.productCode} onChange={f("productCode")} placeholder="Optional" /></div>
-      <div><Label>Industry *</Label>
-        <select value={form.industry} onChange={f("industry")} className={SELECT_CLASS}>
-          <option value="">Select Industry</option>
-          {INDUSTRY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-      </div>
-      <div><Label>Machine Type *</Label>
-        <select value={form.machineType} onChange={f("machineType")} className={SELECT_CLASS}>
-          <option value="">Select Machine</option>
-          {MACHINE_TYPE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-      </div>
-      <div><Label>Material Type *</Label>
-        <select value={form.materialType} onChange={handleMaterialChange} className={SELECT_CLASS}>
-          <option value="">Select Material</option>
-          {MATERIAL_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-      </div>
-      <div><Label>HSN Code</Label>
-        <select value={form.hsnCode} onChange={f("hsnCode")} className={SELECT_CLASS}>
-          {HSN_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </div>
-      <div><Label>Default Unit *</Label>
-        <select value={form.defaultUnit} onChange={f("defaultUnit")} className={SELECT_CLASS}>
-          <option value="">Select Unit</option>
-          {UNIT_OPTIONS.filter(Boolean).map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-      </div>
-      <div><Label>Default GST %</Label><Input type="number" value={form.defaultGst} onChange={f("defaultGst")} min={0} max={100} /></div>
-      <div><Label>Bottle Weight</Label><Input value={form.bottleWeight} onChange={f("bottleWeight")} /></div>
-      <div><Label>Bottle Colour</Label>
-        <div className="flex flex-wrap gap-1.5 mt-1">
-          {COLOUR_PRESETS.map(c => (
-            <button
-              key={c.name}
-              type="button"
-              onClick={() => setForm(p => ({ ...p, bottleColour: c.name, bottleColourCode: c.hex }))}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded border text-xs transition-colors ${
-                form.bottleColour === c.name
-                  ? "border-primary bg-primary/5 ring-1 ring-primary"
-                  : "border-input hover:border-primary/50"
-              }`}
-            >
-              <span
-                className="w-3 h-3 rounded-full border shrink-0"
-                style={{ backgroundColor: c.hex === "#FFFFFF" ? "#f3f4f6" : c.hex, borderColor: c.hex === "#FFFFFF" ? "#d1d5db" : c.hex }}
+    <>
+      <DialogHeader className="shrink-0 px-6 pt-6 pb-4">
+        <DialogTitle>{initial ? "Edit Product" : "New Product"}</DialogTitle>
+      </DialogHeader>
+
+      <div className="flex-1 overflow-y-auto min-h-0 px-6 pb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div><Label>Product Name *</Label><Input value={form.name} onChange={f("name")} /></div>
+          <div><Label>Product Code</Label><Input value={form.productCode} onChange={f("productCode")} placeholder="Optional" /></div>
+          <div><Label>Industry *</Label>
+            <select value={form.industry} onChange={f("industry")} className={SELECT_CLASS}>
+              <option value="">Select Industry</option>
+              {INDUSTRY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+          <div><Label>Material Type *</Label>
+            <select value={form.materialType} onChange={handleMaterialChange} className={SELECT_CLASS}>
+              <option value="">Select Material</option>
+              {MATERIAL_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+          {!isPet && (
+            <div><Label>Machine Type {machineRequired ? "*" : ""}</Label>
+              <select value={form.machineType} onChange={f("machineType")} className={SELECT_CLASS} disabled={!machineRequired && !!form.materialType}>
+                <option value="">{machineRequired ? "Select Machine" : "Select (Optional)"}</option>
+                {MACHINE_TYPE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+          )}
+          {isPet && (
+            <div><Label>Machine Type</Label>
+              <div className="flex h-9 items-center rounded-md border border-input bg-muted/50 px-3 text-sm">
+                <span className="text-muted-foreground">Outsourced</span>
+                <Badge className="ml-2 bg-amber-100 text-amber-700 border-amber-200 text-[10px]">Not manufactured in-house</Badge>
+              </div>
+            </div>
+          )}
+          <div><Label>HSN Code</Label>
+            <select value={form.hsnCode} onChange={f("hsnCode")} className={SELECT_CLASS}>
+              {HSN_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div><Label>Default Unit *</Label>
+            <select value={form.defaultUnit} onChange={f("defaultUnit")} className={SELECT_CLASS}>
+              <option value="">Select Unit</option>
+              {UNIT_OPTIONS.filter(Boolean).map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+          <div><Label>Default GST %</Label><Input type="number" value={form.defaultGst} onChange={f("defaultGst")} min={0} max={100} /></div>
+          <div><Label>Bottle Weight</Label><Input value={form.bottleWeight} onChange={f("bottleWeight")} /></div>
+          <div className="sm:col-span-2"><Label>Bottle Colour</Label>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {COLOUR_PRESETS.map(c => (
+                <button
+                  key={c.name}
+                  type="button"
+                  onClick={() => setForm(p => ({ ...p, bottleColour: c.name, bottleColourCode: c.hex }))}
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded border text-xs transition-colors ${
+                    form.bottleColour === c.name
+                      ? "border-primary bg-primary/5 ring-1 ring-primary"
+                      : "border-input hover:border-primary/50"
+                  }`}
+                >
+                  <span
+                    className="w-3 h-3 rounded-full border shrink-0"
+                    style={{ backgroundColor: c.hex === "#FFFFFF" ? "#f3f4f6" : c.hex, borderColor: c.hex === "#FFFFFF" ? "#d1d5db" : c.hex }}
+                  />
+                  {c.name}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <input
+                type="color"
+                value={form.bottleColourCode || "#800080"}
+                onChange={(e) => setForm(p => ({ ...p, bottleColourCode: e.target.value }))}
+                className="h-9 w-9 rounded border border-input cursor-pointer p-0.5"
               />
-              {c.name}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2 mt-2">
-          <input
-            type="color"
-            value={form.bottleColourCode || "#800080"}
-            onChange={(e) => setForm(p => ({ ...p, bottleColourCode: e.target.value }))}
-            className="h-9 w-9 rounded border border-input cursor-pointer p-0.5"
-          />
-          <Input
-            value={form.bottleColour}
-            onChange={(e) => setForm(p => ({ ...p, bottleColour: e.target.value }))}
-            placeholder="Color name (e.g. Purple)"
-            className="flex-1"
-          />
-          <Input
-            value={form.bottleColourCode}
-            onChange={(e) => setForm(p => ({ ...p, bottleColourCode: e.target.value }))}
-            placeholder="#800080"
-            className="w-28 font-mono text-xs"
-          />
+              <Input
+                value={form.bottleColour}
+                onChange={(e) => setForm(p => ({ ...p, bottleColour: e.target.value }))}
+                placeholder="Color name (e.g. Purple)"
+                className="flex-1"
+              />
+              <Input
+                value={form.bottleColourCode}
+                onChange={(e) => setForm(p => ({ ...p, bottleColourCode: e.target.value }))}
+                placeholder="#800080"
+                className="w-28 font-mono text-xs"
+              />
+            </div>
+          </div>
+          <div><Label>Cap Colour</Label><Input value={form.capColour} onChange={f("capColour")} /></div>
+          <div><Label>Status *</Label>
+            <select value={form.status} onChange={f("status")} className={SELECT_CLASS}>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
         </div>
       </div>
-      <div><Label>Cap Colour</Label><Input value={form.capColour} onChange={f("capColour")} /></div>
-      <div><Label>Status *</Label>
-        <select value={form.status} onChange={f("status")} className={SELECT_CLASS}>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-        </select>
-      </div>
-      <div className="col-span-2 flex gap-2 pt-2">
-        <Button disabled={loading || !canSave} onClick={() => onSave({
-          ...form,
-          productCode: form.productCode || null,
-          industry: form.industry || null,
-          machineType: form.machineType || null,
-          materialType: form.materialType || null,
-          hsnCode: form.hsnCode || null,
-          defaultUnit: form.defaultUnit || null,
-          defaultGst: form.defaultGst ? Number(form.defaultGst) : null,
-          bottleWeight: form.bottleWeight || null,
-          bottleColour: form.bottleColour || null,
-          bottleColourCode: form.bottleColourCode || null,
-          capColour: form.capColour || null,
-        })}>
+
+      <DialogFooter className="shrink-0 border-t px-6 py-4">
+        <Button disabled={loading || !canSave} onClick={handleSubmit}>
           {loading ? "Saving..." : "Save"}
         </Button>
         <Button variant="outline" onClick={onCancel}>Cancel</Button>
-      </div>
-    </div>
+      </DialogFooter>
+    </>
   );
 }
 
@@ -247,7 +278,7 @@ export default function Products() {
         {canManage && (
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-1" /> Add Product</Button></DialogTrigger>
-            <DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>New Product</DialogTitle></DialogHeader>
+            <DialogContent className="max-w-2xl max-h-[90vh] p-0 gap-0 overflow-hidden flex flex-col">
               <ProductForm onSave={handleCreate} onCancel={() => setCreateOpen(false)} loading={createProduct.isPending} />
             </DialogContent>
           </Dialog>
@@ -283,7 +314,13 @@ export default function Products() {
                   <TableCell className="font-medium">{p.name}</TableCell>
                   <TableCell className="text-muted-foreground font-mono text-sm">{p.productCode || "-"}</TableCell>
                   <TableCell>{p.industry || p.category || "-"}</TableCell>
-                  <TableCell>{p.machineType || "-"}</TableCell>
+                  <TableCell>
+                    {p.materialType === "PET" ? (
+                      <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs">Outsourced</Badge>
+                    ) : (
+                      p.machineType || "-"
+                    )}
+                  </TableCell>
                   <TableCell>{p.materialType || "-"}</TableCell>
                   <TableCell className="font-mono text-xs">{p.hsnCode || "-"}</TableCell>
                   <TableCell>{p.defaultUnit || "-"}</TableCell>
@@ -325,7 +362,7 @@ export default function Products() {
       </div>
 
       <Dialog open={!!editProduct} onOpenChange={(o) => !o && setEditProduct(null)}>
-        <DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>Edit Product</DialogTitle></DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[90vh] p-0 gap-0 overflow-hidden flex flex-col">
           {editProduct && <ProductForm initial={editProduct} onSave={handleUpdate} onCancel={() => setEditProduct(null)} loading={updateProduct.isPending} />}
         </DialogContent>
       </Dialog>

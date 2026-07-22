@@ -275,6 +275,8 @@ router.get("/products/machine-report", async (req, res) => {
       const isCompleted = order.status === "Completed";
       const isPending = order.status === "Pending" || order.status === "Material Ready";
 
+      const materialType = product?.materialType || null;
+
       return {
         id: order.id,
         status: order.status,
@@ -282,6 +284,7 @@ router.get("/products/machine-report", async (req, res) => {
         createdAt: order.createdAt,
         productName,
         machineType,
+        materialType,
         totalQuantity: totalQty,
         isInProduction,
         isCompleted,
@@ -289,10 +292,10 @@ router.get("/products/machine-report", async (req, res) => {
       };
     });
 
-    // Apply machine type filter (post-filter since it's from products table)
-    let filteredOrders = enrichedOrders;
+    // Apply machine type filter and exclude PET (outsourced) products
+    let filteredOrders = enrichedOrders.filter(o => o.materialType !== "PET");
     if (machineTypeFilter && machineTypeFilter !== "All") {
-      filteredOrders = enrichedOrders.filter(o => o.machineType === machineTypeFilter);
+      filteredOrders = filteredOrders.filter(o => o.machineType === machineTypeFilter);
     }
     if (productFilter && productFilter !== "All") {
       filteredOrders = filteredOrders.filter(o => o.productName === productFilter);

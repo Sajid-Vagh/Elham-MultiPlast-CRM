@@ -215,6 +215,22 @@ export async function enrichProductionOrder(order: any) {
     ? await db.select().from(proformaInvoiceItemsTable).where(eq(proformaInvoiceItemsTable.invoiceId, invoice.id))
     : [];
 
+  const allProducts = await db.select().from(productsTable);
+  const productMap = new Map(allProducts.map(p => [p.name?.toLowerCase(), p]));
+
+  const enrichedItems = items.map((i: any) => {
+    const product = productMap.get(i.productName?.toLowerCase());
+    return {
+      ...i,
+      quantity: Number(i.quantity),
+      rate: Number(i.rate),
+      amount: Number(i.amount),
+      gstPercent: Number(i.gstPercent || 0),
+      materialType: product?.materialType || null,
+      machineType: product?.machineType || null,
+    };
+  });
+
   let contact = null;
   if (invoice?.contactId) {
     const [c] = await db.select().from(contactsTable).where(eq(contactsTable.id, invoice.contactId));
@@ -321,13 +337,7 @@ export async function enrichProductionOrder(order: any) {
           grandTotal: Number(invoice.grandTotal || 0),
         }
       : null,
-    items: items.map((i: any) => ({
-      ...i,
-      quantity: Number(i.quantity),
-      rate: Number(i.rate),
-      amount: Number(i.amount),
-      gstPercent: Number(i.gstPercent || 0),
-    })),
+    items: enrichedItems,
     contact,
     assignedManager,
     lastUpdatedBy,
@@ -1456,6 +1466,7 @@ export async function getManufacturingSummary(user: PermissionUser, unitFilter?:
       LEFT JOIN products p ON lower(p.name) = lower(pii.product_name)
       WHERE ao.resolved_invoice_id IS NOT NULL
         AND pi.is_deleted = false
+        AND (p.material_type IS NULL OR p.material_type != 'PET')
       GROUP BY ao.po_id, pii.product_name, pii.weight, p.bottle_weight, p.bottle_colour, p.bottle_colour_code
     )
     SELECT
