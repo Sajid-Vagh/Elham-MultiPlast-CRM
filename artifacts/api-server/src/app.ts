@@ -35,15 +35,14 @@ app.use("/api/uploads", express.static(UPLOADS_ROOT, { dotfiles: "deny" }));
 app.use("/api", router);
 
 app.use((err: any, _req: any, res: any, _next: any) => {
-  console.error("GLOBAL ERROR:", err);
+  logger.error({ err: err?.message, type: err?.type }, "Unhandled route error");
+
+  if (err?.type === "entity.parse.failed") {
+    return res.status(400).json({ error: "Invalid JSON in request body" });
+  }
 
   res.status(err?.status ?? 500).json({
     error: "Internal server error",
-    message: err?.message ?? String(err),
-    stack:
-      process.env.NODE_ENV !== "production"
-        ? err?.stack
-        : undefined,
   });
 });
 

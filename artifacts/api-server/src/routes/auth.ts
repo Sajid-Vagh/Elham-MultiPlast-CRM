@@ -1,50 +1,56 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
+import crypto from "node:crypto";
 import { db, usersTable, sessionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { LoginBody } from "@workspace/api-zod";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
 function generateToken(): string {
-  return (
-    Math.random().toString(36).slice(2) +
-    Date.now().toString(36) +
-    Math.random().toString(36).slice(2)
-  );
+  return crypto.randomBytes(32).toString("hex");
 }
 
 export async function getUserIdFromToken(token: string): Promise<number | null> {
-  const [session] = await db
-    .select()
-    .from(sessionsTable)
-    .where(eq(sessionsTable.token, token));
-  return session?.userId ?? null;
+  try {
+    const [session] = await db
+      .select()
+      .from(sessionsTable)
+      .where(eq(sessionsTable.token, token));
+    return session?.userId ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function getUserFromRequest(
   req: any,
 ): Promise<typeof usersTable.$inferSelect | null> {
-  const auth = req.headers["authorization"];
+  try {
+    const auth = req.headers["authorization"];
 
-  if (!auth || !auth.startsWith("Bearer ")) {
+    if (!auth || !auth.startsWith("Bearer ")) {
+      return null;
+    }
+
+    const token = auth.slice(7);
+
+    const userId = await getUserIdFromToken(token);
+
+    if (!userId) {
+      return null;
+    }
+
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, userId));
+
+    return user ?? null;
+  } catch {
     return null;
   }
-
-  const token = auth.slice(7);
-
-  const userId = await getUserIdFromToken(token);
-
-  if (!userId) {
-    return null;
-  }
-
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.id, userId));
-
-  return user ?? null;
 }
 
 router.post("/auth/login", async (req, res) => {
@@ -96,14 +102,10 @@ router.post("/auth/login", async (req, res) => {
       token,
     });
   } catch (err) {
-    console.error("LOGIN ERROR:", err);
+    logger.error({ err }, "Login error");
 
     return res.status(500).json({
       error: "Internal server error",
-      message:
-        err instanceof Error
-          ? err.message
-          : String(err),
     });
   }
 });
@@ -141,13 +143,10 @@ router.get("/auth/me", async (req, res) => {
 
     return res.json(safeUser);
   } catch (err) {
-    console.error("AUTH ME ERROR:", err);
+    logger.error({ err }, "Auth/me error");
 
     return res.status(500).json({
-      error:
-        err instanceof Error
-          ? err.message
-          : String(err),
+      error: "Internal server error",
     });
   }
 });

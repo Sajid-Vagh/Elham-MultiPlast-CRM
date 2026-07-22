@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
 import { useImportIndiaMart, useImportExcel, useGetMe } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -14,7 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { useToast } from "@/hooks/use-toast";
 import { onContactChange } from "@/lib/query-invalidation";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
-import { CheckCircle, AlertCircle, Upload, FileSpreadsheet, X, Sparkles, ClipboardPaste, Download, User, MapPin, Tag } from "lucide-react";
+import { customFetch } from "@workspace/api-client-react/custom-fetch";
+import { CheckCircle, AlertCircle, Upload, FileSpreadsheet, X, Sparkles, ClipboardPaste, Download, User, MapPin, Tag, Clock, BarChart3, History } from "lucide-react";
 import { UserAvatar } from "@/components/user-avatar";
 import { Link } from "wouter";
 import { DuplicateWarningDialog, type DuplicateLeadInfo } from "@/components/duplicate-warning-dialog";
@@ -256,14 +257,45 @@ function parseIndiaMartMessage(raw: string): Partial<ParsedLead> {
     const nameSkipKw = /^(?:hi|dear|hello|regards|chat|enquiry|buylead|details|member|buyer|requirement|material|design|capacity|quantity|probable|click|email|mobile|phone|hdpe|pp|pet|ldpe|bottle|can|jar|drum|ltr|litr|piece|pcs)/i;
     for (let i = 0; i < Math.min(4, lines.length); i++) {
       const line = lines[i]!;
-      // Skip lines with digits (could be mobile) or email chars
       if (/\d/.test(line) || /@/.test(line)) continue;
-      // Must be purely letters/spaces/dots, 2–5 words max
       if (/^[A-Za-z][A-Za-z\s.']{1,50}$/.test(line) &&
           !nameSkipKw.test(line) &&
           line.split(/\s+/).length <= 5) {
         result.clientName = line;
         break;
+      }
+    }
+  }
+
+  // Strategy 5: "Hi [Name]" / "Dear [Name]" / "Hello [Name]" format
+  if (!result.clientName) {
+    for (const line of lines) {
+      const m = line.match(/^(?:hi|dear|hello|hey)\s+([A-Za-z][A-Za-z\s.']{1,50})$/i);
+      if (m) {
+        const candidate = m[1]!.trim();
+        if (/^[A-Za-z][A-Za-z\s.']{2,50}$/.test(candidate) &&
+            !/click|call|email|@|\d{7,}/i.test(candidate)) {
+          result.clientName = candidate;
+          break;
+        }
+      }
+    }
+  }
+
+  // Strategy 6: Missed Call / Campaign enquiry — name may be on a line after "Missed Call" or "Campaign"
+  if (!result.clientName) {
+    for (let i = 0; i < lines.length; i++) {
+      if (/^(?:missed\s+call|campaign|bulk\s+enquiry)/i.test(lines[i]!)) {
+        // Look at the next 2 lines for a name
+        for (let j = i + 1; j < Math.min(i + 3, lines.length); j++) {
+          const candidate = lines[j]!.trim();
+          if (candidate && /^[A-Za-z][A-Za-z\s.']{2,50}$/.test(candidate) &&
+              !/click|call|email|@|\d{7,}|http|mobile|phone/i.test(candidate)) {
+            result.clientName = candidate;
+            break;
+          }
+        }
+        if (result.clientName) break;
       }
     }
   }
@@ -275,6 +307,75 @@ function parseIndiaMartMessage(raw: string): Partial<ParsedLead> {
     Object.keys(STATE_ABBR_MAP).map(k => k.toLowerCase()).concat(
     Object.values(STATE_ABBR_MAP).map(v => v.toLowerCase()))
   );
+
+  // ── Structural Company Detection (line after customer name) ──────────────
+  // Catches Formats 1-4: company appears on its own line right after the name.
+  if (!result.companyName && result.clientName) {
+    const COMPANY_SKIP = /^(?:click\s+to\s+call|email|mobile|phone|call|regards|hi\b|dear|hello|member\s+since|buylead\s+details|quantity|capacity|material|design|requirement|probable|products?\s+of\s+interest|sells?:|enquiry|buyer|looking|address|city|state|location|pincode|country|india|http|www|verified|trade|indiamart|tickicon)/i;
+    const stripHelper = (raw: string): string => {
+      let c = raw.trim();
+      c = c.replace(/\s*\(?\s*GST\s+verified\s+by\s+IndiaMART\s*\)?/gi, "");
+      c = c.replace(/\s*\(?\s*Verified\s+Supplier\s*\)?/gi, "");
+      c = c.replace(/\s*\(?\s*Verified\s+Manufacturer\s*\)?/gi, "");
+      c = c.replace(/\s*\(?\s*Member\s+Since\s+\d{4}\s*\)?/gi, "");
+      c = c.replace(/\s*\(?\s*Member\s+Since\s*\)?/gi, "");
+      c = c.replace(/\s*Products?\s+of\s+Interest[:\s]*/gi, "");
+      c = c.replace(/\s*Sells?:/gi, "");
+      c = c.replace(/\s*Click\s+to\s+Call/gi, "");
+      c = c.replace(/\s*GSTIN[:\s]*[A-Z0-9]{15}/gi, "");
+      return c.replace(/[.,;]+$/, "").trim();
+    };
+
+    // Find the name line index
+    let nameIdx = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i]!.trim() === result.clientName!.trim()) { nameIdx = i; break; }
+    }
+    if (nameIdx < 0) {
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i]!.trim().includes(result.clientName!.trim())) { nameIdx = i; break; }
+      }
+    }
+
+    if (nameIdx >= 0) {
+      for (let i = nameIdx + 1; i < Math.min(nameIdx + 4, lines.length); i++) {
+        const line = lines[i]!.trim();
+        if (!line) continue;
+        if (COMPANY_SKIP.test(line)) break;
+        if (/^\d{5,}$/.test(line)) continue;
+        if (/@/.test(line)) continue;
+        if (/^\+?91/.test(line) || /^\d{10,}/.test(line)) continue;
+        if (/\d{6}/.test(line) && line.split(/\s+/).length > 5) continue;
+
+        // Pattern: "Company City - 382350, GJ" or "Company Gandhinagar - 382305, GJ"
+        const compCityMatch = line.match(/^(.+?)\s+([A-Za-z][A-Za-z\s]{1,20}?)\s*[-–]\s*\d{6}/);
+        if (compCityMatch) {
+          const companyPart = stripHelper(compCityMatch[1]!);
+          if (companyPart.length >= 2 && !COMPANY_SKIP.test(companyPart)) {
+            result.companyName = companyPart;
+            break;
+          }
+        }
+
+        // Pattern: "Company, City..." or "Company, Palanpur..."
+        const compCommaMatch = line.match(/^(.+?),\s*([A-Za-z][A-Za-z\s]{1,25})[.,]?\s*$/);
+        if (compCommaMatch) {
+          const companyPart = stripHelper(compCommaMatch[1]!);
+          if (companyPart.length >= 2 && !COMPANY_SKIP.test(companyPart) && !/^\d/.test(companyPart)) {
+            result.companyName = companyPart;
+            break;
+          }
+        }
+
+        // Plain company line (no city/pincode)
+        const cleaned = stripHelper(line);
+        if (cleaned.length >= 2) {
+          result.companyName = cleaned;
+          break;
+        }
+      }
+    }
+  }
 
   for (const line of lines) {
     let m: RegExpMatchArray | null;
@@ -560,6 +661,12 @@ export default function ImportPage() {
   const [imDuplicateData, setImDuplicateData] = useState<DuplicateLeadInfo | null>(null);
   const [imDuplicateOpen, setImDuplicateOpen] = useState(false);
 
+  // ── Import History state ──
+  const [historyData, setHistoryData] = useState<{ sessions: any[]; total: number } | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+
   const imF = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setIm(p => ({ ...p, [k]: e.target.value }));
 
@@ -582,6 +689,22 @@ export default function ImportPage() {
     const found = Object.values(parsed).filter(Boolean).length;
     toast({ title: `Extracted ${found} field${found !== 1 ? "s" : ""} — review and save` });
   };
+
+  const fetchHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const data = await customFetch<{ sessions: any[]; total: number }>("/import/history?limit=50");
+      setHistoryData(data);
+    } catch { /* ignore */ } finally { setHistoryLoading(false); }
+  }, []);
+
+  const fetchAnalytics = useCallback(async () => {
+    setAnalyticsLoading(true);
+    try {
+      const data = await customFetch<any>("/import/analytics");
+      setAnalyticsData(data);
+    } catch { /* ignore */ } finally { setAnalyticsLoading(false); }
+  }, []);
 
   const handleIndiaMart = () => {
     if (!im.clientName || !im.clientMobile) {
@@ -795,6 +918,9 @@ export default function ImportPage() {
           <TabsTrigger value="indiamart">IndiaMart</TabsTrigger>
           <TabsTrigger value="excel-upload">Excel Upload</TabsTrigger>
           <TabsTrigger value="paste">Paste / JSON</TabsTrigger>
+          <TabsTrigger value="history" onClick={() => { fetchHistory(); fetchAnalytics(); }}>
+            <Clock className="h-3.5 w-3.5 mr-1" /> History
+          </TabsTrigger>
         </TabsList>
 
         {/* ── INDIAMART ── */}
@@ -810,7 +936,7 @@ export default function ImportPage() {
               <div className="space-y-2">
                 <Label className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-amber-500" />
-                  Paste IndiaMart Message — auto-fills form
+                  Paste IndiaMart Message — Multi-layer parser with confidence scoring
                 </Label>
                 <Textarea
                   value={smartPasteText}
@@ -828,7 +954,7 @@ export default function ImportPage() {
                     className="border-amber-400 text-amber-700 bg-amber-50 hover:bg-amber-100 hover:border-amber-500"
                   >
                     <ClipboardPaste className="h-4 w-4 mr-2" />
-                    Extract &amp; Fill Fields
+                    Extract & Fill Fields
                   </Button>
                   {smartPasteText && (
                     <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setSmartPasteText("")}>
@@ -838,10 +964,12 @@ export default function ImportPage() {
                 </div>
               </div>
 
-              {/* Extraction result chips */}
+              {/* Extraction result chips — shows after client-side parse */}
               {parsePreview && (
                 <div className="flex flex-wrap gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <p className="w-full text-xs font-medium text-green-700 mb-1">✓ Extracted — edit any field below before saving</p>
+                  <p className="w-full text-xs font-medium text-green-700 mb-1">
+                    ✓ Extracted — review fields below and click Save Lead
+                  </p>
                   <FieldChip label="Name"   value={parsePreview.clientName}   ok={!!parsePreview.clientName} />
                   <FieldChip label="Mobile" value={parsePreview.clientMobile} ok={!!parsePreview.clientMobile} />
                   {parsePreview.email    && <FieldChip label="Email" value={parsePreview.email}    ok={true} />}
@@ -1357,6 +1485,75 @@ export default function ImportPage() {
                     <p className="text-red-600 text-xs mt-0.5">Failed: {pasteResult.errors.slice(0, 3).join(" · ")}</p>
                   )}
                 </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── IMPORT HISTORY ── */}
+        <TabsContent value="history">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-4 w-4 text-indigo-600" />
+                Import History
+              </CardTitle>
+              <CardDescription>View past import sessions, confidence scores, and parser performance.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Analytics Summary */}
+              {analyticsData && (
+                <div className="grid grid-cols-4 gap-3">
+                  {[
+                    { label: "Total Imports", value: analyticsData.totalImports, color: "text-blue-700" },
+                    { label: "Successful", value: analyticsData.successfulImports, color: "text-green-700" },
+                    { label: "Duplicates", value: analyticsData.duplicateImports, color: "text-amber-700" },
+                    { label: "Avg Confidence", value: `${analyticsData.averageConfidence}%`, color: "text-purple-700" },
+                  ].map(kpi => (
+                    <div key={kpi.label} className="bg-muted/50 rounded-lg p-3 text-center">
+                      <p className={`text-xl font-bold ${kpi.color}`}>{kpi.value}</p>
+                      <p className="text-xs text-muted-foreground">{kpi.label}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Sessions Table */}
+              {historyLoading ? (
+                <div className="text-center py-8 text-muted-foreground text-sm">Loading history…</div>
+              ) : historyData?.sessions?.length ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">{historyData.total} total sessions</p>
+                  <div className="max-h-[400px] overflow-y-auto space-y-1.5">
+                    {historyData.sessions.map((s: any) => (
+                      <div key={s.id} className="flex items-center gap-3 text-xs border rounded-lg px-3 py-2 bg-muted/30">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${
+                          s.result === "imported" ? "bg-green-500" :
+                          s.result === "merged" ? "bg-blue-500" :
+                          s.result === "error" ? "bg-red-500" : "bg-gray-400"
+                        }`} />
+                        <span className="font-medium truncate max-w-[100px]">{s.userName || "System"}</span>
+                        <span className="text-muted-foreground">Parser: {s.parserVersion}</span>
+                        <span className={`font-medium ${
+                          (s.overallConfidence || 0) >= 80 ? "text-green-700" :
+                          (s.overallConfidence || 0) >= 40 ? "text-amber-700" : "text-red-700"
+                        }`}>{s.overallConfidence || 0}%</span>
+                        {s.duplicateDetected && <span className="text-amber-600">⚠ Dup</span>}
+                        <span className={`font-medium uppercase ${
+                          s.result === "imported" ? "text-green-700" :
+                          s.result === "merged" ? "text-blue-700" :
+                          s.result === "error" ? "text-red-700" : "text-muted-foreground"
+                        }`}>{s.result}</span>
+                        {s.resultLeadId && (
+                          <Link href={`/leads/${s.resultLeadId}`} className="text-blue-600 underline ml-auto">View →</Link>
+                        )}
+                        <span className="text-muted-foreground ml-auto">{new Date(s.createdAt).toLocaleDateString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground text-sm">No import history yet</div>
               )}
             </CardContent>
           </Card>

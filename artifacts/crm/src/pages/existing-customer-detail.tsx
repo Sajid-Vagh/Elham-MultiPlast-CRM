@@ -225,6 +225,17 @@ export default function ExistingCustomerDetail() {
     onError: () => toast({ title: "Failed to create repeat order", variant: "destructive" }),
   });
 
+  if (!id || isNaN(id)) {
+    return (
+      <div className="p-6 text-center">
+        <p className="text-muted-foreground">Invalid customer ID.</p>
+        <Button variant="link" onClick={() => setLocation("/existing-customers")}>
+          Back to Customers
+        </Button>
+      </div>
+    );
+  }
+
   if (isLoading) return <div className="p-6 text-center">Loading...</div>;
   if (!customer) return <div className="p-6 text-center">Customer not found</div>;
 

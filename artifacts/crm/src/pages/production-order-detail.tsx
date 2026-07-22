@@ -308,6 +308,17 @@ export default function ProductionOrderDetail() {
     setUnreadCount(0);
   };
 
+  if (!id || isNaN(Number(id))) {
+    return (
+      <div className="p-6 text-center">
+        <p className="text-muted-foreground">Invalid order ID.</p>
+        <Button variant="link" onClick={() => setLocation("/production/orders")}>
+          Back to Orders
+        </Button>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="p-6 space-y-6">

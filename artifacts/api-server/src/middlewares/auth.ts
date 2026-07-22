@@ -65,7 +65,16 @@ export function requirePermission(permission: "view" | "edit" | "approve") {
       quotations: { view: ["admin", "sales"], edit: ["admin", "sales"], approve: ["admin", "sales"] },
     };
 
-    req.next?.();
+    const routePermission = (req as any).routePermission as string | undefined;
+    const resource = routePermission ?? "orders";
+    const allowed = permissionMatrix[resource]?.[permission];
+
+    if (!allowed || !allowed.includes(role)) {
+      res.status(403).json({ error: "Forbidden: insufficient permissions" });
+      return;
+    }
+
+    next();
   };
 }
 

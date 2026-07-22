@@ -11,42 +11,58 @@ export default function CustomerProfile() {
   const [, params] = useRoute("/customers/:id");
   const [, setLocation] = useLocation();
   const contactId = Number(params?.id);
+  const invalidId = !contactId || isNaN(contactId);
 
   const { data: contact, isLoading: loadingContact } = useQuery({
     queryKey: ["contact", contactId],
     queryFn: async () => {
       const res = await fetch(`/api/contacts/${contactId}`, { headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` } });
+      if (!res.ok) throw new Error("Failed to fetch customer");
       return res.json();
     },
-    enabled: !!contactId,
+    enabled: !invalidId,
   });
 
   const { data: comms = [] } = useQuery({
     queryKey: ["communications", contactId],
     queryFn: async () => {
       const res = await fetch(`/api/contacts/${contactId}/communications`, { headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` } });
+      if (!res.ok) return [];
       return res.json();
     },
-    enabled: !!contactId,
+    enabled: !invalidId,
   });
 
   const { data: timeline = [] } = useQuery({
     queryKey: ["order-timeline", contactId],
     queryFn: async () => {
       const res = await fetch(`/api/contacts/${contactId}/timeline`, { headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` } });
+      if (!res.ok) return [];
       return res.json();
     },
-    enabled: !!contactId,
+    enabled: !invalidId,
   });
 
   const { data: invoices = [] } = useQuery({
     queryKey: ["contact-invoices", contactId],
     queryFn: async () => {
       const res = await fetch(`/api/contacts/${contactId}/proforma-invoices`, { headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` } });
+      if (!res.ok) return [];
       return res.json();
     },
-    enabled: !!contactId,
+    enabled: !invalidId,
   });
+
+  if (invalidId) {
+    return (
+      <div className="p-6 text-center">
+        <p className="text-muted-foreground">Invalid customer ID.</p>
+        <Button variant="link" onClick={() => setLocation("/leads")}>
+          Back to Leads
+        </Button>
+      </div>
+    );
+  }
 
   if (loadingContact) return <div className="p-6 text-center">Loading...</div>;
   if (!contact) return <div className="p-6 text-center">Customer not found</div>;

@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
@@ -38,31 +38,31 @@ export function useProductionSyncAlert(enabled = true) {
     enabled,
   });
 
-  // Fire only when the timestamp *advances* past the last one we saw.
-  // The very first fetch is ignored (mountedRef starts false).
-  if (data?.latestModifiedAt) {
+  useEffect(() => {
+    if (!data?.latestModifiedAt) return;
+
     if (!mountedRef.current) {
-      // First fetch — seed the baseline, don't alert.
       prevLatestRef.current = data.latestModifiedAt;
       mountedRef.current = true;
-    } else if (data.latestModifiedAt !== prevLatestRef.current) {
+      return;
+    }
+
+    if (data.latestModifiedAt !== prevLatestRef.current) {
       prevLatestRef.current = data.latestModifiedAt;
 
-      // Play sound
       try {
         const audio = getAudio();
         audio.currentTime = 0;
         audio.play().catch(() => {});
       } catch {}
 
-      // Show toast
       toast({
         title: "Production Order Updated",
         description:
           "An existing production order has been modified with new items or changes.",
       });
     }
-  }
+  }, [data?.latestModifiedAt, toast]);
 
   return data;
 }

@@ -110,4 +110,13 @@ async function main() {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 }
 
+process.on("unhandledRejection", (reason) => {
+  logger.error({ err: reason }, "Unhandled promise rejection");
+});
+
+process.on("uncaughtException", (err) => {
+  logger.error({ err }, "Uncaught exception — shutting down");
+  process.exit(1);
+});
+
 main();

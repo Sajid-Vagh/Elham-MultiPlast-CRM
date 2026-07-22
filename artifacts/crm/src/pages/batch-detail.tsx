@@ -29,6 +29,7 @@ export default function BatchDetail() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const batchId = Number(params?.id);
+  const invalidId = !batchId || isNaN(batchId);
 
   const [showQcDialog, setShowQcDialog] = useState(false);
   const [qcForm, setQcForm] = useState({ bottleWeight: "", colorCheck: "Pass", leakTest: "Pass", capFitting: "Pass", visualInspection: "Pass", overallResult: "Pass", remarks: "" });
@@ -37,9 +38,10 @@ export default function BatchDetail() {
     queryKey: ["batch", batchId],
     queryFn: async () => {
       const res = await fetch(`/api/batches/${batchId}`, { headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` } });
+      if (!res.ok) throw new Error("Failed to fetch batch");
       return res.json();
     },
-    enabled: !!batchId,
+    enabled: !invalidId,
   });
 
   const updateStatus = useMutation({
@@ -67,6 +69,17 @@ export default function BatchDetail() {
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["batch", batchId] }); setShowQcDialog(false); toast({ title: "QC submitted" }); },
   });
+
+  if (invalidId) {
+    return (
+      <div className="p-6 text-center">
+        <p className="text-muted-foreground">Invalid batch ID.</p>
+        <Button variant="link" onClick={() => setLocation("/production/batches")}>
+          Back to Batches
+        </Button>
+      </div>
+    );
+  }
 
   if (isLoading) return <div className="p-6 text-center">Loading...</div>;
   if (!batch) return <div className="p-6 text-center">Batch not found</div>;
