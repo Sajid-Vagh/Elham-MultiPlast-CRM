@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useListProducts, useCreateProduct, useUpdateProduct, useDeleteProduct, getListProductsQueryKey } from "@workspace/api-client-react";
 import { useGetMe } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -16,15 +16,56 @@ type Product = { id: number; name: string; category?: string | null; industry?: 
 
 const COLOUR_PRESETS: { name: string; hex: string }[] = [
   { name: "Purple", hex: "#800080" },
-  { name: "Blue", hex: "#2563EB" },
-  { name: "Green", hex: "#16A34A" },
-  { name: "Red", hex: "#DC2626" },
-  { name: "Yellow", hex: "#EAB308" },
-  { name: "Orange", hex: "#F97316" },
+  { name: "Blue", hex: "#0000FF" },
+  { name: "Sky Blue", hex: "#87CEEB" },
+  { name: "Dark Blue", hex: "#00008B" },
+  { name: "Light Blue", hex: "#ADD8E6" },
+  { name: "Green", hex: "#008000" },
+  { name: "Dark Green", hex: "#006400" },
+  { name: "Light Green", hex: "#90EE90" },
+  { name: "Red", hex: "#FF0000" },
+  { name: "Maroon", hex: "#800000" },
+  { name: "Yellow", hex: "#FFD700" },
+  { name: "Orange", hex: "#FF8C00" },
   { name: "Black", hex: "#000000" },
   { name: "White", hex: "#FFFFFF" },
   { name: "Transparent", hex: "#E5E7EB" },
+  { name: "Natural", hex: "#C2B280" },
+  { name: "Grey", hex: "#808080" },
+  { name: "Silver", hex: "#C0C0C0" },
+  { name: "Pink", hex: "#FFC0CB" },
+  { name: "Peach", hex: "#FFDAB9" },
+  { name: "Brown", hex: "#A52A2A" },
+  { name: "Violet", hex: "#EE82EE" },
+  { name: "Golden", hex: "#FFD700" },
+  { name: "Cream", hex: "#FFFDD0" },
+  { name: "Ivory", hex: "#FFFFF0" },
+  { name: "Teal", hex: "#008080" },
+  { name: "Navy", hex: "#000080" },
+  { name: "Beige", hex: "#F5F5DC" },
+  { name: "Magenta", hex: "#FF00FF" },
+  { name: "Cyan", hex: "#00FFFF" },
+  { name: "Olive", hex: "#808000" },
+  { name: "Coral", hex: "#FF7F50" },
+  { name: "Turquoise", hex: "#40E0D0" },
+  { name: "Indigo", hex: "#4B0082" },
+  { name: "Burgundy", hex: "#800020" },
+  { name: "Rust", hex: "#B7410E" },
+  { name: "Copper", hex: "#B87333" },
+  { name: "Bronze", hex: "#CD7F32" },
+  { name: "Charcoal", hex: "#36454F" },
+  { name: "Lime", hex: "#00FF00" },
+  { name: "Salmon", hex: "#FA8072" },
+  { name: "Plum", hex: "#8E4585" },
+  { name: "Lavender", hex: "#E6E6FA" },
+  { name: "Mint", hex: "#98FF98" },
+  { name: "Chocolate", hex: "#D2691E" },
+  { name: "Tan", hex: "#D2B48C" },
+  { name: "Rose", hex: "#FF007F" },
+  { name: "Mauve", hex: "#E0B0FF" },
 ];
+
+const COLOUR_MAP = new Map(COLOUR_PRESETS.map(c => [c.name.toLowerCase(), c.hex]));
 
 const INDUSTRY_OPTIONS = [
   "Liquid Detergents",
@@ -95,6 +136,73 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
   const machineRequired = needsMachine(form.materialType);
   const canSave = form.name && form.industry && form.materialType && form.defaultUnit && (isPet || (machineRequired ? form.machineType : true));
 
+  const [colourQuery, setColourQuery] = useState(initial?.bottleColour || "");
+  const [showColourDropdown, setShowColourDropdown] = useState(false);
+  const [activeColourIdx, setActiveColourIdx] = useState(-1);
+  const colourInputRef = useRef<HTMLInputElement>(null);
+  const colourDropdownRef = useRef<HTMLDivElement>(null);
+
+  const filteredColours = colourQuery.trim()
+    ? COLOUR_PRESETS.filter(c => c.name.toLowerCase().includes(colourQuery.toLowerCase()))
+    : COLOUR_PRESETS;
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (colourDropdownRef.current && !colourDropdownRef.current.contains(e.target as Node) &&
+          colourInputRef.current && !colourInputRef.current.contains(e.target as Node)) {
+        setShowColourDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const selectColour = (name: string, hex: string) => {
+    setColourQuery(name);
+    setForm(p => ({ ...p, bottleColour: name, bottleColourCode: hex }));
+    setShowColourDropdown(false);
+    setActiveColourIdx(-1);
+  };
+
+  const handleColourKeyDown = (e: React.KeyboardEvent) => {
+    if (!showColourDropdown) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        setShowColourDropdown(true);
+        setActiveColourIdx(0);
+        e.preventDefault();
+      }
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveColourIdx(i => (i + 1) % filteredColours.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveColourIdx(i => (i - 1 + filteredColours.length) % filteredColours.length);
+    } else if (e.key === "Enter" && activeColourIdx >= 0) {
+      e.preventDefault();
+      const c = filteredColours[activeColourIdx];
+      if (c) selectColour(c.name, c.hex);
+    } else if (e.key === "Escape") {
+      setShowColourDropdown(false);
+      setActiveColourIdx(-1);
+    }
+  };
+
+  const handleColourInputChange = (val: string) => {
+    setColourQuery(val);
+    const matched = COLOUR_MAP.get(val.toLowerCase());
+    if (matched) {
+      setForm(p => ({ ...p, bottleColour: val, bottleColourCode: matched }));
+    } else {
+      setForm(p => ({ ...p, bottleColour: val, bottleColourCode: "" }));
+    }
+    setShowColourDropdown(true);
+    setActiveColourIdx(-1);
+  };
+
+  const resolvedColourCode = COLOUR_MAP.get(colourQuery.toLowerCase()) || form.bottleColourCode || null;
+
   const handleSubmit = () => onSave({
     ...form,
     productCode: form.productCode || null,
@@ -162,45 +270,71 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
           <div><Label>Default GST %</Label><Input type="number" value={form.defaultGst} onChange={f("defaultGst")} min={0} max={100} /></div>
           <div><Label>Bottle Weight</Label><Input value={form.bottleWeight} onChange={f("bottleWeight")} /></div>
           <div className="sm:col-span-2"><Label>Bottle Colour</Label>
-            <div className="flex flex-wrap gap-1.5 mt-1">
-              {COLOUR_PRESETS.map(c => (
-                <button
-                  key={c.name}
-                  type="button"
-                  onClick={() => setForm(p => ({ ...p, bottleColour: c.name, bottleColourCode: c.hex }))}
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded border text-xs transition-colors ${
-                    form.bottleColour === c.name
-                      ? "border-primary bg-primary/5 ring-1 ring-primary"
-                      : "border-input hover:border-primary/50"
-                  }`}
-                >
+            <div className="relative mt-1">
+              <div className="flex items-center gap-2">
+                {resolvedColourCode && (
                   <span
-                    className="w-3 h-3 rounded-full border shrink-0"
-                    style={{ backgroundColor: c.hex === "#FFFFFF" ? "#f3f4f6" : c.hex, borderColor: c.hex === "#FFFFFF" ? "#d1d5db" : c.hex }}
+                    className="w-5 h-5 rounded border shrink-0 mt-0.5"
+                    style={{
+                      backgroundColor: resolvedColourCode === "transparent" ? "#f3f4f6" : resolvedColourCode,
+                      borderColor: resolvedColourCode === "transparent" ? "#d1d5db" : resolvedColourCode === "#FFFFFF" ? "#d1d5db" : resolvedColourCode,
+                    }}
                   />
-                  {c.name}
-                </button>
-              ))}
+                )}
+                <input
+                  ref={colourInputRef}
+                  type="text"
+                  value={colourQuery}
+                  onChange={(e) => handleColourInputChange(e.target.value)}
+                  onFocus={() => { setShowColourDropdown(true); setActiveColourIdx(-1); }}
+                  onKeyDown={handleColourKeyDown}
+                  placeholder="Type a colour name..."
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground"
+                />
+              </div>
+              {showColourDropdown && filteredColours.length > 0 && (
+                <div ref={colourDropdownRef} className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md">
+                  {filteredColours.map((c, i) => (
+                    <button
+                      key={c.name}
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); selectColour(c.name, c.hex); }}
+                      onMouseEnter={() => setActiveColourIdx(i)}
+                      className={`flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left ${
+                        i === activeColourIdx ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+                      }`}
+                    >
+                      <span
+                        className="w-3.5 h-3.5 rounded-full border shrink-0"
+                        style={{
+                          backgroundColor: c.hex === "transparent" ? "#f3f4f6" : c.hex,
+                          borderColor: c.hex === "transparent" ? "#d1d5db" : c.hex === "#FFFFFF" ? "#d1d5db" : c.hex,
+                        }}
+                      />
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2 mt-2">
-              <input
-                type="color"
-                value={form.bottleColourCode || "#800080"}
-                onChange={(e) => setForm(p => ({ ...p, bottleColourCode: e.target.value }))}
-                className="h-9 w-9 rounded border border-input cursor-pointer p-0.5"
-              />
-              <Input
-                value={form.bottleColour}
-                onChange={(e) => setForm(p => ({ ...p, bottleColour: e.target.value }))}
-                placeholder="Color name (e.g. Purple)"
-                className="flex-1"
-              />
-              <Input
-                value={form.bottleColourCode}
-                onChange={(e) => setForm(p => ({ ...p, bottleColourCode: e.target.value }))}
-                placeholder="#800080"
-                className="w-28 font-mono text-xs"
-              />
+              <label className="text-xs text-muted-foreground flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="color"
+                  value={form.bottleColourCode || "#800080"}
+                  onChange={(e) => {
+                    setForm(p => ({ ...p, bottleColourCode: e.target.value }));
+                    setColourQuery("");
+                  }}
+                  className="h-6 w-6 rounded border border-input cursor-pointer p-0"
+                />
+                Custom hex (optional)
+              </label>
+              {form.bottleColourCode && form.bottleColour && (
+                <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                  {form.bottleColour} = {form.bottleColourCode}
+                </Badge>
+              )}
             </div>
           </div>
           <div><Label>Cap Colour</Label><Input value={form.capColour} onChange={f("capColour")} /></div>
