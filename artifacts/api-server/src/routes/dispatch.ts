@@ -199,7 +199,7 @@ router.patch("/dispatch/:id", async (req, res) => {
 
       // Update linked production order status
       if (existing.productionOrderId) {
-        const poStatus = status === "Delivered" ? "Completed" : status === "Dispatched" ? "Ready For Dispatch" : undefined;
+        const poStatus = status === "Delivered" ? "Completed" : status === "Dispatched" ? "Ready To Dispatch" : undefined;
         if (poStatus) {
           await db.update(productionOrdersTable).set({ status: poStatus, updatedBy: user.id, updatedAt: new Date() }).where(eq(productionOrdersTable.id, existing.productionOrderId));
         }

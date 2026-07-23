@@ -120,27 +120,14 @@ export default function SupportDashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card
           className="h-full border-green-200 rounded-xl border bg-card text-card-foreground shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out cursor-pointer"
-          onClick={() => setLocation("/production/orders?status=Ready For Dispatch")}
+          onClick={() => setLocation("/production/orders?status=Ready To Dispatch")}
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-xs font-medium">Ready for Dispatch</CardTitle>
+            <CardTitle className="text-xs font-medium">Ready to Dispatch</CardTitle>
             <CheckCircle2 className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-xl font-bold text-green-600">{dash.readyForDispatch ?? 0}</div>
-          </CardContent>
-        </Card>
-
-        <Card
-          className="h-full border-indigo-200 rounded-xl border bg-card text-card-foreground shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out cursor-pointer"
-          onClick={() => setLocation("/production/orders?status=In Transport")}
-        >
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-xs font-medium">In Transport</CardTitle>
-            <Ship className="h-4 w-4 text-indigo-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold text-indigo-600">{dash.inTransport ?? 0}</div>
           </CardContent>
         </Card>
 
@@ -159,10 +146,10 @@ export default function SupportDashboardPage() {
 
         <Card
           className="h-full border-purple-200 rounded-xl border bg-card text-card-foreground shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out cursor-pointer"
-          onClick={() => setLocation("/production/orders?status=In Production")}
+          onClick={() => setLocation("/production/orders?status=Production On Going")}
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-xs font-medium">In Production</CardTitle>
+            <CardTitle className="text-xs font-medium">Production On Going</CardTitle>
             <Package className="h-4 w-4 text-purple-500" />
           </CardHeader>
           <CardContent>

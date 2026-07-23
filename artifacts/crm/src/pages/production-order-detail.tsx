@@ -24,12 +24,9 @@ import { VoiceNoteUploader } from "@/components/voice-note-uploader";
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
-  "Accepted": "bg-blue-100 text-blue-700 border-blue-300",
-  "Planning": "bg-purple-100 text-purple-700 border-purple-300",
-  "In Production": "bg-orange-100 text-orange-700 border-orange-300",
-  "Packing": "bg-yellow-100 text-yellow-700 border-yellow-300",
-  "Ready For Dispatch": "bg-green-100 text-green-700 border-green-300",
-  "In Transport": "bg-indigo-100 text-indigo-700 border-indigo-300",
+  "Production On Going": "bg-orange-100 text-orange-700 border-orange-300",
+  "Packaging": "bg-yellow-100 text-yellow-700 border-yellow-300",
+  "Ready To Dispatch": "bg-green-100 text-green-700 border-green-300",
   "Completed": "bg-emerald-100 text-emerald-700 border-emerald-300",
   "Cancelled": "bg-red-100 text-red-700 border-red-300",
 };
@@ -342,8 +339,7 @@ export default function ProductionOrderDetail() {
 
   const isProductionUser = user?.role === "production" || user?.role === "production_and_support" || user?.role === "admin";
   const isSupportUser = user?.role === "production_and_support" || user?.role === "admin";
-  const isReadyForDispatch = order.status === "Ready For Dispatch";
-  const isInTransport = order.status === "In Transport";
+  const isReadyForDispatch = order.status === "Ready To Dispatch";
   const hasTransport = order.transportName && order.transportDetails;
   const isOutsourced = order.items?.some((item: any) => item.materialType === "PET");
 
@@ -510,8 +506,8 @@ export default function ProductionOrderDetail() {
             </Card>
           )}
 
-          {/* In Production Details Card */}
-          {(order.status === "In Production" || order.productionMachine) && !isOutsourced && (
+          {/* Production Details Card */}
+          {(order.status === "Production On Going" || order.productionMachine) && !isOutsourced && (
             <Card className="border-orange-200">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-orange-700">
@@ -896,32 +892,32 @@ export default function ProductionOrderDetail() {
                     <CheckCircle className="h-4 w-4 mr-2" /> Accept Order
                   </Button>
                 )}
-                {(order?.status === "Pending" || order?.status === "Accepted") && (
-                  <Button className="w-full" variant="outline" onClick={() => setPlanningDialogOpen(true)}>
-                    <Calendar className="h-4 w-4 mr-2" /> Add Planning
+                {order?.status === "Pending" && (
+                  <Button className="w-full bg-blue-600 hover:bg-blue-700" onClick={() => acceptOrder.mutate()} disabled={acceptOrder.isPending}>
+                    <CheckCircle className="h-4 w-4 mr-2" /> Accept Order
                   </Button>
                 )}
-                {order?.status === "Planning" && (
-                  <>
-                    <Button className="w-full" variant="outline" onClick={() => setPlanningDialogOpen(true)}>
-                      <Calendar className="h-4 w-4 mr-2" /> Edit Planning
-                    </Button>
-                    <Button className="w-full bg-orange-600 hover:bg-orange-700" onClick={() => setStartDialogOpen(true)}>
-                      <Play className="h-4 w-4 mr-2" /> Start Production
-                    </Button>
-                  </>
+                {(order?.status === "Pending" || order?.status === "Production On Going") && (
+                  <Button className="w-full" variant="outline" onClick={() => setPlanningDialogOpen(true)}>
+                    <Calendar className="h-4 w-4 mr-2" /> {order?.status === "Production On Going" ? "Edit Planning" : "Add Planning"}
+                  </Button>
                 )}
-                {order?.status === "In Production" && (
+                {["Pending", "Production On Going"].includes(order?.status) && (
+                  <Button className="w-full bg-orange-600 hover:bg-orange-700" onClick={() => setStartDialogOpen(true)}>
+                    <Play className="h-4 w-4 mr-2" /> Start Production
+                  </Button>
+                )}
+                {order?.status === "Production On Going" && (
                   <Button className="w-full bg-yellow-600 hover:bg-yellow-700" onClick={() => setPackingDialogOpen(true)}>
                     <Package className="h-4 w-4 mr-2" /> Complete Packing
                   </Button>
                 )}
-                {order?.status === "Packing" && (
-                  <Button className="w-full bg-green-600 hover:bg-green-700" onClick={() => markReadyForDispatch.mutate()} disabled={markReadyForDispatch.isPending}>
+                {order?.status === "Packaging" && (
+                  <Button className="w-full bg-green-600 hover:bg-green-700" onClick={() => markReadyForDispatch.mutate(undefined)} disabled={markReadyForDispatch.isPending}>
                     <CheckCircle className="h-4 w-4 mr-2" /> Mark Ready for Dispatch
                   </Button>
                 )}
-                {order?.status === "In Transport" && (
+                {order?.status === "Ready To Dispatch" && (user?.role === "production_and_support" || user?.role === "admin") && (
                   <Button className="w-full bg-emerald-600 hover:bg-emerald-700" onClick={() => completeOrder.mutate()} disabled={completeOrder.isPending}>
                     <CheckCircle className="h-4 w-4 mr-2" /> Complete Order
                   </Button>
@@ -939,7 +935,7 @@ export default function ProductionOrderDetail() {
                 {order?.isFrozen && order?.status !== "Completed" && (
                   <div className="p-2 bg-orange-50 border border-orange-200 rounded text-xs text-orange-700">
                     <AlertTriangle className="h-3 w-3 inline mr-1" />
-                    In Production — PI modifications require approval
+                    Production On Going — PI modifications require approval
                   </div>
                 )}
               </CardContent>
@@ -1147,7 +1143,7 @@ export default function ProductionOrderDetail() {
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              After booking, the order status becomes "In Transport". Sales and Production will be notified.
+              After booking, the order status will be updated. Sales and Production will be notified.
             </p>
           </div>
           <DialogFooter>

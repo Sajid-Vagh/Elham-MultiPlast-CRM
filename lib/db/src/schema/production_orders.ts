@@ -7,12 +7,9 @@ import { dealsTable } from "./deals";
 
 export const PRODUCTION_STATUSES = [
   "Pending",
-  "Accepted",
-  "Planning",
-  "In Production",
-  "Packing",
-  "Ready For Dispatch",
-  "In Transport",
+  "Production On Going",
+  "Packaging",
+  "Ready To Dispatch",
   "Completed",
   "Cancelled",
 ] as const;
@@ -20,13 +17,10 @@ export const PRODUCTION_STATUSES = [
 export type ProductionStatus = typeof PRODUCTION_STATUSES[number];
 
 export const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
-  "Pending": ["Accepted", "Cancelled"],
-  "Accepted": ["Planning", "Cancelled"],
-  "Planning": ["In Production", "Cancelled"],
-  "In Production": ["Packing", "Cancelled"],
-  "Packing": ["Ready For Dispatch", "Cancelled"],
-  "Ready For Dispatch": ["In Transport", "Cancelled"],
-  "In Transport": ["Completed"],
+  "Pending": ["Production On Going", "Packaging", "Ready To Dispatch", "Completed", "Cancelled"],
+  "Production On Going": ["Pending", "Packaging", "Ready To Dispatch", "Completed", "Cancelled"],
+  "Packaging": ["Pending", "Production On Going", "Ready To Dispatch", "Completed", "Cancelled"],
+  "Ready To Dispatch": ["Pending", "Production On Going", "Packaging", "Completed", "Cancelled"],
   "Completed": [],
   "Cancelled": [],
 };

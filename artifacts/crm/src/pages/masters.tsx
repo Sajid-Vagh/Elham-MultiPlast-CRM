@@ -43,12 +43,92 @@ type ImportBatch = {
 type ImportPreview = {
   summary: { total: number; valid: number; invalid: number };
   errors: { row: number; field: string; message: string }[];
+  warnings: { row?: number; field?: string; message: string }[];
   validRows: any[];
   fileName: string;
+  parser: DetectedParser;
+  mapping: Record<string, string>;
 };
 
 const EMPTY_TRANSPORT_FORM = { state: "", city: "", pinCode: "", transportCompany: "", transportType: "Bundle Wise", transportCharge: "", transitDays: "", productionUnit: "all", remarks: "" };
 const EMPTY_BUNDLE_FORM = { productName: "", bundleSize: "", linerPackingQty: "", tciBoraQty: "", normalBoraQty: "", productionUnit: "all", remarks: "" };
+
+// ── Flexible Column Mapping (3 dedicated parsers) ──
+type DetectedParser = "transport" | "liner" | "bora";
+
+function norm(h: string): string {
+  return h.toLowerCase().trim().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function hasCol(headers: string[], ...aliases: string[]): string | undefined {
+  for (const h of headers) {
+    const n = norm(h);
+    for (const a of aliases) { if (n === a || n.includes(a)) return h; }
+  }
+  return undefined;
+}
+
+const TRANSPORT_ALIASES: Record<string, string[]> = {
+  state: ["state", "destination state", "dest state"],
+  city: ["city", "destination city", "dest city", "town", "place"],
+  pinCode: ["pin code", "pincode", "pin", "zip code", "zip", "postal code"],
+  transportCompany: ["transport company", "transport co", "transporter", "company", "carrier", "transport name", "transport"],
+  transportType: ["transport type", "type", "mode"],
+  transportCharge: ["freight charge", "freight", "charge", "rate", "cost", "transport charge", "amount"],
+  transitDays: ["transit days", "transit", "days", "delivery days"],
+  productionUnit: ["production unit", "factory unit", "unit"],
+  remarks: ["remarks", "notes", "comments"],
+};
+
+const LINER_ALIASES: Record<string, string[]> = {
+  productName: ["product name", "product", "item", "item name", "description"],
+  linerPackingQty: ["liner packing qty", "liner packing", "liner qty", "liner", "packing qty"],
+  productionUnit: ["production unit", "factory unit", "unit"],
+  bundleSize: ["bundle size", "bundle", "pack size", "pack"],
+};
+
+const BORA_ALIASES: Record<string, string[]> = {
+  productName: ["product name", "product", "item", "item name", "description"],
+  tciBoraQty: ["tci bora qty", "tci bora", "tci"],
+  normalBoraQty: ["normal bora qty", "normal bora", "normal"],
+  bundleSize: ["bundle size", "bundle", "pack size", "pack"],
+  productionUnit: ["production unit", "factory unit", "unit"],
+};
+
+function detectParser(headers: string[]): DetectedParser {
+  const joined = headers.map(norm).join(" ");
+  if (/liner/.test(joined) && !/tci|bora|normal/.test(joined)) return "liner";
+  if (/\btci\b/.test(joined) || /normal.*bora/.test(joined) || /bora/.test(joined)) return "bora";
+  if (/transport/.test(joined) || /freight/.test(joined) || /transit/.test(joined)) return "transport";
+  if (/state/.test(joined) && /city/.test(joined)) return "transport";
+  return "transport";
+}
+
+function mapRow(row: any, headers: string[], aliases: Record<string, string[]>): any {
+  const result: any = {};
+  for (const [field, aliasList] of Object.entries(aliases)) {
+    const h = hasCol(headers, ...aliasList);
+    if (h) result[field] = row[h];
+  }
+  return result;
+}
+
+function parseRows(rawRows: any[], parser: DetectedParser): { mapped: any[]; mapping: Record<string, string> } {
+  if (rawRows.length === 0) return { mapped: [], mapping: {} };
+  const headers = Object.keys(rawRows[0]);
+  const aliases = parser === "transport" ? TRANSPORT_ALIASES : parser === "liner" ? LINER_ALIASES : BORA_ALIASES;
+  const mapping: Record<string, string> = {};
+  for (const [field, aliasList] of Object.entries(aliases)) {
+    const h = hasCol(headers, ...aliasList);
+    if (h) mapping[field] = h;
+  }
+  const mapped = rawRows.map((row, i) => {
+    const m = mapRow(row, headers, aliases);
+    m._rowNum = i + 1;
+    return m;
+  });
+  return { mapped, mapping };
+}
 
 // ══════════════════════════════════════════════════════════════
 // TRANSPORT MASTER TAB
@@ -561,17 +641,40 @@ function ImportTab({ canImport, canUndo }: { canImport: boolean; canUndo: boolea
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [entityType, setEntityType] = useState<"transport_master" | "packing_master">("transport_master");
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ imported: number; errors: any[] } | null>(null);
+  const [importResult, setImportResult] = useState<{ imported: number; skipped: number; errors: any[]; warnings: any[] } | null>(null);
+  const [lastImportType, setLastImportType] = useState<DetectedParser>("transport");
 
-  const entityPrefix = entityType === "transport_master" ? "transport-masters/destinations" : "transport-masters/bundles";
+  const PARSER_LABELS: Record<DetectedParser, string> = { transport: "Transport Master", liner: "Liner Packing", bora: "Bora Packing" };
+
+  const parserEntityMap: Record<DetectedParser, string> = {
+    transport: "transport_master", liner: "liner_master", bora: "bora_master",
+  };
+
+  function previewEndpoint(p: DetectedParser): string {
+    if (p === "transport") return "/api/transport-masters/destinations/import/preview";
+    if (p === "liner") return "/api/transport-masters/bundles/import/liner/preview";
+    return "/api/transport-masters/bundles/import/bora/preview";
+  }
+
+  function executeEndpoint(p: DetectedParser): string {
+    if (p === "transport") return "/api/transport-masters/destinations/import/execute";
+    if (p === "liner") return "/api/transport-masters/bundles/import/liner/execute";
+    return "/api/transport-masters/bundles/import/bora/execute";
+  }
+
+  function undoEndpoint(p: DetectedParser): string {
+    if (p === "transport") return "/api/transport-masters/destinations/import/undo";
+    if (p === "liner") return "/api/transport-masters/bundles/import/liner/undo";
+    return "/api/transport-masters/bundles/import/bora/undo";
+  }
 
   const { data: lastBatch, refetch: refetchLastBatch } = useQuery({
-    queryKey: ["import-last", entityType],
+    queryKey: ["import-last", lastImportType],
     queryFn: async () => {
-      const res = await fetch(`/api/${entityPrefix}/import/last`, { headers: authHeaders() });
+      const entity = parserEntityMap[lastImportType];
+      const res = await fetch(`/api/transport-masters/destinations/import/last?entityType=${entity}`, { headers: authHeaders() });
       if (!res.ok) return null;
       return res.json();
     },
@@ -580,55 +683,66 @@ function ImportTab({ canImport, canUndo }: { canImport: boolean; canUndo: boolea
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     try {
       const XLSX = await import("xlsx");
       const data = await file.arrayBuffer();
       const wb = XLSX.read(data, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      const rawRows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      if (rawRows.length === 0) { toast({ title: "No data found in file", variant: "destructive" }); return; }
 
-      const res = await fetch(`/api/${entityPrefix}/import/preview`, {
+      const headers = Object.keys(rawRows[0] as object);
+      const detectedParser = detectParser(headers);
+      const { mapped, mapping } = parseRows(rawRows, detectedParser);
+
+      const res = await fetch(previewEndpoint(detectedParser), {
         method: "POST", headers: authHeaders(),
-        body: JSON.stringify({ rows, fileName: file.name }),
+        body: JSON.stringify({ rows: mapped, fileName: file.name }),
       });
       if (!res.ok) throw new Error("Preview failed");
       const result = await res.json();
-      setPreview({ ...result, fileName: file.name });
+      setPreview({ ...result, fileName: file.name, parser: detectedParser, mapping });
       setImportResult(null);
+      setLastImportType(detectedParser);
+      toast({ title: `Detected: ${PARSER_LABELS[detectedParser]}` });
     } catch (err: any) {
       toast({ title: err.message || "Failed to parse file", variant: "destructive" });
     }
     if (fileRef.current) fileRef.current.value = "";
-  }, [entityType, toast]);
+  }, [toast]);
 
   const handleImport = useCallback(async () => {
     if (!preview) return;
     setImporting(true);
     try {
-      const res = await fetch(`/api/${entityPrefix}/import/execute`, {
+      const res = await fetch(executeEndpoint(preview.parser), {
         method: "POST", headers: authHeaders(),
         body: JSON.stringify({ rows: preview.validRows, fileName: preview.fileName }),
       });
       if (!res.ok) throw new Error("Import failed");
       const result = await res.json();
-      setImportResult(result);
+      setImportResult({
+        imported: result.imported,
+        skipped: preview.summary.invalid,
+        errors: result.errors || [],
+        warnings: preview.warnings || [],
+      });
       setPreview(null);
       queryClient.invalidateQueries({ queryKey: ["transport-destinations"] });
       queryClient.invalidateQueries({ queryKey: ["product-bundles"] });
       refetchLastBatch();
-      toast({ title: `Imported ${result.imported} records` });
+      toast({ title: `Imported ${result.imported} ${PARSER_LABELS[preview.parser]} records.` });
     } catch (err: any) {
       toast({ title: err.message || "Import failed", variant: "destructive" });
     } finally {
       setImporting(false);
     }
-  }, [preview, entityType, toast]);
+  }, [preview, toast]);
 
   const handleUndo = useCallback(async () => {
     if (!confirm("Undo the last import? This will delete all records from that import.")) return;
     try {
-      const res = await fetch(`/api/${entityPrefix}/import/undo`, {
+      const res = await fetch(undoEndpoint(lastImportType), {
         method: "POST", headers: authHeaders(),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Failed"); }
@@ -640,21 +754,11 @@ function ImportTab({ canImport, canUndo }: { canImport: boolean; canUndo: boolea
     } catch (err: any) {
       toast({ title: err.message || "Undo failed", variant: "destructive" });
     }
-  }, [entityType, toast]);
+  }, [lastImportType, toast]);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
-        <div>
-          <Label>Import Type</Label>
-          <Select value={entityType} onValueChange={v => { setEntityType(v as any); setPreview(null); setImportResult(null); }}>
-            <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="transport_master">Transport Master</SelectItem>
-              <SelectItem value="packing_master">Packing Master</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
         {canImport && (
           <>
             <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileUpload} />
@@ -670,15 +774,12 @@ function ImportTab({ canImport, canUndo }: { canImport: boolean; canUndo: boolea
         )}
       </div>
 
-      {/* Import instructions */}
+      {/* Info card */}
       <Card>
         <CardContent className="p-4">
-          <p className="text-sm font-medium mb-2">Expected Excel Columns:</p>
-          {entityType === "transport_master" ? (
-            <p className="text-xs text-muted-foreground">Factory Unit, State, City, PIN Code, Transport Company, Transport Type, Freight Charge, Transit Days, Remarks</p>
-          ) : (
-            <p className="text-xs text-muted-foreground">Product Name, Product ID, Liner Packing Qty, TCI Bora Qty, Normal Bora Qty, Production Unit, Remarks</p>
-          )}
+          <p className="text-sm font-medium mb-1">Auto-Detect Import Type</p>
+          <p className="text-xs text-muted-foreground mb-1">Upload any Excel file — the parser is detected automatically from column headers.</p>
+          <p className="text-xs text-muted-foreground">Transport: state, city, transport/freight/transit columns &nbsp;|&nbsp; Liner: product, liner columns &nbsp;|&nbsp; Bora: product, tci bora/normal bora columns</p>
         </CardContent>
       </Card>
 
@@ -689,65 +790,116 @@ function ImportTab({ canImport, canUndo }: { canImport: boolean; canUndo: boolea
             <CardTitle className="text-sm flex items-center gap-2">
               <FileSpreadsheet className="h-4 w-4" />
               Preview: {preview.fileName}
-              <Badge variant="outline">{preview.summary.valid} valid</Badge>
-              {preview.summary.invalid > 0 && <Badge variant="destructive">{preview.summary.invalid} errors</Badge>}
+              <Badge variant="outline" className="bg-blue-50 text-blue-700">{PARSER_LABELS[preview.parser]}</Badge>
+              <Badge variant="outline" className="bg-green-50">{preview.summary.valid} valid</Badge>
+              {preview.summary.invalid > 0 && <Badge variant="destructive">{preview.summary.invalid} skipped</Badge>}
+              {preview.warnings && preview.warnings.length > 0 && <Badge variant="outline" className="bg-yellow-50 text-yellow-700">{preview.warnings.length} warnings</Badge>}
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-0 max-h-80 overflow-y-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12">Row</TableHead>
-                  {entityType === "transport_master" ? (
-                    <>
-                      <TableHead>Unit</TableHead><TableHead>PIN</TableHead><TableHead>City</TableHead>
-                      <TableHead>State</TableHead><TableHead>Company</TableHead><TableHead className="text-right">Charge</TableHead>
-                    </>
-                  ) : (
-                    <>
-                      <TableHead>Product</TableHead><TableHead className="text-right">Liner</TableHead>
-                      <TableHead className="text-right">TCI Bora</TableHead><TableHead className="text-right">Normal Bora</TableHead>
-                    </>
-                  )}
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {preview.validRows.slice(0, 50).map((row: any, i: number) => {
-                  const rowNum = row._rowNum || i + 1;
-                  const error = preview.errors.find(e => e.row === rowNum);
-                  return (
-                    <TableRow key={i} className={error ? "bg-red-50" : ""}>
-                      <TableCell className="text-xs">{rowNum}</TableCell>
-                      {entityType === "transport_master" ? (
-                        <>
-                          <TableCell className="text-xs">{row.productionUnit || "All"}</TableCell>
-                          <TableCell className="text-xs font-mono">{row.pinCode || "—"}</TableCell>
-                          <TableCell className="text-xs">{row.city}</TableCell>
-                          <TableCell className="text-xs">{row.state}</TableCell>
-                          <TableCell className="text-xs">{row.transportCompany || "—"}</TableCell>
-                          <TableCell className="text-xs text-right">₹{row.transportCharge || 0}</TableCell>
-                        </>
-                      ) : (
-                        <>
-                          <TableCell className="text-xs">{row.productName}</TableCell>
-                          <TableCell className="text-xs text-right">{row.linerPackingQty || 0}</TableCell>
-                          <TableCell className="text-xs text-right">{row.tciBoraQty || 0}</TableCell>
-                          <TableCell className="text-xs text-right">{row.normalBoraQty || 0}</TableCell>
-                        </>
-                      )}
-                      <TableCell>
-                        {error ? (
-                          <Badge variant="destructive" className="text-xs">{error.message}</Badge>
-                        ) : (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
+          <CardContent className="space-y-3">
+            {/* Column Mapping */}
+            {Object.keys(preview.mapping).length > 0 && (
+              <div className="p-3 bg-muted/30 rounded-md">
+                <p className="text-xs font-medium mb-1">Column Mapping:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(preview.mapping).map(([field, header]) => (
+                    <Badge key={field} variant="outline" className="text-xs">
+                      {header} → {field}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Row Warnings */}
+            {preview.warnings && preview.warnings.length > 0 && (
+              <div className="p-3 bg-yellow-50 rounded-md border border-yellow-200">
+                <p className="text-xs font-medium text-yellow-800 mb-1">Warnings:</p>
+                <div className="max-h-24 overflow-y-auto space-y-0.5">
+                  {preview.warnings.slice(0, 10).map((w: any, i: number) => (
+                    <p key={i} className="text-xs text-yellow-700">
+                      {w.row ? `Row ${w.row}: ` : ""}{w.message}
+                    </p>
+                  ))}
+                  {preview.warnings.length > 10 && <p className="text-xs text-yellow-600">...and {preview.warnings.length - 10} more</p>}
+                </div>
+              </div>
+            )}
+
+            {/* Row Table */}
+            <div className="max-h-80 overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">Row</TableHead>
+                    {preview.parser === "transport" && (
+                      <>
+                        <TableHead>Unit</TableHead><TableHead>PIN</TableHead><TableHead>City</TableHead>
+                        <TableHead>State</TableHead><TableHead>Transport Co.</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Charge</TableHead>
+                      </>
+                    )}
+                    {preview.parser === "liner" && (
+                      <>
+                        <TableHead>Product</TableHead><TableHead className="text-right">Liner Qty</TableHead>
+                      </>
+                    )}
+                    {preview.parser === "bora" && (
+                      <>
+                        <TableHead>Product</TableHead><TableHead className="text-right">TCI Bora</TableHead>
+                        <TableHead className="text-right">Normal Bora</TableHead>
+                      </>
+                    )}
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {preview.validRows.slice(0, 50).map((row: any, i: number) => {
+                    const rowNum = row._rowNum || i + 1;
+                    const error = preview.errors.find(e => e.row === rowNum);
+                    const warning = preview.warnings?.find((w: any) => w.row === rowNum);
+                    return (
+                      <TableRow key={i} className={error ? "bg-red-50" : warning ? "bg-yellow-50/50" : ""}>
+                        <TableCell className="text-xs">{rowNum}</TableCell>
+                        {preview.parser === "transport" && (
+                          <>
+                            <TableCell className="text-xs">{row.productionUnit || "All"}</TableCell>
+                            <TableCell className="text-xs font-mono">{row.pinCode || "—"}</TableCell>
+                            <TableCell className="text-xs">{row.city}</TableCell>
+                            <TableCell className="text-xs">{row.state}</TableCell>
+                            <TableCell className="text-xs">{row.transportCompany || "—"}</TableCell>
+                            <TableCell className="text-xs">{row.transportType || "—"}</TableCell>
+                            <TableCell className="text-xs text-right">₹{row.transportCharge || 0}</TableCell>
+                          </>
                         )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                        {preview.parser === "liner" && (
+                          <>
+                            <TableCell className="text-xs">{row.productName}</TableCell>
+                            <TableCell className="text-xs text-right">{row.linerPackingQty || 0}</TableCell>
+                          </>
+                        )}
+                        {preview.parser === "bora" && (
+                          <>
+                            <TableCell className="text-xs">{row.productName}</TableCell>
+                            <TableCell className="text-xs text-right">{row.tciBoraQty || 0}</TableCell>
+                            <TableCell className="text-xs text-right">{row.normalBoraQty || 0}</TableCell>
+                          </>
+                        )}
+                        <TableCell>
+                          {error ? (
+                            <Badge variant="destructive" className="text-xs">{error.message}</Badge>
+                          ) : warning ? (
+                            <Badge variant="outline" className="text-xs bg-yellow-50 text-yellow-700">{warning.message}</Badge>
+                          ) : (
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            {preview.validRows.length > 50 && <p className="text-xs text-muted-foreground">Showing first 50 of {preview.validRows.length} rows</p>}
           </CardContent>
           <div className="p-4 flex gap-2">
             <Button size="sm" disabled={importing || preview.summary.valid === 0} onClick={handleImport}>
@@ -761,18 +913,45 @@ function ImportTab({ canImport, canUndo }: { canImport: boolean; canUndo: boolea
       {/* Import Result */}
       {importResult && (
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-4 space-y-2">
             <div className="flex items-center gap-2 mb-2">
               <CheckCircle className="h-5 w-5 text-green-500" />
               <p className="text-sm font-medium">Import Complete</p>
             </div>
-            <p className="text-sm text-muted-foreground">{importResult.imported} records imported successfully.</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-2 bg-green-50 rounded text-center">
+                <p className="text-lg font-bold text-green-700">{importResult.imported}</p>
+                <p className="text-xs text-green-600">Imported</p>
+              </div>
+              <div className="p-2 bg-gray-50 rounded text-center">
+                <p className="text-lg font-bold text-gray-700">{importResult.skipped}</p>
+                <p className="text-xs text-gray-600">Skipped</p>
+              </div>
+              <div className="p-2 bg-red-50 rounded text-center">
+                <p className="text-lg font-bold text-red-700">{importResult.errors.length}</p>
+                <p className="text-xs text-red-600">Errors</p>
+              </div>
+              <div className="p-2 bg-yellow-50 rounded text-center">
+                <p className="text-lg font-bold text-yellow-700">{importResult.warnings.length}</p>
+                <p className="text-xs text-yellow-600">Warnings</p>
+              </div>
+            </div>
             {importResult.errors.length > 0 && (
-              <div className="mt-2">
-                <p className="text-sm text-destructive font-medium">{importResult.errors.length} errors:</p>
-                {importResult.errors.slice(0, 5).map((err: any, i: number) => (
+              <div className="mt-2 max-h-32 overflow-y-auto">
+                <p className="text-xs font-medium text-destructive mb-1">Error Details:</p>
+                {importResult.errors.slice(0, 10).map((err: any, i: number) => (
                   <p key={i} className="text-xs text-muted-foreground">Row {err.row}: {err.message}</p>
                 ))}
+                {importResult.errors.length > 10 && <p className="text-xs text-muted-foreground">...and {importResult.errors.length - 10} more</p>}
+              </div>
+            )}
+            {importResult.warnings.length > 0 && (
+              <div className="mt-2 max-h-32 overflow-y-auto">
+                <p className="text-xs font-medium text-yellow-700 mb-1">Warning Details:</p>
+                {importResult.warnings.slice(0, 10).map((w: any, i: number) => (
+                  <p key={i} className="text-xs text-muted-foreground">{w.row ? `Row ${w.row}: ` : ""}{w.message}</p>
+                ))}
+                {importResult.warnings.length > 10 && <p className="text-xs text-muted-foreground">...and {importResult.warnings.length - 10} more</p>}
               </div>
             )}
           </CardContent>
@@ -785,6 +964,7 @@ function ImportTab({ canImport, canUndo }: { canImport: boolean; canUndo: boolea
           <CardContent className="p-4">
             <p className="text-sm font-medium mb-1">Last Import</p>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <Badge variant="outline" className="text-xs">{PARSER_LABELS[lastImportType]}</Badge>
               <span>{lastBatch.fileName || "Unknown"}</span>
               <span>•</span>
               <span>{lastBatch.successCount} imported</span>

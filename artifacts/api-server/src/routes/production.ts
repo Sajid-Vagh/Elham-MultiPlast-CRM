@@ -19,6 +19,7 @@ import {
   getProgressByDeal, getProductionByContact, getModifiedSince,
   handlePiModification, approveModification, addTimelineEntry,
   getManufacturingSummary, getManufacturingSummaryDetail,
+  updateOrderStatus,
 } from "../lib/production-service";
 import { transferOrder, getTransferHistory } from "../lib/production-transfer-service";
 
@@ -187,7 +188,7 @@ router.patch("/production/orders/:id/planning", async (req, res) => {
   }
 });
 
-// ── Start Production (In Production) ──
+// ── Start Production (Production On Going) ──
 router.post("/production/orders/:id/start", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
@@ -224,7 +225,7 @@ router.post("/production/orders/:id/packing", async (req, res) => {
   }
 });
 
-// ── Mark Ready For Dispatch ──
+// ── Mark Ready To Dispatch ──
 router.post("/production/orders/:id/ready-for-dispatch", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
@@ -280,15 +281,18 @@ router.post("/production/orders/:id/complete", async (req, res) => {
   }
 });
 
-// ── Update Status (generic fallback) ──
+// ── Update Status (generic) ──
 router.patch("/production/orders/:id/status", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
     if (!user) return;
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-
-    res.status(400).json({ error: "Use specific endpoints: /accept, /start, /packing, /ready-for-dispatch, /transport, /complete, /cancel" });
+    const { status, remarks, voiceNoteId } = req.body;
+    if (!status || !status.trim()) { res.status(400).json({ error: "Status is required" }); return; }
+    const result = await updateOrderStatus(user, id, { status: status.trim(), remarks, voiceNoteId });
+    if (result.error) { res.status(result.status).json({ error: result.error }); return; }
+    res.json(result.order);
   } catch (err) {
     console.error("Update production status error:", err);
     res.status(500).json({ error: "Internal server error" });

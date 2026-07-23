@@ -118,7 +118,7 @@ export function canManageInventory(user: PermissionUser): boolean {
  * Permission matrix:
  * - admin: anytime (except completed)
  * - sales: before production starts, own orders only
- * - production: before Machine Running
+ * - production: before Production On Going
  * - production_and_support: anytime with reason
  */
 export function canCancelOrder(user: PermissionUser): boolean {

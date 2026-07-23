@@ -577,7 +577,7 @@ export default function DealDetail() {
                   <span className="text-muted-foreground">Status</span>
                   <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                     productionProgress.status === "Completed" ? "bg-green-100 text-green-700" :
-                    productionProgress.status === "Ready For Dispatch" ? "bg-blue-100 text-blue-700" :
+                    productionProgress.status === "Ready To Dispatch" ? "bg-blue-100 text-blue-700" :
                     "bg-amber-100 text-amber-700"
                   }`}>{productionProgress.status}</span>
                 </div>

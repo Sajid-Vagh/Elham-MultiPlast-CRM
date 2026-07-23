@@ -363,6 +363,7 @@ router.post("/transport-masters/destinations/import/preview", async (req, res) =
     }
 
     const errors: { row: number; field: string; message: string }[] = [];
+    const warnings: { row: number; field: string; message: string }[] = [];
     const valid: any[] = [];
 
     for (let i = 0; i < rows.length; i++) {
@@ -372,14 +373,15 @@ router.post("/transport-masters/destinations/import/preview", async (req, res) =
 
       if (!row.state?.trim()) { errors.push({ row: rowNum, field: "state", message: "State is required" }); rowValid = false; }
       if (!row.city?.trim()) { errors.push({ row: rowNum, field: "city", message: "City is required" }); rowValid = false; }
+      if (!row.transportCompany?.trim()) { errors.push({ row: rowNum, field: "transportCompany", message: "Transport Name is required" }); rowValid = false; }
       if (row.transportCharge !== undefined && row.transportCharge !== "" && isNaN(Number(row.transportCharge))) {
         errors.push({ row: rowNum, field: "transportCharge", message: "Invalid charge" }); rowValid = false;
       }
       if (row.transportCharge !== undefined && row.transportCharge !== "" && Number(row.transportCharge) < 0) {
         errors.push({ row: rowNum, field: "transportCharge", message: "Charge cannot be negative" }); rowValid = false;
       }
-      if (row.pinCode && !/^\d{6}$/.test(row.pinCode.trim())) {
-        errors.push({ row: rowNum, field: "pinCode", message: "PIN code must be 6 digits" }); rowValid = false;
+      if (row.pinCode && !/^\d{6}$/.test(String(row.pinCode).trim())) {
+        warnings.push({ row: rowNum, field: "pinCode", message: "PIN code should be 6 digits" });
       }
       if (rowValid) valid.push({ ...row, _rowNum: rowNum });
     }
@@ -387,6 +389,7 @@ router.post("/transport-masters/destinations/import/preview", async (req, res) =
     res.json({
       summary: { total: rows.length, valid: valid.length, invalid: rows.length - valid.length },
       errors,
+      warnings,
       validRows: valid,
       fileName: fileName || "unknown.xlsx",
     });
@@ -507,8 +510,9 @@ router.get("/transport-masters/destinations/import/last", async (req, res) => {
     const user = await authUser(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
+    const entityType = (req.query.entityType as string) || "transport_master";
     const [lastBatch] = await db.select().from(importBatchesTable)
-      .where(eq(importBatchesTable.entityType, "transport_master"))
+      .where(eq(importBatchesTable.entityType, entityType))
       .orderBy(desc(importBatchesTable.createdAt))
       .limit(1);
 
@@ -729,7 +733,13 @@ router.post("/transport-masters/bundles/import/preview", async (req, res) => {
     }
 
     const errors: { row: number; field: string; message: string }[] = [];
+    const warnings: { row: number; field: string; message: string }[] = [];
     const valid: any[] = [];
+
+    function normProd(name: string): string {
+      return name.toLowerCase().trim().replace(/\s*\([^)]*\)\s*/g, " ").replace(/\b(bottle|bottles)\b/g, "").replace(/(\d)([a-z])/g, "$1 $2").replace(/\s+/g, " ").trim();
+    }
+    const seenProducts = new Map<string, number>();
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -746,12 +756,24 @@ router.post("/transport-masters/bundles/import/preview", async (req, res) => {
       if (row.normalBoraQty !== undefined && row.normalBoraQty !== "" && isNaN(Number(row.normalBoraQty))) {
         errors.push({ row: rowNum, field: "normalBoraQty", message: "Invalid quantity" }); rowValid = false;
       }
-      if (rowValid) valid.push({ ...row, _rowNum: rowNum });
+      if (rowValid) {
+        if (row.productName) {
+          const normalized = normProd(String(row.productName).trim());
+          const existingRow = seenProducts.get(normalized);
+          if (existingRow) {
+            warnings.push({ row: rowNum, field: "productName", message: `Similar to row ${existingRow}: "${row.productName}"` });
+          } else {
+            seenProducts.set(normalized, rowNum);
+          }
+        }
+        valid.push({ ...row, _rowNum: rowNum });
+      }
     }
 
     res.json({
       summary: { total: rows.length, valid: valid.length, invalid: rows.length - valid.length },
       errors,
+      warnings,
       validRows: valid,
       fileName: fileName || "unknown.xlsx",
     });
@@ -861,13 +883,350 @@ router.get("/transport-masters/bundles/import/last", async (req, res) => {
     const user = await authUser(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
+    const entityType = (req.query.entityType as string) || "packing_master";
     const [lastBatch] = await db.select().from(importBatchesTable)
-      .where(eq(importBatchesTable.entityType, "packing_master"))
+      .where(eq(importBatchesTable.entityType, entityType))
       .orderBy(desc(importBatchesTable.createdAt))
       .limit(1);
 
     res.json(lastBatch || null);
   } catch (err) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+// LINER PACKING IMPORT (upsert: update linerPackingQty only)
+// ══════════════════════════════════════════════════════════════
+
+router.post("/transport-masters/bundles/import/liner/preview", async (req, res) => {
+  try {
+    const user = await authUser(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!canImportMaster(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+    const { rows, fileName } = req.body as { rows: any[]; fileName?: string };
+    if (!Array.isArray(rows) || rows.length === 0) {
+      res.status(400).json({ error: "rows array is required" }); return;
+    }
+    if (rows.length > 1000) {
+      res.status(400).json({ error: "Maximum 1000 rows per import" }); return;
+    }
+
+    const errors: { row: number; field: string; message: string }[] = [];
+    const warnings: { row: number; field: string; message: string }[] = [];
+    const valid: any[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 1;
+      let rowValid = true;
+
+      if (!row.productName?.trim()) { errors.push({ row: rowNum, field: "productName", message: "Product name is required" }); rowValid = false; }
+      if (row.linerPackingQty === undefined || row.linerPackingQty === "" || isNaN(Number(row.linerPackingQty))) {
+        errors.push({ row: rowNum, field: "linerPackingQty", message: "Liner Qty is required" }); rowValid = false;
+      }
+      if (rowValid) valid.push({ ...row, _rowNum: rowNum });
+    }
+
+    res.json({
+      summary: { total: rows.length, valid: valid.length, invalid: rows.length - valid.length },
+      errors,
+      warnings,
+      validRows: valid,
+      fileName: fileName || "unknown.xlsx",
+    });
+  } catch (err) {
+    console.error("Liner import preview error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/transport-masters/bundles/import/liner/execute", async (req, res) => {
+  try {
+    const user = await authUser(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!canImportMaster(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+    const { rows, fileName } = req.body as { rows: any[]; fileName?: string };
+    if (!Array.isArray(rows) || rows.length === 0) {
+      res.status(400).json({ error: "rows array is required" }); return;
+    }
+
+    const [batch] = await db.insert(importBatchesTable).values({
+      entityType: "liner_master",
+      importedBy: user.id,
+      fileName: fileName || "unknown.xlsx",
+      rowCount: rows.length,
+      successCount: 0,
+      errorCount: 0,
+    }).returning();
+
+    let successCount = 0;
+    const importErrors: { row: number; field: string; message: string }[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 1;
+      try {
+        const productName = (row.productName || "").trim();
+        const productionUnit = row.productionUnit && row.productionUnit !== "all" ? row.productionUnit.trim() : null;
+        const linerQty = Number(row.linerPackingQty || 0);
+        const bundleSize = row.bundleSize ? Number(row.bundleSize) : undefined;
+
+        // Upsert: find existing product by name
+        const conditions: any[] = [
+          eq(productBundleMasterTable.productName, productName),
+          eq(productBundleMasterTable.isActive, true),
+        ];
+        if (productionUnit) {
+          conditions.push(eq(productBundleMasterTable.productionUnit, productionUnit));
+        } else {
+          conditions.push(isNull(productBundleMasterTable.productionUnit));
+        }
+        const [existing] = await db.select().from(productBundleMasterTable).where(and(...conditions)).limit(1);
+
+        if (existing) {
+          const updateData: any = { liner_packing_qty: linerQty, updatedAt: new Date(), updatedBy: user.id, importBatchId: batch.id };
+          if (bundleSize !== undefined) updateData.bundle_size = bundleSize;
+          await db.update(productBundleMasterTable).set(updateData).where(eq(productBundleMasterTable.id, existing.id));
+        } else {
+          await db.insert(productBundleMasterTable).values({
+            productName,
+            bundleSize: bundleSize ?? 80,
+            linerPackingQty: linerQty,
+            tciBoraQty: 0,
+            normalBoraQty: 0,
+            productionUnit,
+            createdBy: user.id,
+            updatedBy: user.id,
+            importBatchId: batch.id,
+          });
+        }
+        successCount++;
+      } catch (e: any) {
+        importErrors.push({ row: rowNum, field: "database", message: e.message || "Insert failed" });
+      }
+    }
+
+    await db.update(importBatchesTable).set({
+      successCount,
+      errorCount: importErrors.length,
+      report: { errors: importErrors, fileName },
+    }).where(eq(importBatchesTable.id, batch.id));
+
+    await logAudit("import_batch", batch.id, "import", null, { entityType: "liner_master", rowCount: rows.length, successCount, errorCount: importErrors.length }, user.id);
+
+    res.json({ batchId: batch.id, imported: successCount, errors: importErrors });
+  } catch (err) {
+    console.error("Liner import execute error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/transport-masters/bundles/import/liner/undo", async (req, res) => {
+  try {
+    const user = await authUser(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!canUndoImport(user)) { res.status(403).json({ error: "Admin only" }); return; }
+
+    const [lastBatch] = await db.select().from(importBatchesTable)
+      .where(and(
+        eq(importBatchesTable.entityType, "liner_master"),
+        sql`${importBatchesTable.undoneAt} IS NULL`,
+      ))
+      .orderBy(desc(importBatchesTable.createdAt))
+      .limit(1);
+
+    if (!lastBatch) {
+      res.status(404).json({ error: "No import to undo" }); return;
+    }
+
+    // Undo liner imports: delete rows created by this batch
+    const deleted = await db.delete(productBundleMasterTable)
+      .where(eq(productBundleMasterTable.importBatchId, lastBatch.id))
+      .returning();
+
+    await db.update(importBatchesTable).set({ undoneAt: new Date(), undoneBy: user.id })
+      .where(eq(importBatchesTable.id, lastBatch.id));
+
+    await logAudit("import_batch", lastBatch.id, "undo", null, { deletedCount: deleted.length }, user.id);
+
+    res.json({ undone: deleted.length, batchId: lastBatch.id });
+  } catch (err) {
+    console.error("Liner import undo error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+// BORA PACKING IMPORT (upsert: update tciBoraQty + normalBoraQty only)
+// ══════════════════════════════════════════════════════════════
+
+router.post("/transport-masters/bundles/import/bora/preview", async (req, res) => {
+  try {
+    const user = await authUser(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!canImportMaster(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+    const { rows, fileName } = req.body as { rows: any[]; fileName?: string };
+    if (!Array.isArray(rows) || rows.length === 0) {
+      res.status(400).json({ error: "rows array is required" }); return;
+    }
+    if (rows.length > 1000) {
+      res.status(400).json({ error: "Maximum 1000 rows per import" }); return;
+    }
+
+    const errors: { row: number; field: string; message: string }[] = [];
+    const warnings: { row: number; field: string; message: string }[] = [];
+    const valid: any[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 1;
+      let rowValid = true;
+
+      if (!row.productName?.trim()) { errors.push({ row: rowNum, field: "productName", message: "Product name is required" }); rowValid = false; }
+      const hasTci = row.tciBoraQty !== undefined && row.tciBoraQty !== "" && !isNaN(Number(row.tciBoraQty));
+      const hasNormal = row.normalBoraQty !== undefined && row.normalBoraQty !== "" && !isNaN(Number(row.normalBoraQty));
+      if (!hasTci && !hasNormal) {
+        errors.push({ row: rowNum, field: "boraQty", message: "At least one of TCI Bora or Normal Bora is required" }); rowValid = false;
+      }
+      if (hasTci && isNaN(Number(row.tciBoraQty))) {
+        errors.push({ row: rowNum, field: "tciBoraQty", message: "Invalid TCI Bora quantity" }); rowValid = false;
+      }
+      if (hasNormal && isNaN(Number(row.normalBoraQty))) {
+        errors.push({ row: rowNum, field: "normalBoraQty", message: "Invalid Normal Bora quantity" }); rowValid = false;
+      }
+      if (rowValid) valid.push({ ...row, _rowNum: rowNum });
+    }
+
+    res.json({
+      summary: { total: rows.length, valid: valid.length, invalid: rows.length - valid.length },
+      errors,
+      warnings,
+      validRows: valid,
+      fileName: fileName || "unknown.xlsx",
+    });
+  } catch (err) {
+    console.error("Bora import preview error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/transport-masters/bundles/import/bora/execute", async (req, res) => {
+  try {
+    const user = await authUser(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!canImportMaster(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+    const { rows, fileName } = req.body as { rows: any[]; fileName?: string };
+    if (!Array.isArray(rows) || rows.length === 0) {
+      res.status(400).json({ error: "rows array is required" }); return;
+    }
+
+    const [batch] = await db.insert(importBatchesTable).values({
+      entityType: "bora_master",
+      importedBy: user.id,
+      fileName: fileName || "unknown.xlsx",
+      rowCount: rows.length,
+      successCount: 0,
+      errorCount: 0,
+    }).returning();
+
+    let successCount = 0;
+    const importErrors: { row: number; field: string; message: string }[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 1;
+      try {
+        const productName = (row.productName || "").trim();
+        const productionUnit = row.productionUnit && row.productionUnit !== "all" ? row.productionUnit.trim() : null;
+        const tciBora = row.tciBoraQty !== undefined && row.tciBoraQty !== "" ? Number(row.tciBoraQty) : 0;
+        const normalBora = row.normalBoraQty !== undefined && row.normalBoraQty !== "" ? Number(row.normalBoraQty) : 0;
+        const bundleSize = row.bundleSize ? Number(row.bundleSize) : undefined;
+
+        // Upsert: find existing product by name
+        const conditions: any[] = [
+          eq(productBundleMasterTable.productName, productName),
+          eq(productBundleMasterTable.isActive, true),
+        ];
+        if (productionUnit) {
+          conditions.push(eq(productBundleMasterTable.productionUnit, productionUnit));
+        } else {
+          conditions.push(isNull(productBundleMasterTable.productionUnit));
+        }
+        const [existing] = await db.select().from(productBundleMasterTable).where(and(...conditions)).limit(1);
+
+        if (existing) {
+          const updateData: any = { tci_bora_qty: tciBora, normal_bora_qty: normalBora, updatedAt: new Date(), updatedBy: user.id, importBatchId: batch.id };
+          if (bundleSize !== undefined) updateData.bundle_size = bundleSize;
+          await db.update(productBundleMasterTable).set(updateData).where(eq(productBundleMasterTable.id, existing.id));
+        } else {
+          await db.insert(productBundleMasterTable).values({
+            productName,
+            bundleSize: bundleSize ?? 80,
+            linerPackingQty: 0,
+            tciBoraQty: tciBora,
+            normalBoraQty: normalBora,
+            productionUnit,
+            createdBy: user.id,
+            updatedBy: user.id,
+            importBatchId: batch.id,
+          });
+        }
+        successCount++;
+      } catch (e: any) {
+        importErrors.push({ row: rowNum, field: "database", message: e.message || "Insert failed" });
+      }
+    }
+
+    await db.update(importBatchesTable).set({
+      successCount,
+      errorCount: importErrors.length,
+      report: { errors: importErrors, fileName },
+    }).where(eq(importBatchesTable.id, batch.id));
+
+    await logAudit("import_batch", batch.id, "import", null, { entityType: "bora_master", rowCount: rows.length, successCount, errorCount: importErrors.length }, user.id);
+
+    res.json({ batchId: batch.id, imported: successCount, errors: importErrors });
+  } catch (err) {
+    console.error("Bora import execute error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/transport-masters/bundles/import/bora/undo", async (req, res) => {
+  try {
+    const user = await authUser(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!canUndoImport(user)) { res.status(403).json({ error: "Admin only" }); return; }
+
+    const [lastBatch] = await db.select().from(importBatchesTable)
+      .where(and(
+        eq(importBatchesTable.entityType, "bora_master"),
+        sql`${importBatchesTable.undoneAt} IS NULL`,
+      ))
+      .orderBy(desc(importBatchesTable.createdAt))
+      .limit(1);
+
+    if (!lastBatch) {
+      res.status(404).json({ error: "No import to undo" }); return;
+    }
+
+    const deleted = await db.delete(productBundleMasterTable)
+      .where(eq(productBundleMasterTable.importBatchId, lastBatch.id))
+      .returning();
+
+    await db.update(importBatchesTable).set({ undoneAt: new Date(), undoneBy: user.id })
+      .where(eq(importBatchesTable.id, lastBatch.id));
+
+    await logAudit("import_batch", lastBatch.id, "undo", null, { deletedCount: deleted.length }, user.id);
+
+    res.json({ undone: deleted.length, batchId: lastBatch.id });
+  } catch (err) {
+    console.error("Bora import undo error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

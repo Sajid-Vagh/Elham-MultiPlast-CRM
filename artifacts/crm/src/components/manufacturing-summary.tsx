@@ -10,12 +10,9 @@ import { customFetch } from "@workspace/api-client-react/custom-fetch";
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
-  "Accepted": "bg-blue-100 text-blue-700 border-blue-300",
-  "Planning": "bg-purple-100 text-purple-700 border-purple-300",
-  "In Production": "bg-orange-100 text-orange-700 border-orange-300",
-  "Packing": "bg-yellow-100 text-yellow-700 border-yellow-300",
-  "Ready For Dispatch": "bg-green-100 text-green-700 border-green-300",
-  "In Transport": "bg-indigo-100 text-indigo-700 border-indigo-300",
+  "Production On Going": "bg-orange-100 text-orange-700 border-orange-300",
+  "Packaging": "bg-yellow-100 text-yellow-700 border-yellow-300",
+  "Ready To Dispatch": "bg-green-100 text-green-700 border-green-300",
 };
 
 function formatWeight(w: string | null | undefined): string {

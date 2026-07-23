@@ -397,8 +397,8 @@ router.get("/dashboard/support-kpi", async (req, res) => {
 
     // Production orders tracking
     const allProductionOrders = await db.select().from(productionOrdersTable);
-    const readyForDispatch = allProductionOrders.filter(o => o.status === "Ready For Dispatch").length;
-    const inTransport = allProductionOrders.filter(o => o.status === "In Transport").length;
+    const readyForDispatch = allProductionOrders.filter(o => o.status === "Ready To Dispatch").length;
+    const inTransport = allProductionOrders.filter(o => o.transportName && o.status === "Ready To Dispatch").length;
 
     // Active complaints list for the dashboard
     const activeComplaintList = complaints.filter(c => c.status !== "Resolved" && c.status !== "Closed").slice(0, 10);
@@ -425,7 +425,7 @@ router.get("/dashboard/support-kpi", async (req, res) => {
         repeatOrders: repeatOrders.slice(0, 10),
         pendingDispatch: pendingDispatchOrders.slice(0, 10),
         complaints: activeComplaintList,
-        productionOrders: allProductionOrders.filter(o => o.status === "Active" || o.status === "In Production").slice(0, 10),
+        productionOrders: allProductionOrders.filter(o => o.status === "Production On Going").slice(0, 10),
         customers: [],
       },
       stats: {

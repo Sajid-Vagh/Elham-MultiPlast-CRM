@@ -271,7 +271,7 @@ router.get("/products/machine-report", async (req, res) => {
       const product = productMap.get(productName.toLowerCase());
       const machineType = product?.machineType || null;
 
-      const isInProduction = ["In Production", "Packing"].includes(order.status);
+      const isInProduction = ["Production On Going", "Packaging"].includes(order.status);
       const isCompleted = order.status === "Completed";
       const isPending = order.status === "Pending" || order.status === "Material Ready";
 

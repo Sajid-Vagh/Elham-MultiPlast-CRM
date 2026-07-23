@@ -35,7 +35,7 @@ export const PRODUCTION_ACTIVITY_TYPES = {
   ORDER_CREATED: "Production Order Created",
   ORDER_ACCEPTED: "Production Order Accepted",
   PLANNING_STARTED: "Planning Started",
-  PRODUCTION_STARTED: "Production Started (Machine Running)",
+  PRODUCTION_STARTED: "Production Started (Production On Going)",
   STATUS_CHANGED: "Production Status Changed",
   ORDER_TRANSFERRED: "Production Order Transferred",
   ORDER_DELAYED: "Production Order Delayed",

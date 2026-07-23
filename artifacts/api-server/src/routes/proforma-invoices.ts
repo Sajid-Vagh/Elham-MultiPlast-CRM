@@ -1512,6 +1512,22 @@ async function updateInvoiceHandler(req: any, res: any) {
           createdBy: user.id,
         });
       }
+
+      // Fix #4: Sync deal wonAmount / totalValue when PI grandTotal changes
+      if (updateData.grandTotal || items) {
+        const [freshInvoice] = await db.select().from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, id));
+        if (freshInvoice) {
+          const newGrandTotal = Number(freshInvoice.grandTotal || 0);
+          const [currentDeal] = await db.select().from(dealsTable).where(eq(dealsTable.id, existing.dealId));
+          if (currentDeal) {
+            const dealUpdate: any = { totalValue: newGrandTotal, updatedAt: new Date() };
+            if (currentDeal.stage === "Won") {
+              dealUpdate.wonAmount = newGrandTotal;
+            }
+            await db.update(dealsTable).set(dealUpdate).where(eq(dealsTable.id, existing.dealId));
+          }
+        }
+      }
     }
 
     if (contactId && !existing.contactId) {

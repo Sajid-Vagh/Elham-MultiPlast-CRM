@@ -8,23 +8,17 @@ import { customFetch } from "@workspace/api-client-react/custom-fetch";
 
 const PRODUCTION_STEPS = [
   "Pending",
-  "Accepted",
-  "Planning",
-  "In Production",
-  "Packing",
-  "Ready For Dispatch",
-  "In Transport",
+  "Production On Going",
+  "Packaging",
+  "Ready To Dispatch",
   "Completed",
 ];
 
 const STATUS_BADGE: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
-  "Accepted": "bg-blue-100 text-blue-700 border-blue-300",
-  "Planning": "bg-purple-100 text-purple-700 border-purple-300",
-  "In Production": "bg-orange-100 text-orange-700 border-orange-300",
-  "Packing": "bg-yellow-100 text-yellow-700 border-yellow-300",
-  "Ready For Dispatch": "bg-green-100 text-green-700 border-green-300",
-  "In Transport": "bg-indigo-100 text-indigo-700 border-indigo-300",
+  "Production On Going": "bg-orange-100 text-orange-700 border-orange-300",
+  "Packaging": "bg-yellow-100 text-yellow-700 border-yellow-300",
+  "Ready To Dispatch": "bg-green-100 text-green-700 border-green-300",
   "Completed": "bg-emerald-100 text-emerald-700 border-emerald-300",
   "Cancelled": "bg-red-100 text-red-700 border-red-300",
 };
@@ -104,7 +98,7 @@ export default function ProductionProgress({ dealId }: Props) {
                 <div className="flex flex-col items-center">
                   {icon}
                   <span className={`text-[8px] mt-0.5 whitespace-nowrap ${isCurrent ? "font-semibold text-foreground" : isCompleted ? "text-emerald-600" : "text-muted-foreground"}`}>
-                    {step === "In Production" ? "In Prod" : step === "Ready For Dispatch" ? "Dispatch" : step === "In Transport" ? "Transit" : step}
+                    {step === "Production On Going" ? "In Prod" : step === "Ready To Dispatch" ? "Ready" : step}
                   </span>
                 </div>
                 {idx < PRODUCTION_STEPS.length - 1 && (
