@@ -2,16 +2,22 @@ import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CheckCircle2, Circle, Loader2, Clock, User } from "lucide-react";
+import { CheckCircle2, Circle, Loader2, Clock, Truck, Package, ClipboardCheck, FileCheck, MapPin } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 
 const PRODUCTION_STEPS = [
-  "Pending",
-  "Production On Going",
-  "Packaging",
-  "Ready To Dispatch",
-  "Completed",
+  { key: "Pending", label: "Pending", short: "Pending" },
+  { key: "Production On Going", label: "Production On Going", short: "In Prod" },
+  { key: "Packaging", label: "Packaging", short: "Packing" },
+  { key: "Ready To Dispatch", label: "Ready To Dispatch", short: "Ready" },
+];
+
+const DISPATCH_STEPS = [
+  { key: "Pending Dispatch", label: "Pending Dispatch", short: "Pending", icon: ClipboardCheck },
+  { key: "Load Vehicle", label: "Load Vehicle", short: "Load", icon: Truck },
+  { key: "Dispatch", label: "Dispatch", short: "Dispatch", icon: Package },
+  { key: "Delivered", label: "Delivered", short: "Delivered", icon: MapPin },
 ];
 
 const STATUS_BADGE: Record<string, string> = {
@@ -21,6 +27,10 @@ const STATUS_BADGE: Record<string, string> = {
   "Ready To Dispatch": "bg-green-100 text-green-700 border-green-300",
   "Completed": "bg-emerald-100 text-emerald-700 border-emerald-300",
   "Cancelled": "bg-red-100 text-red-700 border-red-300",
+  "Pending Dispatch": "bg-amber-100 text-amber-700 border-amber-300",
+  "Load Vehicle": "bg-blue-100 text-blue-700 border-blue-300",
+  "Dispatch": "bg-purple-100 text-purple-700 border-purple-300",
+  "Delivered": "bg-emerald-100 text-emerald-700 border-emerald-300",
 };
 
 interface Props {
@@ -46,10 +56,16 @@ export default function ProductionProgress({ dealId }: Props) {
     enabled: !!dealId,
   });
 
-  const currentStepIndex = useMemo(() => {
+  const currentProdIndex = useMemo(() => {
     if (!progress?.status) return 0;
-    const idx = PRODUCTION_STEPS.indexOf(progress.status);
+    const idx = PRODUCTION_STEPS.findIndex(s => s.key === progress.status);
     return idx >= 0 ? idx : 0;
+  }, [progress]);
+
+  const currentDispatchIndex = useMemo(() => {
+    if (!progress?.dispatchStatus) return -1;
+    const idx = DISPATCH_STEPS.findIndex(s => s.key === progress.dispatchStatus);
+    return idx >= 0 ? idx : -1;
   }, [progress]);
 
   if (isLoading) {
@@ -69,45 +85,90 @@ export default function ProductionProgress({ dealId }: Props) {
   if (!progress) return null;
 
   const isCancelled = progress.status === "Cancelled";
+  const isProductionComplete = progress.status === "Ready To Dispatch" || progress.status === "Completed";
+  const hasDispatch = progress.dispatchStatus && progress.dispatchStatus !== "Pending Dispatch";
 
   return (
     <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium">Production Progress</CardTitle>
-          <Badge variant="outline" className={`text-xs ${STATUS_BADGE[progress.status] || "bg-gray-100"} border`}>
-            {progress.status}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className={`text-xs ${STATUS_BADGE[progress.status] || "bg-gray-100"} border`}>
+              {progress.status}
+            </Badge>
+            {progress.dispatchStatus && progress.dispatchStatus !== "Pending Dispatch" && (
+              <Badge variant="outline" className={`text-xs ${STATUS_BADGE[progress.dispatchStatus] || "bg-gray-100"} border`}>
+                {progress.dispatchStatus}
+              </Badge>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Progress Steps */}
-        <div className="flex items-center gap-1">
-          {PRODUCTION_STEPS.map((step, idx) => {
-            const isCompleted = idx < currentStepIndex;
-            const isCurrent = idx === currentStepIndex;
-            const isFuture = idx > currentStepIndex;
+        {/* Production Steps */}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Production</p>
+          <div className="flex items-center gap-1">
+            {PRODUCTION_STEPS.map((step, idx) => {
+              const isCompleted = idx < currentProdIndex || isProductionComplete;
+              const isCurrent = idx === currentProdIndex && !isProductionComplete && !isCancelled;
 
-            let icon;
-            if (isCompleted) icon = <CheckCircle2 className="h-4 w-4 text-emerald-500" />;
-            else if (isCurrent && !isCancelled) icon = <Loader2 className="h-4 w-4 text-purple-500 animate-spin" />;
-            else icon = <Circle className={`h-4 w-4 ${isFuture ? "text-gray-300" : isCancelled ? "text-red-300" : "text-gray-400"}`} />;
+              let icon;
+              if (isCompleted) icon = <CheckCircle2 className="h-4 w-4 text-emerald-500" />;
+              else if (isCurrent) icon = <Loader2 className="h-4 w-4 text-orange-500 animate-spin" />;
+              else icon = <Circle className={`h-4 w-4 ${isCancelled ? "text-red-300" : "text-gray-300"}`} />;
 
-            return (
-              <div key={step} className="flex items-center gap-1 flex-1 last:flex-none">
-                <div className="flex flex-col items-center">
-                  {icon}
-                  <span className={`text-[8px] mt-0.5 whitespace-nowrap ${isCurrent ? "font-semibold text-foreground" : isCompleted ? "text-emerald-600" : "text-muted-foreground"}`}>
-                    {step === "Production On Going" ? "In Prod" : step === "Ready To Dispatch" ? "Ready" : step}
-                  </span>
+              return (
+                <div key={step.key} className="flex items-center gap-1 flex-1 last:flex-none">
+                  <div className="flex flex-col items-center">
+                    {icon}
+                    <span className={`text-[8px] mt-0.5 whitespace-nowrap ${isCurrent ? "font-semibold text-foreground" : isCompleted ? "text-emerald-600" : "text-muted-foreground"}`}>
+                      {step.short}
+                    </span>
+                  </div>
+                  {idx < PRODUCTION_STEPS.length - 1 && (
+                    <div className={`flex-1 h-0.5 mx-1 rounded ${isCompleted ? "bg-emerald-400" : isCurrent ? "bg-orange-400" : "bg-gray-200"}`} />
+                  )}
                 </div>
-                {idx < PRODUCTION_STEPS.length - 1 && (
-                  <div className={`flex-1 h-0.5 mx-1 rounded ${isCompleted ? "bg-emerald-400" : isCurrent ? "bg-purple-400" : "bg-gray-200"}`} />
-                )}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
+
+        {/* Dispatch Steps — only show when production is Ready To Dispatch or beyond */}
+        {isProductionComplete && (
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Dispatch</p>
+            <div className="flex items-center gap-1">
+              {DISPATCH_STEPS.map((step, idx) => {
+                const isCompleted = currentDispatchIndex >= 0 && idx < currentDispatchIndex;
+                const isCurrent = currentDispatchIndex >= 0 && idx === currentDispatchIndex;
+                const isPending = currentDispatchIndex < 0 && idx === 0;
+
+                let icon;
+                if (isCompleted) icon = <CheckCircle2 className="h-4 w-4 text-emerald-500" />;
+                else if (isCurrent) icon = <Loader2 className="h-4 w-4 text-purple-500 animate-spin" />;
+                else if (isPending) icon = <Clock className="h-4 w-4 text-amber-500" />;
+                else icon = <Circle className="h-4 w-4 text-gray-300" />;
+
+                return (
+                  <div key={step.key} className="flex items-center gap-1 flex-1 last:flex-none">
+                    <div className="flex flex-col items-center">
+                      {icon}
+                      <span className={`text-[8px] mt-0.5 whitespace-nowrap ${isCurrent ? "font-semibold text-foreground" : isCompleted ? "text-emerald-600" : "text-muted-foreground"}`}>
+                        {step.short}
+                      </span>
+                    </div>
+                    {idx < DISPATCH_STEPS.length - 1 && (
+                      <div className={`flex-1 h-0.5 mx-1 rounded ${isCompleted ? "bg-emerald-400" : isCurrent ? "bg-purple-400" : "bg-gray-200"}`} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Info Grid */}
         <div className="grid grid-cols-2 gap-3 text-sm">
@@ -147,18 +208,6 @@ export default function ProductionProgress({ dealId }: Props) {
               <p className="font-medium">{progress.productionMachine}</p>
             </div>
           )}
-          {progress.expectedStartDate && (
-            <div>
-              <span className="text-xs text-muted-foreground">Expected Start</span>
-              <p className="font-medium">{new Date(progress.expectedStartDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</p>
-            </div>
-          )}
-          {progress.expectedCompletionDate && (
-            <div>
-              <span className="text-xs text-muted-foreground">Expected Completion</span>
-              <p className="font-medium">{new Date(progress.expectedCompletionDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</p>
-            </div>
-          )}
           {progress.packingType && (
             <div>
               <span className="text-xs text-muted-foreground">Packing Type</span>
@@ -171,10 +220,16 @@ export default function ProductionProgress({ dealId }: Props) {
               <p className="font-medium">{progress.transportName}</p>
             </div>
           )}
-          {progress.transportDetails && (
+          {progress.lrNumber && (
             <div>
-              <span className="text-xs text-muted-foreground">Booking No.</span>
-              <p className="font-medium">{progress.transportDetails}</p>
+              <span className="text-xs text-muted-foreground">LR / Builty No.</span>
+              <p className="font-medium">{progress.lrNumber}</p>
+            </div>
+          )}
+          {progress.dispatchRemarks && (
+            <div className="col-span-2">
+              <span className="text-xs text-muted-foreground">Dispatch Remarks</span>
+              <p className="font-medium">{progress.dispatchRemarks}</p>
             </div>
           )}
         </div>

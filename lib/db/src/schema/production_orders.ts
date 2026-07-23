@@ -17,12 +17,28 @@ export const PRODUCTION_STATUSES = [
 export type ProductionStatus = typeof PRODUCTION_STATUSES[number];
 
 export const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
-  "Pending": ["Production On Going", "Packaging", "Ready To Dispatch", "Completed", "Cancelled"],
-  "Production On Going": ["Pending", "Packaging", "Ready To Dispatch", "Completed", "Cancelled"],
-  "Packaging": ["Pending", "Production On Going", "Ready To Dispatch", "Completed", "Cancelled"],
-  "Ready To Dispatch": ["Pending", "Production On Going", "Packaging", "Completed", "Cancelled"],
+  "Pending": ["Production On Going", "Cancelled"],
+  "Production On Going": ["Packaging", "Cancelled"],
+  "Packaging": ["Ready To Dispatch", "Cancelled"],
+  "Ready To Dispatch": [],
   "Completed": [],
   "Cancelled": [],
+};
+
+export const PRODUCTION_DISPATCH_STATUSES = [
+  "Pending Dispatch",
+  "Load Vehicle",
+  "Dispatch",
+  "Delivered",
+] as const;
+
+export type ProductionDispatchStatus = typeof PRODUCTION_DISPATCH_STATUSES[number];
+
+export const VALID_DISPATCH_TRANSITIONS: Record<string, string[]> = {
+  "Pending Dispatch": ["Load Vehicle"],
+  "Load Vehicle": ["Dispatch"],
+  "Dispatch": ["Delivered"],
+  "Delivered": [],
 };
 
 export const NOTE_TYPES = [
@@ -95,6 +111,15 @@ export const productionOrdersTable = pgTable("production_orders", {
   packingCompletedAt: timestamp("packing_completed_at", { withTimezone: true }),
   transportBookedById: integer("transport_booked_by_id").references(() => usersTable.id, { onDelete: "set null" }),
   transportBookedAt: timestamp("transport_booked_at", { withTimezone: true }),
+  // Dispatch workflow columns
+  dispatchStatus: text("dispatch_status"),
+  lrNumber: text("lr_number"),
+  dispatchRemarks: text("dispatch_remarks"),
+  dispatchedById: integer("dispatched_by_id").references(() => usersTable.id, { onDelete: "set null" }),
+  dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+  deliveryDate: text("delivery_date"),
+  deliveredById: integer("delivered_by_id").references(() => usersTable.id, { onDelete: "set null" }),
+  deliveredAt: timestamp("delivered_at", { withTimezone: true }),
 });
 
 export const productionTimelineTable = pgTable("production_timeline", {

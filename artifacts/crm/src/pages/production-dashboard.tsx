@@ -5,29 +5,23 @@ import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUserUnits } from "@/lib/use-user-units";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Clock, AlertTriangle } from "lucide-react";
+import { Calendar, Clock, AlertTriangle, Truck } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { ManufacturingSummary } from "@/components/manufacturing-summary";
 
-const STATUS_COLORS: Record<string, string> = {
-  "Production On Going": "bg-orange-100 text-orange-700 border-orange-300",
-  "Packaging": "bg-yellow-100 text-yellow-700 border-yellow-300",
-  "Ready To Dispatch": "bg-green-100 text-green-700 border-green-300",
-};
-
 const KPI_CONFIG = [
-  { key: "pendingCount", label: "Pending", color: "bg-gray-100 text-gray-700 border-gray-300", hoverStatus: "Pending" },
-  { key: "productionOnGoingCount", label: "Production On Going", color: "bg-orange-100 text-orange-700 border-orange-300", hoverStatus: "Production On Going" },
-  { key: "packagingCount", label: "Packaging", color: "bg-yellow-100 text-yellow-700 border-yellow-300", hoverStatus: "Packaging" },
-  { key: "readyToDispatchCount", label: "Ready to Dispatch", color: "bg-green-100 text-green-700 border-green-300", hoverStatus: "Ready To Dispatch" },
-  { key: "delayedOrders", label: "Delayed", color: "bg-red-100 text-red-700 border-red-300", hoverStatus: "delayed" },
+  { key: "pendingCount", label: "Pending", color: "bg-gray-100 text-gray-700 border-gray-300", hoverStatus: "Pending", icon: Clock },
+  { key: "productionOnGoingCount", label: "Production On Going", color: "bg-orange-100 text-orange-700 border-orange-300", hoverStatus: "Production On Going", icon: Clock },
+  { key: "packagingCount", label: "Packaging", color: "bg-yellow-100 text-yellow-700 border-yellow-300", hoverStatus: "Packaging", icon: Clock },
+  { key: "readyToDispatchCount", label: "Ready to Dispatch", color: "bg-green-100 text-green-700 border-green-300", hoverStatus: "Ready To Dispatch", icon: Truck },
+  { key: "delayedOrders", label: "Delayed", color: "bg-red-100 text-red-700 border-red-300", hoverStatus: "delayed", icon: AlertTriangle },
 ];
 
 const QUICK_ACTIONS = [
-  { label: "Pending Orders", status: "Pending", icon: Clock, color: "gray" },
-  { label: "Ready to Dispatch", status: "Ready To Dispatch", icon: Calendar, color: "green" },
-  { label: "Delayed Orders", status: "delayed", icon: AlertTriangle, color: "red" },
+  { label: "Pending Orders", status: "Pending", icon: Clock },
+  { label: "Ready to Dispatch", status: "Ready To Dispatch", icon: Truck },
+  { label: "Delayed Orders", status: "delayed", icon: AlertTriangle },
 ];
 
 export default function ProductionDashboard() {
@@ -61,43 +55,30 @@ export default function ProductionDashboard() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Production Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-1">Monitor production orders across all statuses</p>
+          <p className="text-sm text-muted-foreground mt-1">Monitor production orders — manufacturing only</p>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            className="text-sm border rounded-md px-3 py-1.5 bg-background"
-            value={originFilter}
-            onChange={(e) => setOriginFilter(e.target.value)}
-          >
+          <select className="text-sm border rounded-md px-3 py-1.5 bg-background" value={originFilter} onChange={(e) => setOriginFilter(e.target.value)}>
             <option value="all">All Orders</option>
             <option value="sales">Sales Orders</option>
             <option value="production_and_support">Support Orders</option>
           </select>
           {userUnits.length > 1 && (
-            <select
-              className="text-sm border rounded-md px-3 py-1.5 bg-background"
-              value={selectedUnit}
-              onChange={(e) => setSelectedUnit(e.target.value)}
-            >
+            <select className="text-sm border rounded-md px-3 py-1.5 bg-background" value={selectedUnit} onChange={(e) => setSelectedUnit(e.target.value)}>
               <option value="All">All Units</option>
-              {userUnits.filter(u => u !== "All").map(u => (
-                <option key={u} value={u}>{u}</option>
-              ))}
+              {userUnits.filter(u => u !== "All").map(u => (<option key={u} value={u}>{u}</option>))}
             </select>
           )}
         </div>
       </div>
 
-      {/* Status Count Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3">
+      {/* Status Count Cards — Production Only */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {KPI_CONFIG.map((kpi) => {
-          const Icon = kpi.key === "delayedOrders" ? AlertTriangle : Clock;
+          const Icon = kpi.icon;
           return (
-            <Card
-              key={kpi.key}
-              className="cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
-              onClick={() => setLocation(kpi.hoverStatus === "delayed" ? "/production/orders?status=delayed" : `/production/orders?status=${encodeURIComponent(kpi.hoverStatus)}`)}
-            >
+            <Card key={kpi.key} className="cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
+              onClick={() => setLocation(kpi.hoverStatus === "delayed" ? "/production/orders?status=delayed" : `/production/orders?status=${encodeURIComponent(kpi.hoverStatus)}`)}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className={`text-[10px] font-semibold uppercase tracking-wider ${kpi.color.split(" ")[1]}`}>{kpi.label}</span>
@@ -110,50 +91,30 @@ export default function ProductionDashboard() {
         })}
       </div>
 
-      {/* Manufacturing Summary */}
+      {/* Manufacturing Summary — excludes Ready To Dispatch, Completed, Cancelled */}
       <ManufacturingSummary unitFilter={String(selectedUnit)} originFilter={originFilter} />
 
       {/* Summary + Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         <Card className="lg:col-span-3">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Summary</CardTitle>
-          </CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Summary</CardTitle></CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div>
-                <p className="text-xs text-muted-foreground">Total Orders</p>
-                <p className="text-xl font-bold">{dashboard?.totalOrders ?? 0}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Active Orders</p>
-                <p className="text-xl font-bold">{dashboard?.activeOrders ?? 0}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Completed Today</p>
-                <p className="text-xl font-bold">{dashboard?.completedToday ?? 0}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Delayed</p>
-                <p className="text-xl font-bold text-red-600">{dashboard?.delayedOrders ?? 0}</p>
-              </div>
+              <div><p className="text-xs text-muted-foreground">Total Orders</p><p className="text-xl font-bold">{dashboard?.totalOrders ?? 0}</p></div>
+              <div><p className="text-xs text-muted-foreground">Active (Manufacturing)</p><p className="text-xl font-bold">{dashboard?.activeOrders ?? 0}</p></div>
+              <div><p className="text-xs text-muted-foreground">Completed Today</p><p className="text-xl font-bold">{dashboard?.completedToday ?? 0}</p></div>
+              <div><p className="text-xs text-muted-foreground">Delayed</p><p className="text-xl font-bold text-red-600">{dashboard?.delayedOrders ?? 0}</p></div>
             </div>
           </CardContent>
         </Card>
-
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Quick Actions</CardTitle>
-          </CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Quick Actions</CardTitle></CardHeader>
           <CardContent className="space-y-2">
             {QUICK_ACTIONS.map(action => (
-              <button
-                key={action.label}
+              <button key={action.label}
                 onClick={() => setLocation(action.status === "delayed" ? "/production/orders?status=delayed" : `/production/orders?status=${encodeURIComponent(action.status)}`)}
-                className="w-full text-left px-3 py-2 text-sm rounded-lg border hover:bg-muted/50 transition-colors flex items-center gap-2"
-              >
-                <action.icon className="h-3.5 w-3.5 text-muted-foreground" />
-                {action.label}
+                className="w-full text-left px-3 py-2 text-sm rounded-lg border hover:bg-muted/50 transition-colors flex items-center gap-2">
+                <action.icon className="h-3.5 w-3.5 text-muted-foreground" />{action.label}
               </button>
             ))}
           </CardContent>

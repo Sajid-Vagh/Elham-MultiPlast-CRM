@@ -68,7 +68,6 @@ router.get("/dashboard/kpi", async (req, res) => {
     const lostLeads = filteredContacts.filter(c => c.lostReason != null).length;
     const activeDeals = filteredDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").length;
     const totalWonValue = filteredDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? 0), 0);
-    const totalLostValue = filteredDeals.filter(d => d.stage === "Lost").reduce((s, d) => s + Number(d.totalValue ?? 0), 0);
 
     const activeDealContactIds = new Set(
       filteredDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").map(d => d.contactId)
@@ -143,7 +142,6 @@ router.get("/dashboard/kpi", async (req, res) => {
       lostLeads,
       activeDeals,
       totalWonValue,
-      totalLostValue,
       unitStats,
       todayTotal,
       todayCompleted,
@@ -200,7 +198,6 @@ router.get("/dashboard/sales-performance", async (req, res) => {
       const lostDeals = userDeals.filter(d => d.stage === "Lost").length;
       const activeDeals = userDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").length;
       const totalWonValue = userDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? 0), 0);
-      const totalLostValue = userDeals.filter(d => d.stage === "Lost").reduce((s, d) => s + Number(d.totalValue ?? 0), 0);
       const myClients = userContacts.filter(c => c.category === "My Client").length;
       const conversionRate = totalContacts > 0 ? Math.round((myClients / totalContacts) * 100) : 0;
 
@@ -221,7 +218,6 @@ router.get("/dashboard/sales-performance", async (req, res) => {
         lostDeals,
         activeDeals,
         totalWonValue,
-        totalLostValue,
         myClients,
         conversionRate,
         followUpRate,
@@ -380,35 +376,23 @@ router.get("/dashboard/support-kpi", async (req, res) => {
     const complaints = await db.select().from(complaintsTable);
     const activeComplaints = complaints.filter(c => c.status !== "Resolved" && c.status !== "Closed").length;
 
-    // Pending dispatch orders (non-deleted, non-cancelled, not fully dispatched)
-    const pendingDispatch = allOrders.filter(o =>
-      !o.isDeleted &&
-      o.status !== "Cancelled" &&
-      o.status !== "Completed" &&
-      o.status !== "Delivered" &&
-      (o.status === "Production Started" || o.status === "Production Running" || o.status === "Quality Check" || o.status === "Ready for Dispatch" || o.status === "Partially Dispatched")
-    ).length;
-
-    // Production tracking (orders in production)
-    const inProduction = allOrders.filter(o =>
-      !o.isDeleted &&
-      (o.status === "Production Started" || o.status === "Production Running")
-    ).length;
-
-    // Production orders tracking
+    // Production orders with dispatch workflow
     const allProductionOrders = await db.select().from(productionOrdersTable);
-    const readyForDispatch = allProductionOrders.filter(o => o.status === "Ready To Dispatch").length;
-    const inTransport = allProductionOrders.filter(o => o.transportName && o.status === "Ready To Dispatch").length;
+
+    // Dispatch KPIs from new dispatch workflow
+    const rtdOrders = allProductionOrders.filter(o => o.status === "Ready To Dispatch");
+    const pendingDispatch = rtdOrders.filter(o => o.dispatchStatus === "Pending Dispatch" || !o.dispatchStatus).length;
+    const loadVehicle = rtdOrders.filter(o => o.dispatchStatus === "Load Vehicle").length;
+    const dispatched = rtdOrders.filter(o => o.dispatchStatus === "Dispatch").length;
+    const delivered = allProductionOrders.filter(o => o.dispatchStatus === "Delivered").length;
+
+    // Production KPIs
+    const inProduction = allProductionOrders.filter(o =>
+      o.status === "Production On Going" || o.status === "Packaging"
+    ).length;
 
     // Active complaints list for the dashboard
     const activeComplaintList = complaints.filter(c => c.status !== "Resolved" && c.status !== "Closed").slice(0, 10);
-
-    const pendingDispatchOrders = allOrders.filter(o =>
-      !o.isDeleted &&
-      o.status !== "Cancelled" &&
-      o.status !== "Completed" &&
-      o.status !== "Delivered"
-    );
 
     res.json({
       totalRepeatOrders: repeatOrders.length,
@@ -417,13 +401,16 @@ router.get("/dashboard/support-kpi", async (req, res) => {
       repeatRevenueThisMonth,
       repeatCustomers: repeatCustomerIds.size,
       activeComplaints,
-      pendingDispatch: pendingDispatchOrders.length,
+      pendingDispatch,
       inProduction,
-      readyForDispatch,
-      inTransport,
+      readyForDispatch: pendingDispatch,
+      loadVehicle,
+      dispatched,
+      delivered,
+      inTransport: loadVehicle + dispatched,
       collections: {
         repeatOrders: repeatOrders.slice(0, 10),
-        pendingDispatch: pendingDispatchOrders.slice(0, 10),
+        pendingDispatch: rtdOrders.filter(o => o.dispatchStatus === "Pending Dispatch" || !o.dispatchStatus).slice(0, 10),
         complaints: activeComplaintList,
         productionOrders: allProductionOrders.filter(o => o.status === "Production On Going").slice(0, 10),
         customers: [],
@@ -431,7 +418,7 @@ router.get("/dashboard/support-kpi", async (req, res) => {
       stats: {
         repeatRevenue: totalRepeatRevenue,
         repeatCustomers: repeatCustomerIds.size,
-        pendingDispatch: pendingDispatchOrders.length,
+        pendingDispatch,
         inProduction,
       },
     });

@@ -80,7 +80,7 @@ export default function Reports() {
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailSearch, setDetailSearch] = useState("");
-  const [detailData, setDetailData] = useState<{ data?: any[]; records?: any[]; total: number; totalValue: number } | null>(null);
+  const [detailData, setDetailData] = useState<{ data?: any[]; records?: any[]; total: number } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [, navigate] = useLocation();
 
@@ -352,7 +352,6 @@ export default function Reports() {
                     <TableHead className="text-green-600">Won</TableHead>
                     <TableHead>Won Value</TableHead>
                     <TableHead className="text-red-500">Lost</TableHead>
-                    <TableHead>Lost Value</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -363,7 +362,6 @@ export default function Reports() {
                       <TableCell className="text-green-600 font-medium">{row.wonDeals}</TableCell>
                       <TableCell>₹{Number(row.totalWonValue).toLocaleString()}</TableCell>
                       <TableCell className="text-red-500 font-medium">{row.lostDeals}</TableCell>
-                      <TableCell className="text-red-400">₹{Number(row.totalLostValue).toLocaleString()}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -484,7 +482,6 @@ export default function Reports() {
                         <TableHead>Reason</TableHead>
                         <TableHead>Deals</TableHead>
                         <TableHead>Share</TableHead>
-                        <TableHead>Lost Value</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -516,8 +513,7 @@ export default function Reports() {
                                 {totalLost > 0 ? Math.round((row.count / totalLost) * 100) : 0}%
                               </span>
                             </div>
-                          </TableCell>
-                          <TableCell className="text-red-500">₹{Number(row.totalValue).toLocaleString()}</TableCell>
+                           </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -546,7 +542,6 @@ export default function Reports() {
               {/* Totals */}
               <div className="flex items-center gap-6 flex-wrap">
                 <div className="text-sm"><span className="text-muted-foreground">Total Records: </span><span className="font-semibold">{detailData.total}</span></div>
-                <div className="text-sm"><span className="text-muted-foreground">Total Lost Value: </span><span className="font-semibold text-red-500">₹{detailData.totalValue.toLocaleString()}</span></div>
               </div>
 
               {/* Search + Export */}

@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/select";
 import { Search, ArrowLeft, ArrowRight } from "lucide-react";
 import { useUserUnits } from "@/lib/use-user-units";
-import { useActiveUnits } from "@/lib/use-active-units";
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
@@ -22,6 +21,13 @@ const STATUS_COLORS: Record<string, string> = {
   "Ready To Dispatch": "bg-green-100 text-green-700 border-green-300",
   "Completed": "bg-emerald-100 text-emerald-700 border-emerald-300",
   "Cancelled": "bg-red-100 text-red-700 border-red-300",
+};
+
+const DISPATCH_STATUS_COLORS: Record<string, string> = {
+  "Pending Dispatch": "bg-amber-100 text-amber-700 border-amber-300",
+  "Load Vehicle": "bg-blue-100 text-blue-700 border-blue-300",
+  "Dispatch": "bg-purple-100 text-purple-700 border-purple-300",
+  "Delivered": "bg-emerald-100 text-emerald-700 border-emerald-300",
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -36,6 +42,10 @@ const STATUSES = [
   "Ready To Dispatch", "Completed", "Cancelled",
 ];
 
+const DISPATCH_STATUSES = [
+  "all", "Pending Dispatch", "Load Vehicle", "Dispatch", "Delivered",
+];
+
 export default function ProductionOrders() {
   const { data: user } = useGetMe();
   const [, setLocation] = useLocation();
@@ -44,6 +54,7 @@ export default function ProductionOrders() {
   const [selectedUnit, setSelectedUnit] = useState<string>(userUnit);
 
   const [status, setStatus] = useState(params.get("status") || "all");
+  const [dispatchStatus, setDispatchStatus] = useState(params.get("dispatchStatus") || "all");
   const [priority, setPriority] = useState("all");
   const [origin, setOrigin] = useState("all");
   const [search, setSearch] = useState(params.get("search") || "");
@@ -52,6 +63,7 @@ export default function ProductionOrders() {
   const buildUrl = () => {
     const p: Record<string, string> = {};
     if (status !== "all") p.status = status;
+    if (dispatchStatus !== "all") p.dispatchStatus = dispatchStatus;
     if (priority !== "all") p.priority = priority;
     if (origin !== "all") p.origin = origin;
     if (selectedUnit && selectedUnit !== "All") p.unit = selectedUnit;
@@ -62,7 +74,7 @@ export default function ProductionOrders() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ["production-orders", status, priority, origin, selectedUnit, search, page],
+    queryKey: ["production-orders", status, dispatchStatus, priority, origin, selectedUnit, search, page],
     queryFn: () => customFetch<any>(buildUrl()),
     enabled: !!user,
   });
@@ -92,10 +104,19 @@ export default function ProductionOrders() {
         </div>
 
         <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1); }}>
-          <SelectTrigger className="w-[150px]"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectTrigger className="w-[150px]"><SelectValue placeholder="Production Status" /></SelectTrigger>
           <SelectContent>
             {STATUSES.map(s => (
-              <SelectItem key={s} value={s}>{s === "all" ? "All Statuses" : s}</SelectItem>
+              <SelectItem key={s} value={s}>{s === "all" ? "All Production" : s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={dispatchStatus} onValueChange={(v) => { setDispatchStatus(v); setPage(1); }}>
+          <SelectTrigger className="w-[150px]"><SelectValue placeholder="Dispatch Status" /></SelectTrigger>
+          <SelectContent>
+            {DISPATCH_STATUSES.map(s => (
+              <SelectItem key={s} value={s}>{s === "all" ? "All Dispatch" : s}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -160,6 +181,7 @@ export default function ProductionOrders() {
                     <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Created By</th>
                     <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Priority</th>
                     <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Status</th>
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Dispatch</th>
                     <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Date</th>
                   </tr>
                 </thead>
@@ -195,6 +217,15 @@ export default function ProductionOrders() {
                         <Badge variant="outline" className={`text-xs ${STATUS_COLORS[order.status] || "bg-gray-100"} border`}>
                           {order.status}
                         </Badge>
+                      </td>
+                      <td className="py-3 px-4">
+                        {order.dispatchStatus ? (
+                          <Badge variant="outline" className={`text-xs ${DISPATCH_STATUS_COLORS[order.dispatchStatus] || "bg-gray-100"} border`}>
+                            {order.dispatchStatus}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-muted-foreground text-xs">
                         {order.createdAt ? new Date(order.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "-"}

@@ -289,24 +289,22 @@ router.get("/reports/lost-reasons", async (req, res) => {
       }
     }
 
-    const reasonMap = new Map<string, { count: number; totalValue: number }>();
+    const reasonMap = new Map<string, { count: number }>();
 
     // Count from lost deals
     for (const deal of deals) {
       const reason = deal.lostReason ?? "Not Specified";
-      if (!reasonMap.has(reason)) reasonMap.set(reason, { count: 0, totalValue: 0 });
+      if (!reasonMap.has(reason)) reasonMap.set(reason, { count: 0 });
       const s = reasonMap.get(reason)!;
       s.count++;
-      s.totalValue += Number(deal.totalValue ?? 0);
     }
 
     // Count from lost leads (contacts)
     for (const c of lostContacts) {
       const reason = c.lostReason ?? "Not Specified";
-      if (!reasonMap.has(reason)) reasonMap.set(reason, { count: 0, totalValue: 0 });
+      if (!reasonMap.has(reason)) reasonMap.set(reason, { count: 0 });
       const s = reasonMap.get(reason)!;
       s.count++;
-      // Lost leads have no monetary value associated
     }
 
     const result = Array.from(reasonMap.entries())
@@ -400,7 +398,6 @@ router.get("/reports/lost-reasons/detail", async (req, res) => {
           lostDate: d.updatedAt ? new Date(d.updatedAt).toISOString() : "",
           lostReason: d.lostReason ?? "",
           notes: d.otherReason ?? d.lostNotes ?? "",
-          dealValue: Number(d.wonAmount ?? d.totalValue ?? 0),
           contactId: d.contactId,
           dealId: d.id,
         };
@@ -423,7 +420,6 @@ router.get("/reports/lost-reasons/detail", async (req, res) => {
           lostDate: c.lostDate ? new Date(c.lostDate).toISOString() : "",
           lostReason: c.lostReason ?? "",
           notes: c.otherReason ?? c.lostNotes ?? "",
-          dealValue: 0,
           contactId: c.id,
           dealId: null,
         };
@@ -442,13 +438,11 @@ router.get("/reports/lost-reasons/detail", async (req, res) => {
       );
     }
 
-    const totalValue = records.reduce((s: number, r: any) => s + r.dealValue, 0);
-
-    res.json({ success: true, data: records, total: records.length, totalValue });
+    res.json({ success: true, data: records, total: records.length });
   } catch (err) {
-    console.error("Lost reason detail error:", err instanceof Error ? err.message : err);
+    console.error("Lost reason detail error:", err instanceof Error ? err.message : "");
     req.log.error({ err }, "Lost reason detail error");
-    res.json({ success: true, data: [], total: 0, totalValue: 0 });
+    res.json({ success: true, data: [], total: 0 });
   }
 });
 
@@ -473,11 +467,11 @@ router.get("/reports/by-city", async (req, res) => {
       }
     }
 
-    const cityMap = new Map<string, { totalDeals: number; wonDeals: number; lostDeals: number; totalWonValue: number; totalLostValue: number }>();
+    const cityMap = new Map<string, { totalDeals: number; wonDeals: number; lostDeals: number; totalWonValue: number }>();
     for (const deal of deals) {
       const contact = contactMap.get(deal.contactId);
       const city = contact?.city ?? "Unknown";
-      if (!cityMap.has(city)) cityMap.set(city, { totalDeals: 0, wonDeals: 0, lostDeals: 0, totalWonValue: 0, totalLostValue: 0 });
+      if (!cityMap.has(city)) cityMap.set(city, { totalDeals: 0, wonDeals: 0, lostDeals: 0, totalWonValue: 0 });
       const s = cityMap.get(city)!;
       s.totalDeals++;
       if (deal.stage === "Won") {
@@ -486,7 +480,6 @@ router.get("/reports/by-city", async (req, res) => {
       }
       if (deal.stage === "Lost") {
         s.lostDeals++;
-        s.totalLostValue += Number(deal.totalValue ?? 0);
       }
     }
 

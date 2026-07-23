@@ -20,6 +20,8 @@ import {
   handlePiModification, approveModification, addTimelineEntry,
   getManufacturingSummary, getManufacturingSummaryDetail,
   updateOrderStatus,
+  loadVehicle, markDispatched, markDelivered,
+  getDispatchDashboard, listDispatchOrders,
 } from "../lib/production-service";
 import { transferOrder, getTransferHistory } from "../lib/production-transfer-service";
 
@@ -96,8 +98,8 @@ router.get("/production/orders", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
     if (!user) return;
-    const { status, priority, search, dateFrom, dateTo, createdBy, unit, origin, page, limit } = req.query as Record<string, string | undefined>;
-    res.json(await listOrders(user, { status, priority, search, dateFrom, dateTo, createdBy, unit, origin, page, limit }));
+    const { status, dispatchStatus, priority, search, dateFrom, dateTo, createdBy, unit, origin, page, limit } = req.query as Record<string, string | undefined>;
+    res.json(await listOrders(user, { status, dispatchStatus, priority, search, dateFrom, dateTo, createdBy, unit, origin, page, limit }));
   } catch (err) {
     console.error("List production orders error:", err);
     res.status(500).json({ error: "Internal server error" });
@@ -288,9 +290,9 @@ router.patch("/production/orders/:id/status", async (req, res) => {
     if (!user) return;
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-    const { status, remarks, voiceNoteId } = req.body;
+    const { status, remarks, voiceNoteId, expectedCompletionDate, productionRemarks } = req.body;
     if (!status || !status.trim()) { res.status(400).json({ error: "Status is required" }); return; }
-    const result = await updateOrderStatus(user, id, { status: status.trim(), remarks, voiceNoteId });
+    const result = await updateOrderStatus(user, id, { status: status.trim(), remarks, voiceNoteId, expectedCompletionDate, productionRemarks });
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result.order);
   } catch (err) {
@@ -464,8 +466,8 @@ router.get("/production/manufacturing-summary", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
     if (!user) return;
-    const { unit: unitFilter, origin: originFilter } = req.query as Record<string, string | undefined>;
-    res.json(await getManufacturingSummary(user, unitFilter, originFilter));
+    const { unit: unitFilter, origin: originFilter, material: materialFilter } = req.query as Record<string, string | undefined>;
+    res.json(await getManufacturingSummary(user, unitFilter, originFilter, materialFilter));
   } catch (err) {
     console.error("Manufacturing summary error:", err);
     res.status(500).json({ error: "Internal server error" });
@@ -502,6 +504,105 @@ router.get("/production/modified-since", async (req, res) => {
     res.json(await getModifiedSince(user, since));
   } catch (err) {
     console.error("Modified since error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ═══════════════════════════════════════════════════
+// DISPATCH WORKFLOW ENDPOINTS (Support team)
+// ═══════════════════════════════════════════════════
+
+// ── Dispatch Dashboard KPIs ──
+router.get("/production/dispatch-dashboard", async (req, res) => {
+  try {
+    const user = await requireAuth(req, res);
+    if (!user) return;
+    const result = await getDispatchDashboard(user);
+    if (result.error) { res.status(result.status).json({ error: result.error }); return; }
+    res.json(result);
+  } catch (err) {
+    console.error("Dispatch dashboard error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── List Dispatch Orders ──
+router.get("/production/dispatch-orders", async (req, res) => {
+  try {
+    const user = await requireAuth(req, res);
+    if (!user) return;
+    const { status, search, page, limit } = req.query as Record<string, string | undefined>;
+    const result = await listDispatchOrders(user, { status, search, page, limit });
+    if (result.error) { res.status(result.status).json({ error: result.error }); return; }
+    res.json(result);
+  } catch (err) {
+    console.error("List dispatch orders error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Load Vehicle (Pending Dispatch → Load Vehicle) ──
+router.post("/production/orders/:id/load-vehicle", async (req, res) => {
+  try {
+    const user = await requireAuth(req, res);
+    if (!user) return;
+    const id = Number(req.params.id);
+    if (isNaN(id)) {
+      res.status(400).json({ success: false, code: "INVALID_ID", message: "Invalid order ID" });
+      return;
+    }
+    const { transportName, lrNumber, builtyUrl, dispatchRemarks } = req.body;
+    if (!transportName || !String(transportName).trim()) {
+      res.status(400).json({ success: false, code: "VALIDATION_ERROR", message: "Transport name is required", field: "transportName" });
+      return;
+    }
+    if (!lrNumber || !String(lrNumber).trim()) {
+      res.status(400).json({ success: false, code: "VALIDATION_ERROR", message: "LR / Builty number is required", field: "lrNumber" });
+      return;
+    }
+    const result = await loadVehicle(user, id, {
+      transportName: String(transportName).trim(), lrNumber: String(lrNumber).trim(),
+      builtyUrl, dispatchRemarks,
+    });
+    if (result.error || result.success === false) {
+      res.status(result.status || 400).json(result);
+      return;
+    }
+    res.json(result.order);
+  } catch (err) {
+    console.error("Load vehicle error:", err);
+    res.status(500).json({ success: false, code: "INTERNAL_ERROR", message: "Internal server error" });
+  }
+});
+
+// ── Mark Dispatched (Load Vehicle → Dispatch) ──
+router.post("/production/orders/:id/dispatch", async (req, res) => {
+  try {
+    const user = await requireAuth(req, res);
+    if (!user) return;
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ success: false, code: "INVALID_ID", message: "Invalid order ID" }); return; }
+    const result = await markDispatched(user, id);
+    if (result.error || result.success === false) { res.status(result.status || 400).json(result); return; }
+    res.json(result.order);
+  } catch (err) {
+    console.error("Mark dispatched error:", err);
+    res.status(500).json({ success: false, code: "INTERNAL_ERROR", message: "Internal server error" });
+  }
+});
+
+// ── Mark Delivered (Dispatch → Delivered) ──
+router.post("/production/orders/:id/deliver", async (req, res) => {
+  try {
+    const user = await requireAuth(req, res);
+    if (!user) return;
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ success: false, code: "INVALID_ID", message: "Invalid order ID" }); return; }
+    const result = await markDelivered(user, id);
+    if (result.error || result.success === false) { res.status(result.status || 400).json(result); return; }
+    res.json(result.order);
+  } catch (err) {
+    console.error("Mark delivered error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

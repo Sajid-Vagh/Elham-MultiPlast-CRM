@@ -1,215 +1,341 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useGetMe } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Search, Filter, Truck, Eye, Package } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Search, ArrowLeft, Package, Truck, CheckCircle2, Upload, FileText } from "lucide-react";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { useToast } from "@/hooks/use-toast";
+import { customFetch } from "@workspace/api-client-react/custom-fetch";
 
-const STATUS_COLORS: Record<string, string> = {
-  "Pending": "bg-gray-100 text-gray-700", "Vehicle Assigned": "bg-blue-100 text-blue-700",
-  "Loaded": "bg-indigo-100 text-indigo-700", "Dispatched": "bg-purple-100 text-purple-700",
-  "In Transit": "bg-cyan-100 text-cyan-700", "Delivered": "bg-green-100 text-green-700",
-  "Delayed": "bg-orange-100 text-orange-700", "Returned": "bg-red-100 text-red-700",
-  "Cancelled": "bg-red-100 text-red-700",
+const DISPATCH_STATUS_COLORS: Record<string, string> = {
+  "Pending Dispatch": "bg-amber-100 text-amber-700 border-amber-300",
+  "Load Vehicle": "bg-blue-100 text-blue-700 border-blue-300",
+  "Dispatch": "bg-purple-100 text-purple-700 border-purple-300",
+  "Delivered": "bg-emerald-100 text-emerald-700 border-emerald-300",
 };
 
+const DISPATCH_STATUSES = ["Pending Dispatch", "Load Vehicle", "Dispatch", "Delivered"];
+
 export default function DispatchPage() {
+  const { data: user } = useGetMe();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All");
-  const [processDialog, setProcessDialog] = useState<any>(null);
-  const [processForm, setProcessForm] = useState({ vehicleNumber: "", driverName: "", driverMobile: "", transportCompany: "", lrNumber: "", dispatchDate: "", expectedDeliveryDate: "", dispatchAddress: "", remarks: "" });
-  const [builtyFile, setBuiltyFile] = useState<File | null>(null);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
+
+  // Load Vehicle dialog
+  const [loadDialog, setLoadDialog] = useState<any>(null);
+  const [loadForm, setLoadForm] = useState({
+    transportName: "",
+    lrNumber: "",
+    dispatchRemarks: "",
+  });
+  const [lrFile, setLrFile] = useState<File | null>(null);
+
+  // Dispatch confirm dialog
+  const [dispatchDialog, setDispatchDialog] = useState<any>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["dispatch", { search, status: statusFilter }],
-    queryFn: async () => {
+    queryKey: ["dispatch-orders", search, statusFilter, page],
+    queryFn: () => {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
-      if (statusFilter !== "All") params.set("status", statusFilter);
-      const res = await fetch(`/api/dispatch?${params}`, { headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` } });
-      return res.json();
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      params.set("page", String(page));
+      params.set("limit", "20");
+      return customFetch<any>(`/production/dispatch-orders?${params.toString()}`);
     },
+    enabled: !!user,
   });
 
-  const processDispatch = useMutation({
-    mutationFn: async ({ id, updates }: { id: number; updates: any }) => {
-      const res = await fetch(`/api/dispatch/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
-        body: JSON.stringify({ ...updates, status: "Vehicle Assigned" }),
+  const loadVehicleMutation = useMutation({
+    mutationFn: async ({ orderId, data: formData }: { orderId: number; data: typeof loadForm }) => {
+      return customFetch<any>(`/production/orders/${orderId}/load-vehicle`, {
+        method: "POST",
+        body: JSON.stringify(formData),
       });
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["dispatch"] });
-      toast({ title: "Dispatch processed" });
-      setProcessDialog(null);
-      setBuiltyFile(null);
+      queryClient.invalidateQueries({ queryKey: ["dispatch-orders"] });
+      toast({ title: "Vehicle loaded successfully" });
+      setLoadDialog(null);
+      setLoadForm({ transportName: "", lrNumber: "", dispatchRemarks: "" });
+      setLrFile(null);
+    },
+    onError: (e: any) => {
+      const msg = e?.data?.message || e?.message || "Failed to load vehicle";
+      toast({ title: "Load Vehicle Failed", description: msg, variant: "destructive" });
     },
   });
 
-  const updateStatus = useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: string }) => {
-      const res = await fetch(`/api/dispatch/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["dispatch"] }); toast({ title: "Status updated" }); },
-  });
-
-  const uploadBuilty = useMutation({
-    mutationFn: async ({ dispatchId, file }: { dispatchId: number; file: File }) => {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch(`/api/dispatch/${dispatchId}/builty`, {
+  const dispatchMutation = useMutation({
+    mutationFn: async (orderId: number) => {
+      return customFetch<any>(`/production/orders/${orderId}/dispatch`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
-        body: fd,
+        body: JSON.stringify({}),
       });
-      if (!res.ok) throw new Error("Upload failed");
-      return res.json();
     },
-    onSuccess: () => { toast({ title: "Builty uploaded" }); setBuiltyFile(null); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["dispatch-orders"] });
+      toast({ title: "Order dispatched successfully" });
+      setDispatchDialog(null);
+    },
+    onError: (e: any) => {
+      const msg = e?.data?.message || e?.message || "Failed to dispatch";
+      toast({ title: "Dispatch Failed", description: msg, variant: "destructive" });
+    },
   });
 
-  const handleProcessDispatch = () => {
-    if (!processDialog) return;
-    processDispatch.mutate({ id: processDialog.id, updates: processForm });
-  };
-
-  const getSourceLabel = (d: any) => {
-    if (d.invoice) return d.invoice.invoiceNumber || "-";
-    if (d.order) return d.order.orderNumber || "-";
-    return "-";
-  };
-
-  const getCustomerName = (d: any) => {
-    if (d.invoice) return d.invoice.customerName || "-";
-    if (d.order) return d.order.customerName || "-";
-    return "-";
+  const handleLoadVehicle = () => {
+    if (!loadDialog) return;
+    if (!loadForm.transportName.trim()) {
+      toast({ title: "Transport name is required", variant: "destructive" });
+      return;
+    }
+    if (!loadForm.lrNumber.trim()) {
+      toast({ title: "LR / Builty number is required", variant: "destructive" });
+      return;
+    }
+    loadVehicleMutation.mutate({ orderId: loadDialog.id, data: loadForm });
   };
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Dispatch Management</h1>
-        <ExportDropdown exportUrl="/api/exports/dispatch" filename="Dispatch" />
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Dispatch</h1>
+          <p className="text-sm text-muted-foreground mt-1">Manage dispatch workflow for Ready To Dispatch orders</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <ExportDropdown exportUrl="/api/exports/dispatch" filename="Dispatch" />
+          <Button variant="outline" size="sm" onClick={() => setLocation("/support/dashboard")}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> Support Dashboard
+          </Button>
+        </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search dispatch..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+      {/* Status Summary Cards */}
+      {data?.summary && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { key: "pendingDispatch", label: "Pending Dispatch", color: "text-amber-600 bg-amber-50 border-amber-200", icon: Package },
+            { key: "loadVehicle", label: "Load Vehicle", color: "text-blue-600 bg-blue-50 border-blue-200", icon: Truck },
+            { key: "dispatched", label: "Dispatched", color: "text-purple-600 bg-purple-50 border-purple-200", icon: FileText },
+            { key: "delivered", label: "Delivered", color: "text-emerald-600 bg-emerald-50 border-emerald-200", icon: CheckCircle2 },
+          ].map(({ key, label, color, icon: Icon }) => (
+            <Card key={key} className={`border ${color.split(" ").slice(1).join(" ")} cursor-pointer hover:shadow-md transition-all`}
+              onClick={() => setStatusFilter(key === "pendingDispatch" ? "Pending Dispatch" : key === "loadVehicle" ? "Load Vehicle" : key === "dispatched" ? "Dispatch" : "Delivered")}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-[10px] font-semibold uppercase tracking-wider ${color.split(" ")[0]}`}>{label}</span>
+                  <Icon className={`h-3.5 w-3.5 ${color.split(" ")[0]}`} />
+                </div>
+                <p className="text-xl font-bold">{data.summary[key] ?? 0}</p>
+              </CardContent>
+            </Card>
+          ))}
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-48"><Filter className="h-4 w-4 mr-2" /><SelectValue /></SelectTrigger>
-          <SelectContent>{["All", "Pending", "Vehicle Assigned", "Loaded", "Dispatched", "In Transit", "Delivered", "Delayed", "Returned", "Cancelled"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+      )}
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input placeholder="Search by customer, company, PI..." value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }} className="pl-9" />
+        </div>
+        <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(1); }}>
+          <SelectTrigger className="w-[160px]"><SelectValue placeholder="Dispatch Status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            {DISPATCH_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+          </SelectContent>
         </Select>
       </div>
 
-      <Card><CardContent className="p-0">
-        <Table>
-          <TableHeader><TableRow>
-            <TableHead>Dispatch #</TableHead><TableHead>Invoice/Order</TableHead><TableHead>Customer</TableHead>
-            <TableHead>Vehicle</TableHead><TableHead>Status</TableHead><TableHead>Dispatch Date</TableHead><TableHead>Actions</TableHead>
-          </TableRow></TableHeader>
-          <TableBody>
-            {isLoading ? <TableRow><TableCell colSpan={7} className="text-center py-8">Loading...</TableCell></TableRow>
-              : data?.data?.length === 0 ? <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No dispatches</TableCell></TableRow>
-              : data?.data?.map((d: any) => (
-                <TableRow key={d.id}>
-                  <TableCell className="font-medium">{d.dispatchNumber}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span className="font-medium">{getSourceLabel(d)}</span>
-                      {d.productionOrder && <span className="text-xs text-muted-foreground">Prod #{d.productionOrder.id}</span>}
-                    </div>
-                  </TableCell>
-                  <TableCell>{getCustomerName(d)}</TableCell>
-                  <TableCell>{d.vehicleNumber || "-"}</TableCell>
-                  <TableCell><Badge className={STATUS_COLORS[d.status] || ""}>{d.status}</Badge></TableCell>
-                  <TableCell>{d.dispatchDate || "-"}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      {d.status === "Pending" && (
-                        <Button size="sm" variant="outline" onClick={() => {
-                          setProcessDialog(d);
-                          setProcessForm({
-                            vehicleNumber: d.vehicleNumber || "", driverName: d.driverName || "", driverMobile: d.driverMobile || "",
-                            transportCompany: d.transportCompany || "", lrNumber: d.lrNumber || "", dispatchDate: d.dispatchDate || new Date().toISOString().slice(0, 10),
-                            expectedDeliveryDate: d.expectedDeliveryDate || "", dispatchAddress: d.dispatchAddress || "", remarks: d.remarks || "",
-                          });
-                        }}>
-                          <Truck className="h-3 w-3 mr-1" />Process
-                        </Button>
-                      )}
-                      {d.status !== "Delivered" && d.status !== "Cancelled" && d.status !== "Pending" && (
-                        <Select value={d.status} onValueChange={v => updateStatus.mutate({ id: d.id, status: v })}>
-                          <SelectTrigger className="w-32 h-7 text-xs"><SelectValue /></SelectTrigger>
-                          <SelectContent>{["Vehicle Assigned", "Loaded", "Dispatched", "In Transit", "Delivered", "Delayed", "Cancelled"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-                        </Select>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-          </TableBody>
-        </Table>
-      </CardContent></Card>
-
-      {/* Process Dispatch Dialog */}
-      <Dialog open={!!processDialog} onOpenChange={() => setProcessDialog(null)}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Process Dispatch — {processDialog?.dispatchNumber}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            {processDialog?.invoice && (
-              <div className="text-sm bg-muted p-2 rounded">
-                <span className="font-medium">Invoice:</span> {processDialog.invoice.invoiceNumber} | {processDialog.invoice.customerName}
-              </div>
-            )}
-            {processDialog?.order && (
-              <div className="text-sm bg-muted p-2 rounded">
-                <span className="font-medium">Order:</span> {processDialog.order.orderNumber} | {processDialog.order.customerName}
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Vehicle Number</Label><Input value={processForm.vehicleNumber} onChange={e => setProcessForm({ ...processForm, vehicleNumber: e.target.value })} /></div>
-              <div><Label>Transport Company</Label><Input value={processForm.transportCompany} onChange={e => setProcessForm({ ...processForm, transportCompany: e.target.value })} /></div>
-              <div><Label>Driver Name</Label><Input value={processForm.driverName} onChange={e => setProcessForm({ ...processForm, driverName: e.target.value })} /></div>
-              <div><Label>Driver Mobile</Label><Input value={processForm.driverMobile} onChange={e => setProcessForm({ ...processForm, driverMobile: e.target.value })} /></div>
-              <div><Label>LR Number</Label><Input value={processForm.lrNumber} onChange={e => setProcessForm({ ...processForm, lrNumber: e.target.value })} /></div>
-              <div><Label>Dispatch Date</Label><Input type="date" value={processForm.dispatchDate} onChange={e => setProcessForm({ ...processForm, dispatchDate: e.target.value })} /></div>
-              <div><Label>Expected Delivery</Label><Input type="date" value={processForm.expectedDeliveryDate} onChange={e => setProcessForm({ ...processForm, expectedDeliveryDate: e.target.value })} /></div>
+      {/* Orders Table */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">
+            {data ? `${data.total} order${data.total !== 1 ? "s" : ""} found` : "Loading..."}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-6 space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
+          ) : !data?.data?.length ? (
+            <div className="py-12 text-center text-muted-foreground">No dispatch orders found</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <TableHead className="text-xs">Order #</TableHead>
+                    <TableHead className="text-xs">Customer</TableHead>
+                    <TableHead className="text-xs">Product</TableHead>
+                    <TableHead className="text-xs">Qty</TableHead>
+                    <TableHead className="text-xs">Production Status</TableHead>
+                    <TableHead className="text-xs">Dispatch Status</TableHead>
+                    <TableHead className="text-xs">Transport</TableHead>
+                    <TableHead className="text-xs text-right">Actions</TableHead>
+                  </tr>
+                </thead>
+                <TableBody>
+                  {data.data.map((order: any) => (
+                    <TableRow key={order.id} className="hover:bg-muted/30">
+                      <TableCell className="font-medium cursor-pointer" onClick={() => setLocation(`/production/orders/${order.id}`)}>
+                        #{order.id}
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{order.invoice?.customerName || "-"}</p>
+                          <p className="text-xs text-muted-foreground">{order.invoice?.companyName || ""}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>{order.items?.[0]?.productName || "-"}</TableCell>
+                      <TableCell>{order.items?.[0]?.quantity ?? "-"} {order.items?.[0]?.unit || ""}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-[10px] border">
+                          {order.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={`text-[10px] border ${DISPATCH_STATUS_COLORS[order.dispatchStatus] || ""}`}>
+                          {order.dispatchStatus || "—"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{order.transportName || "-"}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {order.dispatchStatus === "Pending Dispatch" && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs"
+                              onClick={() => {
+                                setLoadDialog(order);
+                                setLoadForm({
+                                  transportName: order.transportName || "",
+                                  lrNumber: order.lrNumber || "",
+                                  dispatchRemarks: order.dispatchRemarks || "",
+                                });
+                              }}>
+                              <Truck className="h-3 w-3 mr-1" /> Load Vehicle
+                            </Button>
+                          )}
+                          {order.dispatchStatus === "Load Vehicle" && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs"
+                              onClick={() => setDispatchDialog(order)}>
+                              <Package className="h-3 w-3 mr-1" /> Dispatch
+                            </Button>
+                          )}
+                          {order.dispatchStatus === "Dispatch" && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs"
+                              onClick={() => setLocation(`/production/orders/${order.id}`)}>
+                              Mark Delivered
+                            </Button>
+                          )}
+                          {order.dispatchStatus === "Delivered" && (
+                            <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">
+                              Completed
+                            </Badge>
+                          )}
+                          {!order.dispatchStatus && order.status === "Ready To Dispatch" && (
+                            <span className="text-xs text-muted-foreground">Waiting</span>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </table>
             </div>
-            <div><Label>Dispatch Address</Label><Textarea value={processForm.dispatchAddress} onChange={e => setProcessForm({ ...processForm, dispatchAddress: e.target.value })} rows={2} /></div>
-            <div><Label>Remarks</Label><Textarea value={processForm.remarks} onChange={e => setProcessForm({ ...processForm, remarks: e.target.value })} rows={2} /></div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Pagination */}
+      {data && data.totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">Page {data.page} of {data.totalPages}</p>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
+              Previous
+            </Button>
+            <Button variant="outline" size="sm" disabled={page >= data.totalPages} onClick={() => setPage(p => p + 1)}>
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Load Vehicle Dialog */}
+      <Dialog open={!!loadDialog} onOpenChange={() => setLoadDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Load Vehicle — Order #{loadDialog?.id}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {loadDialog && (
+              <div className="text-sm bg-muted p-3 rounded-lg">
+                <p className="font-medium">{loadDialog.invoice?.customerName || "Customer"}</p>
+                <p className="text-xs text-muted-foreground">{loadDialog.invoice?.companyName || ""}</p>
+                <p className="text-xs text-muted-foreground mt-1">Product: {loadDialog.items?.[0]?.productName} ({loadDialog.items?.[0]?.quantity} {loadDialog.items?.[0]?.unit})</p>
+              </div>
+            )}
             <div>
-              <Label>Builty / Transport Receipt</Label>
-              <Input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e => setBuiltyFile(e.target.files?.[0] || null)} className="mt-1" />
+              <Label>Transport Name *</Label>
+              <Input value={loadForm.transportName} onChange={e => setLoadForm({ ...loadForm, transportName: e.target.value })}
+                placeholder="e.g. ABC Transport" className="mt-1" />
+            </div>
+            <div>
+              <Label>LR / Builty Number</Label>
+              <Input value={loadForm.lrNumber} onChange={e => setLoadForm({ ...loadForm, lrNumber: e.target.value })}
+                placeholder="e.g. LR-12345" className="mt-1" />
+            </div>
+            <div>
+              <Label>Upload LR / Builty</Label>
+              <Input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e => setLrFile(e.target.files?.[0] || null)} className="mt-1" />
+              {lrFile && <p className="text-xs text-muted-foreground mt-1">{lrFile.name}</p>}
+            </div>
+            <div>
+              <Label>Dispatch Remarks</Label>
+              <Textarea value={loadForm.dispatchRemarks} onChange={e => setLoadForm({ ...loadForm, dispatchRemarks: e.target.value })}
+                placeholder="Any notes about this dispatch..." rows={2} className="mt-1" />
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setProcessDialog(null)}>Cancel</Button>
-              <Button onClick={handleProcessDispatch} disabled={processDispatch.isPending}>
-                {processDispatch.isPending ? "Processing..." : "Assign Vehicle"}
+              <Button variant="outline" onClick={() => setLoadDialog(null)}>Cancel</Button>
+              <Button onClick={handleLoadVehicle} disabled={loadVehicleMutation.isPending}>
+                {loadVehicleMutation.isPending ? "Saving..." : "Load Vehicle"}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dispatch Confirm Dialog */}
+      <Dialog open={!!dispatchDialog} onOpenChange={() => setDispatchDialog(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Confirm Dispatch</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Mark order <strong>#{dispatchDialog?.id}</strong> as dispatched? This will update the status to <strong>Dispatch</strong>.
+          </p>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setDispatchDialog(null)}>Cancel</Button>
+            <Button onClick={() => dispatchDialog && dispatchMutation.mutate(dispatchDialog.id)} disabled={dispatchMutation.isPending}>
+              {dispatchMutation.isPending ? "Dispatching..." : "Confirm Dispatch"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
