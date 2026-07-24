@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { BarChart3, Package, Clock, Settings2, CheckCircle2, Factory } from "lucide-react";
 import { useUserUnits } from "@/lib/use-user-units";
+import { useUnitFilter } from "@/lib/use-unit-filter";
 
 const MACHINE_TYPES = ["All", "250ml Machine", "1L Machine", "5L Machine"];
 const STATUS_OPTIONS = ["All", "Pending", "Material Ready", "Production Started", "In Process", "Quality Check", "Packing", "Ready For Dispatch", "Completed", "On Hold", "Cancelled"];
@@ -22,17 +23,11 @@ interface ReportData {
 export default function MachineReport() {
   const { data: user } = useGetMe();
   const { units: accessibleUnits, locked: unitLocked } = useUserUnits();
-  const [unitFilter, setUnitFilter] = useState("All");
+  const [unitFilter, setUnitFilter] = useUnitFilter();
   const [machineFilter, setMachineFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
 
   const showUnitFilter = user?.role === "admin" || user?.role === "production_and_support" || user?.unit === "All";
-
-  useEffect(() => {
-    if (unitLocked && accessibleUnits.length === 1) {
-      setUnitFilter(accessibleUnits[0]);
-    }
-  }, [unitLocked, accessibleUnits]);
 
   const params = new URLSearchParams();
   if (unitFilter !== "All") params.set("unit", unitFilter);

@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useGetMe } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUserUnits } from "@/lib/use-user-units";
+import { useUnitFilter } from "@/lib/use-unit-filter";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, AlertTriangle, Truck } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -28,8 +29,7 @@ export default function ProductionDashboard() {
   const { data: user } = useGetMe();
   const [, setLocation] = useLocation();
   const { units: userUnits, locked, userUnit } = useUserUnits();
-  const [selectedUnit, setSelectedUnit] = useState<string>(userUnit);
-  useEffect(() => { setSelectedUnit(userUnit); }, [userUnit]);
+  const [selectedUnit, setSelectedUnit] = useUnitFilter();
   const [originFilter, setOriginFilter] = useState("all");
 
   const { data: dashboard, isLoading } = useQuery({

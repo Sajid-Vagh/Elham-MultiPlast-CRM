@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Search, ArrowLeft, ArrowRight } from "lucide-react";
 import { useUserUnits } from "@/lib/use-user-units";
+import { useUnitFilter } from "@/lib/use-unit-filter";
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
@@ -51,7 +52,7 @@ export default function ProductionOrders() {
   const [, setLocation] = useLocation();
   const params = new URLSearchParams(window.location.search);
   const { units: userUnits, userUnit, locked } = useUserUnits();
-  const [selectedUnit, setSelectedUnit] = useState<string>(userUnit);
+  const [selectedUnit, setSelectedUnit] = useUnitFilter();
 
   const [status, setStatus] = useState(params.get("status") || "all");
   const [dispatchStatus, setDispatchStatus] = useState(params.get("dispatchStatus") || "all");

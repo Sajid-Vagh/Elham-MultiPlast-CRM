@@ -80,7 +80,7 @@ export default function Deals() {
   const params = new URLSearchParams(searchStr);
   const stageFilter = params.get("stage") || "";
   const ownerFilter = params.get("owner") || "";
-  const unitFilter = params.get("unit") || "";
+  const unitFilter = params.get("unit") || localStorage.getItem("crm_unit_filter") || "Himatnagar";
 
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
@@ -99,7 +99,7 @@ export default function Deals() {
   })();
 
   const { data: deals, isLoading } = useListDeals({
-    unit: unitFilter || undefined,
+    unit: unitFilter !== "All" ? unitFilter : undefined,
     completedDealVisibility: completedDealVisibility as "hide" | "24h" | "3d" | "forever" | undefined,
   });
   const { data: users } = useCustomerFacingUsers();
@@ -156,7 +156,7 @@ export default function Deals() {
     return d;
   })();
 
-  const clearFilters = () => navigate("/deals");
+  const clearFilters = () => navigate(`/deals?unit=${unitFilter}`);
 
   const handleMarkWonCancel = () => {
     if (markWonDeal) {
@@ -413,29 +413,30 @@ export default function Deals() {
             </SelectContent>
           </Select>
         )}
-        <Select value={unitFilter || "all"} onValueChange={(v) => {
+        <Select value={unitFilter} onValueChange={(v) => {
           const sp = new URLSearchParams(searchStr);
-          if (v === "all") sp.delete("unit");
+          if (v === "All") sp.delete("unit");
           else sp.set("unit", v);
+          localStorage.setItem("crm_unit_filter", v);
           navigate(`/deals?${sp.toString()}`);
         }}>
           <SelectTrigger className="w-[150px]">
             <SelectValue placeholder="All Units" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Units</SelectItem>
+            <SelectItem value="All">All Units</SelectItem>
             <SelectItem value={PENDING_UNIT_ASSIGNMENT}>Pending Unit</SelectItem>
             {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
 
-      {(stageFilter || (isAdmin && ownerFilter) || unitFilter) && (
+      {(stageFilter || (isAdmin && ownerFilter) || unitFilter !== "All") && (
         <div className="flex items-center gap-2 bg-primary/5 border border-primary/20 px-4 py-2 rounded-lg shrink-0">
           <span className="text-sm font-medium text-muted-foreground">Showing:</span>
           {stageFilter && <Badge variant="secondary" className="text-xs">Stage: {stageFilter}</Badge>}
           {isAdmin && ownerFilter && ownerName && <Badge variant="secondary" className="text-xs">Owner: {ownerName}</Badge>}
-          {unitFilter && <Badge variant="secondary" className="text-xs">Unit: {unitFilter}</Badge>}
+          {unitFilter !== "All" && <Badge variant="secondary" className="text-xs">Unit: {unitFilter}</Badge>}
           <Button variant="ghost" size="sm" onClick={clearFilters} className="ml-auto h-7 gap-1 text-muted-foreground">
             <X className="h-3.5 w-3.5" /> Clear filters
           </Button>

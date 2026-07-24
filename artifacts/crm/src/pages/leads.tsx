@@ -18,6 +18,7 @@ import { onContactChange, onDealChange } from "@/lib/query-invalidation";
 import { UserAvatar } from "@/components/user-avatar";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { useUnitFilter } from "@/lib/use-unit-filter";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
@@ -26,7 +27,7 @@ export default function Leads() {
   const [salesOwnerId, setSalesOwnerId] = useState<number | undefined>();
   const [city, setCity] = useState<string | undefined>();
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
-  const [unitFilter, setUnitFilter] = useState<string | undefined>();
+  const [unitFilter, setUnitFilter] = useUnitFilter();
 
   // Mark Lost
   const [lostContactId, setLostContactId] = useState<number | null>(null);
@@ -80,7 +81,7 @@ export default function Leads() {
       if (isAdmin && salesOwnerId) params.set("salesOwnerId", String(salesOwnerId));
       if (city) params.set("city", city);
       if (categoryFilter) params.set("category", categoryFilter);
-      if (unitFilter) params.set("unit", unitFilter);
+      if (unitFilter !== "All") params.set("unit", unitFilter);
       const res = await fetch(`/api/contacts?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -207,12 +208,12 @@ export default function Leads() {
             </SelectContent>
           </Select>
         )}
-        <Select value={unitFilter || "all"} onValueChange={(v) => setUnitFilter(v === "all" ? undefined : v)}>
+        <Select value={unitFilter} onValueChange={setUnitFilter}>
           <SelectTrigger className="w-[150px]">
             <SelectValue placeholder="All Units" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Units</SelectItem>
+            <SelectItem value="All">All Units</SelectItem>
             <SelectItem value={PENDING_UNIT_ASSIGNMENT}>Pending Unit</SelectItem>
             {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>

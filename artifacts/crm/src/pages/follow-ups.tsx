@@ -18,6 +18,7 @@ import { onActivityChange } from "@/lib/query-invalidation";
 import { CategoryBadge } from "@/components/category-badge";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { useUnitFilter } from "@/lib/use-unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import ActivityDetailDrawer from "@/components/activity-detail-drawer";
 
@@ -84,7 +85,7 @@ const SORT_OPTIONS = [
 export default function FollowUps() {
   const [dateFilter, setDateFilter] = useState("");
   const [showToday, setShowToday] = useState(false);
-  const [unitFilter, setUnitFilter] = useState<string | undefined>();
+  const [unitFilter, setUnitFilter] = useUnitFilter();
   const [ownerFilter, setOwnerFilter] = useState<string | undefined>();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -216,7 +217,7 @@ export default function FollowUps() {
     let list = [...activities];
 
     // Unit filter
-    if (unitFilter) {
+    if (unitFilter !== "All") {
       list = list.filter(a => {
         const contactUnit = a.contact?.unit || a.deal?.contact?.unit;
         return contactUnit === unitFilter;
@@ -366,12 +367,12 @@ export default function FollowUps() {
                   {TYPE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Select value={unitFilter || "all"} onValueChange={v => { setUnitFilter(v === "all" ? undefined : v); setPage(1); }}>
+              <Select value={unitFilter} onValueChange={v => { setUnitFilter(v); setPage(1); }}>
                 <SelectTrigger className="w-[120px] h-9">
                   <SelectValue placeholder="Unit" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Units</SelectItem>
+                  <SelectItem value="All">All Units</SelectItem>
                   <SelectItem value={PENDING_UNIT_ASSIGNMENT}>Pending Unit</SelectItem>
                   {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                 </SelectContent>

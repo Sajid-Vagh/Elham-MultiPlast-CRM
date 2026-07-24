@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { UserAvatar } from "@/components/user-avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { useUnitFilter } from "@/lib/use-unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
 function daysDiff(dateStr: string): number {
@@ -34,7 +35,7 @@ const PIE_COLORS = ["#f87171","#fb923c","#fbbf24","#a3e635","#34d399","#60a5fa",
 export default function Dashboard() {
   const [followUpDateFilter, setFollowUpDateFilter] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("");
-  const [unitFilter, setUnitFilter] = useState("");
+  const [unitFilter, setUnitFilter] = useUnitFilter();
   const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
@@ -48,7 +49,7 @@ export default function Dashboard() {
     queryFn: async () => {
       const params = new URLSearchParams();
       if (ownerFilter) params.set("ownerId", ownerFilter);
-      if (unitFilter) params.set("unit", unitFilter);
+      if (unitFilter !== "All") params.set("unit", unitFilter);
       const res = await fetch(`/api/dashboard/kpi?${params.toString()}`, { headers: authHeaders });
       if (!res.ok) return null;
       return res.json() as Promise<{
@@ -68,7 +69,7 @@ export default function Dashboard() {
     queryFn: async () => {
       const params = new URLSearchParams();
       if (ownerFilter) params.set("ownerId", ownerFilter);
-      if (unitFilter) params.set("unit", unitFilter);
+      if (unitFilter !== "All") params.set("unit", unitFilter);
       const res = await fetch(`/api/dashboard/sales-performance?${params.toString()}`, { headers: authHeaders });
       if (!res.ok) return [];
       return res.json() as Promise<{
@@ -87,7 +88,7 @@ export default function Dashboard() {
     queryFn: async () => {
       const params = new URLSearchParams();
       if (ownerFilter) params.set("ownerId", ownerFilter);
-      if (unitFilter) params.set("unit", unitFilter);
+      if (unitFilter !== "All") params.set("unit", unitFilter);
       const res = await fetch(`/api/dashboard/charts?${params.toString()}`, { headers: authHeaders });
       if (!res.ok) return null;
       return res.json() as Promise<{
@@ -105,7 +106,7 @@ export default function Dashboard() {
     queryFn: async () => {
       const params = new URLSearchParams();
       if (ownerFilter) params.set("ownerId", ownerFilter);
-      if (unitFilter) params.set("unit", unitFilter);
+      if (unitFilter !== "All") params.set("unit", unitFilter);
       const res = await fetch(`/api/dashboard/recent-activities?${params.toString()}`, { headers: authHeaders });
       if (!res.ok) return [];
       return res.json() as Promise<{
@@ -124,7 +125,7 @@ export default function Dashboard() {
       const params = new URLSearchParams();
       params.set("followUpDue", "true");
       if (ownerFilter) params.set("salesOwnerId", ownerFilter);
-      if (unitFilter) params.set("unit", unitFilter);
+      if (unitFilter !== "All") params.set("unit", unitFilter);
       const res = await fetch(`/api/contacts?${params.toString()}`, { headers: authHeaders });
       if (!res.ok) return [];
       return res.json() as Promise<any[]>;
@@ -184,10 +185,10 @@ export default function Dashboard() {
                 </SelectContent>
               </Select>
             )}
-            <Select value={unitFilter} onValueChange={v => setUnitFilter(v === "all" ? "" : v)}>
+            <Select value={unitFilter} onValueChange={setUnitFilter}>
               <SelectTrigger className="w-36 h-8 text-sm"><SelectValue placeholder="All Units" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Units</SelectItem>
+                <SelectItem value="All">All Units</SelectItem>
                 <SelectItem value={PENDING_UNIT_ASSIGNMENT}>Pending Unit Assignment</SelectItem>
                 {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
               </SelectContent>

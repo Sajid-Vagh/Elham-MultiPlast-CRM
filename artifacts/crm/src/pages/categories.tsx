@@ -20,6 +20,7 @@ import { Download, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { useUnitFilter } from "@/lib/use-unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
 function CategoryCard({ name, count, color, onClick }: { name: string; count: number; color: string; onClick: () => void }) {
@@ -54,12 +55,12 @@ export default function CategoriesPage() {
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [showMoveDialog, setShowMoveDialog] = useState(false);
-  const [unitFilter, setUnitFilter] = useState<string | undefined>();
+  const [unitFilter, setUnitFilter] = useUnitFilter();
   const perPage = 20;
   const { toast } = useToast();
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
-  const activeUnit = unitFilter;
+  const activeUnit = unitFilter !== "All" ? unitFilter : undefined;
   const { units: activeUnits } = useActiveUnits();
 
   useEffect(() => {
@@ -308,12 +309,12 @@ export default function CategoriesPage() {
       </div>
 
       <div className="flex items-center gap-3">
-        <Select value={unitFilter || "all"} onValueChange={(v) => setUnitFilter(v === "all" ? undefined : v)}>
+        <Select value={unitFilter} onValueChange={setUnitFilter}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="All Units" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Units</SelectItem>
+            <SelectItem value="All">All Units</SelectItem>
             <SelectItem value={PENDING_UNIT_ASSIGNMENT}>Pending Unit</SelectItem>
             {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>
