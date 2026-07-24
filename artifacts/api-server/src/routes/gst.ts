@@ -60,7 +60,7 @@ function normalize(src: any, gstin: string): any {
   };
 }
 
-async function lookupGstinFromProviders(gstin: string, req: any): Promise<any> {
+export async function lookupGstinFromProviders(gstin: string, req: any): Promise<any> {
   const cleanGstin = gstin.toUpperCase().trim();
 
   const gstVerifyKey = process.env.GSTVERIFY_API_KEY;

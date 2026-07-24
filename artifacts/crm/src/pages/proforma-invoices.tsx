@@ -787,23 +787,49 @@ const selectProduct = (idx: number, product: any) => {
     setGstVerifying(true);
     setGstError("");
     try {
-      const res = await fetch("/api/gst/refresh", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ gstin }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setGstVerified(true);
-        setLastVerifiedAt(data.verifiedAt);
-        setGstVerificationResult(data);
-        setGstCached(false);
-        setShowBusinessDetails(true);
-        applyGstDetails(data);
-        toast({ title: "✓ GST Refreshed", description: `${data.legalName || data.tradeName || gstin}` });
+      if (customerMasterId) {
+        const res = await fetch(`/api/customer-master/${customerMasterId}/refresh-gst`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (data.success) {
+          setGstVerified(true);
+          setGstCached(false);
+          setShowBusinessDetails(true);
+          if (data.customer) {
+            setExistingCustomer(data.customer);
+            applyExistingCustomer(data.customer);
+          }
+          const changedFields = Object.keys(data.changes || {});
+          if (data.updated && changedFields.length > 0) {
+            toast({ title: "✓ GST Refreshed & Saved", description: `Updated: ${changedFields.join(", ")}` });
+          } else {
+            toast({ title: "✓ GST Data Up to Date", description: "No changes found" });
+          }
+        } else {
+          setGstError(data.error || "GST refresh failed");
+          toast({ title: "Refresh Failed", description: data.error || "Could not refresh GST details", variant: "destructive" });
+        }
       } else {
-        setGstError(data.error || "GST refresh failed");
-        toast({ title: "Refresh Failed", description: data.error || "Could not refresh GST details", variant: "destructive" });
+        const res = await fetch("/api/gst/refresh", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ gstin }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          setGstVerified(true);
+          setLastVerifiedAt(data.verifiedAt);
+          setGstVerificationResult(data);
+          setGstCached(false);
+          setShowBusinessDetails(true);
+          applyGstDetails(data);
+          toast({ title: "✓ GST Refreshed", description: `${data.legalName || data.tradeName || gstin}` });
+        } else {
+          setGstError(data.error || "GST refresh failed");
+          toast({ title: "Refresh Failed", description: data.error || "Could not refresh GST details", variant: "destructive" });
+        }
       }
     } catch {
       setGstError("Network error. Please try again.");
@@ -1967,7 +1993,7 @@ ${pagesHtml}
                     <div className="flex gap-2">
                       <Button size="sm" variant="outline" onClick={refreshGst} disabled={gstVerifying} className="gap-1 text-xs">
                         <RefreshCw className={`h-3 w-3 ${gstVerifying ? "animate-spin" : ""}`} />
-                        Refresh GST
+                        {customerMasterId ? "Refresh & Save to Customer" : "Refresh GST"}
                       </Button>
                     </div>
                   </div>

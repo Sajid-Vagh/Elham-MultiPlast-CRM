@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, customerMasterTable, proformaInvoicesTable } from "@workspace/db";
 import { eq, desc, and, sql, or } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
+import { lookupGstinFromProviders } from "./gst";
 
 const router: IRouter = Router();
 
@@ -30,6 +31,81 @@ router.post("/customer-master/lookup-by-gstin", async (req, res) => {
     res.json({ found: true, ...customer });
   } catch (err) {
     req.log.error({ err }, "Customer master lookup error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /customer-master/:id/refresh-gst — fetch fresh GST data from providers and update the record
+router.post("/customer-master/:id/refresh-gst", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const [existing] = await db
+      .select()
+      .from(customerMasterTable)
+      .where(eq(customerMasterTable.id, id));
+
+    if (!existing) { res.status(404).json({ error: "Customer not found" }); return; }
+
+    if (!existing.gstin) {
+      res.status(400).json({ error: "No GSTIN on record — cannot refresh GST data" });
+      return;
+    }
+
+    const gstData = await lookupGstinFromProviders(existing.gstin, req);
+    if (!gstData) {
+      res.status(404).json({ error: "Could not fetch fresh GST data. Please try again later." });
+      return;
+    }
+
+    const updates: Record<string, any> = {};
+    const changes: Record<string, { old: string | null; new: string | null }> = {};
+
+    const fields: [string, string | null][] = [
+      ["companyName", gstData.legalName || gstData.tradeName || null],
+      ["tradeName", gstData.tradeName || null],
+      ["addressLine1", gstData.addressLine1 || null],
+      ["addressLine2", gstData.addressLine2 || null],
+      ["addressLine3", gstData.addressLine3 || null],
+      ["city", gstData.city || null],
+      ["district", gstData.district || null],
+      ["state", gstData.state || null],
+      ["pincode", gstData.pincode || null],
+      ["gstStatus", gstData.registrationStatus || gstData.status || null],
+      ["businessConstitution", gstData.businessConstitution || null],
+    ];
+
+    for (const [field, freshVal] of fields) {
+      const oldVal = (existing as any)[field] as string | null;
+      const trimmed = freshVal?.trim() || null;
+      if (trimmed && trimmed !== oldVal) {
+        (updates as any)[field] = trimmed;
+        changes[field] = { old: oldVal, new: trimmed };
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      res.json({ success: true, updated: false, message: "Customer data is already up to date", customer: existing, changes: {} });
+      return;
+    }
+
+    await db
+      .update(customerMasterTable)
+      .set(updates)
+      .where(eq(customerMasterTable.id, id));
+
+    const [updated] = await db
+      .select()
+      .from(customerMasterTable)
+      .where(eq(customerMasterTable.id, id));
+
+    res.json({ success: true, updated: true, customer: updated, changes });
+  } catch (err) {
+    req.log.error({ err }, "Customer GST refresh error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
