@@ -6,7 +6,7 @@ import { NotificationProvider, useNotifications } from "@/lib/notification-conte
 import { NotificationPopup } from "./notification-popup";
 import {
   LayoutDashboard, Users, Briefcase,
-  Package, BarChart, Download, Copy, Settings, LogOut, Bell, X, Clock, Phone, FolderTree, FileText, CheckCheck,
+  Package, BarChart, Download, Settings, LogOut, Bell, X, Clock, Phone, FolderTree, FileText, CheckCheck,
   Factory, ClipboardList, Truck, AlertTriangle, Layers, MapPin, Database
 } from "lucide-react";
 import { Badge } from "./ui/badge";
@@ -208,7 +208,6 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: MapPin, label: "Freight Lookup", href: "/transport-logistics/lookup", color: "#14b8a6" },
     { icon: BarChart, label: "Reports", href: "/reports", color: "#f472b6" },
     { icon: Package, label: "Inventory", href: "/inventory", color: "#0ea5e9" },
-    { icon: Copy, label: "Duplicates", href: "/duplicates", color: "#f87171" },
     { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
   ];
 

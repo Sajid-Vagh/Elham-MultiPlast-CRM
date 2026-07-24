@@ -18,7 +18,6 @@ import FollowUps from "@/pages/follow-ups";
 import Products from "@/pages/products";
 import Reports from "@/pages/reports";
 import ImportPage from "@/pages/import";
-import Duplicates from "@/pages/duplicates";
 import Settings from "@/pages/settings";
 import CategoriesPage from "@/pages/categories";
 import ProformaInvoices from "@/pages/proforma-invoices";
@@ -172,11 +171,6 @@ function Router() {
       <Route path="/import">
         <ProtectedLayout>
           <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><ImportPage /></RoleGuard>
-        </ProtectedLayout>
-      </Route>
-      <Route path="/duplicates">
-        <ProtectedLayout>
-          <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><Duplicates /></RoleGuard>
         </ProtectedLayout>
       </Route>
 
