@@ -3,6 +3,7 @@ import { db, contactsTable, ordersTable, productsTable, complaintsTable, dispatc
 import { or, ilike, eq, and, desc, inArray, type SQL } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { getAccessibleUnits } from "../lib/unit-filter";
+import { isProductionOnlyRole } from "../lib/customer-mask";
 
 const router: IRouter = Router();
 
@@ -182,6 +183,48 @@ router.get("/search", async (req, res) => {
         return actRows;
       })(),
     ]);
+
+    // Mask customer identity for production-only users
+    if (isProductionOnlyRole(user.role)) {
+      // Look up customer codes for contacts found in PI search
+      const piContactCodes = new Map<number, string>();
+      for (const pi of proformaInvoices) {
+        const [piFull] = await db.select({ contactId: proformaInvoicesTable.contactId })
+          .from(proformaInvoicesTable)
+          .where(eq(proformaInvoicesTable.id, pi.id))
+          .limit(1);
+        if (piFull?.contactId && !piContactCodes.has(piFull.contactId)) {
+          const [c] = await db.select({ customerCode: contactsTable.customerCode })
+            .from(contactsTable)
+            .where(eq(contactsTable.id, piFull.contactId))
+            .limit(1);
+          if (c?.customerCode) piContactCodes.set(piFull.contactId, c.customerCode);
+        }
+      }
+      // For contacts search: replace name/company with customerCode
+      for (const c of contacts) {
+        const [full] = await db.select({ customerCode: contactsTable.customerCode })
+          .from(contactsTable)
+          .where(eq(contactsTable.id, c.id))
+          .limit(1);
+        c.name = full?.customerCode || "[No Code]";
+        (c as any).companyName = "";
+      }
+      // For production orders: replace customerName/companyName
+      for (const po of productionOrders) {
+        po.customerName = "[Protected]";
+        po.companyName = "";
+      }
+      // For proforma invoices: replace customerName
+      for (const pi of proformaInvoices) {
+        pi.customerName = "[Protected]";
+      }
+      // For deals: replace name/company
+      for (const d of deals) {
+        if (d.name && !d.name.startsWith("Deal #")) d.name = "[Protected]";
+        (d as any).companyName = "";
+      }
+    }
 
     res.json({ contacts, orders, products, complaints, deals, productionOrders, proformaInvoices, activities });
   } catch (err) {

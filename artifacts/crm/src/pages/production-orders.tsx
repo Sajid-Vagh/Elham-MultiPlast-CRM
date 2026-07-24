@@ -96,7 +96,7 @@ export default function ProductionOrders() {
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by customer, company, invoice..."
+            placeholder="Search by customer code, company, invoice..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             className="pl-9"
@@ -194,7 +194,7 @@ export default function ProductionOrders() {
                     >
                       <td className="py-3 px-4 font-medium">#{order.id}</td>
                       <td className="py-3 px-4 max-w-[180px] truncate">
-                        {order.invoice?.companyName || order.invoice?.customerName || "-"}
+                        {order.contact?.customerCode || order.invoice?.companyName || order.invoice?.customerName || "-"}
                       </td>
                       <td className="py-3 px-4 max-w-[150px] truncate">
                         {order.items?.[0]?.productName || "-"}

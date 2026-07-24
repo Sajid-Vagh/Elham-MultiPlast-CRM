@@ -4,6 +4,7 @@ import {
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { getActivePiForDeal } from "./proforma-service";
+import { generateCustomerCode } from "./customer-code";
 import { unitsTable } from "@workspace/db";
 import { PENDING_UNIT_ASSIGNMENT, isPendingUnit } from "./unit-constants";
 
@@ -139,12 +140,19 @@ export async function convertContactToMyClient(
   const prevCategory = contact.category;
   const nowISO = now.toISOString();
 
+  // Generate customer code if contact doesn't have one
+  let customerCode = contact.customerCode;
+  if (!customerCode) {
+    customerCode = await generateCustomerCode();
+  }
+
   await exec.update(contactsTable).set({
     category: "My Client",
     isMyClient: true,
     customerSince: nowISO,
     customerStatus: "Active",
     lastPurchaseDate: nowISO.split("T")[0],
+    customerCode,
   }).where(eq(contactsTable.id, contactId));
 
   await exec.update(dealsTable).set({

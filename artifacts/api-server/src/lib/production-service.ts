@@ -13,6 +13,7 @@ import { notifyProductionUsers, notifyDealEvent } from "./notification-service";
 import { createNotification } from "../routes/notifications";
 import { logActivity, formatTimestamp } from "./activity-logger";
 import { canAccessProduction, type PermissionUser } from "./permission-service";
+import { maskContactForProduction, maskInvoiceForProduction, isProductionOnlyRole } from "./customer-mask";
 import { storage } from "./storage";
 
 export function isValidTransition(from: string, to: string): boolean {
@@ -201,7 +202,7 @@ async function notifySupportOfReadyForDispatch(params: {
   }
 }
 
-export async function enrichProductionOrder(order: any) {
+export async function enrichProductionOrder(order: any, user?: { role: string }) {
   let invoice: any = null;
   if (order.proformaInvoiceId) {
     const [inv] = await db
@@ -354,7 +355,7 @@ export async function enrichProductionOrder(order: any) {
     })
   );
 
-  return {
+  const result = {
     ...order,
     invoice: invoice
       ? {
@@ -386,6 +387,14 @@ export async function enrichProductionOrder(order: any) {
     validNextStatuses: getValidNextStatuses(order.status),
     validNextDispatchStatuses: getValidNextDispatchStatuses(order.dispatchStatus),
   };
+
+  // Mask customer identity for production-only users
+  if (user && isProductionOnlyRole(user.role)) {
+    result.contact = maskContactForProduction(result.contact);
+    result.invoice = maskInvoiceForProduction(result.invoice, result.contact?.customerCode || null);
+  }
+
+  return result;
 }
 
 export async function acceptOrder(
@@ -432,7 +441,7 @@ export async function acceptOrder(
   });
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
-  return { order: await enrichProductionOrder(updated!) };
+  return { order: await enrichProductionOrder(updated!, user) };
 }
 
 export async function updatePlanning(
@@ -512,7 +521,7 @@ export async function updatePlanning(
   }
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
-  return { order: await enrichProductionOrder(updated!) };
+  return { order: await enrichProductionOrder(updated!, user) };
 }
 
 export async function startProduction(
@@ -566,7 +575,7 @@ export async function startProduction(
   });
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
-  return { order: await enrichProductionOrder(updated!) };
+  return { order: await enrichProductionOrder(updated!, user) };
 }
 
 export async function completePacking(
@@ -623,7 +632,7 @@ export async function completePacking(
   });
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
-  return { order: await enrichProductionOrder(updated!) };
+  return { order: await enrichProductionOrder(updated!, user) };
 }
 
 export async function markReadyForDispatch(
@@ -682,7 +691,7 @@ export async function markReadyForDispatch(
   });
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
-  return { order: await enrichProductionOrder(updated!) };
+  return { order: await enrichProductionOrder(updated!, user) };
 }
 
 export async function bookTransport(
@@ -740,7 +749,7 @@ export async function bookTransport(
   });
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
-  return { order: await enrichProductionOrder(updated!) };
+  return { order: await enrichProductionOrder(updated!, user) };
 }
 
 export async function completeOrder(
@@ -797,7 +806,7 @@ export async function completeOrder(
   });
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
-  return { order: await enrichProductionOrder(updated!) };
+  return { order: await enrichProductionOrder(updated!, user) };
 }
 
 // ═══════════════════════════════════════════════════
@@ -892,7 +901,7 @@ export async function loadVehicle(
   });
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
-  return { order: await enrichProductionOrder(updated!) };
+  return { order: await enrichProductionOrder(updated!, user) };
 }
 
 export async function markDispatched(
@@ -957,7 +966,7 @@ export async function markDispatched(
   });
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
-  return { order: await enrichProductionOrder(updated!) };
+  return { order: await enrichProductionOrder(updated!, user) };
 }
 
 export async function markDelivered(
@@ -1025,7 +1034,7 @@ export async function markDelivered(
   });
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
-  return { order: await enrichProductionOrder(updated!) };
+  return { order: await enrichProductionOrder(updated!, user) };
 }
 
 export async function getDispatchDashboard(user: PermissionUser) {
@@ -1090,7 +1099,7 @@ export async function listDispatchOrders(
     .orderBy(desc(productionOrdersTable.updatedAt))
     .limit(pageSize).offset(offset);
 
-  const enriched = await Promise.all(orders.map(enrichProductionOrder));
+  const enriched = await Promise.all(orders.map(o => enrichProductionOrder(o, user)));
 
   return { data: enriched, total: count, page: pageNum, totalPages: Math.ceil(count / pageSize) };
 }
@@ -1115,7 +1124,7 @@ export async function handlePiModification(
       dealId: order.dealId, contactId: null, eventName: `PI Modified — Auto-synced to Version ${newPiVersion}`,
       orderId: productionOrderId, userName: user.name || "", createdBy: user.id,
     });
-    return { action: "auto_synced", order: await enrichProductionOrder(order) };
+    return { action: "auto_synced", order: await enrichProductionOrder(order, user) };
   }
 
   if (inProductionStatuses.includes(order.status)) {
@@ -1137,7 +1146,7 @@ export async function handlePiModification(
       type: "production_pi_modified", excludeUserId: user.id,
     });
 
-    return { action: "approval_required", order: await enrichProductionOrder(order) };
+    return { action: "approval_required", order: await enrichProductionOrder(order, user) };
   }
 
   if (order.status === "Completed") {
@@ -1155,7 +1164,7 @@ export async function handlePiModification(
       relatedId: order.id, relatedType: "production_order",
       type: "production_pi_modified", excludeUserId: user.id,
     });
-    return { action: "dispatch_review", order: await enrichProductionOrder(order) };
+    return { action: "dispatch_review", order: await enrichProductionOrder(order, user) };
   }
 
   return { action: "no_action" };
@@ -1224,7 +1233,7 @@ export async function approveModification(
   }
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
-  return { order: await enrichProductionOrder(updated!) };
+  return { order: await enrichProductionOrder(updated!, user) };
 }
 
 export async function updateOrderStatus(
@@ -1336,7 +1345,7 @@ export async function updateOrderStatus(
   });
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
-  return { order: await enrichProductionOrder(updated!) };
+  return { order: await enrichProductionOrder(updated!, user) };
 }
 
 export async function cancelOrder(
@@ -1376,7 +1385,7 @@ export async function cancelOrder(
   });
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
-  return { order: await enrichProductionOrder(updated!) };
+  return { order: await enrichProductionOrder(updated!, user) };
 }
 
 export async function addNote(
@@ -1629,7 +1638,7 @@ export async function listOrders(
     .orderBy(desc(productionOrdersTable.createdAt))
     .limit(pageSize).offset(offset);
 
-  const enriched = await Promise.all(orders.map(enrichProductionOrder));
+  const enriched = await Promise.all(orders.map(o => enrichProductionOrder(o, user)));
 
   return { data: enriched, total: count, page: pageNum, totalPages: Math.ceil(count / pageSize) };
 }
@@ -1645,7 +1654,7 @@ export async function getOrderDetail(user: PermissionUser, orderId: number) {
     }
   }
 
-  return { order: await enrichProductionOrder(order) };
+  return { order: await enrichProductionOrder(order, user) };
 }
 
 export async function getAuditTrail(orderId: number) {
@@ -1772,7 +1781,7 @@ export async function getReports(user: PermissionUser, filters: { unit?: string;
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(productionOrdersTable.createdAt));
 
-  const enriched = await Promise.all(allOrders.map(enrichProductionOrder));
+  const enriched = await Promise.all(allOrders.map(o => enrichProductionOrder(o, user)));
 
   const byStatus: Record<string, number> = {};
   const byUnit: Record<string, number> = {};
@@ -2089,6 +2098,27 @@ export async function getManufacturingSummaryDetail(
     expectedDispatchDate: r.expectedDispatchDate,
     priority: r.priority,
   }));
+
+  // Mask customer identity for production-only users
+  if (isProductionOnlyRole(user.role)) {
+    for (const item of items) {
+      // Look up customer code from contacts via PI
+      const [pi] = await db.select({ contactId: proformaInvoicesTable.contactId })
+        .from(proformaInvoicesTable)
+        .where(eq(proformaInvoicesTable.invoiceNumber, item.piNumber === "-" ? "" : item.piNumber))
+        .limit(1);
+      if (pi?.contactId) {
+        const [contact] = await db.select({ customerCode: contactsTable.customerCode })
+          .from(contactsTable)
+          .where(eq(contactsTable.id, pi.contactId))
+          .limit(1);
+        item.customerName = contact?.customerCode || "[No Code]";
+      } else {
+        item.customerName = "[No Code]";
+      }
+      item.companyName = "";
+    }
+  }
 
   return { items };
 }

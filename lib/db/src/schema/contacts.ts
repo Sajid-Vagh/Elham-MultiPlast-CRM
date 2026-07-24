@@ -39,6 +39,7 @@ export const contactsTable = pgTable("contacts", {
   otherReason: text("other_reason"),
   lostNotes: text("lost_notes"),
   lostDate: timestamp("lost_date", { withTimezone: true }),
+  customerCode: text("customer_code").unique(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

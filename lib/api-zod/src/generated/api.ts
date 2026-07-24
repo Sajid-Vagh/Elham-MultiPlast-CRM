@@ -312,6 +312,7 @@ export const GetContactResponse = zod.object({
   "customerComments": zod.string().nullish(),
   "commentUpdatedAt": zod.string().nullish(),
   "commentUpdatedBy": zod.number().nullish(),
+  "customerCode": zod.string().nullish(),
   "isMyClient": zod.boolean(),
   "createdAt": zod.string()
 })

@@ -221,6 +221,7 @@ export interface Contact {
   commentUpdatedAt?: string | null;
   /** @nullable */
   commentUpdatedBy?: number | null;
+  customerCode?: string | null;
   isMyClient: boolean;
   createdAt: string;
 }

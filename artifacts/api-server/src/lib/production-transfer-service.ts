@@ -97,7 +97,7 @@ export async function transferOrder(
   }
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
-  return { order: await enrichProductionOrder(updated!) };
+  return { order: await enrichProductionOrder(updated!, user) };
 }
 
 export async function getTransferHistory(orderId: number) {

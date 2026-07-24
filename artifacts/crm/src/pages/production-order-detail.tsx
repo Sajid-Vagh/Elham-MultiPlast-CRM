@@ -227,9 +227,9 @@ export default function ProductionOrderDetail() {
             <CardHeader><CardTitle>Order Details</CardTitle></CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                <div><span className="text-muted-foreground">Company</span><p className="font-medium mt-1">{order.invoice?.companyName || order.invoice?.customerName || "-"}</p></div>
-                <div><span className="text-muted-foreground">Customer</span><p className="font-medium mt-1">{order.invoice?.customerName || "-"}</p></div>
-                <div><span className="text-muted-foreground">Mobile</span><p className="font-medium mt-1">{order.invoice?.mobile || "-"}</p></div>
+                <div><span className="text-muted-foreground">Company</span><p className="font-medium mt-1">{order.contact?.customerCode || order.invoice?.companyName || order.invoice?.customerName || "-"}</p></div>
+                <div><span className="text-muted-foreground">Customer</span><p className="font-medium mt-1">{order.contact?.customerCode || order.invoice?.customerName || "-"}</p></div>
+                <div><span className="text-muted-foreground">Mobile</span><p className="font-medium mt-1">{order.contact?.customerCode ? "-" : (order.invoice?.mobile || "-")}</p></div>
                 <div><span className="text-muted-foreground">Priority</span><p className="font-medium mt-1">{order.priority}</p></div>
                 <div><span className="text-muted-foreground">Order Date</span><p className="font-medium mt-1">{order.createdAt ? new Date(order.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "-"}</p></div>
                 <div><span className="text-muted-foreground">Expected Dispatch</span><p className="font-medium mt-1">{order.expectedDispatchDate ? new Date(order.expectedDispatchDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "-"}</p></div>
