@@ -10,6 +10,7 @@ import {
 import { eq, and, desc, sql, gte, lte, or, inArray, type SQL } from "drizzle-orm";
 import { getActivePiForDeal } from "./proforma-service";
 import { notifyProductionUsers, notifyDealEvent } from "./notification-service";
+import { createNotification } from "../routes/notifications";
 import { logActivity, formatTimestamp } from "./activity-logger";
 import { canAccessProduction, type PermissionUser } from "./permission-service";
 import { storage } from "./storage";
@@ -1471,26 +1472,39 @@ export async function sendMessage(
   }
 
   if (user.role === "production") {
+    // Production → notify order creator and invoice creator
     if (order.createdById && order.createdById !== user.id) notifyUserIds.push(order.createdById);
     if (order.proformaInvoiceId) {
       const [inv] = await db.select({ createdBy: proformaInvoicesTable.createdBy, contactId: proformaInvoicesTable.contactId })
         .from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, order.proformaInvoiceId));
       if (inv?.createdBy && inv.createdBy !== user.id && !notifyUserIds.includes(inv.createdBy)) notifyUserIds.push(inv.createdBy);
+      // Also notify sales owner of the contact
+      if (inv?.contactId) {
+        const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId }).from(contactsTable).where(eq(contactsTable.id, inv.contactId));
+        if (contact?.salesOwnerId && contact.salesOwnerId !== user.id && !notifyUserIds.includes(contact.salesOwnerId)) {
+          notifyUserIds.push(contact.salesOwnerId);
+        }
+      }
     }
   } else {
-    const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
-    for (const a of admins) {
-      if (a.id !== user.id && !notifyUserIds.includes(a.id)) notifyUserIds.push(a.id);
+    // Sales/Support/Admin → notify all production managers + admins + sales owner
+    const productionUsers = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(or(eq(usersTable.role, "production"), eq(usersTable.role, "admin")));
+    for (const u of productionUsers) {
+      if (u.id !== user.id && !notifyUserIds.includes(u.id)) notifyUserIds.push(u.id);
     }
   }
 
+  // Use createNotification for SSE emission; use message ID as relatedId to avoid dedup suppression
   for (const uid of notifyUserIds) {
-    await db.insert(notificationsTable).values({
-      userId: uid, type: "production_message",
+    await createNotification({
+      userId: uid,
+      type: "production_message",
       title: `New message from ${user.name}`,
       message: message.trim().slice(0, 200),
       link: `/production/orders/${orderId}`,
-      relatedId: orderId, relatedType: "production_order",
+      relatedId: newMessage.id,
+      relatedType: "production_message",
     });
   }
 

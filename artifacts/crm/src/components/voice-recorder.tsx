@@ -24,6 +24,7 @@ export function VoiceRecorder({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recognitionRef = useRef<any>(null);
   const startTimeRef = useRef<number>(0);
+  const transcriptRef = useRef<string>("");
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
@@ -41,6 +42,7 @@ export function VoiceRecorder({
   const startRecording = useCallback(async () => {
     setError(null);
     setTranscript("");
+    transcriptRef.current = "";
     chunksRef.current = [];
 
     try {
@@ -65,7 +67,7 @@ export function VoiceRecorder({
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
         stream.getTracks().forEach((t) => t.stop());
 
-        onRecordingComplete(blob, transcript, durationMs);
+        onRecordingComplete(blob, transcriptRef.current, durationMs);
       };
 
       recorder.start(250); // collect data every 250ms
@@ -101,7 +103,9 @@ export function VoiceRecorder({
               interim += result[0].transcript;
             }
           }
-          setTranscript((finalTranscript + interim).trim());
+          const full = (finalTranscript + interim).trim();
+          transcriptRef.current = full;
+          setTranscript(full);
         };
         recognition.onerror = () => { /* ignore — mic permission already granted */ };
         recognition.onend = () => { setIsTranscribing(false); };
@@ -115,7 +119,7 @@ export function VoiceRecorder({
         ? "Microphone permission denied. Please allow microphone access."
         : "Could not start recording. Please check your microphone.");
     }
-  }, [maxDurationMs, onRecordingComplete, stopRecording, transcript]);
+  }, [maxDurationMs, onRecordingComplete, stopRecording]);
 
   useEffect(() => {
     return () => {

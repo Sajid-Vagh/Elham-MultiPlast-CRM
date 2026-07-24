@@ -184,6 +184,15 @@ router.post("/import/confirm", async (req, res) => {
     const notes = [fields.finalData.requirement, fields.finalData.quantity ? `Qty: ${fields.finalData.quantity}` : null]
       .filter(Boolean).join(" | ");
 
+    // Auto-fill unit from owner's unit when not explicitly set
+    let effectiveUnit = fields.unit?.trim() || null;
+    if (!effectiveUnit && ownerId) {
+      const [ownerUser] = await db.select().from(usersTable).where(eq(usersTable.id, ownerId));
+      if (ownerUser && ownerUser.unit && ownerUser.unit !== "All") {
+        effectiveUnit = ownerUser.unit;
+      }
+    }
+
     const [contact] = await db.insert(contactsTable).values({
       name: contactName,
       mobile: contactMobile,
@@ -195,7 +204,7 @@ router.post("/import/confirm", async (req, res) => {
       salesOwnerId: ownerId,
       leadSource: "IndiaMart",
       inquiryDate: new Date().toISOString().split("T")[0]!,
-      unit: fields.unit?.trim() ?? null,
+      unit: effectiveUnit,
       industry: fields.finalData.industry?.trim() ?? null,
       category: fields.category,
       customerComments: fields.finalData.requirement?.trim() ?? null,

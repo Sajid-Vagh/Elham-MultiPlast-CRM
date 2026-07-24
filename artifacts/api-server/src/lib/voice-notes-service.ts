@@ -78,38 +78,40 @@ export async function uploadVoiceNote(
   try {
     const storagePath = await storage.save(file.originalname, file.buffer, "voice-notes");
 
-    const [row] = await db.insert(voiceNotesTable).values({
-      dealId: params.dealId || null,
-      productionOrderId: params.productionOrderId || null,
-      proformaInvoiceId: params.proformaInvoiceId || null,
-      orderId: params.orderId || null,
-      leadId: params.leadId || null,
-      customerId: params.customerId || null,
-      uploadedById,
-      createdByRole,
-      fileName: path.basename(storagePath),
-      originalName: file.originalname,
-      mimeType: file.mimetype,
-      fileSize: file.size,
-      storagePath,
-      durationMs: params.durationMs || null,
-      transcript: params.transcript || null,
-      transcriptStatus: params.transcript ? "completed" : "pending",
-      fileAvailable: true,
-    }).returning();
+    try {
+      const [row] = await db.insert(voiceNotesTable).values({
+        dealId: params.dealId || null,
+        productionOrderId: params.productionOrderId || null,
+        proformaInvoiceId: params.proformaInvoiceId || null,
+        orderId: params.orderId || null,
+        leadId: params.leadId || null,
+        customerId: params.customerId || null,
+        uploadedById,
+        createdByRole,
+        fileName: path.basename(storagePath),
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        fileSize: file.size,
+        storagePath,
+        durationMs: params.durationMs || null,
+        transcript: params.transcript || null,
+        transcriptStatus: params.transcript ? "completed" : "pending",
+        fileAvailable: true,
+      }).returning();
 
-    return {
-      note: await enrichVoiceNote(row),
-      error: null,
-    };
-  } catch (err) {
-    // If DB write failed, clean up the file
-    const storagePath = await storage.save(file.originalname, file.buffer, "voice-notes").catch(() => null);
-    if (storagePath) {
+      return {
+        note: await enrichVoiceNote(row),
+        error: null,
+      };
+    } catch (dbErr) {
+      // DB write failed — clean up the already-saved file
       await storage.delete(storagePath).catch(() => {});
+      console.error("Voice note upload error:", dbErr);
+      return { note: null, error: "Failed to upload voice note" };
     }
-    console.error("Voice note upload error:", err);
-    return { note: null, error: "Failed to upload voice note" };
+  } catch (err) {
+    console.error("Voice note storage error:", err);
+    return { note: null, error: "Failed to save voice note file" };
   }
 }
 

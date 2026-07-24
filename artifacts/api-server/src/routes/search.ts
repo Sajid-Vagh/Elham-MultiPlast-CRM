@@ -42,6 +42,7 @@ router.get("/search", async (req, res) => {
           contactUnitCond,
           salesOwnCond,
         ))
+        .orderBy(desc(contactsTable.createdAt))
         .limit(10),
 
       // Orders — search by order number, customer name, company, mobile

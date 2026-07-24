@@ -295,7 +295,7 @@ router.get("/dashboard/recent-activities", async (req, res) => {
     let activities = await db
       .select()
       .from(activitiesTable)
-      .orderBy(activitiesTable.createdAt)
+      .orderBy(desc(activitiesTable.createdAt))
       .limit(50);
 
     if (effectiveOwnerId) {

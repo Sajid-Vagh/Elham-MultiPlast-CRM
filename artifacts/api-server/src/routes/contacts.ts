@@ -84,11 +84,11 @@ router.get("/contacts", async (req, res) => {
       // Physical RFU contacts
       const rfuContacts = await db.select().from(contactsTable)
         .where(and(eq(contactsTable.category, "Regular Follow up"), ...conditions))
-        .orderBy(contactsTable.createdAt);
+        .orderBy(desc(contactsTable.createdAt));
       // My Client contacts with active deals
       const myClientContacts = await db.select().from(contactsTable)
         .where(and(eq(contactsTable.category, "My Client"), ...conditions))
-        .orderBy(contactsTable.createdAt);
+        .orderBy(desc(contactsTable.createdAt));
       const allDeals = await db.select().from(dealsTable);
       const activeDealContactIds = new Set(
         allDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").map(d => d.contactId)
@@ -97,11 +97,11 @@ router.get("/contacts", async (req, res) => {
       contacts = [...rfuContacts, ...virtualContacts];
     } else if (categoryParam) {
       conditions.push(eq(contactsTable.category, categoryParam));
-      contacts = await db.select().from(contactsTable).where(and(...conditions)).orderBy(contactsTable.createdAt);
+      contacts = await db.select().from(contactsTable).where(and(...conditions)).orderBy(desc(contactsTable.createdAt));
     } else {
       contacts = conditions.length
-        ? await db.select().from(contactsTable).where(and(...conditions)).orderBy(contactsTable.createdAt)
-        : await db.select().from(contactsTable).orderBy(contactsTable.createdAt);
+        ? await db.select().from(contactsTable).where(and(...conditions)).orderBy(desc(contactsTable.createdAt))
+        : await db.select().from(contactsTable).orderBy(desc(contactsTable.createdAt));
     }
 
     const users = await db.select().from(usersTable);
@@ -132,10 +132,16 @@ router.post("/contacts", async (req, res) => {
     return;
   }
   const values = parsed.data;
-  console.log("[DEBUG] POST /contacts - parsed body:", JSON.stringify({ unit: values.unit, name: values.name, mobile: values.mobile }));
   // Sales users auto-assign to themselves
   if (user.role === "sales") {
     values.salesOwnerId = user.id;
+  }
+  // Auto-assign unit from sales owner's unit when not explicitly set
+  if (values.salesOwnerId && (!values.unit || values.unit === "")) {
+    const [ownerUser] = await db.select().from(usersTable).where(eq(usersTable.id, values.salesOwnerId));
+    if (ownerUser && ownerUser.unit && ownerUser.unit !== "All") {
+      values.unit = ownerUser.unit;
+    }
   }
   try {
     const [contact] = await db.insert(contactsTable).values(values).returning();
@@ -519,6 +525,15 @@ router.patch("/contacts/:id", async (req, res) => {
 
     const newOwnerId = parsed.data.salesOwnerId;
     if (newOwnerId !== undefined && newOwnerId !== oldContact.salesOwnerId) {
+      // Auto-update unit from new owner's unit when unit was not explicitly changed
+      if (parsed.data.unit === undefined && !updatePayload.unit) {
+        const [newOwnerUser] = await db.select().from(usersTable).where(eq(usersTable.id, newOwnerId));
+        if (newOwnerUser && newOwnerUser.unit && newOwnerUser.unit !== "All") {
+          updatePayload.unit = newOwnerUser.unit;
+          // Record unit change in the update payload for history tracking below
+          parsed.data.unit = newOwnerUser.unit;
+        }
+      }
       const assignedByName = user?.name || "Admin";
       const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, newOwnerId));
       if (owner) {

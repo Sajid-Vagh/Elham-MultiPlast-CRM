@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable, dealsTable, usersTable, categoryHistoryTable, activitiesTable, productsTable, dealProductsTable, CATEGORIES } from "@workspace/db";
-import { eq, and, inArray, SQL, sql } from "drizzle-orm";
+import { eq, and, inArray, SQL, sql, desc } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
 
@@ -80,13 +80,13 @@ router.get("/categories/:category/contacts", async (req, res) => {
         .select()
         .from(contactsTable)
         .where(and(eq(contactsTable.category, category), ...baseConditions))
-        .orderBy(contactsTable.createdAt);
+        .orderBy(desc(contactsTable.createdAt));
       // My Client contacts with active deals
       const myClientContacts = await db
         .select()
         .from(contactsTable)
         .where(and(eq(contactsTable.category, "My Client"), ...baseConditions))
-        .orderBy(contactsTable.createdAt);
+        .orderBy(desc(contactsTable.createdAt));
       const allDeals = await db.select().from(dealsTable);
       const activeDealContactIds = new Set(
         allDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").map(d => d.contactId)
@@ -98,7 +98,7 @@ router.get("/categories/:category/contacts", async (req, res) => {
         .select()
         .from(contactsTable)
         .where(and(eq(contactsTable.category, category), ...baseConditions))
-        .orderBy(contactsTable.createdAt);
+        .orderBy(desc(contactsTable.createdAt));
     }
 
     const users = await db.select().from(usersTable);
@@ -206,12 +206,12 @@ router.get("/categories/:category/contacts/search", async (req, res) => {
         .select()
         .from(contactsTable)
         .where(and(eq(contactsTable.category, category), ...schConditions))
-        .orderBy(contactsTable.createdAt);
+        .orderBy(desc(contactsTable.createdAt));
       const myClientContacts = await db
         .select()
         .from(contactsTable)
         .where(and(eq(contactsTable.category, "My Client"), ...schConditions))
-        .orderBy(contactsTable.createdAt);
+        .orderBy(desc(contactsTable.createdAt));
       const allDeals = await db.select().from(dealsTable);
       const activeDealContactIds = new Set(
         allDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").map(d => d.contactId)
@@ -223,7 +223,7 @@ router.get("/categories/:category/contacts/search", async (req, res) => {
         .select()
         .from(contactsTable)
         .where(and(eq(contactsTable.category, category), ...schConditions))
-        .orderBy(contactsTable.createdAt);
+        .orderBy(desc(contactsTable.createdAt));
     }
 
     const users = await db.select().from(usersTable);

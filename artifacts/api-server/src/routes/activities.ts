@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, activitiesTable, usersTable, contactsTable, dealsTable, notificationsTable } from "@workspace/db";
-import { eq, and, gte, isNull, SQL } from "drizzle-orm";
+import { eq, and, gte, isNull, SQL, desc } from "drizzle-orm";
 import { CreateActivityBody, UpdateActivityBody, ListActivitiesQueryParams, UpdateActivityParams, DeleteActivityParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -140,8 +140,8 @@ router.get("/activities", async (req, res) => {
     }
 
     const activities = conditions.length
-      ? await db.select().from(activitiesTable).where(and(...conditions)).orderBy(activitiesTable.createdAt)
-      : await db.select().from(activitiesTable).orderBy(activitiesTable.createdAt);
+      ? await db.select().from(activitiesTable).where(and(...conditions)).orderBy(desc(activitiesTable.createdAt))
+      : await db.select().from(activitiesTable).orderBy(desc(activitiesTable.createdAt));
 
     const contacts = await db.select().from(contactsTable);
     const contactMap = new Map(contacts.map(c => [c.id, c]));

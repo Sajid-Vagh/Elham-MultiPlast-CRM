@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { onProductionChange } from "@/lib/query-invalidation";
+import { VoiceNoteSection } from "@/components/voice-note-player";
+import { VoiceNoteUploader } from "@/components/voice-note-uploader";
 import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Calendar, Factory, ClipboardList, CheckCircle2, AlertTriangle, Package, CircleDot } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -431,20 +433,19 @@ export default function ProductionOrderDetail() {
           )}
 
           {/* Voice Notes */}
-          {(order.dealId || order.id) && (
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-sm">Voice Notes</CardTitle>
-                {user?.role !== "sales" && (
-                  <span className="text-xs text-muted-foreground">Voice note upload available</span>
-                )}
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {order.dealId && <p className="text-xs text-muted-foreground">Voice notes attached to this deal.</p>}
-                {(!order.dealId && !order.id) && <p className="text-xs text-muted-foreground">No voice notes available.</p>}
-              </CardContent>
-            </Card>
-          )}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-sm">Voice Notes</CardTitle>
+              <VoiceNoteUploader
+                entityType="production"
+                entityId={order.id}
+                label="Add Voice Note"
+              />
+            </CardHeader>
+            <CardContent>
+              <VoiceNoteSection entityType="production" entityId={order.id} />
+            </CardContent>
+          </Card>
 
           {/* Product Details */}
           {order.items && order.items.length > 0 && (

@@ -146,8 +146,8 @@ router.get("/deals", async (req, res) => {
       if (params.data.stage) conditions.push(eq(dealsTable.stage, params.data.stage));
     }
     const deals = conditions.length
-      ? await db.select().from(dealsTable).where(and(...conditions)).orderBy(dealsTable.createdAt)
-      : await db.select().from(dealsTable).orderBy(dealsTable.createdAt);
+      ? await db.select().from(dealsTable).where(and(...conditions)).orderBy(desc(dealsTable.createdAt))
+      : await db.select().from(dealsTable).orderBy(desc(dealsTable.createdAt));
 
     const contacts = await db.select().from(contactsTable);
     const users = await db.select().from(usersTable);

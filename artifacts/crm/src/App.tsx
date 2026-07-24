@@ -32,7 +32,6 @@ import BatchDetail from "@/pages/batch-detail";
 import MachineReport from "@/pages/machine-report";
 import DispatchPage from "@/pages/dispatch";
 import ComplaintsPage from "@/pages/complaints";
-import CustomerProfile from "@/pages/customer-profile";
 import ExistingCustomers from "@/pages/existing-customers";
 import ExistingCustomerDetail from "@/pages/existing-customer-detail";
 import GlobalSearch from "@/pages/global-search";
@@ -137,7 +136,7 @@ function Router() {
       </Route>
       <Route path="/leads/:id">
         {(params) => <ProtectedLayout>
-          <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><LeadDetail /></RoleGuard>
+          <RoleGuard allowedRoles={[...SALES_ADMIN_ROLES, "production_and_support"]}><LeadDetail /></RoleGuard>
         </ProtectedLayout>}
       </Route>
       <Route path="/leads">
@@ -222,11 +221,13 @@ function Router() {
         </ProtectedLayout>
       </Route>
 
-      {/* Customer Profile */}
+      {/* Customer Profile — redirects to lead detail (consolidated) */}
       <Route path="/customers/:id">
-        {(params) => <ProtectedLayout>
-          <RoleGuard allowedRoles={SUPPORT_ROLES}><CustomerProfile /></RoleGuard>
-        </ProtectedLayout>}
+        {(params) => {
+          // Redirect to lead detail which has full Customer 360 Profile
+          window.location.href = `/leads/${params.id}`;
+          return <ProtectedLayout><div className="p-8 text-center text-muted-foreground">Redirecting...</div></ProtectedLayout>;
+        }}
       </Route>
 
       {/* Existing Customers (Support + Admin) */}

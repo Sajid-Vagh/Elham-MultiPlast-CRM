@@ -38,8 +38,8 @@ interface LeadFormProps {
   onSubmit: (data: LeadFormData) => void;
   onCancel?: () => void;
   submitLabel?: string;
-  users?: { id: number; name: string; colorCode: string; profilePhoto?: string | null }[];
-  me?: { id: number; name: string; role: string; colorCode: string; profilePhoto?: string | null } | null;
+  users?: { id: number; name: string; unit?: string; colorCode: string; profilePhoto?: string | null }[];
+  me?: { id: number; name: string; role: string; unit?: string; colorCode: string; profilePhoto?: string | null } | null;
   /** For create mode, enable duplicate detection on mobile/email blur */
   enableDuplicateDetection?: boolean;
 }
@@ -131,8 +131,25 @@ export default function LeadForm({
   useEffect(() => {
     if (!canAssign && me?.id && !initialData?.salesOwnerId) {
       form.setValue("salesOwnerId", String(me.id));
+      // Auto-fill unit from sales user's unit on create
+      if (me.unit && me.unit !== "All" && !initialData?.unit) {
+        form.setValue("unit", me.unit);
+      }
     }
   }, [me, canAssign, form, initialData]);
+
+  // Auto-fill unit from selected sales owner's unit (admin only)
+  const watchedOwnerId = form.watch("salesOwnerId");
+  const watchedUnit = form.watch("unit");
+  useEffect(() => {
+    if (!canAssign || !watchedOwnerId || !users) return;
+    // Only auto-fill if unit is still "To Be Assigned" (not manually set)
+    if (watchedUnit && watchedUnit !== PENDING_UNIT_ASSIGNMENT) return;
+    const selectedUser = users.find(u => u.id === Number(watchedOwnerId));
+    if (selectedUser?.unit && selectedUser.unit !== "All") {
+      form.setValue("unit", selectedUser.unit);
+    }
+  }, [watchedOwnerId, canAssign, users, form, watchedUnit]);
 
   useEffect(() => {
     return () => {

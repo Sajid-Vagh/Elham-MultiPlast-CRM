@@ -91,6 +91,7 @@ router.post("/import/excel", async (req, res) => {
 
   const users = await db.select().from(usersTable);
   const userNameMap = new Map(users.map(u => [u.name.toLowerCase(), u.id]));
+  const userIdToUnitMap = new Map(users.filter(u => u.unit && u.unit !== "All").map(u => [u.id, u.unit]));
 
   let imported = 0;
   let updated = 0;
@@ -253,6 +254,12 @@ router.post("/import/excel", async (req, res) => {
     }
 
     try {
+      // Auto-fill unit from sales owner's unit if not provided in row
+      let effectiveUnit = row.unit?.trim() || null;
+      if (!effectiveUnit && salesOwnerId) {
+        const ownerUnit = userIdToUnitMap.get(salesOwnerId);
+        if (ownerUnit) effectiveUnit = ownerUnit;
+      }
       await db.insert(contactsTable).values({
         name: contactName,
         mobile: contactMobile,
@@ -265,7 +272,7 @@ router.post("/import/excel", async (req, res) => {
         lastCallDate: row.lastCallDate?.trim() ?? null,
         nextCallDate: row.nextCallDate?.trim() ?? null,
         industry: row.industry?.trim() ?? null,
-        unit: row.unit?.trim() ?? null,
+        unit: effectiveUnit,
         category: contactCategory,
         address: row.address?.trim() ?? null,
         tags: row.tags?.trim() ?? null,
@@ -372,6 +379,15 @@ router.post("/import/indiamart", async (req, res) => {
 
     req.log.info({ category: contactCategory }, "IndiaMart import with category");
 
+    // Auto-fill unit from owner's unit when not explicitly set
+    let effectiveUnit = fields.unit?.trim() || null;
+    if (!effectiveUnit && ownerId) {
+      const ownerUser = users.find(u => u.id === ownerId);
+      if (ownerUser && ownerUser.unit && ownerUser.unit !== "All") {
+        effectiveUnit = ownerUser.unit;
+      }
+    }
+
     const [contact] = await db.insert(contactsTable).values({
       name: contactName,
       mobile: contactMobile,
@@ -382,7 +398,7 @@ router.post("/import/indiamart", async (req, res) => {
       salesOwnerId: ownerId,
       leadSource: "IndiaMart",
       inquiryDate: new Date().toISOString().split("T")[0]!,
-      unit: fields.unit?.trim() ?? null,
+      unit: effectiveUnit,
       industry: fields.industry?.trim() ?? null,
       category: contactCategory,
     }).returning();

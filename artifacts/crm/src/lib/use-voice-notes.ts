@@ -111,14 +111,21 @@ export function useDeleteVoiceNote() {
 // ──────────────────────────────────────────
 // Download a voice note
 // ──────────────────────────────────────────
-export function downloadVoiceNote(id: number, fileName: string) {
+export async function downloadVoiceNote(id: number, fileName: string) {
+  const res = await fetch(`${API}/${id}/download`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("Download failed");
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = `${API}/${id}/download`;
+  a.href = url;
   a.download = fileName;
   a.style.display = "none";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ──────────────────────────────────────────
