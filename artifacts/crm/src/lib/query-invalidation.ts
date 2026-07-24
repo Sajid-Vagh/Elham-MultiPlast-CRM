@@ -119,7 +119,12 @@ export function onPIChange(queryClient: QueryClient, dealId?: number, contactId?
   queryClient.invalidateQueries({ queryKey: ["global-search"] });
   queryClient.invalidateQueries({ queryKey: ["dashboard-kpi"] });
   queryClient.invalidateQueries({ queryKey: ["dashboard-sales-performance"] });
+  queryClient.invalidateQueries({ queryKey: ["dashboard-charts"] });
   queryClient.invalidateQueries({ queryKey: ["dashboard-recent-activities"] });
+  queryClient.invalidateQueries({ queryKey: ["reports-summary"] });
+  queryClient.invalidateQueries({ queryKey: ["reports-by-owner"] });
+  queryClient.invalidateQueries({ queryKey: ["reports-pipeline"] });
+  queryClient.invalidateQueries({ queryKey: ["reports-by-city"] });
   if (dealId) {
     queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) });
     queryClient.invalidateQueries({ queryKey: getListDealsQueryKey() });

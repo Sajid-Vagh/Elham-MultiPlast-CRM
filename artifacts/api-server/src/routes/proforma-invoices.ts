@@ -1411,6 +1411,35 @@ async function updateInvoiceHandler(req: any, res: any) {
         req.log.warn({ err: syncErr }, "Production sync failed for PI revision");
       }
 
+      // ── Auto-recalculate deal wonAmount when deal is Won ──
+      if (existing.dealId) {
+        try {
+          const [currentDeal] = await db.select().from(dealsTable).where(eq(dealsTable.id, existing.dealId));
+          if (currentDeal && currentDeal.stage === "Won") {
+            const activePi = await getActivePiForDeal(db, existing.dealId);
+            if (activePi) {
+              const newTaxable = Number(activePi.taxableAmount || 0);
+              const prevWon = Number(currentDeal.wonAmount || 0);
+              if (newTaxable !== prevWon) {
+                await db.update(dealsTable).set({
+                  wonAmount: String(newTaxable),
+                  totalValue: String(Number(activePi.grandTotal || 0)),
+                }).where(eq(dealsTable.id, existing.dealId));
+                await db.insert(activitiesTable).values({
+                  dealId: existing.dealId,
+                  contactId: existing.contactId,
+                  type: "Note",
+                  notes: `Won Value updated: ₹${prevWon.toLocaleString("en-IN")} → ₹${newTaxable.toLocaleString("en-IN")} (PI revision ${nextVersion})\nBy: ${user.name}\n${new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}`,
+                  createdBy: user.id,
+                });
+              }
+            }
+          }
+        } catch (wonErr) {
+          req.log.warn({ err: wonErr }, "Won value recalculation failed after PI revision");
+        }
+      }
+
       return res.status(201).json(await enrichInvoice(newInvoice!));
     }
 
@@ -1513,16 +1542,27 @@ async function updateInvoiceHandler(req: any, res: any) {
         });
       }
 
-      // Fix #4: Sync deal wonAmount / totalValue when PI grandTotal changes
-      if (updateData.grandTotal || items) {
+      // Fix #4: Sync deal wonAmount / totalValue when PI changes
+      if (updateData.grandTotal || updateData.taxableAmount || items) {
         const [freshInvoice] = await db.select().from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, id));
         if (freshInvoice) {
           const newGrandTotal = Number(freshInvoice.grandTotal || 0);
+          const newTaxableAmount = Number(freshInvoice.taxableAmount || 0);
           const [currentDeal] = await db.select().from(dealsTable).where(eq(dealsTable.id, existing.dealId));
           if (currentDeal) {
             const dealUpdate: any = { totalValue: newGrandTotal, updatedAt: new Date() };
             if (currentDeal.stage === "Won") {
-              dealUpdate.wonAmount = newGrandTotal;
+              const prevWon = Number(currentDeal.wonAmount || 0);
+              dealUpdate.wonAmount = String(newTaxableAmount);
+              if (prevWon !== newTaxableAmount) {
+                await db.insert(activitiesTable).values({
+                  dealId: existing.dealId,
+                  contactId: existing.contactId,
+                  type: "Note",
+                  notes: `Won Value updated: ₹${prevWon.toLocaleString("en-IN")} → ₹${newTaxableAmount.toLocaleString("en-IN")} (PI edit)\nBy: ${user.name}\n${new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}`,
+                  createdBy: user.id,
+                });
+              }
             }
             await db.update(dealsTable).set(dealUpdate).where(eq(dealsTable.id, existing.dealId));
           }
