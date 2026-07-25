@@ -158,8 +158,9 @@ export default function LeadForm({
   }, []);
 
   const handleSubmit = (data: LeadFormData) => {
-    const transformed = { ...data, unit: data.unit === PENDING_UNIT_ASSIGNMENT ? "" : data.unit };
-    onSubmit(transformed);
+    const { unit: rawUnit, ...rest } = data;
+    const unit = rawUnit === PENDING_UNIT_ASSIGNMENT || rawUnit === "" ? undefined : rawUnit || undefined;
+    onSubmit({ ...rest, unit });
   };
 
   return (

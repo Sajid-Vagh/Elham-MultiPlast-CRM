@@ -52,19 +52,22 @@ export default function Leads() {
   const isAdmin = me?.role === "admin";
   const { units: activeUnits } = useActiveUnits();
 
-  // Fetch category counts
+  // Fetch category counts (using same unit filter as the list for consistency)
   const { data: categoryCounts } = useQuery({
-    queryKey: ["category-counts"],
+    queryKey: ["category-counts", unitFilter],
     queryFn: async () => {
       const token = localStorage.getItem("crm_token");
-      const res = await fetch("/api/categories/counts", {
+      const countParams = new URLSearchParams();
+      if (unitFilter !== "All") countParams.set("unit", unitFilter);
+      const qs = countParams.toString();
+      const res = await fetch(`/api/categories/counts${qs ? `?${qs}` : ""}`, {
         headers: { Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(10000),
       });
       if (!res.ok) return [];
       return res.json() as Promise<{ category: string; count: number }[]>;
     },
-    staleTime: 30_000,
+    staleTime: 10_000,
   });
 
   const totalCount = useMemo(() => {

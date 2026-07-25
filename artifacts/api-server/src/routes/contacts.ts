@@ -46,8 +46,8 @@ router.get("/contacts", async (req, res) => {
       if (params.data.city) conditions.push(ilike(contactsTable.city, `%${params.data.city}%`));
       if (params.data.unit) {
         if (params.data.unit === PENDING_UNIT_ASSIGNMENT) {
-          // Filter contacts where unit is null (pending assignment)
-          conditions.push(isNull(contactsTable.unit));
+          // Filter contacts where unit is null OR empty string (pending assignment)
+          conditions.push(or(isNull(contactsTable.unit), eq(contactsTable.unit, ""))!);
         } else {
           conditions.push(eq(contactsTable.unit, params.data.unit));
         }
