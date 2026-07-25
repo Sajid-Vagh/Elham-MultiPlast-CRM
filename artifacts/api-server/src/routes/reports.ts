@@ -39,6 +39,25 @@ async function restrictToOwnDeals(req: any, params: any) {
   return user;
 }
 
+function getDateRange(req: any): { startDate: Date | null; endDate: Date | null } {
+  const startDateStr = req.query.startDate as string | undefined;
+  const endDateStr = req.query.endDate as string | undefined;
+  const monthStr = req.query.month as string | undefined;
+
+  if (startDateStr || endDateStr) {
+    const startDate = startDateStr ? new Date(startDateStr) : null;
+    const endDate = endDateStr ? (() => { const d = new Date(endDateStr); d.setHours(23, 59, 59, 999); return d; })() : null;
+    return { startDate, endDate };
+  }
+  if (monthStr) {
+    const [year, month] = monthStr.split("-").map(Number);
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+    return { startDate, endDate };
+  }
+  return { startDate: null, endDate: null };
+}
+
 router.get("/reports/summary", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
@@ -63,6 +82,18 @@ router.get("/reports/summary", async (req, res) => {
       deals = filterDealsByUnit(deals, unitFilter, contacts);
     }
 
+    const { startDate, endDate } = getDateRange(req);
+
+    // Apply date range filter to deals
+    if (startDate || endDate) {
+      deals = deals.filter(d => {
+        const created = new Date(d.createdAt);
+        if (startDate && created < startDate) return false;
+        if (endDate && created > endDate) return false;
+        return true;
+      });
+    }
+
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const today = now.toISOString().split("T")[0]!;
@@ -73,7 +104,8 @@ router.get("/reports/summary", async (req, res) => {
     const lostDeals = deals.filter(d => d.stage === "Lost").length;
     const activeDeals = deals.filter(d => d.stage !== "Won" && d.stage !== "Lost").length;
     const totalWonValue = deals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? 0), 0);
-    const newLeadsThisMonth = contacts.filter(c => c.createdAt >= new Date(monthStart)).length;
+    const newLeadsDate = startDate && endDate ? startDate : new Date(monthStart);
+    const newLeadsThisMonth = contacts.filter(c => c.createdAt >= newLeadsDate).length;
 
     // Upcoming follow-ups: Regular Follow up category + pending + followUpDate >= today
     const allUpcomingActivities = await db.select().from(activitiesTable).where(gte(activitiesTable.followUpDate, today));
@@ -107,13 +139,14 @@ router.get("/reports/pipeline", async (req, res) => {
 
     if (params.success) {
       if (params.data.salesOwnerId) deals = deals.filter(d => d.salesOwnerId === params.data.salesOwnerId);
-      if (params.data.month) {
-        const [year, month] = params.data.month.split("-").map(Number);
-        if (year && month) {
-          const start = new Date(year, month - 1, 1);
-          const end = new Date(year, month, 1);
-          deals = deals.filter(d => d.createdAt >= start && d.createdAt < end);
-        }
+      const { startDate, endDate } = getDateRange(req);
+      if (startDate || endDate) {
+        deals = deals.filter(d => {
+          const created = new Date(d.createdAt);
+          if (startDate && created < startDate) return false;
+          if (endDate && created > endDate) return false;
+          return true;
+        });
       }
       if (params.data.unit) {
         const unitContactIds = await getUnitContactIds(params.data.unit);
@@ -162,13 +195,14 @@ router.get("/reports/by-owner", async (req, res) => {
     let salesUsers = users.filter(u => u.role === "admin" || u.role === "sales");
 
     if (params.success) {
-      if (params.data.month) {
-        const [year, month] = params.data.month.split("-").map(Number);
-        if (year && month) {
-          const start = new Date(year, month - 1, 1);
-          const end = new Date(year, month, 1);
-          deals = deals.filter(d => d.createdAt >= start && d.createdAt < end);
-        }
+      const { startDate, endDate } = getDateRange(req);
+      if (startDate || endDate) {
+        deals = deals.filter(d => {
+          const created = new Date(d.createdAt);
+          if (startDate && created < startDate) return false;
+          if (endDate && created > endDate) return false;
+          return true;
+        });
       }
       if (params.data.unit) {
         const unitContactIds = await getUnitContactIds(params.data.unit);
@@ -213,13 +247,14 @@ router.get("/reports/by-product", async (req, res) => {
 
     if (params.success) {
       if (params.data.salesOwnerId) deals = deals.filter(d => d.salesOwnerId === params.data.salesOwnerId);
-      if (params.data.month) {
-        const [year, month] = params.data.month.split("-").map(Number);
-        if (year && month) {
-          const start = new Date(year, month - 1, 1);
-          const end = new Date(year, month, 1);
-          deals = deals.filter(d => d.createdAt >= start && d.createdAt < end);
-        }
+      const { startDate, endDate } = getDateRange(req);
+      if (startDate || endDate) {
+        deals = deals.filter(d => {
+          const created = new Date(d.createdAt);
+          if (startDate && created < startDate) return false;
+          if (endDate && created > endDate) return false;
+          return true;
+        });
       }
     }
 
@@ -273,14 +308,21 @@ router.get("/reports/lost-reasons", async (req, res) => {
         deals = deals.filter(d => d.salesOwnerId === params.data.salesOwnerId);
         lostContacts = lostContacts.filter(c => c.salesOwnerId === params.data.salesOwnerId);
       }
-      if (params.data.month) {
-        const [year, month] = params.data.month.split("-").map(Number);
-        if (year && month) {
-          const start = new Date(year, month - 1, 1);
-          const end = new Date(year, month, 1);
-          deals = deals.filter(d => d.createdAt >= start && d.createdAt < end);
-          lostContacts = lostContacts.filter(c => c.lostDate && c.lostDate >= start && c.lostDate < end);
-        }
+      const { startDate, endDate } = getDateRange(req);
+      if (startDate || endDate) {
+        deals = deals.filter(d => {
+          const created = new Date(d.createdAt);
+          if (startDate && created < startDate) return false;
+          if (endDate && created > endDate) return false;
+          return true;
+        });
+        lostContacts = lostContacts.filter(c => {
+          if (!c.lostDate) return false;
+          const lost = new Date(c.lostDate);
+          if (startDate && lost < startDate) return false;
+          if (endDate && lost > endDate) return false;
+          return true;
+        });
       }
       if (params.data.unit) {
         const unitContactIds = await getUnitContactIds(params.data.unit);
@@ -358,14 +400,21 @@ router.get("/reports/lost-reasons/detail", async (req, res) => {
         deals = deals.filter(d => d.salesOwnerId === params.data.salesOwnerId);
         lostContacts = lostContacts.filter(c => c.salesOwnerId === params.data.salesOwnerId);
       }
-      if (params.data.month) {
-        const [y, m] = params.data.month.split("-").map(Number);
-        if (y && m) {
-          const start = new Date(y, m - 1, 1);
-          const end = new Date(y, m, 1);
-          deals = deals.filter(d => d.createdAt >= start && d.createdAt < end);
-          lostContacts = lostContacts.filter(c => c.lostDate && new Date(c.lostDate) >= start && new Date(c.lostDate) < end);
-        }
+      const { startDate, endDate } = getDateRange(req);
+      if (startDate || endDate) {
+        deals = deals.filter(d => {
+          const created = new Date(d.createdAt);
+          if (startDate && created < startDate) return false;
+          if (endDate && created > endDate) return false;
+          return true;
+        });
+        lostContacts = lostContacts.filter(c => {
+          if (!c.lostDate) return false;
+          const lost = new Date(c.lostDate);
+          if (startDate && lost < startDate) return false;
+          if (endDate && lost > endDate) return false;
+          return true;
+        });
       }
       if (params.data.unit) {
         let unitContactIds: Set<number>;
@@ -457,13 +506,14 @@ router.get("/reports/by-city", async (req, res) => {
 
     if (params.success) {
       if (params.data.salesOwnerId) deals = deals.filter(d => d.salesOwnerId === params.data.salesOwnerId);
-      if (params.data.month) {
-        const [year, month] = params.data.month.split("-").map(Number);
-        if (year && month) {
-          const start = new Date(year, month - 1, 1);
-          const end = new Date(year, month, 1);
-          deals = deals.filter(d => d.createdAt >= start && d.createdAt < end);
-        }
+      const { startDate, endDate } = getDateRange(req);
+      if (startDate || endDate) {
+        deals = deals.filter(d => {
+          const created = new Date(d.createdAt);
+          if (startDate && created < startDate) return false;
+          if (endDate && created > endDate) return false;
+          return true;
+        });
       }
     }
 

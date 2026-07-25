@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable, unitHistoryTable, activitiesTable, DEAL_STAGES, STAGE_PROBS, ordersTable, orderItemsTable, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable } from "@workspace/db";
-import { eq, and, or, inArray, SQL, sql, desc, gte, between, isNull } from "drizzle-orm";
+import { eq, and, or, inArray, SQL, sql, desc, gte, lte, between, isNull } from "drizzle-orm";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import {
   CreateDealBody, UpdateDealBody, GetDealParams, UpdateDealParams, DeleteDealParams,
@@ -145,6 +145,11 @@ router.get("/deals", async (req, res) => {
       if (params.data.salesOwnerId && user.role === "admin") conditions.push(eq(dealsTable.salesOwnerId, params.data.salesOwnerId));
       if (params.data.stage) conditions.push(eq(dealsTable.stage, params.data.stage));
     }
+
+    const { startDate, endDate } = req.query as Record<string, string>;
+    if (startDate) conditions.push(gte(dealsTable.createdAt, new Date(startDate)));
+    if (endDate) conditions.push(lte(dealsTable.createdAt, new Date(endDate)));
+
     const deals = conditions.length
       ? await db.select().from(dealsTable).where(and(...conditions)).orderBy(desc(dealsTable.createdAt))
       : await db.select().from(dealsTable).orderBy(desc(dealsTable.createdAt));
@@ -1096,6 +1101,16 @@ router.get("/deals/:id/products", async (req, res) => {
   const parsed = AddDealProductParams.safeParse({ id: Number(req.params.id) });
   if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, parsed.data.id));
+    if (!deal) { res.status(404).json({ error: "Deal not found" }); return; }
+    const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+    if (contact) {
+      if (user.role === "sales" && deal.salesOwnerId !== user.id) { res.status(403).json({ error: "Forbidden" }); return; }
+      const units = getAccessibleUnits(user);
+      if (units && (!contact.unit || !units.includes(contact.unit))) { res.status(403).json({ error: "Forbidden" }); return; }
+    }
     const items = await db.select().from(dealProductsTable).where(eq(dealProductsTable.dealId, parsed.data.id));
     const products = await db.select().from(productsTable);
     const productMap = new Map(products.map(p => [p.id, p]));
@@ -1112,6 +1127,16 @@ router.post("/deals/:id/products", async (req, res) => {
   const parsed = AddDealProductBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Invalid input" }); return; }
   try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, params.data.id));
+    if (!deal) { res.status(404).json({ error: "Deal not found" }); return; }
+    const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+    if (contact) {
+      if (user.role === "sales" && deal.salesOwnerId !== user.id) { res.status(403).json({ error: "Forbidden" }); return; }
+      const units = getAccessibleUnits(user);
+      if (units && (!contact.unit || !units.includes(contact.unit))) { res.status(403).json({ error: "Forbidden" }); return; }
+    }
     const [item] = await db.insert(dealProductsTable).values({ dealId: params.data.id, ...parsed.data }).returning();
     const [product] = await db.select().from(productsTable).where(eq(productsTable.id, item!.productId));
     res.status(201).json({ ...item, product: product ?? null });
@@ -1125,6 +1150,16 @@ router.delete("/deals/:id/products/:productId", async (req, res) => {
   const params = RemoveDealProductParams.safeParse({ id: Number(req.params.id), productId: Number(req.params.productId) });
   if (!params.success) { res.status(400).json({ error: "Invalid params" }); return; }
   try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, params.data.id));
+    if (!deal) { res.status(404).json({ error: "Deal not found" }); return; }
+    const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+    if (contact) {
+      if (user.role === "sales" && deal.salesOwnerId !== user.id) { res.status(403).json({ error: "Forbidden" }); return; }
+      const units = getAccessibleUnits(user);
+      if (units && (!contact.unit || !units.includes(contact.unit))) { res.status(403).json({ error: "Forbidden" }); return; }
+    }
     await db.delete(dealProductsTable).where(
       and(eq(dealProductsTable.dealId, params.data.id), eq(dealProductsTable.id, params.data.productId))
     );

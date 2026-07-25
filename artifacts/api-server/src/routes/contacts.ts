@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable, usersTable, activitiesTable, dealsTable, notificationsTable, commentHistoryTable, categoryHistoryTable, unitHistoryTable, documentsTable, proformaInvoicesTable, proformaInvoiceItemsTable } from "@workspace/db";
-import { eq, or, and, ilike, lte, isNotNull, isNull, inArray, SQL, desc, sql } from "drizzle-orm";
+import { eq, or, and, ilike, gte, lte, isNotNull, isNull, inArray, SQL, desc, sql } from "drizzle-orm";
 import { CreateContactBody, UpdateContactBody, GetContactParams, UpdateContactParams, DeleteContactParams, ListContactsQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -9,6 +9,26 @@ import { getAccessibleUnits } from "../lib/unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 
 const router: IRouter = Router();
+
+// Centralized access guard for all contact sub-routes
+// Returns { user, contact } on success, sends 401/400/403/404 and returns null on failure
+async function requireContactAccess(req: any, res: any): Promise<{ user: any; contact: any } | null> {
+  const user = await getUserFromRequest(req);
+  if (!user) { res.status(401).json({ error: "Unauthorized" }); return null; }
+  const id = Number(req.params.id);
+  if (!id || isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return null; }
+  const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, id));
+  if (!contact) { res.status(404).json({ error: "Not found" }); return null; }
+  if (user.role === "admin") return { user, contact };
+  if (user.role === "sales" && contact.salesOwnerId !== user.id) {
+    res.status(403).json({ error: "Forbidden" }); return null;
+  }
+  const units = getAccessibleUnits(user);
+  if (units && (!contact.unit || !units.includes(contact.unit))) {
+    res.status(403).json({ error: "Forbidden" }); return null;
+  }
+  return { user, contact };
+}
 
 async function withOwner(contact: typeof contactsTable.$inferSelect) {
   const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, contact.salesOwnerId));
@@ -78,6 +98,10 @@ router.get("/contacts", async (req, res) => {
         conditions.push(lte(contactsTable.nextCallDate, today));
       }
     }
+
+    const { startDate, endDate } = req.query as Record<string, string>;
+    if (startDate) conditions.push(gte(contactsTable.createdAt, new Date(startDate)));
+    if (endDate) conditions.push(lte(contactsTable.createdAt, new Date(endDate)));
 
     let contacts: (typeof contactsTable.$inferSelect)[];
     if (categoryParam === "Regular Follow up") {
@@ -301,14 +325,9 @@ router.post("/contacts/check-duplicate", async (req, res) => {
 // POST /contacts/:id/request-transfer — Request transfer of a lead to another owner
 router.post("/contacts/:id/request-transfer", async (req, res) => {
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
-    const id = Number(req.params.id);
-    if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
-
-    const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, id));
-    if (!contact) { res.status(404).json({ error: "Lead not found" }); return; }
+    const access = await requireContactAccess(req, res);
+    if (!access) return;
+    const { user, contact } = access;
 
     const [currentOwner] = await db.select({ id: usersTable.id, name: usersTable.name })
       .from(usersTable).where(eq(usersTable.id, contact.salesOwnerId)).limit(1);
@@ -355,7 +374,19 @@ router.get("/contacts/duplicates", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const contacts = await db.select().from(contactsTable);
+
+    // Enforce ownership + unit isolation
+    const conditions: SQL[] = [];
+    if (user.role !== "admin") {
+      if (user.role === "sales") {
+        conditions.push(eq(contactsTable.salesOwnerId, user.id));
+      }
+      const units = getAccessibleUnits(user);
+      if (units) {
+        conditions.push(inArray(contactsTable.unit, units));
+      }
+    }
+    const contacts = await db.select().from(contactsTable).where(conditions.length ? and(...conditions) : undefined);
     const users = await db.select().from(usersTable);
     const userMap = new Map(users.map(u => {
       const { passwordHash: _, ...safe } = u;
@@ -405,23 +436,10 @@ router.get("/contacts/duplicates", async (req, res) => {
 });
 
 router.get("/contacts/:id", async (req, res) => {
-  const parsed = GetContactParams.safeParse({ id: Number(req.params.id) });
-  if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, parsed.data.id));
-    if (!contact) { res.status(404).json({ error: "Not found" }); return; }
-    if (user.role === "sales" && contact.salesOwnerId !== user.id) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
-    const accessibleUnits = getAccessibleUnits(user);
-    if (accessibleUnits && !accessibleUnits.includes(contact.unit)) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
-    res.json(await withOwner(contact));
+    const access = await requireContactAccess(req, res);
+    if (!access) return;
+    res.json(await withOwner(access.contact));
   } catch (err) {
     req.log.error({ err }, "Get contact error");
     res.status(500).json({ error: "Internal server error" });
@@ -430,11 +448,9 @@ router.get("/contacts/:id", async (req, res) => {
 
 // Get comment history for a contact
 router.get("/contacts/:id/comments", async (req, res) => {
-  const parsed = GetContactParams.safeParse({ id: Number(req.params.id) });
-  if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const access = await requireContactAccess(req, res);
+    if (!access) return;
     const history = await db
       .select({
         id: commentHistoryTable.id,
@@ -446,7 +462,7 @@ router.get("/contacts/:id/comments", async (req, res) => {
       })
       .from(commentHistoryTable)
       .leftJoin(usersTable, eq(usersTable.id, commentHistoryTable.updatedBy))
-      .where(eq(commentHistoryTable.contactId, parsed.data.id))
+      .where(eq(commentHistoryTable.contactId, access.contact.id))
       .orderBy(desc(commentHistoryTable.updatedAt));
     res.json(history);
   } catch (err) {
@@ -461,14 +477,9 @@ router.patch("/contacts/:id", async (req, res) => {
   const parsed = UpdateContactBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Invalid input" }); return; }
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const [oldContact] = await db.select().from(contactsTable).where(eq(contactsTable.id, params.data.id));
-    if (!oldContact) { res.status(404).json({ error: "Not found" }); return; }
-    if (user.role === "sales" && oldContact.salesOwnerId !== user.id) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
+    const access = await requireContactAccess(req, res);
+    if (!access) return;
+    const { user, contact: oldContact } = access;
     // Sales cannot change owner
     if (user.role === "sales") {
       delete parsed.data.salesOwnerId;
@@ -712,17 +723,10 @@ router.patch("/contacts/:id", async (req, res) => {
 
 // POST /contacts/:id/mark-lost — Mark a contact's inquiry as Lost
 router.post("/contacts/:id/mark-lost", async (req, res) => {
-  const id = Number(req.params.id);
-  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
-    const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, id));
-    if (!contact) { res.status(404).json({ error: "Not found" }); return; }
-    if (user.role === "sales" && contact.salesOwnerId !== user.id) {
-      res.status(403).json({ error: "Forbidden" }); return;
-    }
+    const access = await requireContactAccess(req, res);
+    if (!access) return;
+    const { user, contact } = access;
 
     const { lostReason, otherReason, lostNotes, lostCategory } = req.body as { lostReason?: string; otherReason?: string; lostNotes?: string; lostCategory?: string };
     if (!lostReason) { res.status(400).json({ error: "Lost reason is required" }); return; }
@@ -735,7 +739,7 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
       otherReason: otherReason || null,
       lostNotes: lostNotes || null,
       lostDate: now,
-    }).where(eq(contactsTable.id, id));
+    }).where(eq(contactsTable.id, contact.id));
 
     // Move contact to Category A/B/C based on lostCategory
     // EXCEPTION: My Client is permanent — they stay regardless
@@ -748,10 +752,10 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
       };
       const newCategory = categoryMap[lostCategory] || "Category C";
 
-      await db.update(contactsTable).set({ category: newCategory }).where(eq(contactsTable.id, id));
+      await db.update(contactsTable).set({ category: newCategory }).where(eq(contactsTable.id, contact.id));
 
       await db.insert(categoryHistoryTable).values({
-        contactId: id,
+        contactId: contact.id,
         previousCategory: prevCategory,
         newCategory,
         changedBy: user.id,
@@ -763,7 +767,7 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
     const activeDeals = await db
       .select({ id: dealsTable.id })
       .from(dealsTable)
-      .where(and(eq(dealsTable.contactId, id), eq(dealsTable.stage, "New")));
+      .where(and(eq(dealsTable.contactId, contact.id), eq(dealsTable.stage, "New")));
     for (const deal of activeDeals) {
       await db.update(dealsTable).set({
         stage: "Lost",
@@ -777,19 +781,19 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
 
     // Complete pending activities for each affected deal
     for (const deal of activeDeals) {
-      await completePendingActivitiesForDeal(db, deal.id, id, "Lost", user.id);
+      await completePendingActivitiesForDeal(db, deal.id, contact.id, "Lost", user.id);
     }
 
     // Create activity for the mark-lost action
     const [existingDeal] = await db
       .select({ id: dealsTable.id })
       .from(dealsTable)
-      .where(eq(dealsTable.contactId, id))
+      .where(eq(dealsTable.contactId, contact.id))
       .limit(1);
 
     const displayReason = lostReason === "Other" && otherReason ? `Other - ${otherReason}` : lostReason;
     await db.insert(activitiesTable).values({
-      contactId: id,
+      contactId: contact.id,
       dealId: existingDeal?.id || null,
       type: "Note",
       notes: `Lead marked as Lost\n\nLost Reason: ${displayReason}`,
@@ -812,11 +816,16 @@ router.post("/contacts/bulk-delete", async (req, res) => {
     return;
   }
   try {
+    const units = getAccessibleUnits(user);
     let deleted = 0;
     for (const id of ids) {
       if (user.role === "sales") {
-        const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId }).from(contactsTable).where(eq(contactsTable.id, id));
+        const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId, unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, id));
         if (!contact || contact.salesOwnerId !== user.id) continue;
+        if (units && (!contact.unit || !units.includes(contact.unit))) continue;
+      } else if (units) {
+        const [contact] = await db.select({ unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, id));
+        if (!contact || !contact.unit || !units.includes(contact.unit)) continue;
       }
       await db.delete(contactsTable).where(eq(contactsTable.id, id));
       deleted++;
@@ -832,14 +841,9 @@ router.delete("/contacts/:id", async (req, res) => {
   const params = DeleteContactParams.safeParse({ id: Number(req.params.id) });
   if (!params.success) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const [contactToDelete] = await db.select().from(contactsTable).where(eq(contactsTable.id, params.data.id));
-    if (!contactToDelete) { res.status(404).json({ error: "Not found" }); return; }
-    if (user.role === "sales" && contactToDelete.salesOwnerId !== user.id) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
+    const access = await requireContactAccess(req, res);
+    if (!access) return;
+    const { user, contact: contactToDelete } = access;
 
     // Notify sales owner and admins about lead deletion
     const deleteTime = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -879,11 +883,9 @@ router.delete("/contacts/:id", async (req, res) => {
 
 // Get category history for a contact
 router.get("/contacts/:id/category-history", async (req, res) => {
-  const id = Number(req.params.id);
-  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const access = await requireContactAccess(req, res);
+    if (!access) return;
     const history = await db
       .select({
         id: categoryHistoryTable.id,
@@ -896,7 +898,7 @@ router.get("/contacts/:id/category-history", async (req, res) => {
       })
       .from(categoryHistoryTable)
       .leftJoin(usersTable, eq(usersTable.id, categoryHistoryTable.changedBy))
-      .where(eq(categoryHistoryTable.contactId, id))
+      .where(eq(categoryHistoryTable.contactId, access.contact.id))
       .orderBy(desc(categoryHistoryTable.createdAt));
     res.json(history);
   } catch (err) {
@@ -907,11 +909,9 @@ router.get("/contacts/:id/category-history", async (req, res) => {
 
 // Get unit change history for a contact
 router.get("/contacts/:id/unit-history", async (req, res) => {
-  const id = Number(req.params.id);
-  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const access = await requireContactAccess(req, res);
+    if (!access) return;
     const history = await db
       .select({
         id: unitHistoryTable.id,
@@ -924,7 +924,7 @@ router.get("/contacts/:id/unit-history", async (req, res) => {
       })
       .from(unitHistoryTable)
       .leftJoin(usersTable, eq(usersTable.id, unitHistoryTable.changedBy))
-      .where(eq(unitHistoryTable.contactId, id))
+      .where(eq(unitHistoryTable.contactId, access.contact.id))
       .orderBy(desc(unitHistoryTable.createdAt));
     res.json(history);
   } catch (err) {
@@ -935,13 +935,10 @@ router.get("/contacts/:id/unit-history", async (req, res) => {
 
 // Get combined activity timeline for a contact
 router.get("/contacts/:id/timeline", async (req, res) => {
-  const id = Number(req.params.id);
-  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, id));
-    if (!contact) { res.status(404).json({ error: "Not found" }); return; }
+    const access = await requireContactAccess(req, res);
+    if (!access) return;
+    const { contact } = access;
 
     const timeline: any[] = [];
 
@@ -969,7 +966,7 @@ router.get("/contacts/:id/timeline", async (req, res) => {
       })
       .from(activitiesTable)
       .leftJoin(usersTable, eq(usersTable.id, activitiesTable.createdBy!))
-      .where(eq(activitiesTable.contactId, id))
+      .where(eq(activitiesTable.contactId, contact.id))
       .orderBy(activitiesTable.createdAt);
     for (const a of acts) {
       timeline.push({
@@ -997,7 +994,7 @@ router.get("/contacts/:id/timeline", async (req, res) => {
       })
       .from(categoryHistoryTable)
       .leftJoin(usersTable, eq(usersTable.id, categoryHistoryTable.changedBy))
-      .where(eq(categoryHistoryTable.contactId, id))
+      .where(eq(categoryHistoryTable.contactId, contact.id))
       .orderBy(desc(categoryHistoryTable.createdAt));
     // Reverse to add in chronological order
     for (const c of catHistory.reverse()) {
@@ -1020,7 +1017,7 @@ router.get("/contacts/:id/timeline", async (req, res) => {
       })
       .from(commentHistoryTable)
       .leftJoin(usersTable, eq(usersTable.id, commentHistoryTable.updatedBy))
-      .where(eq(commentHistoryTable.contactId, id))
+      .where(eq(commentHistoryTable.contactId, contact.id))
       .orderBy(desc(commentHistoryTable.updatedAt));
     // Reverse to add in chronological order
     for (const h of commentHist.reverse()) {
@@ -1044,7 +1041,7 @@ router.get("/contacts/:id/timeline", async (req, res) => {
       })
       .from(unitHistoryTable)
       .leftJoin(usersTable, eq(usersTable.id, unitHistoryTable.changedBy))
-      .where(eq(unitHistoryTable.contactId, id))
+      .where(eq(unitHistoryTable.contactId, contact.id))
       .orderBy(desc(unitHistoryTable.createdAt));
     for (const u of unitHist.reverse()) {
       const from = u.previousUnit || PENDING_UNIT_ASSIGNMENT;
@@ -1070,7 +1067,7 @@ router.get("/contacts/:id/timeline", async (req, res) => {
         updatedAt: dealsTable.updatedAt,
       })
       .from(dealsTable)
-      .where(eq(dealsTable.contactId, id));
+      .where(eq(dealsTable.contactId, contact.id));
     for (const d of contactDeals) {
       timeline.push({
         type: "deal_created",
@@ -1102,7 +1099,7 @@ router.get("/contacts/:id/timeline", async (req, res) => {
         updatedAt: documentsTable.updatedAt,
       })
       .from(documentsTable)
-      .where(and(eq(documentsTable.contactId, id), eq(documentsTable.isDeleted, false)));
+      .where(and(eq(documentsTable.contactId, contact.id), eq(documentsTable.isDeleted, false)));
     for (const d of contactDocs) {
       timeline.push({
         type: "document_uploaded",
@@ -1132,11 +1129,9 @@ router.get("/contacts/:id/timeline", async (req, res) => {
 
 // Get notification history for a contact
 router.get("/contacts/:id/notifications", async (req, res) => {
-  const id = Number(req.params.id);
-  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const access = await requireContactAccess(req, res);
+    if (!access) return;
     const notifications = await db
       .select({
         id: notificationsTable.id,
@@ -1148,7 +1143,7 @@ router.get("/contacts/:id/notifications", async (req, res) => {
       })
       .from(notificationsTable)
       .where(and(
-        eq(notificationsTable.relatedId, id),
+        eq(notificationsTable.relatedId, access.contact.id),
         eq(notificationsTable.relatedType, "contact"),
       ))
       .orderBy(desc(notificationsTable.createdAt));
@@ -1171,10 +1166,24 @@ router.get("/contacts/search/mobile", async (req, res) => {
       return;
     }
 
+    const conditions: SQL[] = [or(eq(contactsTable.mobile, mobile), eq(contactsTable.otherPhone, mobile))!];
+    // Enforce ownership + unit isolation
+    if (user.role === "admin") {
+      // admin sees all
+    } else {
+      if (user.role === "sales") {
+        conditions.push(eq(contactsTable.salesOwnerId, user.id));
+      }
+      const units = getAccessibleUnits(user);
+      if (units) {
+        conditions.push(inArray(contactsTable.unit, units));
+      }
+    }
+
     const [contact] = await db
       .select()
       .from(contactsTable)
-      .where(or(eq(contactsTable.mobile, mobile), eq(contactsTable.otherPhone, mobile)))
+      .where(and(...conditions))
       .limit(1);
 
     if (!contact) {
@@ -1193,17 +1202,14 @@ router.get("/contacts/search/mobile", async (req, res) => {
 // GET /contacts/:id/proforma-invoices — list proforma invoices linked to a contact
 router.get("/contacts/:id/proforma-invoices", async (req, res) => {
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
-    const id = Number(req.params.id);
-    if (!id) { res.status(400).json({ error: "Invalid contact ID" }); return; }
+    const access = await requireContactAccess(req, res);
+    if (!access) return;
 
     const invoices = await db
       .select()
       .from(proformaInvoicesTable)
       .where(and(
-        eq(proformaInvoicesTable.contactId, id),
+        eq(proformaInvoicesTable.contactId, access.contact.id),
         eq(proformaInvoicesTable.isDeleted, false),
       ))
       .orderBy(desc(proformaInvoicesTable.createdAt));
@@ -1246,11 +1252,8 @@ router.get("/contacts/:id/proforma-invoices", async (req, res) => {
 // GET /contacts/:id/active-deals — return active deals (not Won, not Lost) for a contact, enriched with PI info
 router.get("/contacts/:id/active-deals", async (req, res) => {
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
-    const id = Number(req.params.id);
-    if (!id) { res.status(400).json({ error: "Invalid contact ID" }); return; }
+    const access = await requireContactAccess(req, res);
+    if (!access) return;
 
     const deals = await db
       .select({
@@ -1273,7 +1276,7 @@ router.get("/contacts/:id/active-deals", async (req, res) => {
         eq(proformaInvoicesTable.isDeleted, false),
       ))
       .where(and(
-        eq(dealsTable.contactId, id),
+        eq(dealsTable.contactId, access.contact.id),
         isNull(dealsTable.wonAt),
         isNull(dealsTable.lostAt),
       ))
@@ -1305,11 +1308,9 @@ router.get("/contacts/:id/active-deals", async (req, res) => {
 // GET /contacts/:id/customer-history — return customer summary stats for PI form
 router.get("/contacts/:id/customer-history", async (req, res) => {
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
-    const id = Number(req.params.id);
-    if (!id) { res.status(400).json({ error: "Invalid contact ID" }); return; }
+    const access = await requireContactAccess(req, res);
+    if (!access) return;
+    const id = access.contact.id;
 
     // Total deals
     const [dealCount] = await db

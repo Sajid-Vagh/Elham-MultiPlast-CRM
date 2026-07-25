@@ -34,6 +34,8 @@ import { useActiveUnits } from "@/lib/use-active-units";
 import { PENDING_UNIT_ASSIGNMENT, isPendingUnit } from "@/lib/unit-constants";
 import { VoiceRecorder } from "@/components/voice-recorder";
 import { Mic } from "lucide-react";
+import { useDateFilter } from "@/lib/use-date-filter";
+import { DateRangeFilter } from "@/components/date-range-filter";
 
 function DraggableCard({ deal, children }: { deal: Deal; children: ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -87,6 +89,7 @@ export default function Deals() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { units: activeUnits } = useActiveUnits();
+  const [dateFilter, setDateFilter] = useDateFilter();
 
   // Completed deal visibility preference (from localStorage)
   const completedDealVisibility = (() => {
@@ -101,6 +104,8 @@ export default function Deals() {
   const { data: deals, isLoading } = useListDeals({
     unit: unitFilter !== "All" ? unitFilter : undefined,
     completedDealVisibility: completedDealVisibility as "hide" | "24h" | "3d" | "forever" | undefined,
+    startDate: dateFilter.startDate || undefined,
+    endDate: dateFilter.endDate || undefined,
   });
   const { data: users } = useCustomerFacingUsers();
 
@@ -395,6 +400,7 @@ export default function Deals() {
       </div>
 
       <div className="flex items-center gap-3 shrink-0">
+        <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
         {isAdmin && (
           <Select value={ownerFilter || "all"} onValueChange={(v) => {
             const sp = new URLSearchParams(searchStr);

@@ -39,6 +39,7 @@ import TransportLogistics from "@/pages/transport-logistics";
 import TransportLogisticsLookup from "@/pages/transport-logistics-readonly";
 import MastersPage from "@/pages/masters";
 import Inventory from "@/pages/inventory";
+import { readWorkspace, getHomeRoute } from "@/lib/use-workspace";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -55,25 +56,18 @@ function RoleGuard({ allowedRoles, children }: { allowedRoles: string[]; childre
   const role = localStorage.getItem("crm_user_role") ?? "";
 
   if (!allowedRoles.includes(role)) {
-    if (role === "production") {
-      setLocation("/production/dashboard");
-    } else if (role === "production_and_support") {
-      setLocation("/support-dashboard");
-    } else if (role === "inventory") {
-      setLocation("/inventory");
-    } else {
-      setLocation("/dashboard");
-    }
+    setLocation(getHomeRoute(readWorkspace(role)));
     return null;
   }
 
   return <>{children}</>;
 }
 
-const SALES_ADMIN_ROLES = ["admin", "sales"];
-const PRODUCTION_ROLES = ["production", "production_and_support", "admin"];
-const SUPPORT_ROLES = ["admin", "sales", "production_and_support"];
-const SUPPORT_DASHBOARD_ROLES = ["admin", "production_and_support"];
+// Workspace-accessible roles: production can access Sales, support can access all, sales can access Production
+const SALES_ADMIN_ROLES = ["admin", "sales", "production", "production_and_support"];
+const PRODUCTION_ROLES = ["admin", "production", "production_and_support", "sales"];
+const SUPPORT_ROLES = ["admin", "sales", "production_and_support", "production"];
+const SUPPORT_DASHBOARD_ROLES = ["admin", "production_and_support", "sales", "production"];
 const INVENTORY_ROLES = ["admin", "sales", "inventory"];
 
 function Router() {
@@ -85,16 +79,8 @@ function Router() {
           if (typeof window !== "undefined") {
             const token = localStorage.getItem("crm_token");
             const role = localStorage.getItem("crm_user_role");
-            if (token) {
-              if (role === "production") {
-                window.location.replace("/production/dashboard");
-              } else if (role === "production_and_support") {
-                window.location.replace("/support-dashboard");
-              } else if (role === "inventory") {
-                window.location.replace("/inventory");
-              } else {
-                window.location.replace("/dashboard");
-              }
+            if (token && role) {
+              window.location.replace(getHomeRoute(readWorkspace(role)));
             } else {
               window.location.replace("/login");
             }

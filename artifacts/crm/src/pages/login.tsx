@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { getDefaultWorkspace, getHomeRoute, readWorkspace } from "@/lib/use-workspace";
 
 export default function Login() {
   const [, setLocation] = useLocation();
@@ -27,12 +28,8 @@ export default function Login() {
         localStorage.setItem("crm_user_role", data.user.role);
         localStorage.setItem("crm_user_unit", data.user.unit || "All");
         queryClient.setQueryData(getGetMeQueryKey(), data.user);
-        const target = data.user.role === "production" || data.user.role === "production_and_support"
-          ? "/production/dashboard"
-          : (data.user.role as string) === "inventory"
-          ? "/inventory"
-          : "/dashboard";
-        setLocation(target);
+        const ws = readWorkspace(data.user.role);
+        setLocation(getHomeRoute(ws));
       },
       onError: (err) => {
         toast({

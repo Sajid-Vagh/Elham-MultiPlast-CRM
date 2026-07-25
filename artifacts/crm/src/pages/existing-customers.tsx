@@ -10,6 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { Search, Users, Factory, Truck, AlertTriangle, Clock, CheckCircle2, XCircle, Phone } from "lucide-react";
+import { useDateFilter } from "@/lib/use-date-filter";
+import { DateRangeFilter } from "@/components/date-range-filter";
 
 const EXISTING_CUSTOMER_STATUSES = ["All", "Active", "Production Running", "Dispatch Pending", "Repeat Order Due", "Complaint Open", "Inactive"];
 
@@ -38,6 +40,7 @@ export default function ExistingCustomers() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [page, setPage] = useState(1);
+  const [dateFilter, setDateFilter] = useDateFilter();
 
   const { data: kpi, isLoading: kpiLoading } = useQuery({
     queryKey: ["existing-customers-dashboard"],
@@ -51,11 +54,13 @@ export default function ExistingCustomers() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["existing-customers", { search, status: statusFilter, page }],
+    queryKey: ["existing-customers", { search, status: statusFilter, page, preset: dateFilter.preset }],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
       if (statusFilter !== "All") params.set("status", statusFilter);
+      if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
+      if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
       params.set("page", String(page));
       const res = await fetch(`/api/existing-customers?${params}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
@@ -104,6 +109,7 @@ export default function ExistingCustomers() {
 
       {/* Filters */}
       <div className="flex items-center gap-3">
+        <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input

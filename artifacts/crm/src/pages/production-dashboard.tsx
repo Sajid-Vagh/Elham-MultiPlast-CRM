@@ -5,6 +5,8 @@ import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUserUnits } from "@/lib/use-user-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
+import { useDateFilter } from "@/lib/use-date-filter";
+import { DateRangeFilter } from "@/components/date-range-filter";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, AlertTriangle, Truck } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -30,11 +32,19 @@ export default function ProductionDashboard() {
   const [, setLocation] = useLocation();
   const { units: userUnits, locked, userUnit } = useUserUnits();
   const [selectedUnit, setSelectedUnit] = useUnitFilter();
+  const [dateFilter, setDateFilter] = useDateFilter();
   const [originFilter, setOriginFilter] = useState("all");
 
   const { data: dashboard, isLoading } = useQuery({
-    queryKey: ["production-dashboard", selectedUnit, originFilter],
-    queryFn: () => customFetch<any>(`/production/dashboard?${selectedUnit && selectedUnit !== "All" ? `unit=${selectedUnit}&` : ""}${originFilter !== "all" ? `origin=${originFilter}&` : ""}`),
+    queryKey: ["production-dashboard", selectedUnit, originFilter, dateFilter.preset],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (selectedUnit && selectedUnit !== "All") params.set("unit", selectedUnit);
+      if (originFilter !== "all") params.set("origin", originFilter);
+      if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
+      if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
+      return customFetch<any>(`/production/dashboard?${params.toString()}`);
+    },
     enabled: !!user,
     refetchInterval: 30_000,
   });
@@ -58,6 +68,7 @@ export default function ProductionDashboard() {
           <p className="text-sm text-muted-foreground mt-1">Monitor production orders — manufacturing only</p>
         </div>
         <div className="flex items-center gap-2">
+          <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
           <select className="text-sm border rounded-md px-3 py-1.5 bg-background" value={originFilter} onChange={(e) => setOriginFilter(e.target.value)}>
             <option value="all">All Orders</option>
             <option value="sales">Sales Orders</option>

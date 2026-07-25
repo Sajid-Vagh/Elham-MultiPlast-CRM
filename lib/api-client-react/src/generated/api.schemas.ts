@@ -811,6 +811,8 @@ salesOwnerId?: number;
 stage?: string;
 unit?: string;
 completedDealVisibility?: "hide" | "24h" | "3d" | "forever";
+startDate?: string;
+endDate?: string;
 };
 
 export type ListActivitiesParams = {
@@ -818,6 +820,8 @@ dealId?: number;
 contactId?: number;
 userId?: number;
 upcoming?: boolean;
+startDate?: string;
+endDate?: string;
 };
 
 export type GetPipelineReportParams = {
@@ -825,23 +829,31 @@ salesOwnerId?: number;
 unit?: string;
 month?: string;
 city?: string;
+startDate?: string;
+endDate?: string;
 };
 
 export type GetReportByOwnerParams = {
 month?: string;
 unit?: string;
 salesOwnerId?: number;
+startDate?: string;
+endDate?: string;
 };
 
 export type GetReportByProductParams = {
 month?: string;
 salesOwnerId?: number;
+startDate?: string;
+endDate?: string;
 };
 
 export type GetReportLostReasonsParams = {
 month?: string;
 salesOwnerId?: number;
 unit?: string;
+startDate?: string;
+endDate?: string;
 };
 
 export type GetReportLostReasons200Item = {
@@ -853,5 +865,7 @@ export type GetReportLostReasons200Item = {
 export type GetReportByCityParams = {
 month?: string;
 salesOwnerId?: number;
+startDate?: string;
+endDate?: string;
 };
 

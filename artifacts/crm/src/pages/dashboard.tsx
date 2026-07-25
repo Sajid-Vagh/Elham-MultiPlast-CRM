@@ -3,7 +3,7 @@ import { useGetMe } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {   Briefcase, Users, DollarSign, TrendingUp, AlertCircle, PhoneCall, X, Clock, Phone, CheckCircle2, FolderTree, UserCheck, Activity, BarChart3, ChevronRight, UserPlus, RefreshCw } from "lucide-react";
+import {   Briefcase, Users, DollarSign, TrendingUp, AlertCircle, PhoneCall, X, Clock, Phone, CheckCircle2, FolderTree, UserCheck, Activity, BarChart3, ChevronRight, UserPlus, RefreshCw, Eye, EyeOff } from "lucide-react";
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import { usePrivacyMode } from "@/lib/use-privacy-mode";
+import { useDateFilter, getLabel } from "@/lib/use-date-filter";
+import { DateRangeFilter } from "@/components/date-range-filter";
 
 function daysDiff(dateStr: string): number {
   const today = new Date();
@@ -36,6 +39,8 @@ export default function Dashboard() {
   const [followUpDateFilter, setFollowUpDateFilter] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("");
   const [unitFilter, setUnitFilter] = useUnitFilter();
+  const [dateFilter, setDateFilter] = useDateFilter();
+  const [privacyHidden, togglePrivacy] = usePrivacyMode();
   const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
@@ -45,11 +50,13 @@ export default function Dashboard() {
   const authHeaders = { Authorization: `Bearer ${token}` };
 
   const { data: kpi } = useQuery({
-    queryKey: ["dashboard-kpi", ownerFilter, unitFilter],
+    queryKey: ["dashboard-kpi", ownerFilter, unitFilter, dateFilter.preset],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (ownerFilter) params.set("ownerId", ownerFilter);
       if (unitFilter !== "All") params.set("unit", unitFilter);
+      if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
+      if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
       const res = await fetch(`/api/dashboard/kpi?${params.toString()}`, { headers: authHeaders });
       if (!res.ok) return null;
       return res.json() as Promise<{
@@ -65,11 +72,13 @@ export default function Dashboard() {
   });
 
   const { data: salesPerformance } = useQuery({
-    queryKey: ["dashboard-sales-performance", ownerFilter, unitFilter],
+    queryKey: ["dashboard-sales-performance", ownerFilter, unitFilter, dateFilter.preset],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (ownerFilter) params.set("ownerId", ownerFilter);
       if (unitFilter !== "All") params.set("unit", unitFilter);
+      if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
+      if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
       const res = await fetch(`/api/dashboard/sales-performance?${params.toString()}`, { headers: authHeaders });
       if (!res.ok) return [];
       return res.json() as Promise<{
@@ -84,11 +93,13 @@ export default function Dashboard() {
   });
 
   const { data: charts } = useQuery({
-    queryKey: ["dashboard-charts", ownerFilter, unitFilter],
+    queryKey: ["dashboard-charts", ownerFilter, unitFilter, dateFilter.preset],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (ownerFilter) params.set("ownerId", ownerFilter);
       if (unitFilter !== "All") params.set("unit", unitFilter);
+      if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
+      if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
       const res = await fetch(`/api/dashboard/charts?${params.toString()}`, { headers: authHeaders });
       if (!res.ok) return null;
       return res.json() as Promise<{
@@ -102,11 +113,13 @@ export default function Dashboard() {
   });
 
   const { data: recentActivities } = useQuery({
-    queryKey: ["dashboard-recent-activities", ownerFilter, unitFilter],
+    queryKey: ["dashboard-recent-activities", ownerFilter, unitFilter, dateFilter.preset],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (ownerFilter) params.set("ownerId", ownerFilter);
       if (unitFilter !== "All") params.set("unit", unitFilter);
+      if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
+      if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
       const res = await fetch(`/api/dashboard/recent-activities?${params.toString()}`, { headers: authHeaders });
       if (!res.ok) return [];
       return res.json() as Promise<{
@@ -120,12 +133,14 @@ export default function Dashboard() {
   });
 
   const { data: dueContacts } = useQuery({
-    queryKey: ["due-contacts", ownerFilter, unitFilter],
+    queryKey: ["due-contacts", ownerFilter, unitFilter, dateFilter.preset],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("followUpDue", "true");
       if (ownerFilter) params.set("salesOwnerId", ownerFilter);
       if (unitFilter !== "All") params.set("unit", unitFilter);
+      if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
+      if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
       const res = await fetch(`/api/contacts?${params.toString()}`, { headers: authHeaders });
       if (!res.ok) return [];
       return res.json() as Promise<any[]>;
@@ -174,6 +189,7 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
           <p className="text-muted-foreground mt-1">Overview of your sales performance and pipeline.</p>
         </div>
+        <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
         {isAdmin && (
           <div className="flex gap-2 flex-wrap">
             {users && (
@@ -195,6 +211,9 @@ export default function Dashboard() {
             </Select>
           </div>
         )}
+        <Button variant="ghost" size="icon" onClick={togglePrivacy} className="h-8 w-8 text-muted-foreground" title={privacyHidden ? "Show financial values" : "Hide financial values"}>
+          {privacyHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </Button>
       </div>
 
       {/* ── KPI CARDS ── */}
@@ -207,7 +226,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{kpi?.totalContacts ?? 0}</div>
-              <p className="text-xs text-muted-foreground">+{kpi?.newLeadsThisMonth ?? 0} this month</p>
+              <p className="text-xs text-muted-foreground">{dateFilter.preset === "all" ? "" : `+${kpi?.newLeadsThisMonth ?? 0} ${getLabel(dateFilter.preset).toLowerCase()}`}</p>
             </CardContent>
           </Card>
         </Link>
@@ -230,7 +249,7 @@ export default function Dashboard() {
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">₹{kpi?.totalWonValue?.toLocaleString() || 0}</div>
+              <div className="text-2xl font-bold">{privacyHidden ? "₹ *******" : `₹${kpi?.totalWonValue?.toLocaleString() || 0}`}</div>
               <p className="text-xs text-muted-foreground">{kpi?.totalDeals} total deals</p>
             </CardContent>
           </Card>
@@ -330,7 +349,7 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-lg font-bold text-green-600">{kpi?.newOrders ?? 0}</div>
-                <p className="text-xs text-muted-foreground">₹{(kpi?.newOrderRevenue ?? 0).toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">{privacyHidden ? "₹ *******" : `₹${(kpi?.newOrderRevenue ?? 0).toLocaleString()}`}</p>
               </CardContent>
             </Card>
           </Link>
@@ -342,7 +361,7 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-lg font-bold text-blue-600">{kpi?.repeatOrders ?? 0}</div>
-                <p className="text-xs text-muted-foreground">₹{(kpi?.repeatOrderRevenue ?? 0).toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">{privacyHidden ? "₹ *******" : `₹${(kpi?.repeatOrderRevenue ?? 0).toLocaleString()}`}</p>
               </CardContent>
             </Card>
           </Link>
@@ -354,7 +373,7 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-lg font-bold text-purple-600">{kpi?.newOrders !== undefined ? (kpi.newOrders + (kpi.repeatOrders ?? 0)) : 0}</div>
-                <p className="text-xs text-muted-foreground">₹{(kpi?.totalOrderRevenue ?? 0).toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">{privacyHidden ? "₹ *******" : `₹${(kpi?.totalOrderRevenue ?? 0).toLocaleString()}`}</p>
               </CardContent>
             </Card>
           </Link>
@@ -365,7 +384,7 @@ export default function Dashboard() {
                 <BarChart3 className="h-4 w-4 text-amber-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-lg font-bold text-amber-600">₹{(kpi?.newOrderRevenue ?? 0).toLocaleString()}</div>
+                <div className="text-lg font-bold text-amber-600">{privacyHidden ? "₹ *******" : `₹${(kpi?.newOrderRevenue ?? 0).toLocaleString()}`}</div>
                 <p className="text-xs text-muted-foreground">{kpi?.newOrders ?? 0} orders</p>
               </CardContent>
             </Card>
@@ -377,7 +396,7 @@ export default function Dashboard() {
                 <RefreshCw className="h-4 w-4 text-teal-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-lg font-bold text-teal-600">₹{(kpi?.repeatOrderRevenue ?? 0).toLocaleString()}</div>
+                <div className="text-lg font-bold text-teal-600">{privacyHidden ? "₹ *******" : `₹${(kpi?.repeatOrderRevenue ?? 0).toLocaleString()}`}</div>
                 <p className="text-xs text-muted-foreground">{kpi?.repeatOrders ?? 0} orders</p>
               </CardContent>
             </Card>
@@ -427,7 +446,7 @@ export default function Dashboard() {
                     <TableCell>{row.totalDeals}</TableCell>
                     <TableCell className="text-green-600 font-medium">{row.wonDeals}</TableCell>
                     <TableCell className="text-red-500">{row.lostDeals}</TableCell>
-                    <TableCell>₹{row.totalWonValue.toLocaleString()}</TableCell>
+                    <TableCell>{privacyHidden ? "₹ *******" : `₹${row.totalWonValue.toLocaleString()}`}</TableCell>
                     <TableCell>{row.myClients}</TableCell>
                     <TableCell>
                       <span className={`font-medium ${row.conversionRate >= 20 ? "text-green-600" : row.conversionRate >= 10 ? "text-amber-600" : "text-red-500"}`}>

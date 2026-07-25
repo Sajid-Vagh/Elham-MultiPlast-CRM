@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, activitiesTable, usersTable, contactsTable, dealsTable, notificationsTable } from "@workspace/db";
-import { eq, and, gte, isNull, SQL, desc } from "drizzle-orm";
+import { eq, and, gte, lte, isNull, SQL, desc } from "drizzle-orm";
 import { CreateActivityBody, UpdateActivityBody, ListActivitiesQueryParams, UpdateActivityParams, DeleteActivityParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -138,6 +138,10 @@ router.get("/activities", async (req, res) => {
       const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       conditions.push(gte(activitiesTable.followUpDate, today));
     }
+
+    const { startDate, endDate } = req.query as Record<string, string>;
+    if (startDate) conditions.push(gte(activitiesTable.createdAt, new Date(startDate)));
+    if (endDate) conditions.push(lte(activitiesTable.createdAt, new Date(endDate)));
 
     const activities = conditions.length
       ? await db.select().from(activitiesTable).where(and(...conditions)).orderBy(desc(activitiesTable.createdAt))

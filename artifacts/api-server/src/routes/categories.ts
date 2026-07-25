@@ -3,6 +3,7 @@ import { db, contactsTable, dealsTable, usersTable, categoryHistoryTable, activi
 import { eq, and, inArray, SQL, sql, desc } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
+import { getAccessibleUnits } from "../lib/unit-filter";
 
 const router: IRouter = Router();
 
@@ -357,6 +358,19 @@ router.get("/categories/history/:contactId", async (req, res) => {
 
     const contactId = Number(req.params.contactId);
     if (isNaN(contactId)) { res.status(400).json({ error: "Invalid contactId" }); return; }
+
+    // Enforce access: non-admin must own the contact or be in the same unit
+    if (user.role !== "admin") {
+      const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId, unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, contactId));
+      if (!contact) { res.status(404).json({ error: "Contact not found" }); return; }
+      if (user.role === "sales" && contact.salesOwnerId !== user.id) {
+        res.status(403).json({ error: "Forbidden" }); return;
+      }
+      const units = getAccessibleUnits(user);
+      if (units && (!contact.unit || !units.includes(contact.unit))) {
+        res.status(403).json({ error: "Forbidden" }); return;
+      }
+    }
 
     const history = await db
       .select()

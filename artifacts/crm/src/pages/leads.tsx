@@ -19,6 +19,8 @@ import { UserAvatar } from "@/components/user-avatar";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
+import { useDateFilter } from "@/lib/use-date-filter";
+import { DateRangeFilter } from "@/components/date-range-filter";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
@@ -28,6 +30,7 @@ export default function Leads() {
   const [city, setCity] = useState<string | undefined>();
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
   const [unitFilter, setUnitFilter] = useUnitFilter();
+  const [dateFilter, setDateFilter] = useDateFilter();
 
   // Mark Lost
   const [lostContactId, setLostContactId] = useState<number | null>(null);
@@ -76,7 +79,7 @@ export default function Leads() {
   }, [categoryCounts]);
 
   const { data: contacts, isLoading } = useQuery({
-    queryKey: ["leads-contacts", search, salesOwnerId, city, categoryFilter, unitFilter],
+    queryKey: ["leads-contacts", search, salesOwnerId, city, categoryFilter, unitFilter, dateFilter.preset, dateFilter.startDate, dateFilter.endDate],
     queryFn: async () => {
       const token = localStorage.getItem("crm_token");
       const params = new URLSearchParams();
@@ -85,6 +88,8 @@ export default function Leads() {
       if (city) params.set("city", city);
       if (categoryFilter) params.set("category", categoryFilter);
       if (unitFilter !== "All") params.set("unit", unitFilter);
+      if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
+      if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
       const res = await fetch(`/api/contacts?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -198,6 +203,7 @@ export default function Leads() {
             data-no-cap="1"
           />
         </div>
+        <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
         {isAdmin && (
           <Select value={salesOwnerId?.toString() || "all"} onValueChange={(v) => setSalesOwnerId(v === "all" ? undefined : Number(v))}>
             <SelectTrigger className="w-[180px]">

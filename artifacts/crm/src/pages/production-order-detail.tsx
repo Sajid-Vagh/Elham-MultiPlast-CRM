@@ -17,7 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { onProductionChange } from "@/lib/query-invalidation";
 import { VoiceNoteSection } from "@/components/voice-note-player";
 import { VoiceNoteUploader } from "@/components/voice-note-uploader";
-import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Calendar, Factory, ClipboardList, CheckCircle2, AlertTriangle, Package, CircleDot } from "lucide-react";
+import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Calendar, Factory, ClipboardList, CheckCircle2, AlertTriangle, Package, CircleDot, ChevronDown } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
@@ -55,6 +55,7 @@ export default function ProductionOrderDetail() {
   const [dispatchRemarks, setDispatchRemarks] = useState("");
 
   const [messageText, setMessageText] = useState("");
+  const [expandedTimelineEntry, setExpandedTimelineEntry] = useState<number | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const prevMsgCountRef = useRef(0);
@@ -478,23 +479,43 @@ export default function ProductionOrderDetail() {
             <CardHeader className="flex flex-row items-center justify-between"><CardTitle>Timeline</CardTitle></CardHeader>
             <CardContent>
               {order.timeline && order.timeline.length > 0 ? (
-                <div className="space-y-4">
-                  {order.timeline.map((entry: any) => (
-                    <div key={entry.id} className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <div className="w-2.5 h-2.5 rounded-full bg-primary mt-1.5" />
-                        <div className="w-0.5 flex-1 bg-border min-h-[24px]" />
-                      </div>
-                      <div className="flex-1 pb-2">
-                        <div className="flex items-center gap-2">
-                          <Badge className={`${STATUS_COLORS[entry.status] || DISPATCH_STATUS_COLORS[entry.status] || "bg-gray-100"} border text-xs`} variant="outline">{entry.status}</Badge>
-                          <span className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3" />{new Date(entry.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}</span>
+                <div className="space-y-0">
+                  {order.timeline.map((entry: any, idx: number) => {
+                    const isExpanded = expandedTimelineEntry === idx;
+                    return (
+                      <div
+                        key={entry.id}
+                        className="flex gap-3 cursor-pointer select-none py-2 rounded-md hover:bg-muted/40 transition-colors"
+                        onClick={() => setExpandedTimelineEntry(isExpanded ? null : idx)}
+                      >
+                        <div className="flex flex-col items-center">
+                          <div className="w-2.5 h-2.5 rounded-full bg-primary mt-1.5" />
+                          <div className="w-0.5 flex-1 bg-border min-h-[24px]" />
                         </div>
-                        {entry.notes && <p className="text-sm mt-1 text-muted-foreground whitespace-pre-wrap">{entry.notes}</p>}
-                        {entry.createdByUser && <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1"><User className="h-3 w-3" /> by {entry.createdByUser.name}</p>}
+                        <div className="flex-1 pb-2">
+                          <div className="flex items-center gap-2">
+                            <ChevronDown
+                              className={`h-3 w-3 text-muted-foreground flex-shrink-0 transition-transform duration-200 ${isExpanded ? "" : "-rotate-90"}`}
+                            />
+                            <Badge className={`${STATUS_COLORS[entry.status] || DISPATCH_STATUS_COLORS[entry.status] || "bg-gray-100"} border text-xs`} variant="outline">{entry.status}</Badge>
+                            <span className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {new Date(entry.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                              {" \u2022 "}
+                              {new Date(entry.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                            </span>
+                          </div>
+                          {isExpanded && (
+                            <div className="mt-1.5 pl-5 space-y-1 text-xs">
+                              {entry.notes && <p className="text-muted-foreground whitespace-pre-wrap"><span className="font-medium text-foreground">Notes:</span> {entry.notes}</p>}
+                              {entry.createdByUser && <p className="text-muted-foreground"><span className="font-medium text-foreground">Updated By:</span> {entry.createdByUser.name}</p>}
+                              <p className="text-muted-foreground"><span className="font-medium text-foreground">Time:</span> {new Date(entry.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}</p>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : <p className="text-sm text-muted-foreground">No timeline entries yet</p>}
             </CardContent>

@@ -4,13 +4,22 @@ import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
 import { Users, DollarSign, RefreshCw, AlertTriangle, Truck, Package, CheckCircle2, ClipboardList } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
+import { useDateFilter } from "@/lib/use-date-filter";
+import { DateRangeFilter } from "@/components/date-range-filter";
 
 export default function SupportDashboardPage() {
   const [, setLocation] = useLocation();
+  const [dateFilter, setDateFilter] = useDateFilter();
 
   const { data: dash, isLoading } = useQuery({
-    queryKey: ["support-dashboard-kpi"],
-    queryFn: () => customFetch<any>("/dashboard/support-kpi"),
+    queryKey: ["support-dashboard-kpi", dateFilter.preset],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
+      if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
+      const qs = params.toString();
+      return customFetch<any>(`/dashboard/support-kpi${qs ? `?${qs}` : ""}`);
+    },
     staleTime: 30_000,
   });
 
@@ -31,13 +40,16 @@ export default function SupportDashboardPage() {
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Support Dashboard</h1>
           <p className="text-muted-foreground mt-1">Overview of support & dispatch operations</p>
         </div>
-        <Badge variant="outline" className="text-xs gap-1.5 px-3 py-1">
-          <span className="relative flex h-1.5 w-1.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500" />
-          </span>
-          Live
-        </Badge>
+        <div className="flex items-center gap-2">
+          <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
+          <Badge variant="outline" className="text-xs gap-1.5 px-3 py-1">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500" />
+            </span>
+            Live
+          </Badge>
+        </div>
       </div>
 
       {/* Primary KPIs */}

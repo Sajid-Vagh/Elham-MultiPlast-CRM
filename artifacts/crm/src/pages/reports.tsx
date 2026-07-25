@@ -23,10 +23,8 @@ import { useUnitFilter } from "@/lib/use-unit-filter";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
-
-function MonthPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return <Input type="month" value={value} onChange={e => onChange(e.target.value)} className="w-40" />;
-}
+import { useDateFilter } from "@/lib/use-date-filter";
+import { DateRangeFilter } from "@/components/date-range-filter";
 
 function UnitPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const { units: activeUnits } = useActiveUnits();
@@ -73,8 +71,8 @@ function downloadCSV(data: any[], filename: string) {
 }
 
 export default function Reports() {
-  const [month, setMonth] = useState("");
   const [unit, setUnit] = useUnitFilter();
+  const [dateFilter, setDateFilter] = useDateFilter();
   const [ownerId, setOwnerId] = useState("");
   const [activeTab, setActiveTab] = useState("pipeline");
   const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
@@ -86,12 +84,14 @@ export default function Reports() {
   const [, navigate] = useLocation();
 
   const { data: summary } = useQuery({
-    queryKey: ["report-summary", ownerId, unit],
+    queryKey: ["report-summary", ownerId, unit, dateFilter.preset],
     queryFn: async () => {
       const token = localStorage.getItem("crm_token");
       const params = new URLSearchParams();
       if (ownerId) params.set("ownerId", ownerId);
       if (unit !== "All") params.set("unit", unit);
+      if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
+      if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
       const res = await fetch(`/api/reports/summary?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) return null;
       return res.json() as Promise<{ totalContacts: number; totalDeals: number; wonDeals: number; lostDeals: number; activeDeals: number; totalWonValue: number; upcomingFollowUps: number; newLeadsThisMonth?: number }>;
@@ -99,12 +99,12 @@ export default function Reports() {
     enabled: !!localStorage.getItem("crm_token"),
     staleTime: 30_000,
   });
-  const { data: pipeline } = useGetPipelineReport({ month: month || undefined, unit: unit !== "All" ? unit : undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
-  const { data: byOwner } = useGetReportByOwner({ month: month || undefined, unit: unit !== "All" ? unit : undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
-  const { data: byCity } = useGetReportByCity({ month: month || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
-  const { data: byProduct } = useGetReportByProduct({ month: month || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
+  const { data: pipeline } = useGetPipelineReport({ startDate: dateFilter.startDate || undefined, endDate: dateFilter.endDate || undefined, unit: unit !== "All" ? unit : undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
+  const { data: byOwner } = useGetReportByOwner({ startDate: dateFilter.startDate || undefined, endDate: dateFilter.endDate || undefined, unit: unit !== "All" ? unit : undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
+  const { data: byCity } = useGetReportByCity({ startDate: dateFilter.startDate || undefined, endDate: dateFilter.endDate || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
+  const { data: byProduct } = useGetReportByProduct({ startDate: dateFilter.startDate || undefined, endDate: dateFilter.endDate || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
   const { toast } = useToast();
-  const { data: lostReasons } = useGetReportLostReasons({ month: month || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined, unit: unit !== "All" ? unit : undefined });
+  const { data: lostReasons } = useGetReportLostReasons({ startDate: dateFilter.startDate || undefined, endDate: dateFilter.endDate || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined, unit: unit !== "All" ? unit : undefined });
   const { data: me } = useGetMe();
   const { data: users } = useCustomerFacingUsers();
   const canViewAllReports = me?.role === "admin" || me?.canViewAllReports;
@@ -151,7 +151,8 @@ export default function Reports() {
       const token = localStorage.getItem("crm_token");
       const p = new URLSearchParams();
       p.set("reason", reason);
-      if (month) p.set("month", month);
+      if (dateFilter.startDate) p.set("startDate", dateFilter.startDate);
+      if (dateFilter.endDate) p.set("endDate", dateFilter.endDate);
       if (unit !== "All") p.set("unit", unit);
       if (ownerId) p.set("salesOwnerId", ownerId);
       const url = `/api/reports/lost-reasons/detail?${p.toString()}`;
@@ -175,7 +176,7 @@ export default function Reports() {
     } finally {
       setDetailLoading(false);
     }
-  }, [month, unit, ownerId]);
+  }, [dateFilter.startDate, dateFilter.endDate, unit, ownerId]);
 
   return (
     <div className="p-8 space-y-6">
@@ -204,7 +205,7 @@ export default function Reports() {
             </TabsTrigger>
           </TabsList>
           <div className="flex gap-2 flex-wrap">
-            <MonthPicker value={month} onChange={setMonth} />
+            <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
             <UnitPicker value={unit} onChange={setUnit} />
             {canViewAllReports && (
               <Select value={ownerId || "all"} onValueChange={v => setOwnerId(v === "all" ? "" : v)}>

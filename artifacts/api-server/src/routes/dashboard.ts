@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable, dealsTable, usersTable, activitiesTable, ordersTable, complaintsTable, productionOrdersTable, CATEGORIES, DEAL_STAGES } from "@workspace/db";
-import { eq, inArray, and, desc } from "drizzle-orm";
+import { eq, inArray, and, desc, gte, lte } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 
@@ -36,29 +36,43 @@ async function getUser(req: any) {
     effectiveOwnerId = user.id;
   }
 
-  return { user, effectiveOwnerId, unitFilter, isAdmin: user.role === "admin" };
+  const startDate = req.query.startDate as string | undefined;
+  const endDate = req.query.endDate as string | undefined;
+
+  return { user, effectiveOwnerId, unitFilter, isAdmin: user.role === "admin", startDate, endDate };
 }
 
 router.get("/dashboard/kpi", async (req, res) => {
   try {
     const ctx = await getUser(req);
     if (!ctx) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const { user, effectiveOwnerId, unitFilter, isAdmin } = ctx;
+    const { user, effectiveOwnerId, unitFilter, isAdmin, startDate, endDate } = ctx;
+
+    // Build date conditions for SQL-level filtering
+    const contactDateConds: any[] = [];
+    const dealDateConds: any[] = [];
+    const activityDateConds: any[] = [];
+    const orderDateConds: any[] = [];
+    if (startDate) { contactDateConds.push(gte(contactsTable.createdAt, new Date(startDate))); dealDateConds.push(gte(dealsTable.createdAt, new Date(startDate))); activityDateConds.push(gte(activitiesTable.createdAt, new Date(startDate))); orderDateConds.push(gte(ordersTable.createdAt, new Date(startDate))); }
+    if (endDate) { const end = new Date(endDate); end.setHours(23, 59, 59, 999); contactDateConds.push(lte(contactsTable.createdAt, end)); dealDateConds.push(lte(dealsTable.createdAt, end)); activityDateConds.push(lte(activitiesTable.createdAt, end)); orderDateConds.push(lte(ordersTable.createdAt, end)); }
 
     const allContacts = effectiveOwnerId
-      ? await db.select().from(contactsTable).where(eq(contactsTable.salesOwnerId, effectiveOwnerId))
-      : await db.select().from(contactsTable);
+      ? await db.select().from(contactsTable).where(and(eq(contactsTable.salesOwnerId, effectiveOwnerId), ...contactDateConds))
+      : contactDateConds.length > 0
+        ? await db.select().from(contactsTable).where(and(...contactDateConds))
+        : await db.select().from(contactsTable);
 
     const filteredContacts = filterContactsByUnit(allContacts, unitFilter);
 
     const allDeals = effectiveOwnerId
-      ? await db.select().from(dealsTable).where(eq(dealsTable.salesOwnerId, effectiveOwnerId))
-      : await db.select().from(dealsTable);
+      ? await db.select().from(dealsTable).where(and(eq(dealsTable.salesOwnerId, effectiveOwnerId), ...dealDateConds))
+      : dealDateConds.length > 0
+        ? await db.select().from(dealsTable).where(and(...dealDateConds))
+        : await db.select().from(dealsTable);
 
     const filteredDeals = filterDealsByUnit(allDeals, unitFilter, allContacts);
 
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const today = now.toISOString().split("T")[0]!;
 
     const totalContacts = filteredContacts.length;
@@ -88,7 +102,6 @@ router.get("/dashboard/kpi", async (req, res) => {
     }
 
     // Activities: scope to owner and apply unit filter via contacts
-    let activitiesQuery = db.select().from(activitiesTable);
     const activityConditions: any[] = [];
     if (effectiveOwnerId) {
       const userContactIds = (await db.select({ id: contactsTable.id }).from(contactsTable).where(eq(contactsTable.salesOwnerId, effectiveOwnerId))).map(c => c.id);
@@ -98,7 +111,8 @@ router.get("/dashboard/kpi", async (req, res) => {
         activityConditions.push(eq(activitiesTable.contactId, -1)); // no results
       }
     }
-    let activitiesQueryResult = activityConditions.length > 0
+    if (activityDateConds.length > 0) activityConditions.push(...activityDateConds);
+    const activitiesQueryResult = activityConditions.length > 0
       ? await db.select().from(activitiesTable).where(and(...activityConditions))
       : await db.select().from(activitiesTable);
 
@@ -110,17 +124,18 @@ router.get("/dashboard/kpi", async (req, res) => {
     const dueContacts = filteredContacts.filter(c => c.nextCallDate && c.nextCallDate < today);
     const overdueCount = dueContacts.length;
 
-    const newLeadsThisMonth = filteredContacts.filter(c => c.createdAt >= monthStart).length;
+    const newLeadsThisMonth = filteredContacts.length;
 
     const myClientsCount = filteredContacts.filter(c => c.category === "My Client").length;
     const conversionRate = totalContacts > 0 ? Math.round((myClientsCount / totalContacts) * 100) : 0;
 
     // Order-based KPIs: NEW vs REPEAT revenue
     const accessUnitFilter = unitFilter;
-    let allOrders = await db.select().from(ordersTable);
-    let filteredOrders = allOrders;
+    let filteredOrders = orderDateConds.length > 0
+      ? await db.select().from(ordersTable).where(and(...orderDateConds))
+      : await db.select().from(ordersTable);
     if (effectiveOwnerId) {
-      filteredOrders = allOrders.filter(o => o.revenueOwnerId === effectiveOwnerId || o.salesOwnerId === effectiveOwnerId);
+      filteredOrders = filteredOrders.filter(o => o.revenueOwnerId === effectiveOwnerId || o.salesOwnerId === effectiveOwnerId);
     }
     if (accessUnitFilter) {
       const unitContactIds = new Set(filterContactsByUnit(allContacts, accessUnitFilter).map(c => c.id));
@@ -167,21 +182,33 @@ router.get("/dashboard/sales-performance", async (req, res) => {
   try {
     const ctx = await getUser(req);
     if (!ctx) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const { user, effectiveOwnerId, unitFilter, isAdmin } = ctx;
+    const { user, effectiveOwnerId, unitFilter, isAdmin, startDate, endDate } = ctx;
 
     if (!isAdmin) {
       res.json([]);
       return;
     }
 
+    const contactDateConds: any[] = [];
+    const dealDateConds: any[] = [];
+    const activityDateConds: any[] = [];
+    if (startDate) { contactDateConds.push(gte(contactsTable.createdAt, new Date(startDate))); dealDateConds.push(gte(dealsTable.createdAt, new Date(startDate))); activityDateConds.push(gte(activitiesTable.createdAt, new Date(startDate))); }
+    if (endDate) { const end = new Date(endDate); end.setHours(23, 59, 59, 999); contactDateConds.push(lte(contactsTable.createdAt, end)); dealDateConds.push(lte(dealsTable.createdAt, end)); activityDateConds.push(lte(activitiesTable.createdAt, end)); }
+
     const allUsers = await db.select().from(usersTable);
     const allContacts = effectiveOwnerId
-      ? await db.select().from(contactsTable).where(eq(contactsTable.salesOwnerId, effectiveOwnerId))
-      : await db.select().from(contactsTable);
+      ? await db.select().from(contactsTable).where(and(eq(contactsTable.salesOwnerId, effectiveOwnerId), ...contactDateConds))
+      : contactDateConds.length > 0
+        ? await db.select().from(contactsTable).where(and(...contactDateConds))
+        : await db.select().from(contactsTable);
     const allDeals = effectiveOwnerId
-      ? await db.select().from(dealsTable).where(eq(dealsTable.salesOwnerId, effectiveOwnerId))
-      : await db.select().from(dealsTable);
-    const allActivities = await db.select().from(activitiesTable);
+      ? await db.select().from(dealsTable).where(and(eq(dealsTable.salesOwnerId, effectiveOwnerId), ...dealDateConds))
+      : dealDateConds.length > 0
+        ? await db.select().from(dealsTable).where(and(...dealDateConds))
+        : await db.select().from(dealsTable);
+    const allActivities = activityDateConds.length > 0
+      ? await db.select().from(activitiesTable).where(and(...activityDateConds))
+      : await db.select().from(activitiesTable);
 
     // Only include sales users
     const salesUsers = allUsers.filter(u => u.role === "admin" || u.role === "sales");
@@ -236,15 +263,24 @@ router.get("/dashboard/charts", async (req, res) => {
   try {
     const ctx = await getUser(req);
     if (!ctx) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const { effectiveOwnerId, unitFilter } = ctx;
+    const { effectiveOwnerId, unitFilter, startDate, endDate } = ctx;
+
+    const contactDateConds: any[] = [];
+    const dealDateConds: any[] = [];
+    if (startDate) { contactDateConds.push(gte(contactsTable.createdAt, new Date(startDate))); dealDateConds.push(gte(dealsTable.createdAt, new Date(startDate))); }
+    if (endDate) { const end = new Date(endDate); end.setHours(23, 59, 59, 999); contactDateConds.push(lte(contactsTable.createdAt, end)); dealDateConds.push(lte(dealsTable.createdAt, end)); }
 
     const allContacts = effectiveOwnerId
-      ? await db.select().from(contactsTable).where(eq(contactsTable.salesOwnerId, effectiveOwnerId))
-      : await db.select().from(contactsTable);
+      ? await db.select().from(contactsTable).where(and(eq(contactsTable.salesOwnerId, effectiveOwnerId), ...contactDateConds))
+      : contactDateConds.length > 0
+        ? await db.select().from(contactsTable).where(and(...contactDateConds))
+        : await db.select().from(contactsTable);
 
     const allDeals = effectiveOwnerId
-      ? await db.select().from(dealsTable).where(eq(dealsTable.salesOwnerId, effectiveOwnerId))
-      : await db.select().from(dealsTable);
+      ? await db.select().from(dealsTable).where(and(eq(dealsTable.salesOwnerId, effectiveOwnerId), ...dealDateConds))
+      : dealDateConds.length > 0
+        ? await db.select().from(dealsTable).where(and(...dealDateConds))
+        : await db.select().from(dealsTable);
 
     const filteredContacts = filterContactsByUnit(allContacts, unitFilter);
     const filteredDeals = filterDealsByUnit(allDeals, unitFilter, allContacts);
@@ -290,13 +326,15 @@ router.get("/dashboard/recent-activities", async (req, res) => {
   try {
     const ctx = await getUser(req);
     if (!ctx) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const { effectiveOwnerId, unitFilter } = ctx;
+    const { effectiveOwnerId, unitFilter, startDate, endDate } = ctx;
 
-    let activities = await db
-      .select()
-      .from(activitiesTable)
-      .orderBy(desc(activitiesTable.createdAt))
-      .limit(50);
+    const dateConds: any[] = [];
+    if (startDate) dateConds.push(gte(activitiesTable.createdAt, new Date(startDate)));
+    if (endDate) { const end = new Date(endDate); end.setHours(23, 59, 59, 999); dateConds.push(lte(activitiesTable.createdAt, end)); }
+
+    let activities = dateConds.length > 0
+      ? await db.select().from(activitiesTable).where(and(...dateConds)).orderBy(desc(activitiesTable.createdAt)).limit(50)
+      : await db.select().from(activitiesTable).orderBy(desc(activitiesTable.createdAt)).limit(50);
 
     if (effectiveOwnerId) {
       const userContacts = await db
@@ -359,25 +397,33 @@ router.get("/dashboard/support-kpi", async (req, res) => {
       return;
     }
 
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+
+    const orderDateConds: any[] = [eq(ordersTable.isDeleted, false)];
+    const complaintDateConds: any[] = [];
+    const prodDateConds: any[] = [];
+    if (startDate) { orderDateConds.push(gte(ordersTable.createdAt, new Date(startDate))); complaintDateConds.push(gte(complaintsTable.createdAt, new Date(startDate))); prodDateConds.push(gte(productionOrdersTable.createdAt, new Date(startDate))); }
+    if (endDate) { const end = new Date(endDate); end.setHours(23, 59, 59, 999); orderDateConds.push(lte(ordersTable.createdAt, end)); complaintDateConds.push(lte(complaintsTable.createdAt, end)); prodDateConds.push(lte(productionOrdersTable.createdAt, end)); }
 
     // Repeat orders
-    const allOrders = await db.select().from(ordersTable);
-    const repeatOrders = allOrders.filter(o => o.orderType === "REPEAT" && !o.isDeleted);
-    const repeatOrdersThisMonth = repeatOrders.filter(o => o.createdAt >= monthStart);
+    const allOrders = await db.select().from(ordersTable).where(and(...orderDateConds));
+    const repeatOrders = allOrders.filter(o => o.orderType === "REPEAT");
     const totalRepeatRevenue = repeatOrders.reduce((s, o) => s + Number(o.grandTotal || 0), 0);
-    const repeatRevenueThisMonth = repeatOrdersThisMonth.reduce((s, o) => s + Number(o.grandTotal || 0), 0);
 
     // Repeat customers (unique contacts with REPEAT orders)
     const repeatCustomerIds = new Set(repeatOrders.map(o => o.contactId).filter(Boolean));
 
     // Active complaints
-    const complaints = await db.select().from(complaintsTable);
+    const complaints = complaintDateConds.length > 0
+      ? await db.select().from(complaintsTable).where(and(...complaintDateConds))
+      : await db.select().from(complaintsTable);
     const activeComplaints = complaints.filter(c => c.status !== "Resolved" && c.status !== "Closed").length;
 
     // Production orders with dispatch workflow
-    const allProductionOrders = await db.select().from(productionOrdersTable);
+    const allProductionOrders = prodDateConds.length > 0
+      ? await db.select().from(productionOrdersTable).where(and(...prodDateConds))
+      : await db.select().from(productionOrdersTable);
 
     // Dispatch KPIs from new dispatch workflow
     const rtdOrders = allProductionOrders.filter(o => o.status === "Ready To Dispatch");
@@ -396,9 +442,9 @@ router.get("/dashboard/support-kpi", async (req, res) => {
 
     res.json({
       totalRepeatOrders: repeatOrders.length,
-      repeatOrdersThisMonth: repeatOrdersThisMonth.length,
+      repeatOrdersThisMonth: repeatOrders.length,
       totalRepeatRevenue,
-      repeatRevenueThisMonth,
+      repeatRevenueThisMonth: totalRepeatRevenue,
       repeatCustomers: repeatCustomerIds.size,
       activeComplaints,
       pendingDispatch,

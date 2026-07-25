@@ -1,8 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CheckCircle2, Circle, Loader2, Clock, Truck, Package, ClipboardCheck, FileCheck, MapPin } from "lucide-react";
+import { CheckCircle2, Circle, Loader2, Clock, Truck, Package, ClipboardCheck, FileCheck, MapPin, ChevronDown } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 
@@ -55,6 +55,8 @@ export default function ProductionProgress({ dealId }: Props) {
     queryFn: () => customFetch<any>(`/production/progress-by-deal/${dealId}`),
     enabled: !!dealId,
   });
+
+  const [expandedLogEntry, setExpandedLogEntry] = useState<number | null>(null);
 
   const currentProdIndex = useMemo(() => {
     if (!progress?.status) return 0;
@@ -238,18 +240,30 @@ export default function ProductionProgress({ dealId }: Props) {
         {progress.timeline && progress.timeline.length > 0 && (
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Activity Log</p>
-            <div className="space-y-2 max-h-40 overflow-y-auto">
-              {progress.timeline.slice(0, 10).map((entry: any) => (
-                <div key={entry.id} className="flex items-start gap-2 text-xs">
-                  <Badge variant="outline" className={`text-[9px] py-0 px-1.5 ${STATUS_BADGE[entry.status] || "bg-gray-100"} border`}>
-                    {entry.status}
-                  </Badge>
-                  <span className="text-muted-foreground flex-1">{entry.notes}</span>
-                  <span className="text-muted-foreground/60 whitespace-nowrap">
-                    {new Date(entry.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
-                  </span>
-                </div>
-              ))}
+            <div className="space-y-0 max-h-60 overflow-y-auto">
+              {progress.timeline.slice(0, 10).map((entry: any, idx: number) => {
+                const isExpanded = expandedLogEntry === idx;
+                return (
+                  <div
+                    key={entry.id}
+                    className="flex items-start gap-2 text-xs cursor-pointer select-none py-1.5 px-1 rounded hover:bg-muted/40 transition-colors"
+                    onClick={() => setExpandedLogEntry(isExpanded ? null : idx)}
+                  >
+                    <ChevronDown
+                      className={`h-3 w-3 text-muted-foreground flex-shrink-0 mt-0.5 transition-transform duration-200 ${isExpanded ? "" : "-rotate-90"}`}
+                    />
+                    <Badge variant="outline" className={`text-[9px] py-0 px-1.5 ${STATUS_BADGE[entry.status] || "bg-gray-100"} border`}>
+                      {entry.status}
+                    </Badge>
+                    <span className="text-muted-foreground flex-1">{entry.notes}</span>
+                    <span className="text-muted-foreground/60 whitespace-nowrap">
+                      {new Date(entry.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
+                      {" \u2022 "}
+                      {new Date(entry.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

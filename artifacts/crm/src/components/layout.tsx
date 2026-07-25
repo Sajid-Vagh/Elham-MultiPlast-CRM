@@ -14,6 +14,7 @@ import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 import { UserAvatar } from "@/components/user-avatar";
+import { useWorkspace, getWorkspaceLabel, getHomeRoute, type Workspace } from "@/lib/use-workspace";
 
 const REMINDER_SOUND_SS_KEY = "crm_reminder_sound_played_ids";
 
@@ -194,6 +195,8 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   const isAdmin = user.role === "admin";
   const isInventory = user.role === "inventory";
 
+  const [workspace, setWorkspace, availableWorkspaces] = useWorkspace(user.role);
+
   const salesNavItems = [
     { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", color: "#a78bfa" },
     { icon: Download, label: "Import", href: "/import", color: "#fbbf24" },
@@ -201,8 +204,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: Briefcase, label: "Deals", href: "/deals", color: "#34d399" },
     { icon: Bell, label: "Activity", href: "/follow-ups", color: "#f59e0b" },
     { icon: FolderTree, label: "Categories", href: "/categories", color: "#f97316" },
-    { icon: Truck, label: "Dispatch", href: "/dispatch", color: "#f43f5e" },
-    { icon: AlertTriangle, label: "Complaints", href: "/complaints", color: "#ef4444" },
+    { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" },
     { icon: FileText, label: "Proforma Invoices", href: "/proforma-invoices", color: "#06b6d4" },
     { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
     { icon: MapPin, label: "Freight Lookup", href: "/transport-logistics/lookup", color: "#14b8a6" },
@@ -228,7 +230,9 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: ClipboardList, label: "Production Orders", href: "/production/orders", color: "#7c3aed" },
     { icon: Layers, label: "Batches", href: "/production/batches", color: "#7c3aed" },
     { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
+    { icon: Truck, label: "Dispatch", href: "/dispatch", color: "#f43f5e" },
     { icon: BarChart, label: "Machine Report", href: "/production/machine-report", color: "#7c3aed" },
+    { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
   ];
 
   const inventoryNavItems = [
@@ -237,24 +241,20 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   ];
 
   let navItems: typeof salesNavItems;
-  if (isAdmin) {
-    const seen = new Set<string>();
-    navItems = [...salesNavItems, { icon: LayoutDashboard, label: "Support Dashboard", href: "/support-dashboard", color: "#6366f1" }, ...productionNavItems, { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" }, { icon: Database, label: "Masters", href: "/masters", color: "#14b8a6" }].filter(item => {
-      if (seen.has(item.href)) return false;
-      seen.add(item.href);
-      return true;
-    });
+  if (isAdmin || isSupport || isProductionOnly) {
+    // Multi-workspace roles: filter by active workspace
+    switch (workspace) {
+      case "production":
+        navItems = productionNavItems;
+        break;
+      case "support":
+        navItems = supportNavItems;
+        break;
+      default:
+        navItems = salesNavItems;
+    }
   } else if (isInventory) {
     navItems = inventoryNavItems;
-  } else if (isProductionOnly) {
-    navItems = productionNavItems;
-  } else if (isSupport) {
-    const seen = new Set<string>();
-    navItems = [...productionNavItems, ...supportNavItems].filter(item => {
-      if (seen.has(item.href)) return false;
-      seen.add(item.href);
-      return true;
-    });
   } else {
     navItems = salesNavItems;
   }
@@ -289,6 +289,30 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
             </div>
           </div>
         </div>
+
+        {availableWorkspaces.length > 1 && (
+          <div className="px-3 py-2 border-b border-[hsl(250_22%_88%)]">
+            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5 px-1">Workspace</p>
+            <div className="flex gap-1 p-0.5 bg-muted/50 rounded-lg">
+              {availableWorkspaces.map(w => (
+                <button
+                  key={w}
+                  className={`flex-1 text-xs py-1.5 px-2 rounded-md transition-all font-medium ${
+                    workspace === w
+                      ? "bg-white text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => {
+                    setWorkspace(w);
+                    setLocation(getHomeRoute(w));
+                  }}
+                >
+                  {getWorkspaceLabel(w)}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
           {navItems.map((item) => {

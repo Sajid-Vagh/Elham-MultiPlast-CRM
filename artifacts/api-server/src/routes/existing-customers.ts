@@ -5,7 +5,7 @@ import {
   internalNotesTable, activitiesTable, dealProductsTable, dealsTable,
   voiceNotesTable,
 } from "@workspace/db";
-import { eq, and, or, ilike, desc, sql, inArray, isNull, asc } from "drizzle-orm";
+import { eq, and, or, ilike, desc, sql, inArray, isNull, asc, gte, lte } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { generateId } from "../lib/id-generator";
@@ -276,6 +276,10 @@ router.get("/existing-customers", async (req, res) => {
         SELECT 1 FROM contacts c WHERE c.id = ${existingCustomersTable.contactId} AND c.unit IN (${sql.join(accessibleUnits.map(u => sql`${u}`), sql`, `)})
       )`);
     }
+
+    const { startDate, endDate } = req.query as Record<string, string>;
+    if (startDate) conditions.push(gte(existingCustomersTable.createdAt, new Date(startDate)));
+    if (endDate) conditions.push(lte(existingCustomersTable.createdAt, new Date(endDate)));
 
     const pageNum = Math.max(1, Number(page));
     const limitNum = Math.min(100, Math.max(1, Number(limit)));

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, ordersTable, orderItemsTable, usersTable, contactsTable, orderTimelineTable, orderRevisionsTable } from "@workspace/db";
-import { eq, and, or, ilike, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, or, ilike, desc, sql, inArray, gte, lte } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { generateId } from "../lib/id-generator";
@@ -62,6 +62,10 @@ router.get("/orders", async (req, res) => {
     if (accessibleUnits) {
       conditions.push(inArray(ordersTable.productionUnit, accessibleUnits));
     }
+
+    const { startDate, endDate } = req.query as Record<string, string>;
+    if (startDate) conditions.push(gte(ordersTable.createdAt, new Date(startDate)));
+    if (endDate) conditions.push(lte(ordersTable.createdAt, new Date(endDate)));
 
     const pageNum = Math.max(1, Number(page));
     const limitNum = Math.min(100, Math.max(1, Number(limit)));
@@ -243,6 +247,14 @@ router.patch("/orders/:id", async (req, res) => {
     const id = Number(req.params.id);
     const [existing] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
     if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+
+    // Enforce ownership + unit isolation
+    if (user.role !== "admin") {
+      const accessibleUnits = getAccessibleUnits(user);
+      if (accessibleUnits && !accessibleUnits.includes(existing.productionUnit)) {
+        res.status(403).json({ error: "Forbidden" }); return;
+      }
+    }
 
     const { items, transportSnapshot, ...updateData } = req.body;
 

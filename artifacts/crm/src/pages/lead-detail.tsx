@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText, Factory, Send } from "lucide-react";
+import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, ChevronDown, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText, Factory, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
@@ -117,6 +117,9 @@ export default function LeadDetail() {
   const [actFollowType, setActFollowType] = useState("Call");
   const [actDealId, setActDealId] = useState("");
   const [actDialogOpen, setActDialogOpen] = useState(false);
+
+  const [expandedTimelineEvent, setExpandedTimelineEvent] = useState<number | null>(null);
+  const [expandedProdTimeline, setExpandedProdTimeline] = useState<number | null>(null);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [showMoveCategory, setShowMoveCategory] = useState(false);
@@ -889,18 +892,27 @@ export default function LeadDetail() {
                 <div className="relative pl-6 space-y-0">
                   {mergedTimeline.map((event, idx) => {
                     const isLast = idx === mergedTimeline.length - 1;
+                    const isExpanded = expandedTimelineEvent === idx;
                     return (
-                      <div key={event.key} className="relative pb-4">
+                      <div key={event.key} className="relative pb-0">
                         {!isLast && <div className="absolute left-[11px] top-5 bottom-0 w-0.5 bg-border" />}
-                        <div className="flex items-start gap-3">
+                        <div
+                          className="flex items-start gap-3 cursor-pointer select-none py-2 -ml-6 pl-6 rounded-md hover:bg-muted/40 transition-colors"
+                          onClick={() => setExpandedTimelineEvent(isExpanded ? null : idx)}
+                        >
                           <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs z-10 ring-2 ring-background" style={{ backgroundColor: event.bg }}>
                             {event.icon}
                           </div>
                           <div className="flex-1 min-w-0 pt-0.5">
                             <div className="flex items-center gap-2 flex-wrap">
+                              <ChevronDown
+                                className={`h-3 w-3 text-muted-foreground flex-shrink-0 transition-transform duration-200 ${isExpanded ? "" : "-rotate-90"}`}
+                              />
                               <span className="text-xs font-medium">{event.description}</span>
                               <span className="text-[10px] text-muted-foreground">
-                                {new Date(event.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                {new Date(event.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                                {" \u2022 "}
+                                {new Date(event.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
                               </span>
                               {event.type === "FollowUp" && event.callStatus && (
                                 <Badge variant="outline" className={`text-[10px] ${event.callStatus === "Completed" ? "border-green-300 text-green-700" : event.callStatus === "Cancelled" ? "border-red-300 text-red-700" : "border-orange-300 text-orange-700"}`}>
@@ -908,10 +920,15 @@ export default function LeadDetail() {
                                 </Badge>
                               )}
                             </div>
-                            {event.userName && <p className="text-[10px] text-muted-foreground">by {event.userName}</p>}
-                            {event.notes && <p className="text-xs text-muted-foreground mt-0.5 whitespace-pre-wrap line-clamp-2">{event.notes}</p>}
-                            {event.dealStage && <Badge variant="outline" className="text-[10px] mt-0.5">{event.dealStage}</Badge>}
-                            {event.followUpDate && <p className="text-[10px] text-primary mt-0.5">Follow-up: {event.followUpDate}</p>}
+                            {isExpanded && (
+                              <div className="mt-1.5 pl-5 space-y-1 text-xs text-muted-foreground">
+                                {event.userName && <p><span className="font-medium text-foreground">By:</span> {event.userName}</p>}
+                                {event.notes && <p className="whitespace-pre-wrap"><span className="font-medium text-foreground">Notes:</span> {event.notes}</p>}
+                                {event.dealStage && <p><span className="font-medium text-foreground">Stage:</span> <Badge variant="outline" className="text-[10px]">{event.dealStage}</Badge></p>}
+                                {event.followUpDate && <p><span className="font-medium text-foreground">Follow-up:</span> {event.followUpDate}</p>}
+                                <p><span className="font-medium text-foreground">Time:</span> {new Date(event.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}</p>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1088,22 +1105,38 @@ export default function LeadDetail() {
                   {productionOrder.timeline && productionOrder.timeline.length > 0 && (
                     <div>
                       <span className="text-muted-foreground text-xs">Production Timeline</span>
-                      <div className="mt-1 space-y-1.5 max-h-40 overflow-y-auto">
-                        {productionOrder.timeline.slice(0, 5).map((t) => (
-                          <div key={t.id} className="flex items-start gap-2 text-xs">
-                            <div className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-primary mt-1.5" />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="font-medium">{t.status}</span>
-                                <span className="text-[10px] text-muted-foreground">
-                                  {new Date(t.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                                </span>
+                      <div className="mt-1 space-y-0 max-h-60 overflow-y-auto">
+                        {productionOrder.timeline.slice(0, 5).map((t, tIdx) => {
+                          const isExpanded = expandedProdTimeline === tIdx;
+                          return (
+                            <div
+                              key={t.id}
+                              className="flex items-start gap-2 text-xs cursor-pointer select-none py-1.5 px-1 rounded hover:bg-muted/40 transition-colors"
+                              onClick={() => setExpandedProdTimeline(isExpanded ? null : tIdx)}
+                            >
+                              <div className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-primary mt-1.5" />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <ChevronDown
+                                    className={`h-3 w-3 text-muted-foreground flex-shrink-0 transition-transform duration-200 ${isExpanded ? "" : "-rotate-90"}`}
+                                  />
+                                  <span className="font-medium">{t.status}</span>
+                                  <span className="text-[10px] text-muted-foreground">
+                                    {new Date(t.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                                    {" \u2022 "}
+                                    {new Date(t.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                                  </span>
+                                </div>
+                                {isExpanded && (
+                                  <div className="mt-1 pl-4 space-y-0.5">
+                                    {t.notes && <p className="text-muted-foreground whitespace-pre-wrap"><span className="font-medium text-foreground">Notes:</span> {t.notes}</p>}
+                                    {t.createdByName && <p className="text-muted-foreground"><span className="font-medium text-foreground">By:</span> {t.createdByName}</p>}
+                                  </div>
+                                )}
                               </div>
-                              {t.notes && <p className="text-muted-foreground text-[10px] line-clamp-1">{t.notes}</p>}
-                              {t.createdByName && <p className="text-[10px] text-muted-foreground">by {t.createdByName}</p>}
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}

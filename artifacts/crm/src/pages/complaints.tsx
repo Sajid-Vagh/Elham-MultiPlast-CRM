@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Search, Filter } from "lucide-react";
 import { ExportDropdown } from "@/components/export-dropdown";
+import { DateRangeFilter } from "@/components/date-range-filter";
+import { useDateFilter } from "@/lib/use-date-filter";
 import { useToast } from "@/hooks/use-toast";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -30,15 +32,18 @@ export default function ComplaintsPage() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [dateFilter, setDateFilter] = useDateFilter();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [form, setForm] = useState({ contactId: "", customerName: "", productName: "", complaintType: "", description: "", priority: "Medium" });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["complaints", { search, status: statusFilter }],
+    queryKey: ["complaints", { search, status: statusFilter, preset: dateFilter.preset }],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
       if (statusFilter !== "All") params.set("status", statusFilter);
+      if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
+      if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
       const res = await fetch(`/api/complaints?${params}`, { headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` } });
       return res.json();
     },
@@ -85,6 +90,7 @@ export default function ComplaintsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search complaints..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
         </div>
+        <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-48"><Filter className="h-4 w-4 mr-2" /><SelectValue /></SelectTrigger>
           <SelectContent>{["All", "Open", "Assigned", "Investigation", "Production Review", "Replacement Approved", "Replacement Running", "Replacement Dispatched", "Closed", "Rejected"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>

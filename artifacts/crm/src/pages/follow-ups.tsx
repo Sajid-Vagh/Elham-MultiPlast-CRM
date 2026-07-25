@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Calendar, ArrowLeft, Phone, PhoneOff, X, Clock, Search, Eye, Pencil, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Phone, PhoneOff, Search, Eye, Pencil, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
@@ -20,6 +20,8 @@ import { ExportDropdown } from "@/components/export-dropdown";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import { useDateFilter } from "@/lib/use-date-filter";
+import { DateRangeFilter } from "@/components/date-range-filter";
 import ActivityDetailDrawer from "@/components/activity-detail-drawer";
 
 const PAGE_SIZE = 15;
@@ -83,8 +85,7 @@ const SORT_OPTIONS = [
 ];
 
 export default function FollowUps() {
-  const [dateFilter, setDateFilter] = useState("");
-  const [showToday, setShowToday] = useState(false);
+  const [dateFilter, setDateFilter] = useDateFilter();
   const [unitFilter, setUnitFilter] = useUnitFilter();
   const [ownerFilter, setOwnerFilter] = useState<string | undefined>();
   const [searchQuery, setSearchQuery] = useState("");
@@ -99,11 +100,6 @@ export default function FollowUps() {
   const isAdmin = me?.role === "admin";
   const { units: activeUnits } = useActiveUnits();
 
-  const activeDate = useMemo(() => {
-    if (showToday) return todayStr();
-    return dateFilter || "";
-  }, [dateFilter, showToday]);
-
   type FollowUpActivity = {
     id: number; type: string; notes?: string | null;
     notesDisplay?: string | null;
@@ -117,13 +113,13 @@ export default function FollowUps() {
   };
 
   const { data: activities, isLoading, refetch } = useQuery<FollowUpActivity[]>({
-    queryKey: ["follow-up-activities", activeDate, isAdmin ? ownerFilter || "all" : me?.id, unitFilter],
+    queryKey: ["follow-up-activities", dateFilter.preset, dateFilter.startDate, dateFilter.endDate, isAdmin ? ownerFilter || "all" : me?.id, unitFilter],
     queryFn: async () => {
       const token = localStorage.getItem("crm_token");
       const params = new URLSearchParams();
-      if (activeDate) {
-        params.set("date", activeDate);
-      } else {
+      if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
+      if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
+      if (!dateFilter.startDate && !dateFilter.endDate) {
         params.set("upcoming", "true");
       }
       if (!isAdmin && me?.id) {
@@ -143,11 +139,6 @@ export default function FollowUps() {
 
   const updateActivity = useUpdateActivity();
   const queryClient = useQueryClient();
-
-  const pendingCount = useMemo(() => {
-    if (!activities) return 0;
-    return activities.filter(a => a.callStatus === "Pending").length;
-  }, [activities]);
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<FollowUpActivity | null>(null);
@@ -400,33 +391,7 @@ export default function FollowUps() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 mt-3">
-            <Button
-              variant={showToday ? "default" : "outline"}
-              size="sm"
-              className="h-8 gap-1.5 text-xs"
-              onClick={() => { setShowToday(prev => !prev); setDateFilter(""); setPage(1); }}
-            >
-              <Clock className="h-3.5 w-3.5" />
-              Today
-              {showToday && pendingCount > 0 && (
-                <Badge className="ml-1 bg-white/20 text-white text-[10px] h-4 px-1.5">
-                  {pendingCount}
-                </Badge>
-              )}
-            </Button>
-            <div className="flex items-center gap-1">
-              <Input
-                type="date"
-                value={dateFilter}
-                onChange={e => { setDateFilter(e.target.value); setShowToday(false); setPage(1); }}
-                className="w-36 h-8 text-xs"
-              />
-              {dateFilter && (
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => setDateFilter("")}>
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
+            <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
             {filteredActivities.length > 0 && (
               <span className="text-xs text-muted-foreground ml-auto">
                 {filteredActivities.length} result{filteredActivities.length !== 1 ? "s" : ""}
@@ -437,7 +402,7 @@ export default function FollowUps() {
       </Card>
 
       {/* Summary card */}
-      {showToday && !isLoading && filteredActivities.length > 0 && (
+      {dateFilter.preset === "today" && !isLoading && filteredActivities.length > 0 && (
         <Card className="border-orange-200 bg-orange-50/50">
           <CardContent className="py-3">
             <p className="text-sm text-orange-700 flex items-center gap-2">
@@ -455,8 +420,8 @@ export default function FollowUps() {
             <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">Loading follow-ups...</div>
           ) : !paginatedActivities || paginatedActivities.length === 0 ? (
             <div className="text-sm text-muted-foreground text-center py-16">
-              {activeDate
-                ? `No follow-ups found for ${new Date(activeDate + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}.`
+              {dateFilter.startDate
+                ? `No follow-ups found for the selected date range.`
                 : "No follow-ups match your filters."}
             </div>
           ) : (

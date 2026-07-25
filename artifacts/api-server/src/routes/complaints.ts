@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, complaintsTable, complaintUpdatesTable, contactsTable, usersTable, ordersTable } from "@workspace/db";
-import { eq, and, or, desc, sql, ilike, inArray } from "drizzle-orm";
+import { eq, and, or, desc, sql, ilike, inArray, gte, lte } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { generateId } from "../lib/id-generator";
@@ -48,6 +48,9 @@ router.get("/complaints", async (req, res) => {
           ilike(complaintsTable.customerName, s),
         )!);
       }
+      const { startDate, endDate } = req.query as Record<string, string>;
+      if (startDate) conditions.push(gte(complaintsTable.createdAt, new Date(startDate)));
+      if (endDate) conditions.push(lte(complaintsTable.createdAt, new Date(endDate)));
       const where = conditions.length ? and(...conditions) : undefined;
       const pageNum = Math.max(1, Number(page));
       const limitNum = Math.min(100, Math.max(1, Number(limit)));
@@ -89,6 +92,10 @@ router.get("/complaints", async (req, res) => {
       )!);
     }
 
+    const { startDate, endDate } = req.query as Record<string, string>;
+    if (startDate) conditions.push(gte(complaintsTable.createdAt, new Date(startDate)));
+    if (endDate) conditions.push(lte(complaintsTable.createdAt, new Date(endDate)));
+
     const where = conditions.length ? and(...conditions) : undefined;
     const pageNum = Math.max(1, Number(page));
     const limitNum = Math.min(100, Math.max(1, Number(limit)));
@@ -111,6 +118,16 @@ router.get("/complaints/:id", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
     const [c] = await db.select().from(complaintsTable).where(eq(complaintsTable.id, Number(req.params.id)));
     if (!c) { res.status(404).json({ error: "Not found" }); return; }
+    // Enforce unit isolation for non-admin users
+    if (user.role !== "admin") {
+      const accessibleUnits = getAccessibleUnits(user);
+      if (accessibleUnits && c.contactId) {
+        const [contact] = await db.select({ unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, c.contactId));
+        if (!contact || !contact.unit || !accessibleUnits.includes(contact.unit)) {
+          res.status(403).json({ error: "Forbidden" }); return;
+        }
+      }
+    }
     res.json(await enrichComplaint(c));
   } catch (err) {
     console.error("Get complaint error:", err);

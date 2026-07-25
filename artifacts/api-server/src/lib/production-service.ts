@@ -1520,7 +1520,7 @@ export async function sendMessage(
   return { message: newMessage };
 }
 
-export async function getDashboard(user: PermissionUser, unitFilter?: string, originFilter?: string) {
+export async function getDashboard(user: PermissionUser, unitFilter?: string, originFilter?: string, startDate?: string, endDate?: string) {
   const conditions: SQL[] = [];
   if (user.role !== "admin") {
     const u = (user as any).unit || "All";
@@ -1538,6 +1538,8 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
   if (originFilter && originFilter !== "all") {
     conditions.push(eq(productionOrdersTable.createdByRole, originFilter));
   }
+  if (startDate) conditions.push(gte(productionOrdersTable.createdAt, new Date(startDate)));
+  if (endDate) conditions.push(lte(productionOrdersTable.createdAt, new Date(endDate + "T23:59:59")));
 
   const allOrders = await db.select().from(productionOrdersTable)
     .where(conditions.length > 0 ? and(...conditions) : undefined);
