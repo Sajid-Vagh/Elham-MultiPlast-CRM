@@ -250,6 +250,10 @@ export async function enrichProductionOrder(order: any, user?: { role: string })
       gstPercent: Number(i.gstPercent || 0),
       materialType: product?.materialType || null,
       machineType: product?.machineType || null,
+      bottleColour: product?.bottleColour || null,
+      bottleWeight: product?.bottleWeight || null,
+      capColour: product?.capColour || null,
+      productCode: product?.productCode || null,
     };
   });
 

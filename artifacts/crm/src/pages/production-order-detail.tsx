@@ -492,22 +492,88 @@ export default function ProductionOrderDetail() {
             <Card>
               <CardHeader><CardTitle>Product Details</CardTitle></CardHeader>
               <CardContent>
+                {/* Desktop / Tablet: Table with horizontal scroll */}
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b"><th className="text-left py-2 px-2">Product</th><th className="text-left py-2 px-2">HSN</th><th className="text-right py-2 px-2">Qty</th><th className="text-right py-2 px-2">Rate</th><th className="text-right py-2 px-2">Amount</th><th className="text-left py-2 px-2">Manufacturing</th></tr></thead>
+                  <table className="w-full text-sm min-w-[900px]">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2 px-2 font-medium">Product</th>
+                        <th className="text-left py-2 px-2 font-medium">Material</th>
+                        <th className="text-left py-2 px-2 font-medium">Bottle Color</th>
+                        <th className="text-right py-2 px-2 font-medium">Bottle Wt (gm)</th>
+                        <th className="text-left py-2 px-2 font-medium">Cap Color</th>
+                        <th className="text-right py-2 px-2 font-medium">Cap Wt (gm)</th>
+                        <th className="text-left py-2 px-2 font-medium">Neck Size</th>
+                        <th className="text-left py-2 px-2 font-medium">Machine</th>
+                        <th className="text-left py-2 px-2 font-medium">HSN</th>
+                        <th className="text-right py-2 px-2 font-medium">Qty</th>
+                        <th className="text-right py-2 px-2 font-medium">Rate</th>
+                        <th className="text-right py-2 px-2 font-medium">Amount</th>
+                      </tr>
+                    </thead>
                     <tbody>
                       {order.items.map((item: any, idx: number) => (
-                        <tr key={idx} className="border-b last:border-0">
-                          <td className="py-2 px-2">{item.productName}{item.bottleType && <span className="text-muted-foreground ml-1">({item.bottleType})</span>}{item.capacity && <span className="text-muted-foreground ml-1">{item.capacity}</span>}</td>
-                          <td className="py-2 px-2 text-muted-foreground">{item.hsnCode || "-"}</td>
-                          <td className="py-2 px-2 text-right">{Number(item.quantity).toFixed(2)}</td>
+                        <tr key={idx} className="border-b last:border-0 hover:bg-muted/30">
+                          <td className="py-2 px-2">
+                            <div className="font-medium">{item.productName}</div>
+                            {(item.bottleType || item.capacity) && (
+                              <div className="text-xs text-muted-foreground">
+                                {[item.bottleType, item.capacity].filter(Boolean).join(" · ")}
+                              </div>
+                            )}
+                            {item.productCode && <div className="text-xs text-muted-foreground">Code: {item.productCode}</div>}
+                          </td>
+                          <td className="py-2 px-2">
+                            {item.materialType
+                              ? <Badge variant="outline" className={`text-xs ${item.materialType === "PET" ? "bg-amber-50 text-amber-700 border-amber-200" : item.materialType === "PP" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-slate-50 text-slate-700 border-slate-200"}`}>{item.materialType}</Badge>
+                              : <span className="text-muted-foreground">--</span>
+                            }
+                          </td>
+                          <td className="py-2 px-2">{item.bottleColour || <span className="text-muted-foreground">--</span>}</td>
+                          <td className="py-2 px-2 text-right">{item.bottleWeight || <span className="text-muted-foreground">--</span>}</td>
+                          <td className="py-2 px-2">{item.capColour || <span className="text-muted-foreground">--</span>}</td>
+                          <td className="py-2 px-2 text-right"><span className="text-muted-foreground">--</span></td>
+                          <td className="py-2 px-2"><span className="text-muted-foreground">--</span></td>
+                          <td className="py-2 px-2">
+                            {item.materialType === "PET"
+                              ? <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs">Outsourced</Badge>
+                              : <span className="text-sm">{item.machineType || <span className="text-muted-foreground">--</span>}</span>
+                            }
+                          </td>
+                          <td className="py-2 px-2 text-muted-foreground">{item.hsnCode || "--"}</td>
+                          <td className="py-2 px-2 text-right font-medium">{Number(item.quantity).toFixed(2)}</td>
                           <td className="py-2 px-2 text-right">{Number(item.rate).toFixed(2)}</td>
-                          <td className="py-2 px-2 text-right">{Number(item.amount).toFixed(2)}</td>
-                          <td className="py-2 px-2">{item.materialType === "PET" ? <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs">Outsourced</Badge> : <span className="text-sm text-muted-foreground">{item.machineType || "-"}</span>}</td>
+                          <td className="py-2 px-2 text-right font-medium">{Number(item.amount).toFixed(2)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                </div>
+                {/* Mobile: Card layout */}
+                <div className="md:hidden space-y-3 mt-3">
+                  {order.items.map((item: any, idx: number) => (
+                    <div key={idx} className="border rounded-lg p-3 space-y-2 text-sm">
+                      <div className="font-medium">{item.productName}</div>
+                      {(item.bottleType || item.capacity) && (
+                        <div className="text-xs text-muted-foreground">{[item.bottleType, item.capacity].filter(Boolean).join(" · ")}</div>
+                      )}
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                        <div><span className="text-muted-foreground">Material:</span> {item.materialType || "--"}</div>
+                        <div><span className="text-muted-foreground">Bottle Color:</span> {item.bottleColour || "--"}</div>
+                        <div><span className="text-muted-foreground">Bottle Wt:</span> {item.bottleWeight ? `${item.bottleWeight} gm` : "--"}</div>
+                        <div><span className="text-muted-foreground">Cap Color:</span> {item.capColour || "--"}</div>
+                        <div><span className="text-muted-foreground">Cap Wt:</span> --</div>
+                        <div><span className="text-muted-foreground">Neck Size:</span> --</div>
+                        <div><span className="text-muted-foreground">Machine:</span> {item.materialType === "PET" ? "Outsourced" : (item.machineType || "--")}</div>
+                        <div><span className="text-muted-foreground">HSN:</span> {item.hsnCode || "--"}</div>
+                      </div>
+                      <div className="flex justify-between text-xs border-t pt-1">
+                        <span>Qty: <b>{Number(item.quantity).toFixed(2)}</b></span>
+                        <span>Rate: {Number(item.rate).toFixed(2)}</span>
+                        <span>Amount: <b>{Number(item.amount).toFixed(2)}</b></span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>
