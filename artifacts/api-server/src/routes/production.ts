@@ -633,7 +633,7 @@ router.get("/production/sheet/stats", async (req, res) => {
 
     const whereSql = conditions.length ? sql`WHERE ${sql.join(conditions, sql` AND `)}` : sql``;
 
-    const [stats] = await db.execute(sql`
+    const result = await db.execute(sql`
       SELECT
         COUNT(*)::int AS "totalPending",
         COUNT(*) FILTER (WHERE po.needs_reprint = true)::int AS "needsReprint",
@@ -643,11 +643,13 @@ router.get("/production/sheet/stats", async (req, res) => {
       ${whereSql}
     `);
 
+    const stats = ((result as any).rows?.[0]) || {};
+
     res.json({
-      totalPending: stats?.totalPending || 0,
-      needsReprint: stats?.needsReprint || 0,
-      neverGenerated: stats?.neverGenerated || 0,
-      outdated: stats?.outdated || 0,
+      totalPending: stats.totalPending || 0,
+      needsReprint: stats.needsReprint || 0,
+      neverGenerated: stats.neverGenerated || 0,
+      outdated: stats.outdated || 0,
     });
   } catch (err) {
     console.error("Production sheet stats error:", err);
@@ -760,7 +762,9 @@ router.get("/production/sheet", async (req, res) => {
       ORDER BY po.id, pii.id
     `);
 
-    if (!results.rows || results.rows.length === 0) {
+    const rows: any[] = (results as any).rows || [];
+
+    if (rows.length === 0) {
       const emptyWb = buildWorkbook([{
         name: "Production Sheet",
         headers: ["Info"],
@@ -771,7 +775,7 @@ router.get("/production/sheet", async (req, res) => {
     }
 
     // ── 4. Determine next version for each order ──
-    const poIds = [...new Set(results.rows.map((r: any) => r.poId))];
+    const poIds = [...new Set(rows.map((r: any) => r.poId))];
 
     // ── 5. Build Excel rows: one row per product per order ──
     const sheetNumber = `PS-${new Date().getFullYear()}-${String(Math.floor(Date.now() / 1000) % 100000).padStart(5, "0")}`;
@@ -795,18 +799,17 @@ router.get("/production/sheet", async (req, res) => {
 
     // Group by PO
     const grouped = new Map<number, any[]>();
-    for (const row of results.rows) {
-      const poId = row.poId;
+    for (const row of rows) {
+      const poId: number = Number(row.poId);
       if (!grouped.has(poId)) grouped.set(poId, []);
       grouped.get(poId)!.push(row);
     }
 
-    for (const [poId, rows] of grouped) {
-      const first = rows[0];
-      const version = (first.sheetVersion || 0) + 1;
+    for (const [poId, orderRows] of grouped) {
+      const first = orderRows[0];
       const orderDate = first.createdAt ? new Date(first.createdAt).toLocaleDateString("en-IN") : "";
 
-      for (const row of rows) {
+      for (const row of orderRows) {
         if (!row.itemId) continue; // Skip orders with no PI items
 
         dataRows.push([
@@ -850,8 +853,8 @@ router.get("/production/sheet", async (req, res) => {
     // ── 6. Update tracking fields for all included orders ──
     const now = new Date();
     for (const poId of poIds) {
-      const row = results.rows.find((r: any) => r.poId === poId);
-      const newVersion = (row?.sheetVersion || 0) + 1;
+      const row = rows.find((r: any) => Number(r.poId) === poId);
+      const newVersion = (Number(row?.sheetVersion) || 0) + 1;
       await db.update(productionOrdersTable).set({
         productionSheetGeneratedAt: now,
         productionSheetGeneratedBy: user.id,
