@@ -5,6 +5,7 @@ import { CreateActivityBody, UpdateActivityBody, ListActivitiesQueryParams, Upda
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { getAccessibleUnits } from "../lib/unit-filter";
+import { parseEndDate } from "../lib/parse-end-date";
 
 const router: IRouter = Router();
 
@@ -141,7 +142,7 @@ router.get("/activities", async (req, res) => {
 
     const { startDate, endDate } = req.query as Record<string, string>;
     if (startDate) conditions.push(gte(activitiesTable.createdAt, new Date(startDate)));
-    if (endDate) conditions.push(lte(activitiesTable.createdAt, new Date(endDate)));
+    if (endDate) conditions.push(lte(activitiesTable.createdAt, parseEndDate(endDate)));
 
     const activities = conditions.length
       ? await db.select().from(activitiesTable).where(and(...conditions)).orderBy(desc(activitiesTable.createdAt))

@@ -7,6 +7,7 @@ import { createNotification } from "./notifications";
 import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
+import { parseEndDate } from "../lib/parse-end-date";
 
 const router: IRouter = Router();
 
@@ -101,7 +102,7 @@ router.get("/contacts", async (req, res) => {
 
     const { startDate, endDate } = req.query as Record<string, string>;
     if (startDate) conditions.push(gte(contactsTable.createdAt, new Date(startDate)));
-    if (endDate) conditions.push(lte(contactsTable.createdAt, new Date(endDate)));
+    if (endDate) conditions.push(lte(contactsTable.createdAt, parseEndDate(endDate)));
 
     let contacts: (typeof contactsTable.$inferSelect)[];
     if (categoryParam === "Regular Follow up") {

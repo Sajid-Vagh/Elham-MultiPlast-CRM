@@ -7,6 +7,7 @@ import { generateId } from "../lib/id-generator";
 import { logAudit } from "../middlewares/auth";
 import { promoteToExistingCustomer } from "./existing-customers";
 import { getAccessibleUnits } from "../lib/unit-filter";
+import { parseEndDate } from "../lib/parse-end-date";
 import { cancelOrder } from "../lib/order-cancellation-service";
 
 const PRODUCTION_UNITS = ["Himatnagar", "Surat", "Rajkot"] as const;
@@ -65,7 +66,7 @@ router.get("/orders", async (req, res) => {
 
     const { startDate, endDate } = req.query as Record<string, string>;
     if (startDate) conditions.push(gte(ordersTable.createdAt, new Date(startDate)));
-    if (endDate) conditions.push(lte(ordersTable.createdAt, new Date(endDate)));
+    if (endDate) conditions.push(lte(ordersTable.createdAt, parseEndDate(endDate)));
 
     const pageNum = Math.max(1, Number(page));
     const limitNum = Math.min(100, Math.max(1, Number(limit)));

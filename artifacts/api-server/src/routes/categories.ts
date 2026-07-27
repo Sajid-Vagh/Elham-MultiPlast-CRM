@@ -4,6 +4,7 @@ import { eq, and, inArray, SQL, sql, desc, gte, lte } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
 import { getAccessibleUnits } from "../lib/unit-filter";
+import { parseEndDate } from "../lib/parse-end-date";
 
 const router: IRouter = Router();
 
@@ -25,7 +26,7 @@ router.get("/categories/counts", async (req, res) => {
 
     const { startDate, endDate } = req.query as Record<string, string>;
     if (startDate) conditions.push(gte(contactsTable.createdAt, new Date(startDate)));
-    if (endDate) conditions.push(lte(contactsTable.createdAt, new Date(endDate)));
+    if (endDate) conditions.push(lte(contactsTable.createdAt, parseEndDate(endDate)));
 
     // Fetch contacts and deals once for virtual "Regular Follow up" counting
     const allContacts = await db.select().from(contactsTable).where(and(...conditions));

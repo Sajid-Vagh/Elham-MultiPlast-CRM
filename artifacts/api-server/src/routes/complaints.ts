@@ -6,6 +6,7 @@ import { createNotification } from "./notifications";
 import { generateId } from "../lib/id-generator";
 import { logAudit } from "../middlewares/auth";
 import { getAccessibleUnits } from "../lib/unit-filter";
+import { parseEndDate } from "../lib/parse-end-date";
 
 const router: IRouter = Router();
 
@@ -50,7 +51,7 @@ router.get("/complaints", async (req, res) => {
       }
       const { startDate, endDate } = req.query as Record<string, string>;
       if (startDate) conditions.push(gte(complaintsTable.createdAt, new Date(startDate)));
-      if (endDate) conditions.push(lte(complaintsTable.createdAt, new Date(endDate)));
+      if (endDate) conditions.push(lte(complaintsTable.createdAt, parseEndDate(endDate)));
       const where = conditions.length ? and(...conditions) : undefined;
       const pageNum = Math.max(1, Number(page));
       const limitNum = Math.min(100, Math.max(1, Number(limit)));
@@ -94,7 +95,7 @@ router.get("/complaints", async (req, res) => {
 
     const { startDate, endDate } = req.query as Record<string, string>;
     if (startDate) conditions.push(gte(complaintsTable.createdAt, new Date(startDate)));
-    if (endDate) conditions.push(lte(complaintsTable.createdAt, new Date(endDate)));
+    if (endDate) conditions.push(lte(complaintsTable.createdAt, parseEndDate(endDate)));
 
     const where = conditions.length ? and(...conditions) : undefined;
     const pageNum = Math.max(1, Number(page));

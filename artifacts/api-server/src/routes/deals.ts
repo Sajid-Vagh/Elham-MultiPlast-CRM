@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable, unitHistoryTable, activitiesTable, DEAL_STAGES, STAGE_PROBS, ordersTable, orderItemsTable, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable } from "@workspace/db";
 import { eq, and, or, inArray, SQL, sql, desc, gte, lte, between, isNull } from "drizzle-orm";
 import { getAccessibleUnits } from "../lib/unit-filter";
+import { parseEndDate } from "../lib/parse-end-date";
 import {
   CreateDealBody, UpdateDealBody, GetDealParams, UpdateDealParams, DeleteDealParams,
   ListDealsQueryParams, AddDealProductBody, AddDealProductParams, RemoveDealProductParams
@@ -148,7 +149,7 @@ router.get("/deals", async (req, res) => {
 
     const { startDate, endDate } = req.query as Record<string, string>;
     if (startDate) conditions.push(gte(dealsTable.createdAt, new Date(startDate)));
-    if (endDate) conditions.push(lte(dealsTable.createdAt, new Date(endDate)));
+    if (endDate) conditions.push(lte(dealsTable.createdAt, parseEndDate(endDate)));
 
     const deals = conditions.length
       ? await db.select().from(dealsTable).where(and(...conditions)).orderBy(desc(dealsTable.createdAt))

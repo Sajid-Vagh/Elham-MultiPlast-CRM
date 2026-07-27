@@ -8,6 +8,7 @@ import {
 import { eq, and, or, ilike, desc, sql, inArray, isNull, asc, gte, lte } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
+import { parseEndDate } from "../lib/parse-end-date";
 import { generateId } from "../lib/id-generator";
 import { getAccessibleUnits } from "../lib/unit-filter";
 
@@ -279,7 +280,7 @@ router.get("/existing-customers", async (req, res) => {
 
     const { startDate, endDate } = req.query as Record<string, string>;
     if (startDate) conditions.push(gte(existingCustomersTable.createdAt, new Date(startDate)));
-    if (endDate) conditions.push(lte(existingCustomersTable.createdAt, new Date(endDate)));
+    if (endDate) conditions.push(lte(existingCustomersTable.createdAt, parseEndDate(endDate)));
 
     const pageNum = Math.max(1, Number(page));
     const limitNum = Math.min(100, Math.max(1, Number(limit)));
