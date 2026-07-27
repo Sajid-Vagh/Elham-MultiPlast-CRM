@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "./ui/button";
 import { Mic, Loader2, CheckCircle2, X } from "lucide-react";
 import { VoiceRecorder } from "./voice-recorder";
-import { useUploadVoiceNote, useReplaceVoiceNote, getVoiceNotesQueryKey, type VoiceNoteEntityType } from "@/lib/use-voice-notes";
+import { useUploadVoiceNote, useReplaceVoiceNote, getVoiceNotesQueryKey, type VoiceNoteEntityType, type VoiceNoteData } from "@/lib/use-voice-notes";
 import { useToast } from "@/hooks/use-toast";
 
 // ────────────────────────────────────────────
@@ -46,8 +46,9 @@ export function VoiceNoteUploader({
     if (!recordedBlob) return;
 
     try {
+      let result: VoiceNoteData | undefined;
       if (replaceNoteId) {
-        await replaceMutation.mutateAsync({
+        result = await replaceMutation.mutateAsync({
           id: replaceNoteId,
           file: recordedBlob,
           transcript,
@@ -55,7 +56,7 @@ export function VoiceNoteUploader({
         });
         toast({ title: "Voice note replaced" });
       } else {
-        await uploadMutation.mutateAsync({
+        result = await uploadMutation.mutateAsync({
           file: recordedBlob,
           entityType,
           entityId,
@@ -66,6 +67,17 @@ export function VoiceNoteUploader({
       }
 
       queryClient.invalidateQueries({ queryKey: getVoiceNotesQueryKey(entityType, entityId) });
+
+      // Invalidate cross-entity queries (backend cross-links deal↔production)
+      if (result) {
+        if (result.productionOrderId && entityType === "deal") {
+          queryClient.invalidateQueries({ queryKey: getVoiceNotesQueryKey("production", result.productionOrderId) });
+        }
+        if (result.dealId && entityType === "production") {
+          queryClient.invalidateQueries({ queryKey: getVoiceNotesQueryKey("deal", result.dealId) });
+        }
+      }
+
       setRecordedBlob(null);
       setTranscript("");
       setDurationMs(0);

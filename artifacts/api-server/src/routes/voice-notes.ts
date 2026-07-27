@@ -2,11 +2,12 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import multer from "multer";
 import fs from "node:fs";
 import path from "node:path";
-import { db, voiceNotesTable, dealsTable, productionOrdersTable, contactsTable } from "@workspace/db";
-import { eq, and, isNull } from "drizzle-orm";
+import { db, voiceNotesTable, dealsTable, productionOrdersTable, contactsTable, proformaInvoicesTable, productionTimelineTable, usersTable } from "@workspace/db";
+import { eq, and, isNull, desc, or } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { canAccessUnit } from "../lib/permission-service";
 import { storage } from "../lib/storage";
+import { createNotification } from "./notifications";
 import {
   uploadVoiceNote,
   getVoiceNotes,
@@ -69,13 +70,61 @@ router.post("/voice-notes", upload.single("file"), async (req: Request, res: Res
       }
     }
 
+    // ── Cross-link: find linked entity on the other side ──
+    let crossLinkedDealId = dealId;
+    let crossLinkedProductionOrderId = productionOrderId;
+    let crossLinkedProformaInvoiceId = proformaInvoiceId;
+
+    if (dealId && !productionOrderId) {
+      const [linkedPO] = await db.select({ id: productionOrdersTable.id, productionUnit: productionOrdersTable.productionUnit })
+        .from(productionOrdersTable)
+        .where(eq(productionOrdersTable.dealId, dealId))
+        .orderBy(desc(productionOrdersTable.createdAt))
+        .limit(1);
+      if (linkedPO) {
+        crossLinkedProductionOrderId = linkedPO.id;
+      }
+    }
+
+    if (productionOrderId && !dealId) {
+      const [po] = await db.select({ dealId: productionOrdersTable.dealId, proformaInvoiceId: productionOrdersTable.proformaInvoiceId })
+        .from(productionOrdersTable)
+        .where(eq(productionOrdersTable.id, productionOrderId))
+        .limit(1);
+      if (po?.dealId) {
+        crossLinkedDealId = po.dealId;
+      } else if (po?.proformaInvoiceId) {
+        const [pi] = await db.select({ dealId: proformaInvoicesTable.dealId })
+          .from(proformaInvoicesTable)
+          .where(eq(proformaInvoicesTable.id, po.proformaInvoiceId))
+          .limit(1);
+        if (pi?.dealId) crossLinkedDealId = pi.dealId;
+      }
+      if (po?.proformaInvoiceId && !crossLinkedProformaInvoiceId) {
+        crossLinkedProformaInvoiceId = po.proformaInvoiceId;
+      }
+    }
+
+    if (proformaInvoiceId && !dealId && !productionOrderId) {
+      const [pi] = await db.select({ dealId: proformaInvoicesTable.dealId })
+        .from(proformaInvoicesTable)
+        .where(eq(proformaInvoicesTable.id, proformaInvoiceId))
+        .limit(1);
+      if (pi?.dealId) crossLinkedDealId = pi.dealId;
+      const [linkedPO] = await db.select({ id: productionOrdersTable.id })
+        .from(productionOrdersTable)
+        .where(eq(productionOrdersTable.proformaInvoiceId, proformaInvoiceId))
+        .limit(1);
+      if (linkedPO) crossLinkedProductionOrderId = linkedPO.id;
+    }
+
     const { note, error } = await uploadVoiceNote({
       file,
       uploadedById: user.id,
       createdByRole: user.role,
-      dealId,
-      productionOrderId,
-      proformaInvoiceId,
+      dealId: crossLinkedDealId,
+      productionOrderId: crossLinkedProductionOrderId,
+      proformaInvoiceId: crossLinkedProformaInvoiceId,
       orderId,
       leadId,
       customerId,
@@ -85,6 +134,66 @@ router.post("/voice-notes", upload.single("file"), async (req: Request, res: Res
 
     if (error || !note) {
       res.status(500).json({ error: error || "Failed to upload voice note" }); return;
+    }
+
+    // ── Notify the other side ──
+    if (crossLinkedProductionOrderId && dealId && !productionOrderId) {
+      // Sales uploaded on deal → notify production users
+      const [po] = await db.select({ productionUnit: productionOrdersTable.productionUnit })
+        .from(productionOrdersTable)
+        .where(eq(productionOrdersTable.id, crossLinkedProductionOrderId));
+      const [uploader] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, user.id));
+      const prodUsers = await db.select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role })
+        .from(usersTable)
+        .where(or(eq(usersTable.role, "production"), eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
+      const orderUnit = po?.productionUnit || "Himatnagar";
+      for (const pu of prodUsers) {
+        if (pu.id === user.id) continue;
+        const userUnit = pu.unit || "All";
+        if (pu.role === "admin" || userUnit === "All" || userUnit === orderUnit || orderUnit === "Himatnagar") {
+          await createNotification({
+            userId: pu.id,
+            type: "voice_note",
+            title: "Voice Note from Sales",
+            message: `${uploader?.name || "Sales"} recorded a voice note for this order`,
+            link: `/production/orders/${crossLinkedProductionOrderId}`,
+            relatedId: crossLinkedProductionOrderId,
+            relatedType: "production_order",
+          });
+        }
+      }
+    }
+
+    if (crossLinkedDealId && productionOrderId && !dealId) {
+      // Production uploaded on order → notify sales owner
+      const [deal] = await db.select({ salesOwnerId: dealsTable.salesOwnerId, title: dealsTable.title })
+        .from(dealsTable)
+        .where(eq(dealsTable.id, crossLinkedDealId));
+      const [uploader] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, user.id));
+      if (deal?.salesOwnerId && String(deal.salesOwnerId) !== String(user.id)) {
+        await createNotification({
+          userId: deal.salesOwnerId,
+          type: "voice_note",
+          title: "Voice Note from Production",
+          message: `${uploader?.name || "Production"} recorded a voice note for order #${productionOrderId}`,
+          link: `/leads/${crossLinkedDealId}`,
+          relatedId: crossLinkedDealId,
+          relatedType: "deal",
+        });
+      }
+    }
+
+    // ── Add production timeline entry ──
+    if (crossLinkedProductionOrderId) {
+      const [uploader] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, user.id));
+      try {
+        await db.insert(productionTimelineTable).values({
+          productionOrderId: crossLinkedProductionOrderId,
+          status: "Voice Note",
+          notes: `Voice note added by ${uploader?.name || user.role}`,
+          createdBy: user.id,
+        });
+      } catch (_) { /* timeline entry is best-effort */ }
     }
 
     res.status(201).json(note);

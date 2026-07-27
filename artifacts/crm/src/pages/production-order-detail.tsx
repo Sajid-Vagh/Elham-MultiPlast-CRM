@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
 import { useParams, useLocation } from "wouter";
@@ -15,9 +15,10 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { onProductionChange } from "@/lib/query-invalidation";
-import { VoiceNoteSection } from "@/components/voice-note-player";
+import { VoiceNotePlayer } from "@/components/voice-note-player";
 import { VoiceNoteUploader } from "@/components/voice-note-uploader";
-import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Calendar, Factory, ClipboardList, CheckCircle2, AlertTriangle, Package, CircleDot, ChevronDown } from "lucide-react";
+import { useVoiceNotes, type VoiceNoteData } from "@/lib/use-voice-notes";
+import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Calendar, Factory, ClipboardList, CheckCircle2, AlertTriangle, Package, CircleDot, ChevronDown, Mic } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
@@ -36,6 +37,35 @@ const DISPATCH_STATUS_COLORS: Record<string, string> = {
 };
 
 const PRODUCTION_ORDER_QUERY_KEY = (id: string) => ["production-order", id];
+
+// ── Merged Voice Notes: combines notes from production order + linked deal ──
+function MergedVoiceNotes({ productionOrderId, dealId }: { productionOrderId: number; dealId?: number | null }) {
+  const { data: prodNotes = [], isLoading: prodLoading } = useVoiceNotes("production", productionOrderId);
+  const { data: dealNotes = [], isLoading: dealLoading } = useVoiceNotes("deal", dealId || null);
+
+  const isLoading = prodLoading || (dealId ? dealLoading : false);
+
+  const mergedNotes: VoiceNoteData[] = useMemo(() => {
+    const all = [...prodNotes, ...dealNotes];
+    const seen = new Set<number>();
+    return all.filter(n => {
+      if (seen.has(n.id)) return false;
+      seen.add(n.id);
+      return true;
+    }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [prodNotes, dealNotes]);
+
+  if (isLoading) return <p className="text-sm text-muted-foreground">Loading voice notes...</p>;
+  if (mergedNotes.length === 0) return <p className="text-sm text-muted-foreground">No voice notes yet</p>;
+
+  return (
+    <div className="space-y-2">
+      {mergedNotes.map((note) => (
+        <VoiceNotePlayer key={note.id} note={note} canDelete={false} compact />
+      ))}
+    </div>
+  );
+}
 
 export default function ProductionOrderDetail() {
   const { id } = useParams<{ id: string }>();
@@ -442,18 +472,18 @@ export default function ProductionOrderDetail() {
             </Card>
           )}
 
-          {/* Voice Notes */}
+          {/* Voice Notes — merged from production order + linked deal */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-sm">Voice Notes</CardTitle>
+              <CardTitle className="text-sm flex items-center gap-2"><Mic className="h-4 w-4" /> Voice Notes</CardTitle>
               <VoiceNoteUploader
                 entityType="production"
                 entityId={order.id}
-                label="Add Voice Note"
+                label="Record"
               />
             </CardHeader>
             <CardContent>
-              <VoiceNoteSection entityType="production" entityId={order.id} />
+              <MergedVoiceNotes productionOrderId={order.id} dealId={order.dealId} />
             </CardContent>
           </Card>
 
