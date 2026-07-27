@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable, dealsTable, usersTable, categoryHistoryTable, activitiesTable, productsTable, dealProductsTable, CATEGORIES } from "@workspace/db";
-import { eq, and, inArray, SQL, sql, desc } from "drizzle-orm";
+import { eq, and, inArray, SQL, sql, desc, gte, lte } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
 import { getAccessibleUnits } from "../lib/unit-filter";
@@ -22,6 +22,10 @@ router.get("/categories/counts", async (req, res) => {
     if (unit) {
       conditions.push(eq(contactsTable.unit, unit));
     }
+
+    const { startDate, endDate } = req.query as Record<string, string>;
+    if (startDate) conditions.push(gte(contactsTable.createdAt, new Date(startDate)));
+    if (endDate) conditions.push(lte(contactsTable.createdAt, new Date(endDate)));
 
     // Fetch contacts and deals once for virtual "Regular Follow up" counting
     const allContacts = await db.select().from(contactsTable).where(and(...conditions));

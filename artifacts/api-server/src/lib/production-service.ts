@@ -1960,7 +1960,23 @@ export async function getManufacturingSummary(user: PermissionUser, unitFilter?:
         COALESCE(NULLIF(p.bottle_colour, ''), 'N/A') AS colour,
         COALESCE(NULLIF(p.bottle_colour_code, ''), '') AS colour_code,
         COALESCE(NULLIF(p.material_type, 'HDPE'), 'HDPE') AS material_type,
-        SUM(pii.quantity::numeric) AS qty
+        SUM(pii.quantity::numeric) AS qty,
+        INITCAP(TRIM(
+          regexp_replace(
+            regexp_replace(
+              regexp_replace(
+                LOWER(pii.product_name),
+                '\s*\d+(\.\d+)?\s*(ml|l|gm|g|kg|ltr|litre|liter|cm|mm)\s*$', '', 'i'
+              ),
+              '\s*(blue|red|green|white|yellow|black|orange|pink|grey|gray|transparent|natural|brown|purple|navy|maroon|beige|cream|silver|golden|off\s*white)\s*$', '', 'i'
+            ),
+            '\s*(hdpe|pp|pet|petg)\s*$', '', 'i'
+          )
+        )) AS product_family,
+        COALESCE(
+          (regexp_match(LOWER(pii.product_name), '(\d+(\.\d+)?)\s*(ml|l|gm|g|kg|ltr|litre|liter|cm|mm)'))[1]::numeric,
+          0
+        ) AS capacity_sort
       FROM active_orders ao
       JOIN proforma_invoices pi ON pi.id = ao.resolved_invoice_id
       JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
@@ -1970,6 +1986,7 @@ export async function getManufacturingSummary(user: PermissionUser, unitFilter?:
       GROUP BY ao.po_id, pii.product_name, pii.weight, p.bottle_colour, p.bottle_colour_code, p.material_type
     )
     SELECT
+      product_family AS "productFamily",
       product_name AS "productName",
       weight,
       colour,
@@ -1979,12 +1996,13 @@ export async function getManufacturingSummary(user: PermissionUser, unitFilter?:
       COUNT(DISTINCT po_id) AS "orderCount",
       array_agg(DISTINCT po_id) AS "orderIds"
     FROM order_quantities
-    GROUP BY product_name, weight, colour, colour_code, material_type
+    GROUP BY product_family, product_name, weight, colour, colour_code, material_type, capacity_sort
     HAVING SUM(qty) > 0
-    ORDER BY SUM(qty) DESC
+    ORDER BY product_family, capacity_sort, material_type, colour, weight
   `);
 
   const groups = (results.rows || []).map((r: any) => ({
+    productFamily: r.productFamily || r.productName,
     productName: r.productName,
     weight: r.weight,
     colour: r.colour,

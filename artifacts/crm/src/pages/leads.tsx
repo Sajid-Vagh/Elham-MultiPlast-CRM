@@ -55,13 +55,15 @@ export default function Leads() {
   const isAdmin = me?.role === "admin";
   const { units: activeUnits } = useActiveUnits();
 
-  // Fetch category counts (using same unit filter as the list for consistency)
+  // Fetch category counts (using same filters as the list for consistency)
   const { data: categoryCounts } = useQuery({
-    queryKey: ["category-counts", unitFilter],
+    queryKey: ["category-counts", unitFilter, dateFilter.startDate, dateFilter.endDate],
     queryFn: async () => {
       const token = localStorage.getItem("crm_token");
       const countParams = new URLSearchParams();
       if (unitFilter !== "All") countParams.set("unit", unitFilter);
+      if (dateFilter.startDate) countParams.set("startDate", dateFilter.startDate);
+      if (dateFilter.endDate) countParams.set("endDate", dateFilter.endDate);
       const qs = countParams.toString();
       const res = await fetch(`/api/categories/counts${qs ? `?${qs}` : ""}`, {
         headers: { Authorization: `Bearer ${token}` },

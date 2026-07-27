@@ -27,6 +27,7 @@ function formatWeight(w: string | null | undefined): string {
 }
 
 type SummaryGroup = {
+  productFamily: string;
   productName: string;
   weight: string;
   colour: string;
@@ -177,57 +178,80 @@ export function ManufacturingSummary({ unitFilter, originFilter }: Manufacturing
           {groups.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">No pending manufacturing orders.</div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {groups.map((g, idx) => {
-                const isPET = g.materialType === "PET";
-                const colors = MATERIAL_COLORS[g.materialType] || MATERIAL_COLORS["HDPE"];
-                return (
-                  <div
-                    key={idx}
-                    className="border rounded-lg p-4 bg-card hover:shadow-md hover:border-primary/50 cursor-pointer transition-all duration-200"
-                    onClick={() => setDrawerGroup(g)}
-                  >
-                    <div className="flex items-start justify-between">
-                      <p className="font-semibold text-sm leading-tight">{g.productName}</p>
-                      <Badge variant="outline" className={`text-[10px] ${colors.bg} ${colors.text} ${colors.border} border shrink-0 ml-2`}>
-                        {g.materialType}
-                      </Badge>
-                    </div>
+            <div className="space-y-5">
+              {(() => {
+                const familyMap = new Map<string, SummaryGroup[]>();
+                for (const g of groups) {
+                  const family = g.productFamily;
+                  if (!familyMap.has(family)) familyMap.set(family, []);
+                  familyMap.get(family)!.push(g);
+                }
+                return Array.from(familyMap.entries()).map(([family, items]) => {
+                  const familyTotal = items.reduce((s, i) => s + i.totalQuantity, 0);
+                  return (
+                    <div key={family}>
+                      <div className="flex items-center gap-2 mb-2.5 px-0.5">
+                        <h3 className="text-sm font-semibold text-foreground">{family}</h3>
+                        <span className="text-xs text-muted-foreground">
+                          {items.length} variant{items.length > 1 ? "s" : ""} · {familyTotal.toLocaleString()} PCS
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {items.map((g, idx) => {
+                          const isPET = g.materialType === "PET";
+                          const colors = MATERIAL_COLORS[g.materialType] || MATERIAL_COLORS["HDPE"];
+                          return (
+                            <div
+                              key={`${g.productName}-${g.weight}-${g.colour}-${idx}`}
+                              className="border rounded-lg p-4 bg-card hover:shadow-md hover:border-primary/50 cursor-pointer transition-all duration-200"
+                              onClick={() => setDrawerGroup(g)}
+                            >
+                              <div className="flex items-start justify-between">
+                                <p className="font-semibold text-sm leading-tight">{g.productName}</p>
+                                <Badge variant="outline" className={`text-[10px] ${colors.bg} ${colors.text} ${colors.border} border shrink-0 ml-2`}>
+                                  {g.materialType}
+                                </Badge>
+                              </div>
 
-                    {isPET ? (
-                      <div className="mt-1.5 flex items-center gap-1.5 text-xs text-amber-600 font-medium">
-                        <Truck className="h-3 w-3" />
-                        Outsourced Production
-                      </div>
-                    ) : (
-                      <>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Weight: <span className="font-semibold text-foreground">{formatWeight(g.weight)}</span>
-                        </p>
-                        <div className="flex items-center gap-1.5 mt-0.5 text-xs text-muted-foreground">
-                          Color:
-                          <span
-                            className="w-2.5 h-2.5 rounded-full border shrink-0"
-                            style={{ backgroundColor: g.colourCode || (g.colour !== "N/A" ? g.colour.toLowerCase() : "#d1d5db"), borderColor: g.colour === "White" ? "#d1d5db" : undefined }}
-                          />
-                          <span className="font-semibold text-foreground">{g.colour}</span>
-                        </div>
-                      </>
-                    )}
+                              {isPET ? (
+                                <div className="mt-1.5 flex items-center gap-1.5 text-xs text-amber-600 font-medium">
+                                  <Truck className="h-3 w-3" />
+                                  Outsourced Production
+                                </div>
+                              ) : (
+                                <>
+                                  <p className="text-xs text-muted-foreground mt-0.5">
+                                    Weight: <span className="font-semibold text-foreground">{formatWeight(g.weight)}</span>
+                                  </p>
+                                  <div className="flex items-center gap-1.5 mt-0.5 text-xs text-muted-foreground">
+                                    Color:
+                                    <span
+                                      className="w-2.5 h-2.5 rounded-full border shrink-0"
+                                      style={{ backgroundColor: g.colourCode || (g.colour !== "N/A" ? g.colour.toLowerCase() : "#d1d5db"), borderColor: g.colour === "White" ? "#d1d5db" : undefined }}
+                                    />
+                                    <span className="font-semibold text-foreground">{g.colour}</span>
+                                  </div>
+                                </>
+                              )}
 
-                    <div className="border-t mt-3 pt-2.5 flex items-center justify-between">
-                      <div>
-                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Total Pending</p>
-                        <p className="text-base font-bold">{g.totalQuantity.toLocaleString()} PCS</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Orders</p>
-                        <p className="text-base font-bold">{g.orderCount}</p>
+                              <div className="border-t mt-3 pt-2.5 flex items-center justify-between">
+                                <div>
+                                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Total Pending</p>
+                                  <p className="text-base font-bold">{g.totalQuantity.toLocaleString()} PCS</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Orders</p>
+                                  <p className="text-base font-bold">{g.orderCount}</p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
           )}
         </CardContent>
