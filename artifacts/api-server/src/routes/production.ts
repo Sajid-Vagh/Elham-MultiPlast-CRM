@@ -621,35 +621,31 @@ router.get("/production/sheet/stats", async (req, res) => {
     const { unit: unitFilter } = req.query as Record<string, string | undefined>;
 
     const conditions: any[] = [
-      sql`po.status NOT IN ('Completed', 'Cancelled')`,
+      sql`${productionOrdersTable.status} NOT IN ('Completed', 'Cancelled')`,
     ];
 
     if (unitFilter && unitFilter !== "All" && unitFilter !== "all") {
-      conditions.push(sql`po.production_unit = ${unitFilter}`);
+      conditions.push(eq(productionOrdersTable.productionUnit, unitFilter));
     } else if (user.role !== "admin") {
       const u = (user as any).unit || "All";
-      if (u !== "All") conditions.push(sql`po.production_unit = ${u}`);
+      if (u !== "All") conditions.push(eq(productionOrdersTable.productionUnit, u));
     }
 
-    const whereSql = conditions.length ? sql`WHERE ${sql.join(conditions, sql` AND `)}` : sql``;
-
-    const result = await db.execute(sql`
-      SELECT
-        COUNT(*)::int AS "totalPending",
-        COUNT(*) FILTER (WHERE po.needs_reprint = true)::int AS "needsReprint",
-        COUNT(*) FILTER (WHERE po.production_sheet_version = 0)::int AS "neverGenerated",
-        COUNT(*) FILTER (WHERE po.production_sheet_version > 0 AND po.needs_reprint = true)::int AS "outdated"
-      FROM production_orders po
-      ${whereSql}
-    `);
-
-    const stats = ((result as any).rows?.[0]) || {};
+    const [stats] = await db
+      .select({
+        totalPending: sql<number>`count(*)::int`,
+        needsReprint: sql<number>`count(*) filter (where ${productionOrdersTable.needsReprint} = true)::int`,
+        neverGenerated: sql<number>`count(*) filter (where ${productionOrdersTable.productionSheetVersion} = 0)::int`,
+        outdated: sql<number>`count(*) filter (where ${productionOrdersTable.productionSheetVersion} > 0 and ${productionOrdersTable.needsReprint} = true)::int`,
+      })
+      .from(productionOrdersTable)
+      .where(conditions.length ? and(...conditions) : undefined);
 
     res.json({
-      totalPending: stats.totalPending || 0,
-      needsReprint: stats.needsReprint || 0,
-      neverGenerated: stats.neverGenerated || 0,
-      outdated: stats.outdated || 0,
+      totalPending: stats?.totalPending || 0,
+      needsReprint: stats?.needsReprint || 0,
+      neverGenerated: stats?.neverGenerated || 0,
+      outdated: stats?.outdated || 0,
     });
   } catch (err) {
     console.error("Production sheet stats error:", err);
@@ -672,28 +668,26 @@ router.get("/production/sheet", async (req, res) => {
 
     // ── 1. Build base query conditions ──
     const conditions: any[] = [
-      sql`po.status NOT IN ('Completed', 'Cancelled')`,
+      sql`${productionOrdersTable.status} NOT IN ('Completed', 'Cancelled')`,
     ];
 
     if (unitFilter && unitFilter !== "All" && unitFilter !== "all") {
-      conditions.push(sql`po.production_unit = ${unitFilter}`);
+      conditions.push(eq(productionOrdersTable.productionUnit, unitFilter));
     } else if (user.role !== "admin") {
       const u = (user as any).unit || "All";
-      if (u !== "All") conditions.push(sql`po.production_unit = ${u}`);
+      if (u !== "All") conditions.push(eq(productionOrdersTable.productionUnit, u));
     }
 
     // ── 2. Apply mode filter ──
     if (mode === "new") {
-      // Only orders with productionSheetVersion = 0 (never downloaded)
-      conditions.push(sql`po.production_sheet_version = 0`);
+      conditions.push(eq(productionOrdersTable.productionSheetVersion, 0));
     } else if (mode === "pending") {
-      conditions.push(sql`po.status IN ('Pending')`);
+      conditions.push(eq(productionOrdersTable.status, "Pending"));
     } else if (mode === "selected" && orderIdsRaw) {
       const ids = orderIdsRaw.split(",").map(Number).filter(n => !isNaN(n));
       if (ids.length > 0) {
-        conditions.push(sql`po.id IN ${ids}`);
+        conditions.push(inArray(productionOrdersTable.id, ids));
       } else {
-        // No valid IDs — return empty
         const emptyWb = buildWorkbook([{
           name: "Production Sheet",
           headers: ["No orders selected"],
@@ -703,66 +697,63 @@ router.get("/production/sheet", async (req, res) => {
         return;
       }
     } else if (mode === "today") {
-      conditions.push(sql`DATE(po.created_at) = CURRENT_DATE`);
+      conditions.push(sql`DATE(${productionOrdersTable.createdAt}) = CURRENT_DATE`);
     } else if (mode === "week") {
-      conditions.push(sql`po.created_at >= CURRENT_DATE - INTERVAL '7 days'`);
+      conditions.push(sql`${productionOrdersTable.createdAt} >= CURRENT_DATE - INTERVAL '7 days'`);
     } else if (mode === "month") {
-      conditions.push(sql`po.created_at >= CURRENT_DATE - INTERVAL '30 days'`);
+      conditions.push(sql`${productionOrdersTable.createdAt} >= CURRENT_DATE - INTERVAL '30 days'`);
     } else if (mode === "reprint") {
-      conditions.push(sql`po.needs_reprint = true`);
+      conditions.push(eq(productionOrdersTable.needsReprint, true));
     } else if (mode === "date-range") {
-      if (dateFrom) conditions.push(sql`po.created_at >= ${dateFrom}::timestamptz`);
+      if (dateFrom) conditions.push(sql`${productionOrdersTable.createdAt} >= ${dateFrom}::timestamptz`);
       if (dateTo) {
-        conditions.push(sql`po.created_at <= (${dateTo}::timestamptz + INTERVAL '1 day')`);
+        conditions.push(sql`${productionOrdersTable.createdAt} <= (${dateTo}::timestamptz + INTERVAL '1 day')`);
       }
     }
     // mode = "all" → no extra conditions
 
-    const whereSql = conditions.length ? sql`WHERE ${sql.join(conditions, sql` AND `)}` : sql``;
-
     // ── 3. Fetch production orders with PI items, contacts, products ──
-    const results = await db.execute(sql`
-      SELECT
-        po.id AS "poId",
-        po.status AS "poStatus",
-        po.priority AS "priority",
-        po.production_unit AS "productionUnit",
-        po.production_remarks AS "productionRemarks",
-        po.planned_machine AS "plannedMachine",
-        po.created_at AS "createdAt",
-        po.needs_reprint AS "needsReprint",
-        po.production_sheet_version AS "sheetVersion",
-        pi.invoice_number AS "piNumber",
-        pi.created_at AS "piDate",
-        c.customer_code AS "customerCode",
-        c.company_name AS "companyName",
-        c.mobile AS "customerMobile",
-        c.city AS "customerCity",
-        c.special_instructions AS "specialInstructions",
-        pii.id AS "itemId",
-        pii.product_name AS "productName",
-        pii.hsn_code AS "hsnCode",
-        pii.bottle_type AS "bottleType",
-        pii.capacity AS "capacity",
-        pii.weight AS "weight",
-        pii.quantity AS "quantity",
-        pii.unit AS "unit",
-        p.product_code AS "productCode",
-        p.bottle_colour AS "bottleColour",
-        p.bottle_weight AS "bottleWeight",
-        p.cap_colour AS "capColour",
-        p.material_type AS "materialType",
-        p.machine_type AS "machineType"
-      FROM production_orders po
-      LEFT JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
-      LEFT JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
-      LEFT JOIN contacts c ON c.id = pi.contact_id
-      LEFT JOIN products p ON LOWER(p.name) = LOWER(pii.product_name)
-      ${whereSql}
-      ORDER BY po.id, pii.id
-    `);
+    const results = await db
+      .select({
+        poId: productionOrdersTable.id,
+        poStatus: productionOrdersTable.status,
+        priority: productionOrdersTable.priority,
+        productionUnit: productionOrdersTable.productionUnit,
+        productionRemarks: productionOrdersTable.productionRemarks,
+        plannedMachine: productionOrdersTable.plannedMachine,
+        createdAt: productionOrdersTable.createdAt,
+        needsReprint: productionOrdersTable.needsReprint,
+        sheetVersion: productionOrdersTable.productionSheetVersion,
+        piNumber: proformaInvoicesTable.invoiceNumber,
+        piDate: proformaInvoicesTable.createdAt,
+        customerCode: contactsTable.customerCode,
+        companyName: contactsTable.companyName,
+        customerMobile: contactsTable.mobile,
+        customerCity: contactsTable.city,
+        itemId: proformaInvoiceItemsTable.id,
+        productName: proformaInvoiceItemsTable.productName,
+        hsnCode: proformaInvoiceItemsTable.hsnCode,
+        bottleType: proformaInvoiceItemsTable.bottleType,
+        capacity: proformaInvoiceItemsTable.capacity,
+        weight: proformaInvoiceItemsTable.weight,
+        quantity: proformaInvoiceItemsTable.quantity,
+        unit: proformaInvoiceItemsTable.unit,
+        productCode: productsTable.productCode,
+        bottleColour: productsTable.bottleColour,
+        bottleWeight: productsTable.bottleWeight,
+        capColour: productsTable.capColour,
+        materialType: productsTable.materialType,
+        machineType: productsTable.machineType,
+      })
+      .from(productionOrdersTable)
+      .leftJoin(proformaInvoicesTable, eq(proformaInvoicesTable.id, productionOrdersTable.proformaInvoiceId))
+      .leftJoin(proformaInvoiceItemsTable, eq(proformaInvoiceItemsTable.invoiceId, proformaInvoicesTable.id))
+      .leftJoin(contactsTable, eq(contactsTable.id, proformaInvoicesTable.contactId))
+      .leftJoin(productsTable, sql`LOWER(${productsTable.name}) = LOWER(${proformaInvoiceItemsTable.productName})`)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(productionOrdersTable.id, proformaInvoiceItemsTable.id);
 
-    const rows: any[] = (results as any).rows || [];
+    const rows: any[] = results as any[];
 
     if (rows.length === 0) {
       const emptyWb = buildWorkbook([{
@@ -775,7 +766,7 @@ router.get("/production/sheet", async (req, res) => {
     }
 
     // ── 4. Determine next version for each order ──
-    const poIds = [...new Set(rows.map((r: any) => r.poId))];
+    const poIds = [...new Set(rows.map((r: any) => Number(r.poId)))];
 
     // ── 5. Build Excel rows: one row per product per order ──
     const sheetNumber = `PS-${new Date().getFullYear()}-${String(Math.floor(Date.now() / 1000) % 100000).padStart(5, "0")}`;
@@ -810,7 +801,7 @@ router.get("/production/sheet", async (req, res) => {
       const orderDate = first.createdAt ? new Date(first.createdAt).toLocaleDateString("en-IN") : "";
 
       for (const row of orderRows) {
-        if (!row.itemId) continue; // Skip orders with no PI items
+        if (!row.itemId) continue;
 
         dataRows.push([
           sheetNumber,
@@ -820,26 +811,23 @@ router.get("/production/sheet", async (req, res) => {
           orderDate,
           first.priority || "",
           first.productionUnit || "",
-          // Product Information
           row.productName || "",
           row.productCode || "",
           row.bottleColour || "",
           row.bottleWeight || "",
           row.capColour || "",
-          "",  // Cap Weight — not in DB, operator fills
-          "",  // Neck Size — not in DB, operator fills
+          "",
+          "",
           row.hsnCode || "",
           Number(row.quantity) || "",
           row.unit || "",
           row.machineType || row.plannedMachine || "",
           first.productionRemarks || "",
-          // Operator Section — all blank
           "", "", "", "", "", "", "", "", "",
-          // Special Instructions
-          row.specialInstructions || "",
+          "",
           row.bottleType || "",
           row.materialType || "",
-          "", "",  // Label/Packing requirement
+          "", "",
         ]);
       }
     }
