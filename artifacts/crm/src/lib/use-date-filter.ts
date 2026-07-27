@@ -77,7 +77,7 @@ function loadState(): DateFilterState {
       return { preset: parsed.preset, ...range };
     }
   } catch {}
-  return { preset: "this-month", ...computeRange("this-month") };
+  return { preset: "all", ...computeRange("all") };
 }
 
 export function useDateFilter(): [DateFilterState, (preset: string, customStart?: string | null, customEnd?: string | null) => void] {

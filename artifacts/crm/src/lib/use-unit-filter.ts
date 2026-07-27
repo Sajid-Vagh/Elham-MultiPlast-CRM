@@ -2,11 +2,11 @@ import { useState, useCallback, useEffect } from "react";
 import { useUserUnits } from "./use-user-units";
 
 const STORAGE_KEY = "crm_unit_filter";
-const DEFAULT_UNIT = "Himatnagar";
+const DEFAULT_UNIT = "All";
 
 /**
  * Global unit filter hook with localStorage persistence.
- * - Defaults to "Himatnagar" on fresh login.
+ * - Defaults to "All" on fresh login (no unit restriction).
  * - Remembers last selection across page navigations and sessions.
  * - Locked users (single-unit) always see their assigned unit.
  * - Normalized values: "Himatnagar" | "Surat" | "Rajkot" | "All"
