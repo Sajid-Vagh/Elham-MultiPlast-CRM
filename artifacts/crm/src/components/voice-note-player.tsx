@@ -121,9 +121,15 @@ export function VoiceNotePlayer({
 
   const hasValidSource = note.url && !sourceError && note.fileAvailable;
 
-  if (!note.fileAvailable && !hasValidSource) {
+  // Always render audio element (hidden) so onError listener can detect failures
+  const audioElement = note.url ? (
+    <audio ref={audioRef} src={note.url} preload="metadata" className="hidden" />
+  ) : null;
+
+  if (!hasValidSource) {
     return (
       <div className="border rounded-lg p-3 bg-muted/30 space-y-2">
+        {audioElement}
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
           <span>This voice note is unavailable.</span>
@@ -145,9 +151,7 @@ export function VoiceNotePlayer({
 
   return (
     <div className={`border rounded-lg p-3 bg-muted/30 space-y-2 ${compact ? "py-2" : ""}`}>
-      {hasValidSource && (
-        <audio ref={audioRef} src={note.url} preload="metadata" />
-      )}
+      {audioElement}
 
       <div className="flex items-center gap-2">
         <Button

@@ -184,13 +184,21 @@ export async function getVoiceNotes(
     )
     .orderBy(desc(voiceNotesTable.createdAt));
 
-  // Verify file existence for each note
+  // Verify file existence for each note (fail-open: assume exists on error)
   const result: VoiceNoteResponse[] = [];
   const store = getStorageProvider();
   for (const row of rows) {
-    const fileExists = await store.exists(row.storagePath);
+    let fileExists = true;
+    try {
+      fileExists = await store.exists(row.storagePath);
+    } catch {
+      // On error, assume file exists — let frontend audio handle actual failure
+      fileExists = true;
+    }
+
+    // Only permanently mark unavailable if check succeeded AND file is genuinely missing
+    // AND the note was previously known to be available (avoid marking new/unknown notes)
     if (!fileExists && row.fileAvailable) {
-      // Mark as unavailable in DB — silent update, don't block response
       await db.update(voiceNotesTable)
         .set({ fileAvailable: false })
         .where(eq(voiceNotesTable.id, row.id))

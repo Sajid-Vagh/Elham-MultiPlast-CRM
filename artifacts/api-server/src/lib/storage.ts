@@ -127,12 +127,14 @@ class SupabaseStorageProvider implements StorageProvider {
   }
 
   async exists(storagePath: string): Promise<boolean> {
-    const url = `${this.baseUrl}/storage/v1/object/info/${storagePath}`;
-    const res = await fetch(url, {
-      method: "HEAD",
-      headers: { Authorization: `Bearer ${this.apiKey}` },
-    });
-    return res.ok;
+    // Use public URL — no auth needed for public buckets, avoids 405 on HEAD /object/info/
+    try {
+      const publicUrl = `${this.baseUrl}/storage/v1/object/public/${storagePath}`;
+      const res = await fetch(publicUrl, { method: "GET", redirect: "follow" });
+      return res.ok;
+    } catch {
+      return false;
+    }
   }
 
   getUrl(storagePath: string): string {
