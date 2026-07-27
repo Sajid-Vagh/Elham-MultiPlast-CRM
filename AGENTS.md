@@ -549,3 +549,55 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `artifacts/api-server/src/routes/documents.ts`: download/preview use provider methods
 - `artifacts/api-server/src/routes/dispatch.ts`: builty URL uses `storage.getUrl()`
 - `.env`, `artifacts/api-server/.env`, `artifacts/crm/.env`: `SUPABASE_URL` + `SUPABASE_KEY`
+
+---
+
+# Production Daily Excel Sheet Management System
+
+## Goal
+- Production manager generates a daily Excel sheet from all production orders (or filtered subset), with one product per row.
+- Automatic flag when PI items are modified after sheet generation, requiring a reprint.
+- Dashboard widget showing orders needing updated sheets.
+
+## Constraints & Preferences
+- Excel generated server-side using ExcelJS via existing `buildWorkbook` + `sendWorkbook` from `lib/exporter.ts`.
+- One product = one row (flatten PI items into rows).
+- Blank operator section for production manager to fill manually.
+- No data modifications — just marking rows with status.
+- Download flow similar to existing export pattern: dropdown menu, blob download.
+- `needsReprint` auto-set when PI items are modified via `handlePiModification`.
+- Reprint flag cleared on each fresh download.
+
+## Progress
+### Done
+- **DB Migration 056** (`056_add_production_sheet_tracking.sql`): Adds `production_sheet_generated_at`, `production_sheet_generated_by`, `production_sheet_version`, `needs_reprint` columns to `production_orders` table with indexes.
+- **Schema** (`production_orders.ts`): Added 4 new columns — `productionSheetGeneratedAt`, `productionSheetGeneratedBy`, `productionSheetVersion` (int, default 0), `needsReprint` (boolean, default false).
+- **Backend `GET /production/sheet`** endpoint in `production.ts`: Generates Excel with filter modes (all/pending/today/week/month/reprint/selected/date-range/new). One product = one row with order info + product info + blank operator section. Updates tracking fields after download.
+- **Backend `GET /production/sheet/stats`** endpoint: Returns counts for dashboard widget (totalPending, needsReprint, neverGenerated, outdated).
+- **Backend `POST /production/orders/:id/mark-reprint`** endpoint: Toggles `needsReprint` flag on an order.
+- **Auto-set `needsReprint`**: Modified `handlePiModification` in `production-service.ts` to set `needsReprint: true` when PI is modified for orders with `productionSheetVersion > 0` (Pending), `true` for in-production orders, and `true` for Ready To Dispatch orders.
+- **Frontend `production-orders.tsx`**: Added "Production Sheet" dropdown with 7 download options (All Pending, Pre-Production, Created Today, This Week, This Month, Updated/Reprint, Current Filter). Added `needsReprint` badge on each order row. Added sheet stats summary in header.
+- **Frontend `production-dashboard.tsx`**: Added "Updated Production Sheet Required" widget card with amber styling, showing needsReprint + neverGenerated counts, with "Reprint Updated" and "Full Sheet" download buttons.
+- **Build verified**: CRM clean (0 errors), API server pre-existing Drizzle errors only (zero new errors).
+
+### In Progress
+- (none)
+
+### Blocked
+- (none)
+
+## Key Decisions
+- `needsReprint` auto-set in `handlePiModification` covers all 3 PI modification paths (Pending auto-sync, in-production approval-required, Ready To Dispatch review).
+- Filter mode `reprint` queries orders where `needsReprint = true OR productionSheetVersion = 0` (never generated).
+- Excel uses `buildWorkbook`/`sendWorkbook` from existing `lib/exporter.ts` for consistency.
+- After download, all orders in the result set get `needsReprint = false` and `productionSheetVersion` incremented.
+- Dashboard widget only shows when there are orders needing attention (needsReprint > 0 or neverGenerated > 0).
+
+## Relevant Files
+- `lib/db/migrations/056_add_production_sheet_tracking.sql`: Migration for production sheet tracking columns
+- `lib/db/src/schema/production_orders.ts`: Updated with `productionSheetGeneratedAt`, `productionSheetGeneratedBy`, `productionSheetVersion`, `needsReprint`
+- `artifacts/api-server/src/routes/production.ts`: New endpoints — `GET /production/sheet`, `GET /production/sheet/stats`, `POST /production/orders/:id/mark-reprint`
+- `artifacts/api-server/src/lib/production-service.ts`: `handlePiModification` — auto-sets `needsReprint` on PI modification
+- `artifacts/api-server/src/lib/exporter.ts`: `buildWorkbook`, `sendWorkbook` — Excel generation utilities
+- `artifacts/crm/src/pages/production-orders.tsx`: Production Sheet dropdown + needsReprint badge
+- `artifacts/crm/src/pages/production-dashboard.tsx`: Updated Production Sheet Required widget
