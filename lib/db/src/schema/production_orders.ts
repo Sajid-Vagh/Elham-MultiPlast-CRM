@@ -120,6 +120,11 @@ export const productionOrdersTable = pgTable("production_orders", {
   deliveryDate: text("delivery_date"),
   deliveredById: integer("delivered_by_id").references(() => usersTable.id, { onDelete: "set null" }),
   deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+  // Production sheet tracking
+  productionSheetGeneratedAt: timestamp("production_sheet_generated_at", { withTimezone: true }),
+  productionSheetGeneratedBy: integer("production_sheet_generated_by").references(() => usersTable.id, { onDelete: "set null" }),
+  productionSheetVersion: integer("production_sheet_version").notNull().default(0),
+  needsReprint: boolean("needs_reprint").notNull().default(false),
 });
 
 export const productionTimelineTable = pgTable("production_timeline", {

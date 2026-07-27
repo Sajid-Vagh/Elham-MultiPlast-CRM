@@ -8,10 +8,12 @@ import { useUnitFilter } from "@/lib/use-unit-filter";
 import { useDateFilter } from "@/lib/use-date-filter";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Clock, AlertTriangle, Truck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Calendar, Clock, AlertTriangle, Truck, FileSpreadsheet, Download, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { ManufacturingSummary } from "@/components/manufacturing-summary";
+import { useToast } from "@/hooks/use-toast";
 
 const KPI_CONFIG = [
   { key: "pendingCount", label: "Pending", color: "bg-gray-100 text-gray-700 border-gray-300", hoverStatus: "Pending", icon: Clock },
@@ -34,6 +36,8 @@ export default function ProductionDashboard() {
   const [selectedUnit, setSelectedUnit] = useUnitFilter();
   const [dateFilter, setDateFilter] = useDateFilter();
   const [originFilter, setOriginFilter] = useState("all");
+  const { toast } = useToast();
+  const [sheetDownloading, setSheetDownloading] = useState(false);
 
   const { data: dashboard, isLoading } = useQuery({
     queryKey: ["production-dashboard", selectedUnit, originFilter, dateFilter.preset],
@@ -48,6 +52,47 @@ export default function ProductionDashboard() {
     enabled: !!user,
     refetchInterval: 30_000,
   });
+
+  const { data: sheetStats } = useQuery({
+    queryKey: ["production-sheet-stats", selectedUnit, originFilter],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (selectedUnit && selectedUnit !== "All") params.set("unit", selectedUnit);
+      if (originFilter !== "all") params.set("origin", originFilter);
+      return customFetch<any>(`/production/sheet/stats?${params.toString()}`);
+    },
+    enabled: !!user,
+  });
+
+  const downloadSheet = async (mode: string) => {
+    setSheetDownloading(true);
+    try {
+      const token = localStorage.getItem("crm_token");
+      const p = new URLSearchParams({ mode });
+      if (selectedUnit && selectedUnit !== "All") p.set("unit", selectedUnit);
+      if (originFilter !== "all") p.set("origin", originFilter);
+
+      const res = await fetch(`/api/production/sheet?${p.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Download failed");
+
+      const blob = await res.blob();
+      const date = new Date().toISOString().split("T")[0];
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `production-sheet-${mode}-${date}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+      toast({ title: "Download complete", description: `Production sheet (${mode}) downloaded.` });
+    } catch (err: any) {
+      toast({ title: "Download failed", description: err.message, variant: "destructive" });
+    } finally {
+      setSheetDownloading(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -101,6 +146,51 @@ export default function ProductionDashboard() {
           );
         })}
       </div>
+
+      {/* Production Sheet Required Widget */}
+      {sheetStats && (sheetStats.needsReprint > 0 || sheetStats.neverGenerated > 0) && (
+        <Card className="border-amber-200 bg-amber-50/50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-amber-100 flex items-center justify-center">
+                  <FileSpreadsheet className="h-5 w-5 text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">Updated Production Sheet Required</p>
+                  <p className="text-xs text-amber-600">
+                    {sheetStats.needsReprint > 0 && `${sheetStats.needsReprint} order${sheetStats.needsReprint !== 1 ? "s" : ""} updated since last sheet`}
+                    {sheetStats.needsReprint > 0 && sheetStats.neverGenerated > 0 && " · "}
+                    {sheetStats.neverGenerated > 0 && `${sheetStats.neverGenerated} never generated`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-amber-300 text-amber-700 hover:bg-amber-100"
+                  disabled={sheetDownloading}
+                  onClick={() => downloadSheet("reprint")}
+                >
+                  {sheetDownloading ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Download className="h-3.5 w-3.5 mr-1" />}
+                  Reprint Updated
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-amber-300 text-amber-700 hover:bg-amber-100"
+                  disabled={sheetDownloading}
+                  onClick={() => downloadSheet("all")}
+                >
+                  {sheetDownloading ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5 mr-1" />}
+                  Full Sheet
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Manufacturing Summary — excludes Ready To Dispatch, Completed, Cancelled */}
       <ManufacturingSummary unitFilter={String(selectedUnit)} originFilter={originFilter} />

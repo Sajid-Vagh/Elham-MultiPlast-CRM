@@ -3,13 +3,15 @@ import multer from "multer";
 import path from "node:path";
 import {
   db, productionOrdersTable, productionMessagesTable,
-  proformaInvoicesTable, contactsTable, usersTable,
+  proformaInvoicesTable, proformaInvoiceItemsTable,
+  contactsTable, usersTable, productsTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { storage } from "../lib/storage";
 import { canAccessProduction, type PermissionUser } from "../lib/permission-service";
+import { buildWorkbook, sendWorkbook, type SheetDef, todayStr, safeStr } from "../lib/exporter";
 import {
   enrichProductionOrder, acceptOrder, updatePlanning, startProduction,
   completePacking, markReadyForDispatch, bookTransport, completeOrder,
@@ -603,6 +605,290 @@ router.post("/production/orders/:id/deliver", async (req, res) => {
     res.json(result.order);
   } catch (err) {
     console.error("Mark delivered error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ═══════════════════════════════════════════════════
+// PRODUCTION SHEET — Download Excel for operators
+// ═══════════════════════════════════════════════════
+
+// ── GET /production/sheet/stats — Dashboard widget ──
+router.get("/production/sheet/stats", async (req, res) => {
+  try {
+    const user = await requireProductionUser(req, res);
+    if (!user) return;
+    const { unit: unitFilter } = req.query as Record<string, string | undefined>;
+
+    const conditions: any[] = [
+      sql`po.status NOT IN ('Completed', 'Cancelled')`,
+    ];
+
+    if (unitFilter && unitFilter !== "All" && unitFilter !== "all") {
+      conditions.push(sql`po.production_unit = ${unitFilter}`);
+    } else if (user.role !== "admin") {
+      const u = (user as any).unit || "All";
+      if (u !== "All") conditions.push(sql`po.production_unit = ${u}`);
+    }
+
+    const whereSql = conditions.length ? sql`WHERE ${sql.join(conditions, sql` AND `)}` : sql``;
+
+    const [stats] = await db.execute(sql`
+      SELECT
+        COUNT(*)::int AS "totalPending",
+        COUNT(*) FILTER (WHERE po.needs_reprint = true)::int AS "needsReprint",
+        COUNT(*) FILTER (WHERE po.production_sheet_version = 0)::int AS "neverGenerated",
+        COUNT(*) FILTER (WHERE po.production_sheet_version > 0 AND po.needs_reprint = true)::int AS "outdated"
+      FROM production_orders po
+      ${whereSql}
+    `);
+
+    res.json({
+      totalPending: stats?.totalPending || 0,
+      needsReprint: stats?.needsReprint || 0,
+      neverGenerated: stats?.neverGenerated || 0,
+      outdated: stats?.outdated || 0,
+    });
+  } catch (err) {
+    console.error("Production sheet stats error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── GET /production/sheet — Download Excel production sheet ──
+// Modes: new (default), pending, selected, today, week, month, reprint, date-range, all
+router.get("/production/sheet", async (req, res) => {
+  try {
+    const user = await requireProductionUser(req, res);
+    if (!user) return;
+
+    const mode = (req.query.mode as string) || "new";
+    const orderIdsRaw = (req.query.orderIds as string) || "";
+    const dateFrom = (req.query.dateFrom as string) || undefined;
+    const dateTo = (req.query.dateTo as string) || undefined;
+    const unitFilter = (req.query.unit as string) || undefined;
+
+    // ── 1. Build base query conditions ──
+    const conditions: any[] = [
+      sql`po.status NOT IN ('Completed', 'Cancelled')`,
+    ];
+
+    if (unitFilter && unitFilter !== "All" && unitFilter !== "all") {
+      conditions.push(sql`po.production_unit = ${unitFilter}`);
+    } else if (user.role !== "admin") {
+      const u = (user as any).unit || "All";
+      if (u !== "All") conditions.push(sql`po.production_unit = ${u}`);
+    }
+
+    // ── 2. Apply mode filter ──
+    if (mode === "new") {
+      // Only orders with productionSheetVersion = 0 (never downloaded)
+      conditions.push(sql`po.production_sheet_version = 0`);
+    } else if (mode === "pending") {
+      conditions.push(sql`po.status IN ('Pending')`);
+    } else if (mode === "selected" && orderIdsRaw) {
+      const ids = orderIdsRaw.split(",").map(Number).filter(n => !isNaN(n));
+      if (ids.length > 0) {
+        conditions.push(sql`po.id IN ${ids}`);
+      } else {
+        // No valid IDs — return empty
+        const emptyWb = buildWorkbook([{
+          name: "Production Sheet",
+          headers: ["No orders selected"],
+          rows: [[""]],
+        }], `Production Sheet — ${todayStr()}`);
+        await sendWorkbook(res, emptyWb, `production-sheet-${todayStr()}`);
+        return;
+      }
+    } else if (mode === "today") {
+      conditions.push(sql`DATE(po.created_at) = CURRENT_DATE`);
+    } else if (mode === "week") {
+      conditions.push(sql`po.created_at >= CURRENT_DATE - INTERVAL '7 days'`);
+    } else if (mode === "month") {
+      conditions.push(sql`po.created_at >= CURRENT_DATE - INTERVAL '30 days'`);
+    } else if (mode === "reprint") {
+      conditions.push(sql`po.needs_reprint = true`);
+    } else if (mode === "date-range") {
+      if (dateFrom) conditions.push(sql`po.created_at >= ${dateFrom}::timestamptz`);
+      if (dateTo) {
+        conditions.push(sql`po.created_at <= (${dateTo}::timestamptz + INTERVAL '1 day')`);
+      }
+    }
+    // mode = "all" → no extra conditions
+
+    const whereSql = conditions.length ? sql`WHERE ${sql.join(conditions, sql` AND `)}` : sql``;
+
+    // ── 3. Fetch production orders with PI items, contacts, products ──
+    const results = await db.execute(sql`
+      SELECT
+        po.id AS "poId",
+        po.status AS "poStatus",
+        po.priority AS "priority",
+        po.production_unit AS "productionUnit",
+        po.production_remarks AS "productionRemarks",
+        po.planned_machine AS "plannedMachine",
+        po.created_at AS "createdAt",
+        po.needs_reprint AS "needsReprint",
+        po.production_sheet_version AS "sheetVersion",
+        pi.invoice_number AS "piNumber",
+        pi.created_at AS "piDate",
+        c.customer_code AS "customerCode",
+        c.company_name AS "companyName",
+        c.mobile AS "customerMobile",
+        c.city AS "customerCity",
+        c.special_instructions AS "specialInstructions",
+        pii.id AS "itemId",
+        pii.product_name AS "productName",
+        pii.hsn_code AS "hsnCode",
+        pii.bottle_type AS "bottleType",
+        pii.capacity AS "capacity",
+        pii.weight AS "weight",
+        pii.quantity AS "quantity",
+        pii.unit AS "unit",
+        p.product_code AS "productCode",
+        p.bottle_colour AS "bottleColour",
+        p.bottle_weight AS "bottleWeight",
+        p.cap_colour AS "capColour",
+        p.material_type AS "materialType",
+        p.machine_type AS "machineType"
+      FROM production_orders po
+      LEFT JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
+      LEFT JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
+      LEFT JOIN contacts c ON c.id = pi.contact_id
+      LEFT JOIN products p ON LOWER(p.name) = LOWER(pii.product_name)
+      ${whereSql}
+      ORDER BY po.id, pii.id
+    `);
+
+    if (!results.rows || results.rows.length === 0) {
+      const emptyWb = buildWorkbook([{
+        name: "Production Sheet",
+        headers: ["Info"],
+        rows: [["No orders found for the selected filter"]],
+      }], `Production Sheet — ${todayStr()}`);
+      await sendWorkbook(res, emptyWb, `production-sheet-${todayStr()}`);
+      return;
+    }
+
+    // ── 4. Determine next version for each order ──
+    const poIds = [...new Set(results.rows.map((r: any) => r.poId))];
+
+    // ── 5. Build Excel rows: one row per product per order ──
+    const sheetNumber = `PS-${new Date().getFullYear()}-${String(Math.floor(Date.now() / 1000) % 100000).padStart(5, "0")}`;
+
+    const headers = [
+      // Order Information
+      "Sheet #", "Order #", "PI #", "Customer Code", "Order Date", "Priority", "Unit",
+      // Product Information
+      "Product Name", "Product Code", "Bottle Color", "Bottle Weight (gm)",
+      "Cap Color", "Cap Weight (gm)", "Neck Size", "HSN Code",
+      "Qty", "Unit", "Manufacturing Machine", "Product Remarks",
+      // Operator Section (blank)
+      "Production Qty", "Reject Qty", "Balance Qty", "Operator Name",
+      "Start Time", "End Time", "QC Checked", "Packing Completed", "Operator Remarks",
+      // Special Instructions
+      "Special Instructions", "Bottle Finish", "Material Type",
+      "Label Requirement", "Packing Requirement",
+    ];
+
+    const dataRows: any[][] = [];
+
+    // Group by PO
+    const grouped = new Map<number, any[]>();
+    for (const row of results.rows) {
+      const poId = row.poId;
+      if (!grouped.has(poId)) grouped.set(poId, []);
+      grouped.get(poId)!.push(row);
+    }
+
+    for (const [poId, rows] of grouped) {
+      const first = rows[0];
+      const version = (first.sheetVersion || 0) + 1;
+      const orderDate = first.createdAt ? new Date(first.createdAt).toLocaleDateString("en-IN") : "";
+
+      for (const row of rows) {
+        if (!row.itemId) continue; // Skip orders with no PI items
+
+        dataRows.push([
+          sheetNumber,
+          `PO-${poId}`,
+          first.piNumber || `PI-${first.poId}`,
+          row.customerCode || "",
+          orderDate,
+          first.priority || "",
+          first.productionUnit || "",
+          // Product Information
+          row.productName || "",
+          row.productCode || "",
+          row.bottleColour || "",
+          row.bottleWeight || "",
+          row.capColour || "",
+          "",  // Cap Weight — not in DB, operator fills
+          "",  // Neck Size — not in DB, operator fills
+          row.hsnCode || "",
+          Number(row.quantity) || "",
+          row.unit || "",
+          row.machineType || row.plannedMachine || "",
+          first.productionRemarks || "",
+          // Operator Section — all blank
+          "", "", "", "", "", "", "", "", "",
+          // Special Instructions
+          row.specialInstructions || "",
+          row.bottleType || "",
+          row.materialType || "",
+          "", "",  // Label/Packing requirement
+        ]);
+      }
+    }
+
+    const wb = buildWorkbook([{
+      name: "Production Sheet",
+      headers,
+      rows: dataRows,
+    }], `Production Sheet — ${sheetNumber} — ${todayStr()}`);
+
+    // ── 6. Update tracking fields for all included orders ──
+    const now = new Date();
+    for (const poId of poIds) {
+      const row = results.rows.find((r: any) => r.poId === poId);
+      const newVersion = (row?.sheetVersion || 0) + 1;
+      await db.update(productionOrdersTable).set({
+        productionSheetGeneratedAt: now,
+        productionSheetGeneratedBy: user.id,
+        productionSheetVersion: newVersion,
+        needsReprint: false,
+        updatedAt: now,
+      }).where(eq(productionOrdersTable.id, poId));
+    }
+
+    const filename = `production-sheet-${todayStr()}`;
+    await sendWorkbook(res, wb, filename);
+  } catch (err) {
+    console.error("Production sheet error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── POST /production/orders/:id/mark-reprint — Toggle needsReprint ──
+router.post("/production/orders/:id/mark-reprint", async (req, res) => {
+  try {
+    const user = await requireProductionUser(req, res);
+    if (!user) return;
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid order id" }); return; }
+
+    const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, id));
+    if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+
+    const { needsReprint } = req.body;
+    await db.update(productionOrdersTable).set({
+      needsReprint: needsReprint ?? true,
+      updatedAt: new Date(),
+    }).where(eq(productionOrdersTable.id, id));
+
+    res.json({ success: true, needsReprint: needsReprint ?? true });
+  } catch (err) {
+    console.error("Mark reprint error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

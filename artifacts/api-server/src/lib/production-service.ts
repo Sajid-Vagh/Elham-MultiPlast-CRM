@@ -1118,6 +1118,7 @@ export async function handlePiModification(
   if (preProductionStatuses.includes(order.status)) {
     await db.update(productionOrdersTable).set({
       piVersionAtCreation: newPiVersion, updatedAt: new Date(), updatedBy: user.id,
+      needsReprint: order.productionSheetVersion > 0,
     }).where(eq(productionOrdersTable.id, productionOrderId));
     await addTimelineEntry(db, productionOrderId, order.status, `PI updated to Version ${newPiVersion}. Auto-synced.`, user.id);
     await logProductionActivity(db, {
@@ -1130,6 +1131,7 @@ export async function handlePiModification(
   if (inProductionStatuses.includes(order.status)) {
     await db.update(productionOrdersTable).set({
       piVersionAtCreation: newPiVersion, updatedAt: new Date(), updatedBy: user.id,
+      needsReprint: true,
     }).where(eq(productionOrdersTable.id, productionOrderId));
     await addTimelineEntry(db, productionOrderId, order.status, `PI modified to Version ${newPiVersion}. Awaiting production approval.`, user.id);
     await logProductionActivity(db, {
@@ -1155,6 +1157,9 @@ export async function handlePiModification(
   }
 
   if (order.status === "Ready To Dispatch") {
+    await db.update(productionOrdersTable).set({
+      needsReprint: true,
+    }).where(eq(productionOrdersTable.id, productionOrderId));
     await addTimelineEntry(db, productionOrderId, order.status, `PI modified to Version ${newPiVersion}. Dispatch stage — review required.`, user.id);
     await notifyProductionUsers({
       productionUnit: order.productionUnit || "Himatnagar",

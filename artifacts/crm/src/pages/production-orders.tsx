@@ -11,9 +11,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Search, ArrowLeft, ArrowRight } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Search, ArrowLeft, ArrowRight, Download, FileSpreadsheet, AlertTriangle, Clock, CalendarDays } from "lucide-react";
 import { useUserUnits } from "@/lib/use-user-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
+import { useToast } from "@/hooks/use-toast";
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
@@ -53,6 +57,7 @@ export default function ProductionOrders() {
   const params = new URLSearchParams(window.location.search);
   const { units: userUnits, userUnit, locked } = useUserUnits();
   const [selectedUnit, setSelectedUnit] = useUnitFilter();
+  const { toast } = useToast();
 
   const [status, setStatus] = useState(params.get("status") || "all");
   const [dispatchStatus, setDispatchStatus] = useState(params.get("dispatchStatus") || "all");
@@ -60,6 +65,7 @@ export default function ProductionOrders() {
   const [origin, setOrigin] = useState("all");
   const [search, setSearch] = useState(params.get("search") || "");
   const [page, setPage] = useState(Number(params.get("page")) || 1);
+  const [sheetDownloading, setSheetDownloading] = useState(false);
 
   const buildUrl = () => {
     const p: Record<string, string> = {};
@@ -80,6 +86,44 @@ export default function ProductionOrders() {
     enabled: !!user,
   });
 
+  const { data: sheetStats } = useQuery({
+    queryKey: ["production-sheet-stats"],
+    queryFn: () => customFetch<any>("/production/sheet/stats"),
+    enabled: !!user,
+  });
+
+  const downloadSheet = async (mode: string, extraParams?: Record<string, string>) => {
+    setSheetDownloading(true);
+    try {
+      const token = localStorage.getItem("crm_token");
+      const p = new URLSearchParams({ mode });
+      if (status !== "all") p.set("status", status);
+      if (origin !== "all") p.set("origin", origin);
+      if (selectedUnit && selectedUnit !== "All") p.set("unit", selectedUnit);
+      if (extraParams) Object.entries(extraParams).forEach(([k, v]) => { if (v) p.set(k, v); });
+
+      const res = await fetch(`/api/production/sheet?${p.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Download failed");
+
+      const blob = await res.blob();
+      const date = new Date().toISOString().split("T")[0];
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `production-sheet-${mode}-${date}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+      toast({ title: "Download complete", description: `Production sheet (${mode}) downloaded.` });
+    } catch (err: any) {
+      toast({ title: "Download failed", description: err.message, variant: "destructive" });
+    } finally {
+      setSheetDownloading(false);
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -87,9 +131,49 @@ export default function ProductionOrders() {
           <h1 className="text-2xl font-bold tracking-tight">Production Orders</h1>
           <p className="text-sm text-muted-foreground mt-1">Manage and track all production orders</p>
         </div>
-        <Button variant="outline" onClick={() => setLocation("/production/dashboard")}>
-          <ArrowLeft className="h-4 w-4 mr-1" /> Dashboard
-        </Button>
+        <div className="flex items-center gap-2">
+          {sheetStats && (sheetStats.needsReprint > 0 || sheetStats.neverGenerated > 0) && (
+            <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
+              <AlertTriangle className="h-3 w-3 mr-1" />
+              {sheetStats.needsReprint > 0 && `${sheetStats.needsReprint} need reprint`}
+              {sheetStats.needsReprint > 0 && sheetStats.neverGenerated > 0 && " · "}
+              {sheetStats.neverGenerated > 0 && `${sheetStats.neverGenerated} never generated`}
+            </Badge>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" disabled={sheetDownloading}>
+                <Download className="h-4 w-4 mr-2" /> Production Sheet
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={() => downloadSheet("all")}>
+                <FileSpreadsheet className="h-4 w-4 mr-2" /> All Pending Orders
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => downloadSheet("pending")}>
+                <Clock className="h-4 w-4 mr-2" /> Pre-Production Only
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => downloadSheet("today")}>
+                <CalendarDays className="h-4 w-4 mr-2" /> Created Today
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => downloadSheet("week")}>
+                <CalendarDays className="h-4 w-4 mr-2" /> This Week
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => downloadSheet("month")}>
+                <CalendarDays className="h-4 w-4 mr-2" /> This Month
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => downloadSheet("reprint")}>
+                <AlertTriangle className="h-4 w-4 mr-2" /> Updated Orders (Reprint)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => downloadSheet("selected", { status })}>
+                <FileSpreadsheet className="h-4 w-4 mr-2" /> Current Filter ({status === "all" ? "All" : status})
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button variant="outline" onClick={() => setLocation("/production/dashboard")}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> Dashboard
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -215,9 +299,16 @@ export default function ProductionOrders() {
                         </Badge>
                       </td>
                       <td className="py-3 px-4">
-                        <Badge variant="outline" className={`text-xs ${STATUS_COLORS[order.status] || "bg-gray-100"} border`}>
-                          {order.status}
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="outline" className={`text-xs ${STATUS_COLORS[order.status] || "bg-gray-100"} border`}>
+                            {order.status}
+                          </Badge>
+                          {order.needsReprint && (
+                            <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-600 border-amber-200 whitespace-nowrap">
+                              <AlertTriangle className="h-2.5 w-2.5 mr-0.5" /> Reprint
+                            </Badge>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 px-4">
                         {order.dispatchStatus ? (
