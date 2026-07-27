@@ -655,6 +655,7 @@ router.get("/production/sheet/stats", async (req, res) => {
 
 // ── GET /production/sheet — Download Excel production sheet ──
 // Modes: new (default), pending, selected, today, week, month, reprint, date-range, all
+// Reuses listOrders filtering to guarantee UI ↔ export parity
 router.get("/production/sheet", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
@@ -666,28 +667,19 @@ router.get("/production/sheet", async (req, res) => {
     const dateTo = (req.query.dateTo as string) || undefined;
     const unitFilter = (req.query.unit as string) || undefined;
 
-    // ── 1. Build base query conditions ──
-    const conditions: any[] = [
-      sql`${productionOrdersTable.status} NOT IN ('Completed', 'Cancelled')`,
-    ];
+    // ── 1. Use listOrders to get matching order IDs (same logic as Production Orders page) ──
+    let listStatusFilter: string | undefined;
+    let effectiveDateFrom = dateFrom;
+    let effectiveDateTo = dateTo;
+    let explicitOrderIds: number[] | undefined;
 
-    if (unitFilter && unitFilter !== "All" && unitFilter !== "all") {
-      conditions.push(eq(productionOrdersTable.productionUnit, unitFilter));
-    } else if (user.role !== "admin") {
-      const u = (user as any).unit || "All";
-      if (u !== "All") conditions.push(eq(productionOrdersTable.productionUnit, u));
-    }
-
-    // ── 2. Apply mode filter ──
     if (mode === "new") {
-      conditions.push(eq(productionOrdersTable.productionSheetVersion, 0));
+      listStatusFilter = "all";
     } else if (mode === "pending") {
-      conditions.push(eq(productionOrdersTable.status, "Pending"));
+      listStatusFilter = "Pending";
     } else if (mode === "selected" && orderIdsRaw) {
-      const ids = orderIdsRaw.split(",").map(Number).filter(n => !isNaN(n));
-      if (ids.length > 0) {
-        conditions.push(inArray(productionOrdersTable.id, ids));
-      } else {
+      explicitOrderIds = orderIdsRaw.split(",").map(Number).filter(n => !isNaN(n));
+      if (explicitOrderIds.length === 0) {
         const emptyWb = buildWorkbook([{
           name: "Production Sheet",
           headers: ["No orders selected"],
@@ -697,22 +689,72 @@ router.get("/production/sheet", async (req, res) => {
         return;
       }
     } else if (mode === "today") {
-      conditions.push(sql`DATE(${productionOrdersTable.createdAt}) = CURRENT_DATE`);
+      const today = new Date().toISOString().split("T")[0];
+      effectiveDateFrom = today;
+      effectiveDateTo = today;
     } else if (mode === "week") {
-      conditions.push(sql`${productionOrdersTable.createdAt} >= CURRENT_DATE - INTERVAL '7 days'`);
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      effectiveDateFrom = d.toISOString().split("T")[0];
+      effectiveDateTo = new Date().toISOString().split("T")[0];
     } else if (mode === "month") {
-      conditions.push(sql`${productionOrdersTable.createdAt} >= CURRENT_DATE - INTERVAL '30 days'`);
-    } else if (mode === "reprint") {
-      conditions.push(eq(productionOrdersTable.needsReprint, true));
-    } else if (mode === "date-range") {
-      if (dateFrom) conditions.push(sql`${productionOrdersTable.createdAt} >= ${dateFrom}::timestamptz`);
-      if (dateTo) {
-        conditions.push(sql`${productionOrdersTable.createdAt} <= (${dateTo}::timestamptz + INTERVAL '1 day')`);
+      const d = new Date();
+      d.setDate(d.getDate() - 30);
+      effectiveDateFrom = d.toISOString().split("T")[0];
+      effectiveDateTo = new Date().toISOString().split("T")[0];
+    }
+    // mode = "all" / "reprint" / "date-range" → listStatusFilter stays undefined, dates as-is
+
+    let matchedOrderIds: number[];
+
+    if (explicitOrderIds) {
+      matchedOrderIds = explicitOrderIds;
+    } else {
+      const listResult = await listOrders(user, {
+        status: listStatusFilter || "all",
+        unit: unitFilter || "all",
+        dateFrom: effectiveDateFrom,
+        dateTo: effectiveDateTo,
+        limit: "10000",
+      });
+      matchedOrderIds = listResult.data.map((o: any) => o.id);
+
+      // For "reprint" mode, filter client-side since listOrders doesn't support needsReprint
+      if (mode === "reprint") {
+        const allOrders = await db.select({
+          id: productionOrdersTable.id,
+          needsReprint: productionOrdersTable.needsReprint,
+        }).from(productionOrdersTable)
+          .where(inArray(productionOrdersTable.id, matchedOrderIds));
+        matchedOrderIds = allOrders
+          .filter(o => o.needsReprint)
+          .map(o => o.id);
+      }
+
+      // For "new" mode, filter for orders with no sheet generated yet
+      if (mode === "new") {
+        const allOrders = await db.select({
+          id: productionOrdersTable.id,
+          sheetVersion: productionOrdersTable.productionSheetVersion,
+        }).from(productionOrdersTable)
+          .where(inArray(productionOrdersTable.id, matchedOrderIds));
+        matchedOrderIds = allOrders
+          .filter(o => (o.sheetVersion || 0) === 0)
+          .map(o => o.id);
       }
     }
-    // mode = "all" → no extra conditions
 
-    // ── 3. Fetch production orders with PI items, contacts, products ──
+    if (matchedOrderIds.length === 0) {
+      const emptyWb = buildWorkbook([{
+        name: "Production Sheet",
+        headers: ["Info"],
+        rows: [["No orders found for the selected filter"]],
+      }], `Production Sheet — ${todayStr()}`);
+      await sendWorkbook(res, emptyWb, `production-sheet-${todayStr()}`);
+      return;
+    }
+
+    // ── 2. Fetch matched orders with PI items, contacts, products (only the needed joins) ──
     const results = await db
       .select({
         poId: productionOrdersTable.id,
@@ -750,20 +792,10 @@ router.get("/production/sheet", async (req, res) => {
       .leftJoin(proformaInvoiceItemsTable, eq(proformaInvoiceItemsTable.invoiceId, proformaInvoicesTable.id))
       .leftJoin(contactsTable, eq(contactsTable.id, proformaInvoicesTable.contactId))
       .leftJoin(productsTable, sql`LOWER(${productsTable.name}) = LOWER(${proformaInvoiceItemsTable.productName})`)
-      .where(conditions.length ? and(...conditions) : undefined)
+      .where(inArray(productionOrdersTable.id, matchedOrderIds))
       .orderBy(productionOrdersTable.id, proformaInvoiceItemsTable.id);
 
     const rows: any[] = results as any[];
-
-    if (rows.length === 0) {
-      const emptyWb = buildWorkbook([{
-        name: "Production Sheet",
-        headers: ["Info"],
-        rows: [["No orders found for the selected filter"]],
-      }], `Production Sheet — ${todayStr()}`);
-      await sendWorkbook(res, emptyWb, `production-sheet-${todayStr()}`);
-      return;
-    }
 
     // ── 4. Determine next version for each order ──
     const poIds = [...new Set(rows.map((r: any) => Number(r.poId)))];
