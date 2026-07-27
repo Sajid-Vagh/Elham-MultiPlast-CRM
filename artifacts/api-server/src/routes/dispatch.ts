@@ -242,7 +242,7 @@ router.post("/dispatch/:id/builty", builtyUpload.single("file"), async (req, res
     if (!dispatch) { res.status(404).json({ error: "Dispatch not found" }); return; }
 
     const storagePath = await storage.save(file.originalname, file.buffer, "builty");
-    const fileUrl = `/uploads/builty/${path.basename(storagePath)}`;
+    const fileUrl = storage.getUrl(storagePath);
 
     await db.update(dispatchTable).set({ proofOfDelivery: fileUrl, updatedAt: new Date() }).where(eq(dispatchTable.id, id));
 

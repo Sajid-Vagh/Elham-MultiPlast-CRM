@@ -3,11 +3,9 @@ import multer from "multer";
 import { db, documentsTable, documentVersionsTable, contactsTable, usersTable, activitiesTable } from "@workspace/db";
 import { eq, and, desc, like, or, inArray, SQL, sql } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
-import { storage } from "../lib/storage";
+import { storage, getStorageProvider } from "../lib/storage";
 import path from "node:path";
 import fs from "node:fs";
-
-const UPLOADS_ROOT = path.resolve(process.cwd(), "uploads");
 
 const router: IRouter = Router();
 const upload = multer({
@@ -277,9 +275,9 @@ router.get("/documents/:id/download", async (req: Request, res: Response) => {
     const [doc] = await db.select().from(documentsTable).where(and(eq(documentsTable.id, id), eq(documentsTable.isDeleted, false)));
     if (!doc) { res.status(404).json({ error: "Not found" }); return; }
 
-    const fullPath = path.join(UPLOADS_ROOT, doc.storagePath);
-    if (!fs.existsSync(fullPath)) { res.status(404).json({ error: "File not found on disk" }); return; }
-    if (!fullPath.startsWith(UPLOADS_ROOT)) { res.status(403).json({ error: "Invalid path" }); return; }
+    const store = getStorageProvider();
+    const fileExists = await store.exists(doc.storagePath);
+    if (!fileExists) { res.status(404).json({ error: "File not found" }); return; }
 
     // Record activity for download
     await db.insert(activitiesTable).values({
@@ -288,6 +286,13 @@ router.get("/documents/:id/download", async (req: Request, res: Response) => {
       createdBy: user.id,
     });
 
+    const url = store.getUrl(doc.storagePath);
+    if (url.startsWith("http")) {
+      res.redirect(url);
+      return;
+    }
+
+    const fullPath = store.getPhysicalPath(doc.storagePath);
     res.setHeader("Content-Disposition", `attachment; filename="${doc.originalName}"`);
     res.sendFile(fullPath);
   } catch (err) {
@@ -307,15 +312,24 @@ router.get("/documents/:id/preview", async (req: Request, res: Response) => {
     const [doc] = await db.select().from(documentsTable).where(and(eq(documentsTable.id, id), eq(documentsTable.isDeleted, false)));
     if (!doc) { res.status(404).json({ error: "Not found" }); return; }
 
-    const fullPath = path.join(UPLOADS_ROOT, doc.storagePath);
-    if (!fs.existsSync(fullPath)) { res.status(404).json({ error: "File not found on disk" }); return; }
-    if (!fullPath.startsWith(UPLOADS_ROOT)) { res.status(403).json({ error: "Invalid path" }); return; }
+    const store = getStorageProvider();
+    const fileExists = await store.exists(doc.storagePath);
+    if (!fileExists) { res.status(404).json({ error: "File not found" }); return; }
 
     const mimeTypes: Record<string, string> = {
       ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp",
       ".pdf": "application/pdf",
     };
     const mime = mimeTypes[doc.fileExtension || ""] || doc.mimeType || "application/octet-stream";
+
+    // For cloud storage, redirect to public URL
+    const url = store.getUrl(doc.storagePath);
+    if (url.startsWith("http")) {
+      res.redirect(url);
+      return;
+    }
+
+    const fullPath = store.getPhysicalPath(doc.storagePath);
 
     if (doc.fileExtension === ".pdf") {
       res.setHeader("Content-Type", "application/pdf");

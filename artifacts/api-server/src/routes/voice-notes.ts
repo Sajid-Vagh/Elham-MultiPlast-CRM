@@ -1,12 +1,11 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import multer from "multer";
-import fs from "node:fs";
 import path from "node:path";
 import { db, voiceNotesTable, dealsTable, productionOrdersTable, contactsTable, proformaInvoicesTable, productionTimelineTable, usersTable } from "@workspace/db";
 import { eq, and, isNull, desc, or } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { canAccessUnit } from "../lib/permission-service";
-import { storage } from "../lib/storage";
+import { getStorageProvider } from "../lib/storage";
 import { createNotification } from "./notifications";
 import {
   uploadVoiceNote,
@@ -421,7 +420,7 @@ router.post("/voice-notes/:id/replace", upload.single("file"), async (req: Reque
 
     // Delete old file
     if (existing.storagePath) {
-      try { fs.promises.unlink(storage.getPhysicalPath(existing.storagePath)); } catch {}
+      try { await getStorageProvider().delete(existing.storagePath); } catch {}
     }
 
     res.status(201).json(note);
@@ -449,12 +448,22 @@ router.get("/voice-notes/:id/download", async (req: Request, res: Response) => {
 
     if (!note) { res.status(404).json({ error: "Voice note not found" }); return; }
 
-    const filePath = storage.getPhysicalPath(note.storagePath);
+    const store = getStorageProvider();
+    const fileExists = await store.exists(note.storagePath);
 
-    if (!fs.existsSync(filePath)) {
+    if (!fileExists) {
       res.status(404).json({ error: "This voice note is unavailable." }); return;
     }
 
+    // For cloud storage (Supabase), redirect to the public URL
+    const url = store.getUrl(note.storagePath);
+    if (url.startsWith("http")) {
+      res.redirect(url);
+      return;
+    }
+
+    // For local storage, serve the file directly
+    const filePath = store.getPhysicalPath(note.storagePath);
     res.download(filePath, note.originalName);
   } catch (err) {
     console.error("Download voice note error:", err);

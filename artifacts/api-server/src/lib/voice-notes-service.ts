@@ -1,9 +1,8 @@
-import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { db, voiceNotesTable, usersTable, dealsTable, productionOrdersTable, contactsTable } from "@workspace/db";
 import { eq, and, desc, isNull, or } from "drizzle-orm";
-import { storage } from "./storage";
+import { storage, getStorageProvider } from "./storage";
 
 const ALLOWED_MIMES = new Set([
   "audio/webm", "audio/webm;codecs=opus",
@@ -187,8 +186,9 @@ export async function getVoiceNotes(
 
   // Verify file existence for each note
   const result: VoiceNoteResponse[] = [];
+  const store = getStorageProvider();
   for (const row of rows) {
-    const fileExists = fs.existsSync(storage.getPhysicalPath(row.storagePath));
+    const fileExists = await store.exists(row.storagePath);
     if (!fileExists && row.fileAvailable) {
       // Mark as unavailable in DB — silent update, don't block response
       await db.update(voiceNotesTable)
@@ -199,7 +199,7 @@ export async function getVoiceNotes(
 
     result.push({
       ...row,
-      url: fileExists ? storage.getUrl(row.storagePath) : "",
+      url: fileExists ? store.getUrl(row.storagePath) : "",
       fileAvailable: fileExists,
       createdAt: row.createdAt?.toISOString?.() || String(row.createdAt),
     });
@@ -246,7 +246,7 @@ export async function verifyFileAvailability(noteId: number): Promise<boolean> {
     .where(eq(voiceNotesTable.id, noteId));
 
   if (!note) return false;
-  return fs.existsSync(storage.getPhysicalPath(note.storagePath));
+  return getStorageProvider().exists(note.storagePath);
 }
 
 // ────────────────────────────────────────
@@ -276,7 +276,8 @@ async function enrichVoiceNote(row: any): Promise<VoiceNoteResponse> {
     uploadedByName = user?.name || null;
   }
 
-  const fileExists = fs.existsSync(storage.getPhysicalPath(row.storagePath));
+  const store = getStorageProvider();
+  const fileExists = await store.exists(row.storagePath);
 
   return {
     id: row.id,
@@ -294,7 +295,7 @@ async function enrichVoiceNote(row: any): Promise<VoiceNoteResponse> {
     mimeType: row.mimeType,
     fileSize: row.fileSize,
     storagePath: row.storagePath,
-    url: fileExists ? storage.getUrl(row.storagePath) : "",
+    url: fileExists ? store.getUrl(row.storagePath) : "",
     durationMs: row.durationMs || null,
     transcript: row.transcript || null,
     transcriptStatus: row.transcriptStatus || "pending",

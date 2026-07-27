@@ -502,3 +502,50 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `artifacts/api-server/src/routes/notifications.ts`: dedup extended for notifications without relatedId
 - `artifacts/crm/src/pages/dashboard.tsx`: Lost Value card + 5-column grid
 - `docs/verification/part-6-verification.md`: full verification report
+
+---
+
+# Supabase Cloud Storage Migration
+
+## Goal
+- Fix "This voice note is unavailable" error caused by Render.com's ephemeral filesystem losing uploaded files on every deploy/restart.
+- Migrate all file storage (voice notes, documents, builty/proof-of-delivery) from local filesystem to Supabase Storage (persistent cloud storage).
+
+## Constraints & Preferences
+- Zero frontend changes required — URL format is transparent to the player/viewer.
+- Local development must continue working (fallback to local filesystem when Supabase env vars are absent).
+- No new npm packages — uses native `fetch` for Supabase Storage REST API.
+- Auto-create storage buckets on first use (lazy initialization).
+
+## Progress
+### Done
+- **Root cause identified**: Render.com ephemeral filesystem — files saved to `uploads/` are lost on every deploy/restart. DB shows voice note with `storagePath` but `fs.existsSync` returns `false`.
+- **`SUPABASE_URL` + `SUPABASE_KEY` added to `.env`** (all 3 env files).
+- **`storage.ts` rewritten**: Added `SupabaseStorageProvider` class implementing `StorageProvider` interface using Supabase Storage REST API via native `fetch`. Added `exists()` method to interface. Auto-selects provider: Supabase when env vars present, local filesystem otherwise.
+- **`voice-notes-service.ts` updated**: All `fs.existsSync(storage.getPhysicalPath(...))` calls replaced with `storage.exists()` (async, provider-agnostic).
+- **`voice-notes.ts` routes updated**: Download endpoint redirects to Supabase public URL for cloud storage, serves local file for dev. Replace endpoint uses `storage.delete()` instead of `fs.promises.unlink`.
+- **`documents.ts` routes updated**: Download and preview endpoints use `storage.exists()` + redirect to Supabase public URL.
+- **`dispatch.ts` updated**: Builty upload URL now uses `storage.getUrl()` instead of hardcoded `/uploads/builty/` path.
+- **Bucket auto-creation**: `SupabaseStorageProvider.ensureBucket()` creates storage buckets (public, 10MB limit) on first use.
+- **Build verified**: 0 new TypeScript errors (CRM clean, API server pre-existing only).
+
+### In Progress
+- (none)
+
+### Blocked
+- (none)
+
+## Key Decisions
+- `StorageProvider` interface extended with `exists(storagePath): Promise<boolean>` — replaces synchronous `fs.existsSync` calls.
+- Supabase Storage buckets are **public** — URLs are `{SUPABASE_URL}/storage/v1/object/public/{bucket}/{path}`.
+- Download endpoints redirect to Supabase public URL (no proxy needed for public buckets).
+- Bucket lazy-creation on first `save()` call — no startup initialization required.
+- Old voice notes with `fileAvailable: false` in DB will stay unavailable (files lost on Render). Newly uploaded notes will persist in Supabase.
+
+## Relevant Files
+- `artifacts/api-server/src/lib/storage.ts`: `SupabaseStorageProvider` class + `LocalStorageProvider` + auto-selection
+- `artifacts/api-server/src/lib/voice-notes-service.ts`: `getVoiceNotes()` uses `storage.exists()` instead of `fs.existsSync`
+- `artifacts/api-server/src/routes/voice-notes.ts`: download/replace use provider methods
+- `artifacts/api-server/src/routes/documents.ts`: download/preview use provider methods
+- `artifacts/api-server/src/routes/dispatch.ts`: builty URL uses `storage.getUrl()`
+- `.env`, `artifacts/api-server/.env`, `artifacts/crm/.env`: `SUPABASE_URL` + `SUPABASE_KEY`
