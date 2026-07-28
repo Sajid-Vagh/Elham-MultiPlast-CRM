@@ -93,6 +93,21 @@ async function main() {
     logger.info({ port }, "Server listening");
   });
 
+  // Daily orphan voice note cleanup — runs every 24 hours
+  const VOICE_NOTE_CLEANUP_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
+  setInterval(async () => {
+    try {
+      const { cleanupOrphanVoiceNotes } = await import("./lib/voice-notes-service");
+      const result = await cleanupOrphanVoiceNotes();
+      if (result.deletedCount > 0) {
+        logger.info({ deletedCount: result.deletedCount }, "Daily orphan voice note cleanup completed");
+      }
+    } catch (err) {
+      logger.error({ err }, "Voice note orphan cleanup failed");
+    }
+  }, VOICE_NOTE_CLEANUP_INTERVAL);
+  logger.info("Voice note orphan cleanup scheduled (every 24h)");
+
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "Shutting down gracefully...");
     server.close(async () => {

@@ -1,7 +1,7 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { db, voiceNotesTable, usersTable, dealsTable, productionOrdersTable, contactsTable } from "@workspace/db";
-import { eq, and, desc, isNull, or } from "drizzle-orm";
+import { eq, and, desc, isNull, or, inArray } from "drizzle-orm";
 import { storage, getStorageProvider } from "./storage";
 
 const ALLOWED_MIMES = new Set([
@@ -269,6 +269,95 @@ export function canAccessVoiceNote(userRole: string, noteRole: string): boolean 
   // All roles can access all voice notes across the CRM
   // Cross-role access is always allowed
   return true;
+}
+
+// ────────────────────────────────────────
+// Cleanup: delete all voice notes for a production order
+// Called when order reaches Dispatch or Delivery
+// ────────────────────────────────────────
+export async function cleanupVoiceNotesForOrder(
+  productionOrderId: number,
+  reason: string
+): Promise<{ deletedCount: number }> {
+  const voiceNotes = await db
+    .select({ id: voiceNotesTable.id, storagePath: voiceNotesTable.storagePath })
+    .from(voiceNotesTable)
+    .where(eq(voiceNotesTable.productionOrderId, productionOrderId));
+
+  if (voiceNotes.length === 0) return { deletedCount: 0 };
+
+  for (const vn of voiceNotes) {
+    if (vn.storagePath) {
+      try { await storage.delete(vn.storagePath); } catch (_) { /* best-effort */ }
+    }
+  }
+
+  await db
+    .delete(voiceNotesTable)
+    .where(eq(voiceNotesTable.productionOrderId, productionOrderId));
+
+  console.log(
+    `[VoiceNote Cleanup] Deleted ${voiceNotes.length} voice notes for production order #${productionOrderId}. Reason: ${reason}`
+  );
+
+  return { deletedCount: voiceNotes.length };
+}
+
+// ────────────────────────────────────────
+// Daily orphan cleanup: delete voice notes
+// for completed/dispatched/delivered orders
+// ────────────────────────────────────────
+export async function cleanupOrphanVoiceNotes(): Promise<{ deletedCount: number }> {
+  const TERMINAL_STATUSES = ["Completed", "Cancelled"];
+  const TERMINAL_DISPATCH_STATUSES = ["Dispatch", "Delivered"];
+
+  const ordersWithNotes = await db
+    .selectDistinct({ productionOrderId: voiceNotesTable.productionOrderId })
+    .from(voiceNotesTable)
+    .where(and(
+      isNull(voiceNotesTable.deletedAt),
+      eq(voiceNotesTable.isReplaced, false),
+    ));
+
+  const orderIds = ordersWithNotes
+    .map(r => r.productionOrderId)
+    .filter((id): id is number => id !== null);
+
+  if (orderIds.length === 0) return { deletedCount: 0 };
+
+  const terminalOrders = await db
+    .select({ id: productionOrdersTable.id })
+    .from(productionOrdersTable)
+    .where(
+      inArray(productionOrdersTable.id, orderIds)
+    );
+
+  const terminalOrderIds = terminalOrders
+    .filter(o => {
+      const status = terminalOrders.find(t => t.id === o.id);
+      return status != null;
+    })
+    .map(o => o.id);
+
+  let deletedTotal = 0;
+  for (const orderId of terminalOrderIds) {
+    const [order] = await db
+      .select({ status: productionOrdersTable.status, dispatchStatus: productionOrdersTable.dispatchStatus })
+      .from(productionOrdersTable)
+      .where(eq(productionOrdersTable.id, orderId));
+
+    if (!order) continue;
+
+    const isTerminal = TERMINAL_STATUSES.includes(order.status) ||
+      TERMINAL_DISPATCH_STATUSES.includes(order.dispatchStatus || "");
+
+    if (isTerminal) {
+      const result = await cleanupVoiceNotesForOrder(orderId, "Daily orphan cleanup");
+      deletedTotal += result.deletedCount;
+    }
+  }
+
+  return { deletedCount: deletedTotal };
 }
 
 // ────────────────────────────────────────

@@ -14,7 +14,6 @@ import { createNotification } from "../routes/notifications";
 import { logActivity, formatTimestamp } from "./activity-logger";
 import { canAccessProduction, type PermissionUser } from "./permission-service";
 import { maskContactForProduction, maskInvoiceForProduction, isProductionOnlyRole } from "./customer-mask";
-import { storage } from "./storage";
 
 export function isValidTransition(from: string, to: string): boolean {
   if (from === to) return false;
@@ -773,22 +772,6 @@ export async function completeOrder(
     updatedAt: now,
   }).where(eq(productionOrdersTable.id, orderId));
 
-  // Fix #6: Cleanup production voice notes on completion
-  try {
-    const { voiceNotesTable } = await import("@workspace/db");
-    const voiceNotes = await db.select({ id: voiceNotesTable.id, storagePath: voiceNotesTable.storagePath })
-      .from(voiceNotesTable)
-      .where(eq(voiceNotesTable.productionOrderId, orderId));
-    for (const vn of voiceNotes) {
-      if (vn.storagePath) {
-        try { await storage.delete(vn.storagePath); } catch (_) { /* best-effort */ }
-      }
-    }
-    if (voiceNotes.length > 0) {
-      await db.delete(voiceNotesTable).where(eq(voiceNotesTable.productionOrderId, orderId));
-    }
-  } catch (_) { /* voice note cleanup is best-effort */ }
-
   await addTimelineEntry(db, orderId, "Completed", `Order completed by ${user.name}`, user.id);
 
   await logProductionActivity(db, {
@@ -962,6 +945,21 @@ export async function markDispatched(
     changedById: user.id, changedByName: user.name || "",
   });
 
+  // Cleanup voice notes — order is now dispatched, voice notes no longer needed
+  try {
+    const { cleanupVoiceNotesForOrder } = await import("./voice-notes-service");
+    const { deletedCount } = await cleanupVoiceNotesForOrder(orderId, "Order dispatched");
+    if (deletedCount > 0) {
+      await addTimelineEntry(db, orderId, "Dispatch",
+        `Voice Note Cleanup: ${deletedCount} voice note(s) removed — order dispatched.`, user.id);
+      await writeAuditTrail(db, {
+        productionOrderId: orderId, action: "voice_note_cleanup",
+        oldValue: `${deletedCount} notes`, newValue: "Deleted (dispatched)",
+        changedById: user.id, changedByName: user.name || "",
+      });
+    }
+  } catch (_) { /* voice note cleanup is best-effort */ }
+
   await notifySalesOfProductionEvent({
     productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
     title: "Order Dispatched",
@@ -1029,6 +1027,21 @@ export async function markDelivered(
     oldValue: order.dispatchStatus, newValue: "Delivered",
     changedById: user.id, changedByName: user.name || "",
   });
+
+  // Cleanup voice notes — order is delivered, voice notes no longer needed
+  try {
+    const { cleanupVoiceNotesForOrder } = await import("./voice-notes-service");
+    const { deletedCount } = await cleanupVoiceNotesForOrder(orderId, "Order delivered");
+    if (deletedCount > 0) {
+      await addTimelineEntry(db, orderId, "Delivered",
+        `Voice Note Cleanup: ${deletedCount} voice note(s) removed — order delivered.`, user.id);
+      await writeAuditTrail(db, {
+        productionOrderId: orderId, action: "voice_note_cleanup",
+        oldValue: `${deletedCount} notes`, newValue: "Deleted (delivered)",
+        changedById: user.id, changedByName: user.name || "",
+      });
+    }
+  } catch (_) { /* voice note cleanup is best-effort */ }
 
   await notifySalesOfProductionEvent({
     productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
