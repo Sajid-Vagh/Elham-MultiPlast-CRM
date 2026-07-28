@@ -1752,17 +1752,50 @@ export async function getMachineReport(
     if (isCompleted(row.status)) existing.completedQty += row.quantity;
     machineMap.set(key, existing);
   }
-  const machineBreakdown = [...machineMap.entries()].map(([machineType, data]) => ({
-    machineType,
-    productCount: data.productCount,
-    orderCount: data.orderIds.size,
-    totalBottles: data.totalBottles,
-    pendingQty: data.pendingQty,
-    inProductionQty: data.inProductionQty,
-    completedQty: data.completedQty,
-  }));
 
-  return { summary, machineBreakdown, orders: filteredRows };
+  // Build material → machines grouping
+  const materialMachineMap = new Map<string, Map<string, {
+    productCount: number; orderIds: Set<number>; totalBottles: number;
+    pendingQty: number; inProductionQty: number; completedQty: number;
+  }>>();
+  for (const row of filteredRows) {
+    const material = row.materialType || "Unknown";
+    const machine = row.machineType || "Unassigned";
+    if (!materialMachineMap.has(material)) materialMachineMap.set(material, new Map());
+    const innerMap = materialMachineMap.get(material)!;
+    const existing = innerMap.get(machine) || { productCount: 0, orderIds: new Set<number>(), totalBottles: 0, pendingQty: 0, inProductionQty: 0, completedQty: 0 };
+    existing.productCount++;
+    existing.orderIds.add(row.orderId);
+    existing.totalBottles += row.quantity;
+    if (isPending(row.status)) existing.pendingQty += row.quantity;
+    if (isInProduction(row.status)) existing.inProductionQty += row.quantity;
+    if (isCompleted(row.status)) existing.completedQty += row.quantity;
+    innerMap.set(machine, existing);
+  }
+
+  const materialOrder = ["HDPE", "PET", "PP", "Unknown"];
+  const materialBreakdown = [...materialMachineMap.entries()]
+    .sort(([a], [b]) => {
+      const ai = materialOrder.indexOf(a);
+      const bi = materialOrder.indexOf(b);
+      const aRank = ai >= 0 ? ai : materialOrder.length;
+      const bRank = bi >= 0 ? bi : materialOrder.length;
+      return aRank - bRank;
+    })
+    .map(([materialType, machines]) => ({
+      materialType,
+      machines: [...machines.entries()].map(([machineType, data]) => ({
+        machineType,
+        productCount: data.productCount,
+        orderCount: data.orderIds.size,
+        totalBottles: data.totalBottles,
+        pendingQty: data.pendingQty,
+        inProductionQty: data.inProductionQty,
+        completedQty: data.completedQty,
+      })),
+    }));
+
+  return { summary, materialBreakdown, orders: filteredRows };
 }
 
 export async function listOrders(

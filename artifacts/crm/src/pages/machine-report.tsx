@@ -16,8 +16,11 @@ const STATUS_OPTIONS = ["All", "Pending", "Production On Going", "Packaging", "R
 
 interface ReportData {
   summary: { totalProducts: number; totalBottles: number; pending: number; inProduction: number; completed: number };
-  machineBreakdown: { machineType: string; productCount: number; orderCount: number; totalBottles: number; pendingQty: number; inProductionQty: number; completedQty: number }[];
-  orders: { orderId: number; status: string; productionUnit: string; createdAt: string; productName: string; machineType: string | null; quantity: number; bottleColour: string | null; bottleWeight: string | null; productCode: string | null }[];
+  materialBreakdown: {
+    materialType: string;
+    machines: { machineType: string; productCount: number; orderCount: number; totalBottles: number; pendingQty: number; inProductionQty: number; completedQty: number }[];
+  }[];
+  orders: { orderId: number; status: string; productionUnit: string; createdAt: string; productName: string; machineType: string | null; materialType: string | null; quantity: number; bottleColour: string | null; bottleWeight: string | null; productCode: string | null }[];
 }
 
 export default function MachineReport() {
@@ -42,7 +45,7 @@ export default function MachineReport() {
   });
 
   const summary = data?.summary;
-  const machineBreakdown = data?.machineBreakdown || [];
+  const materialBreakdown = data?.materialBreakdown || [];
   const orders = data?.orders || [];
 
   const SUMMARY_CARDS = [
@@ -119,22 +122,32 @@ export default function MachineReport() {
       )}
 
       <Card>
-        <CardHeader><CardTitle className="flex items-center gap-2"><Factory className="h-5 w-5" /> Machine-wise Breakdown</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="flex items-center gap-2"><Factory className="h-5 w-5" /> Material-wise Breakdown</CardTitle></CardHeader>
         <CardContent>
-          {isLoading ? <Skeleton className="h-32" /> : machineBreakdown.length === 0 ? (
+          {isLoading ? <Skeleton className="h-32" /> : materialBreakdown.length === 0 ? (
             <p className="text-muted-foreground text-sm py-4">No data available for selected filters.</p>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {machineBreakdown.map(m => (
-                <div key={m.machineType} className="border rounded-lg p-4">
-                  <h3 className="font-semibold text-sm">{m.machineType}</h3>
-                  <div className="mt-2 space-y-1">
-                    <p className="text-xs text-muted-foreground">Products: <span className="font-medium text-foreground">{m.productCount}</span></p>
-                    <p className="text-xs text-muted-foreground">Orders: <span className="font-medium text-foreground">{m.orderCount}</span></p>
-                    <p className="text-xs text-muted-foreground">Total Qty: <span className="font-medium text-foreground">{m.totalBottles.toLocaleString()} PCS</span></p>
-                    <p className="text-xs text-muted-foreground">Pending: <span className="font-medium text-gray-700">{m.pendingQty.toLocaleString()} PCS</span></p>
-                    <p className="text-xs text-muted-foreground">In Production: <span className="font-medium text-orange-700">{m.inProductionQty.toLocaleString()} PCS</span></p>
-                    <p className="text-xs text-muted-foreground">Completed: <span className="font-medium text-green-700">{m.completedQty.toLocaleString()} PCS</span></p>
+            <div className="space-y-6">
+              {materialBreakdown.map(group => (
+                <div key={group.materialType}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <h3 className="text-base font-bold text-foreground">{group.materialType}</h3>
+                    <div className="h-px flex-1 bg-border" />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 ml-2">
+                    {group.machines.map(m => (
+                      <div key={m.machineType} className="border rounded-lg p-4">
+                        <h4 className="font-semibold text-sm">{m.machineType}</h4>
+                        <div className="mt-2 space-y-1">
+                          <p className="text-xs text-muted-foreground">Products: <span className="font-medium text-foreground">{m.productCount}</span></p>
+                          <p className="text-xs text-muted-foreground">Orders: <span className="font-medium text-foreground">{m.orderCount}</span></p>
+                          <p className="text-xs text-muted-foreground">Total Qty: <span className="font-medium text-foreground">{m.totalBottles.toLocaleString()} PCS</span></p>
+                          <p className="text-xs text-muted-foreground">Pending: <span className="font-medium text-gray-700">{m.pendingQty.toLocaleString()} PCS</span></p>
+                          <p className="text-xs text-muted-foreground">In Production: <span className="font-medium text-orange-700">{m.inProductionQty.toLocaleString()} PCS</span></p>
+                          <p className="text-xs text-muted-foreground">Completed: <span className="font-medium text-green-700">{m.completedQty.toLocaleString()} PCS</span></p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
@@ -152,8 +165,9 @@ export default function MachineReport() {
                 <TableRow>
                   <TableHead>Order #</TableHead>
                   <TableHead>Product</TableHead>
-                  <TableHead>Code</TableHead>
+                  <TableHead>Material</TableHead>
                   <TableHead>Machine</TableHead>
+                  <TableHead>Code</TableHead>
                   <TableHead>Colour</TableHead>
                   <TableHead>Weight</TableHead>
                   <TableHead>Unit</TableHead>
@@ -164,16 +178,17 @@ export default function MachineReport() {
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={10}><Skeleton className="h-20" /></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11}><Skeleton className="h-20" /></TableCell></TableRow>
                 ) : orders.length === 0 ? (
-                  <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No product lines found.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">No product lines found.</TableCell></TableRow>
                 ) : (
                   orders.map((o, idx) => (
                     <TableRow key={`${o.orderId}-${idx}`}>
                       <TableCell className="font-mono text-sm">#{o.orderId}</TableCell>
                       <TableCell className="font-medium">{o.productName}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{o.productCode || "-"}</TableCell>
+                      <TableCell>{o.materialType || <span className="text-muted-foreground">-</span>}</TableCell>
                       <TableCell>{o.machineType || <span className="text-muted-foreground">Unassigned</span>}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{o.productCode || "-"}</TableCell>
                       <TableCell>{o.bottleColour || "-"}</TableCell>
                       <TableCell>{o.bottleWeight || "-"}</TableCell>
                       <TableCell>{o.productionUnit || "-"}</TableCell>
