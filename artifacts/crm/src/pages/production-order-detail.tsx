@@ -13,12 +13,14 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { onProductionChange } from "@/lib/query-invalidation";
 import { VoiceNotePlayer } from "@/components/voice-note-player";
 import { VoiceNoteUploader } from "@/components/voice-note-uploader";
 import { useVoiceNotes, type VoiceNoteData } from "@/lib/use-voice-notes";
-import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Calendar, Factory, ClipboardList, CheckCircle2, AlertTriangle, Package, CircleDot, ChevronDown, Mic } from "lucide-react";
+import { useActiveUnits } from "@/lib/use-active-units";
+import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Calendar, Factory, ClipboardList, CheckCircle2, AlertTriangle, Package, CircleDot, ChevronDown, Mic, ArrowRightLeft } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
@@ -96,6 +98,12 @@ export default function ProductionOrderDetail() {
   const [readyQtyProductName, setReadyQtyProductName] = useState("");
   const [readyQtyOrdered, setReadyQtyOrdered] = useState(0);
   const [readyQtyInput, setReadyQtyInput] = useState("");
+
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [transferTargetUnit, setTransferTargetUnit] = useState("");
+  const [transferReason, setTransferReason] = useState("");
+  const [transferRemarks, setTransferRemarks] = useState("");
+  const { units: activeUnits } = useActiveUnits();
 
   const { data: order, isLoading } = useQuery({
     queryKey: PRODUCTION_ORDER_QUERY_KEY(id),
@@ -194,6 +202,33 @@ export default function ProductionOrderDetail() {
       toast({ title: "Product status updated" });
     },
     onError: (err: any) => toast({ title: err?.message || "Failed", variant: "destructive" }),
+  });
+
+  // ── Transfer Unit ──
+  const transferUnitMutation = useMutation({
+    mutationFn: (data: { targetUnit: string; reason: string; remarks?: string }) =>
+      customFetch<any>(`/production/orders/${id}/transfer`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => {
+      onProductionChange(queryClient, id);
+      queryClient.invalidateQueries({ queryKey: ["production-order", id] });
+      queryClient.invalidateQueries({ queryKey: ["production-transfer-history", id] });
+      setTransferDialogOpen(false);
+      setTransferTargetUnit("");
+      setTransferReason("");
+      setTransferRemarks("");
+      toast({ title: "Unit transferred successfully" });
+    },
+    onError: (err: any) => toast({ title: err?.data?.message || err?.message || "Transfer failed", variant: "destructive" }),
+  });
+
+  const { data: transferHistory } = useQuery({
+    queryKey: ["production-transfer-history", id],
+    queryFn: () => customFetch<any[]>(`/production/orders/${id}/transfers`),
+    enabled: !!id,
   });
 
   // ── Order Conversation ──
@@ -299,7 +334,14 @@ export default function ProductionOrderDetail() {
                 <div><span className="text-muted-foreground">Expected Dispatch</span><p className="font-medium mt-1">{order.expectedDispatchDate ? new Date(order.expectedDispatchDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "-"}</p></div>
                 <div><span className="text-muted-foreground">Created By</span><div className="font-medium mt-1 flex items-center gap-1">{order.createdByName || "-"}{order.createdByRole && <Badge variant="outline" className={`text-[10px] py-0 ${order.createdByRole === "production_and_support" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-blue-50 text-blue-700 border-blue-200"}`}>{order.createdByRole === "production_and_support" ? "SUPPORT" : "SALES"}</Badge>}</div></div>
                 <div><span className="text-muted-foreground">Assigned Manager</span><p className="font-medium mt-1">{order.assignedManager?.name || "-"}</p></div>
-                <div><span className="text-muted-foreground">Unit</span><div className="font-medium mt-1">{order.productionUnit ? <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200">{order.productionUnit}</Badge> : <span className="text-muted-foreground">Unassigned</span>}</div></div>
+                <div><span className="text-muted-foreground">Unit</span><div className="font-medium mt-1 flex items-center gap-2">{order.productionUnit ? <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200">{order.productionUnit}</Badge> : <span className="text-muted-foreground">Unassigned</span>}{isProductionUser && !isTerminal && (
+                  <Button variant="ghost" size="sm" className="h-6 text-xs text-muted-foreground" onClick={() => setTransferDialogOpen(true)}>
+                    <ArrowRightLeft className="h-3 w-3 mr-1" /> Transfer
+                  </Button>
+                )}</div></div>
+                {order.previousProductionUnit && (
+                  <div><span className="text-muted-foreground">Previous Unit</span><p className="font-medium mt-1 text-muted-foreground text-xs">{order.previousProductionUnit}</p></div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1085,6 +1127,61 @@ export default function ProductionOrderDetail() {
                 });
               }}>
               {updateProductLineStatus.isPending ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transfer Unit Dialog */}
+      <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Transfer Unit — Order #{order.id}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="text-sm bg-muted p-3 rounded-lg">
+              <p>Current Unit: <span className="font-medium">{order.productionUnit || "Unassigned"}</span></p>
+            </div>
+            <div>
+              <Label>Target Unit *</Label>
+              <Select value={transferTargetUnit} onValueChange={setTransferTargetUnit}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder="Select target unit" /></SelectTrigger>
+                <SelectContent>
+                  {activeUnits.filter(u => u !== "Not Sure").map(u => (
+                    <SelectItem key={u} value={u} disabled={u === order.productionUnit}>{u}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Reason *</Label>
+              <Select value={transferReason} onValueChange={setTransferReason}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder="Select reason" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Machine Unavailable">Machine Unavailable</SelectItem>
+                  <SelectItem value="Workload Balancing">Workload Balancing</SelectItem>
+                  <SelectItem value="Specialization Required">Specialization Required</SelectItem>
+                  <SelectItem value="Customer Request">Customer Request</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Remarks (Optional)</Label>
+              <Textarea value={transferRemarks} onChange={e => setTransferRemarks(e.target.value)}
+                placeholder="Additional notes about this transfer..." rows={2} className="mt-1" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>Cancel</Button>
+            <Button className="bg-indigo-600 hover:bg-indigo-700"
+              disabled={!transferTargetUnit || !transferReason || transferUnitMutation.isPending}
+              onClick={() => transferUnitMutation.mutate({
+                targetUnit: transferTargetUnit,
+                reason: transferReason,
+                remarks: transferRemarks.trim() || undefined,
+              })}>
+              {transferUnitMutation.isPending ? "Transferring..." : "Transfer Unit"}
             </Button>
           </DialogFooter>
         </DialogContent>

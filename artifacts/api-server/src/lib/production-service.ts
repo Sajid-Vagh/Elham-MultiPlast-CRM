@@ -1370,30 +1370,54 @@ export async function markDelivered(
   return { order: await enrichProductionOrder(updated!, user) };
 }
 
-export async function getDispatchDashboard(user: PermissionUser) {
+export async function getDispatchDashboard(user: PermissionUser, unitFilter?: string) {
   const supportError = await requireSupportOrAdmin(user);
   if (supportError) return { error: supportError, status: 403 };
 
+  const conditions: SQL[] = [eq(productionOrdersTable.status, "Ready To Dispatch")];
+  if (unitFilter && unitFilter !== "All") {
+    conditions.push(eq(productionOrdersTable.productionUnit, unitFilter));
+  }
+
   const allOrders = await db.select().from(productionOrdersTable)
-    .where(eq(productionOrdersTable.status, "Ready To Dispatch"));
+    .where(and(...conditions));
+
+  // Get distinct transport names for the filter dropdown
+  const transportRows = await db.select({ transportName: productionOrdersTable.transportName })
+    .from(productionOrdersTable)
+    .where(and(...conditions, sql`${productionOrdersTable.transportName} IS NOT NULL`))
+    .groupBy(productionOrdersTable.transportName);
 
   return {
     pendingDispatch: allOrders.filter(o => o.dispatchStatus === "Pending Dispatch" || o.dispatchStatus === null).length,
     loadVehicle: allOrders.filter(o => o.dispatchStatus === "Load Vehicle").length,
     dispatched: allOrders.filter(o => o.dispatchStatus === "Dispatch").length,
     delivered: allOrders.filter(o => o.dispatchStatus === "Delivered").length,
+    total: allOrders.length,
+    transports: transportRows.map(r => r.transportName).filter(Boolean).sort(),
   };
 }
 
 export async function listDispatchOrders(
   user: PermissionUser,
-  filters: { status?: string; search?: string; page?: string; limit?: string }
+  filters: {
+    status?: string;
+    search?: string;
+    page?: string;
+    limit?: string;
+    unit?: string;
+    priority?: string;
+    transport?: string;
+    dispatchDateFrom?: string;
+    dispatchDateTo?: string;
+  }
 ) {
   const supportError = await requireSupportOrAdmin(user);
   if (supportError) return { error: supportError, status: 403 };
 
   const conditions: SQL[] = [eq(productionOrdersTable.status, "Ready To Dispatch")];
 
+  // Dispatch status filter
   if (filters.status && filters.status !== "all") {
     if (filters.status === "Pending Dispatch") {
       conditions.push(or(
@@ -1405,18 +1429,81 @@ export async function listDispatchOrders(
     }
   }
 
+  // Unit filter
+  if (filters.unit && filters.unit !== "All") {
+    conditions.push(eq(productionOrdersTable.productionUnit, filters.unit));
+  }
+
+  // Priority filter
+  if (filters.priority && filters.priority !== "all") {
+    conditions.push(eq(productionOrdersTable.priority, filters.priority));
+  }
+
+  // Transport filter (search by transport name on production_orders)
+  if (filters.transport && filters.transport !== "all") {
+    if (filters.transport === "none") {
+      conditions.push(sql`${productionOrdersTable.transportName} IS NULL`);
+    } else {
+      conditions.push(sql`LOWER(${productionOrdersTable.transportName}) LIKE ${`%${filters.transport.toLowerCase()}%`}`);
+    }
+  }
+
+  // Dispatch date range filter (on dispatchedAt timestamp)
+  if (filters.dispatchDateFrom) {
+    conditions.push(sql`${productionOrdersTable.dispatchedAt} >= ${filters.dispatchDateFrom}`);
+  }
+  if (filters.dispatchDateTo) {
+    conditions.push(sql`${productionOrdersTable.dispatchedAt} <= ${filters.dispatchDateTo}::timestamp + INTERVAL '1 day'`);
+  }
+
+  // Multi-field search: customer code, order number, product name, transport, LR number, invoice number
   if (filters.search) {
-    const searchLower = filters.search.toLowerCase();
-    const matchingInvoices = await db.select({ id: proformaInvoicesTable.id }).from(proformaInvoicesTable).where(
-      or(
-        sql`LOWER(${proformaInvoicesTable.customerName}) LIKE ${`%${searchLower}%`}`,
-        sql`LOWER(${proformaInvoicesTable.companyName}) LIKE ${`%${searchLower}%`}`,
-        sql`${proformaInvoicesTable.invoiceNumber} ILIKE ${`%${filters.search}%`}`,
-        sql`${proformaInvoicesTable.mobile} ILIKE ${`%${filters.search}%`}`
-      )
+    const q = filters.search.trim();
+    const matchingOrders: SQL[] = [];
+
+    // Search by order ID (exact match on production order)
+    const orderIdMatch = parseInt(q, 10);
+    if (!isNaN(orderIdMatch)) {
+      matchingOrders.push(eq(productionOrdersTable.id, orderIdMatch));
+    }
+
+    // Search by customerCode from contacts table (via invoice → contactId)
+    const matchingContacts = await db.select({ id: contactsTable.id }).from(contactsTable).where(
+      sql`LOWER(${contactsTable.customerCode}) LIKE ${`%${q.toLowerCase()}%`}`
     );
-    if (matchingInvoices.length === 0) return { data: [], total: 0, page: 1, totalPages: 0 };
-    conditions.push(sql`${productionOrdersTable.proformaInvoiceId} IN (${sql.join(matchingInvoices.map(i => sql`${i.id}`), sql`, `)})`);
+    if (matchingContacts.length > 0) {
+      const matchingInvoicesByContact = await db.select({ id: proformaInvoicesTable.id }).from(proformaInvoicesTable)
+        .where(inArray(proformaInvoicesTable.contactId, matchingContacts.map(c => c.id)));
+      if (matchingInvoicesByContact.length > 0) {
+        matchingOrders.push(inArray(productionOrdersTable.proformaInvoiceId, matchingInvoicesByContact.map(i => i.id)));
+      }
+    }
+
+    // Search by invoice number
+    const matchingInvoicesByNumber = await db.select({ id: proformaInvoicesTable.id }).from(proformaInvoicesTable).where(
+      sql`LOWER(${proformaInvoicesTable.invoiceNumber}) LIKE ${`%${q.toLowerCase()}%`}`
+    );
+    if (matchingInvoicesByNumber.length > 0) {
+      matchingOrders.push(inArray(productionOrdersTable.proformaInvoiceId, matchingInvoicesByNumber.map(i => i.id)));
+    }
+
+    // Search by product name (via production_order_items)
+    const matchingProductItems = await db.select({ productionOrderId: productionOrderItemsTable.productionOrderId })
+      .from(productionOrderItemsTable)
+      .where(sql`LOWER(${productionOrderItemsTable.productName}) LIKE ${`%${q.toLowerCase()}%`}`)
+      .groupBy(productionOrderItemsTable.productionOrderId);
+    if (matchingProductItems.length > 0) {
+      matchingOrders.push(inArray(productionOrdersTable.id, matchingProductItems.map(i => i.productionOrderId)));
+    }
+
+    // Search by transport name or LR number (direct on production_orders)
+    matchingOrders.push(or(
+      sql`LOWER(${productionOrdersTable.transportName}) LIKE ${`%${q.toLowerCase()}%`}`,
+      sql`LOWER(${productionOrdersTable.lrNumber}) LIKE ${`%${q.toLowerCase()}%`}`
+    )!);
+
+    if (matchingOrders.length === 0) return { data: [], total: 0, page: 1, totalPages: 0, summary: null };
+    conditions.push(or(...matchingOrders)!);
   }
 
   const pageNum = Math.max(1, parseInt(filters.page || "1", 10) || 1);
@@ -1434,7 +1521,16 @@ export async function listDispatchOrders(
 
   const enriched = await Promise.all(orders.map(o => enrichProductionOrder(o, user)));
 
-  return { data: enriched, total: count, page: pageNum, totalPages: Math.ceil(count / pageSize) };
+  // Build summary for the full filtered set (not just the current page)
+  const allFiltered = await db.select().from(productionOrdersTable).where(and(...conditions));
+  const summary = {
+    pendingDispatch: allFiltered.filter(o => o.dispatchStatus === "Pending Dispatch" || o.dispatchStatus === null).length,
+    loadVehicle: allFiltered.filter(o => o.dispatchStatus === "Load Vehicle").length,
+    dispatched: allFiltered.filter(o => o.dispatchStatus === "Dispatch").length,
+    delivered: allFiltered.filter(o => o.dispatchStatus === "Delivered").length,
+  };
+
+  return { data: enriched, total: count, page: pageNum, totalPages: Math.ceil(count / pageSize), summary };
 }
 
 export async function handlePiModification(

@@ -534,7 +534,8 @@ router.get("/production/dispatch-dashboard", async (req, res) => {
   try {
     const user = await requireAuth(req, res);
     if (!user) return;
-    const result = await getDispatchDashboard(user);
+    const { unit } = req.query as Record<string, string | undefined>;
+    const result = await getDispatchDashboard(user, unit);
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result);
   } catch (err) {
@@ -548,8 +549,8 @@ router.get("/production/dispatch-orders", async (req, res) => {
   try {
     const user = await requireAuth(req, res);
     if (!user) return;
-    const { status, search, page, limit } = req.query as Record<string, string | undefined>;
-    const result = await listDispatchOrders(user, { status, search, page, limit });
+    const { status, search, page, limit, unit, priority, transport, dispatchDateFrom, dispatchDateTo } = req.query as Record<string, string | undefined>;
+    const result = await listDispatchOrders(user, { status, search, page, limit, unit, priority, transport, dispatchDateFrom, dispatchDateTo });
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result);
   } catch (err) {
