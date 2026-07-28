@@ -1,6 +1,12 @@
-import { pgTable, text, serial, timestamp, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, boolean, customType } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+
+const bytea = customType<{ data: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
 import { dealsTable } from "./deals";
 import { proformaInvoicesTable } from "./proforma_invoices";
 import { productionOrdersTable } from "./production_orders";
@@ -24,6 +30,7 @@ export const voiceNotesTable = pgTable("voice_notes", {
   mimeType: text("mime_type").notNull(),
   fileSize: integer("file_size").notNull(),
   storagePath: text("storage_path").notNull(),
+  fileData: bytea("file_data"),
   durationMs: integer("duration_ms"),
   transcript: text("transcript"),
   transcriptStatus: text("transcript_status").notNull().default("pending"),

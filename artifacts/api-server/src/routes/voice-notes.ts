@@ -1,11 +1,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import multer from "multer";
-import path from "node:path";
 import { db, voiceNotesTable, dealsTable, productionOrdersTable, contactsTable, proformaInvoicesTable, productionTimelineTable, usersTable } from "@workspace/db";
 import { eq, and, isNull, desc, or } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { canAccessUnit } from "../lib/permission-service";
-import { getStorageProvider } from "../lib/storage";
 import { createNotification } from "./notifications";
 import {
   uploadVoiceNote,
@@ -13,6 +11,7 @@ import {
   deleteVoiceNote,
   verifyFileAvailability,
   validateVoiceNoteFile,
+  getVoiceNoteAudioData,
   getVoiceNotesDiagnostics,
   type VoiceNoteEntityType,
 } from "../lib/voice-notes-service";
@@ -138,7 +137,6 @@ router.post("/voice-notes", upload.single("file"), async (req: Request, res: Res
 
     // ── Notify the other side ──
     if (crossLinkedProductionOrderId && dealId && !productionOrderId) {
-      // Sales uploaded on deal → notify production users
       const [po] = await db.select({ productionUnit: productionOrdersTable.productionUnit })
         .from(productionOrdersTable)
         .where(eq(productionOrdersTable.id, crossLinkedProductionOrderId));
@@ -165,7 +163,6 @@ router.post("/voice-notes", upload.single("file"), async (req: Request, res: Res
     }
 
     if (crossLinkedDealId && productionOrderId && !dealId) {
-      // Production uploaded on order → notify sales owner
       const [deal] = await db.select({ salesOwnerId: dealsTable.salesOwnerId, title: dealsTable.title })
         .from(dealsTable)
         .where(eq(dealsTable.id, crossLinkedDealId));
@@ -236,7 +233,6 @@ router.get("/voice-notes", async (req: Request, res: Response) => {
       }
     }
 
-    // Legacy endpoint support: /voice-notes/deal/:dealId and /voice-notes/production/:prodId
     const notes = await getVoiceNotes(entityType, entityId, user.id, user.role);
     res.json(notes);
   } catch (err) {
@@ -311,7 +307,7 @@ router.patch("/voice-notes/:id/transcript", async (req: Request, res: Response) 
 });
 
 // ────────────────────────────────────────────────
-// DELETE /voice-notes/:id — Hard delete (removes file + DB record)
+// DELETE /voice-notes/:id — Hard delete (removes DB record + audio bytes)
 // ────────────────────────────────────────────────
 router.delete("/voice-notes/:id", async (req: Request, res: Response) => {
   try {
@@ -330,6 +326,33 @@ router.delete("/voice-notes/:id", async (req: Request, res: Response) => {
   } catch (err) {
     console.error("Delete voice note error:", err);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ────────────────────────────────────────────────
+// GET /voice-notes/:id/stream — Stream audio bytes for <audio> playback
+// Public endpoint (no auth) — access is gated by the list endpoint.
+// The <audio> element cannot send custom headers, so this must be public.
+// ────────────────────────────────────────────────
+router.get("/voice-notes/:id/stream", async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid voice note id" }); return; }
+
+    const audioData = await getVoiceNoteAudioData(id);
+    if (!audioData) {
+      res.status(404).json({ error: "Voice note not found or unavailable" });
+      return;
+    }
+
+    res.setHeader("Content-Type", audioData.mimeType);
+    res.setHeader("Content-Length", audioData.data.length);
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Cache-Control", "private, max-age=86400");
+    res.end(audioData.data);
+  } catch (err) {
+    console.error("Stream voice note error:", err);
+    if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -419,11 +442,6 @@ router.post("/voice-notes/:id/replace", upload.single("file"), async (req: Reque
       .set({ isReplaced: true, replacedById: note.id })
       .where(eq(voiceNotesTable.id, id));
 
-    // Delete old file
-    if (existing.storagePath) {
-      try { await getStorageProvider().delete(existing.storagePath); } catch {}
-    }
-
     res.status(201).json(note);
   } catch (err) {
     console.error("Replace voice note error:", err);
@@ -432,7 +450,7 @@ router.post("/voice-notes/:id/replace", upload.single("file"), async (req: Reque
 });
 
 // ────────────────────────────────────────────────
-// GET /voice-notes/:id/download — Download voice note file
+// GET /voice-notes/:id/download — Download voice note file (with auth)
 // ────────────────────────────────────────────────
 router.get("/voice-notes/:id/download", async (req: Request, res: Response) => {
   try {
@@ -442,31 +460,16 @@ router.get("/voice-notes/:id/download", async (req: Request, res: Response) => {
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid voice note id" }); return; }
 
-    const [note] = await db
-      .select()
-      .from(voiceNotesTable)
-      .where(and(eq(voiceNotesTable.id, id), isNull(voiceNotesTable.deletedAt)));
-
-    if (!note) { res.status(404).json({ error: "Voice note not found" }); return; }
-
-    const store = getStorageProvider();
-    const fileExists = await store.exists(note.storagePath);
-
-    if (!fileExists) {
-      console.warn(`[VoiceNote] Download blocked: id=${id} path=${note.storagePath} — file missing from storage`);
-      res.status(404).json({ error: "This voice note is unavailable." }); return;
-    }
-
-    // For cloud storage (Supabase), redirect to the public URL
-    const url = store.getUrl(note.storagePath);
-    if (url.startsWith("http")) {
-      res.redirect(url);
+    const audioData = await getVoiceNoteAudioData(id);
+    if (!audioData) {
+      res.status(404).json({ error: "This voice note is unavailable." });
       return;
     }
 
-    // For local storage, serve the file directly
-    const filePath = store.getPhysicalPath(note.storagePath);
-    res.download(filePath, note.originalName);
+    res.setHeader("Content-Type", audioData.mimeType);
+    res.setHeader("Content-Disposition", `attachment; filename="${audioData.fileName}"`);
+    res.setHeader("Content-Length", audioData.data.length);
+    res.end(audioData.data);
   } catch (err) {
     console.error("Download voice note error:", err);
     if (!res.headersSent) res.status(500).json({ error: "Internal server error" });

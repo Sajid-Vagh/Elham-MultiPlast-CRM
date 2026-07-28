@@ -1,8 +1,7 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { db, voiceNotesTable, usersTable, dealsTable, productionOrdersTable, contactsTable } from "@workspace/db";
-import { eq, and, desc, isNull, or, inArray } from "drizzle-orm";
-import { storage, getStorageProvider } from "./storage";
+import { eq, and, desc, isNull, or, inArray, sql } from "drizzle-orm";
 
 const ALLOWED_MIMES = new Set([
   "audio/webm", "audio/webm;codecs=opus",
@@ -66,8 +65,8 @@ export function validateVoiceNoteFile(file: Express.Multer.File): string | null 
 }
 
 // ────────────────────────────────────────
-// Upload: save file to disk first, then DB
-// Never creates DB record if file write fails
+// Upload: store audio bytes directly in the database
+// No external storage service required.
 // ────────────────────────────────────────
 export async function uploadVoiceNote(
   params: UploadVoiceNoteParams
@@ -75,50 +74,36 @@ export async function uploadVoiceNote(
   const { file, uploadedById, createdByRole } = params;
 
   try {
-    const storagePath = await storage.save(file.originalname, file.buffer, "voice-notes");
+    const storagePath = `voice-notes/${randomUUID()}-${file.originalname}`;
 
-    // Verify upload succeeded before creating DB record
-    const verification = await storage.verifyPublicAccess(storagePath);
-    if (!verification.accessible) {
-      console.error(`[VoiceNote] Upload verification failed for ${storagePath}: ${verification.error}`);
-      await storage.delete(storagePath).catch(() => {});
-      return { note: null, error: "Voice note file could not be verified in storage" };
-    }
+    const [row] = await db.insert(voiceNotesTable).values({
+      dealId: params.dealId || null,
+      productionOrderId: params.productionOrderId || null,
+      proformaInvoiceId: params.proformaInvoiceId || null,
+      orderId: params.orderId || null,
+      leadId: params.leadId || null,
+      customerId: params.customerId || null,
+      uploadedById,
+      createdByRole,
+      fileName: path.basename(storagePath),
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      fileSize: file.size,
+      storagePath,
+      fileData: file.buffer,
+      durationMs: params.durationMs || null,
+      transcript: params.transcript || null,
+      transcriptStatus: params.transcript ? "completed" : "pending",
+      fileAvailable: true,
+    }).returning();
 
-    try {
-      const [row] = await db.insert(voiceNotesTable).values({
-        dealId: params.dealId || null,
-        productionOrderId: params.productionOrderId || null,
-        proformaInvoiceId: params.proformaInvoiceId || null,
-        orderId: params.orderId || null,
-        leadId: params.leadId || null,
-        customerId: params.customerId || null,
-        uploadedById,
-        createdByRole,
-        fileName: path.basename(storagePath),
-        originalName: file.originalname,
-        mimeType: file.mimetype,
-        fileSize: file.size,
-        storagePath,
-        durationMs: params.durationMs || null,
-        transcript: params.transcript || null,
-        transcriptStatus: params.transcript ? "completed" : "pending",
-        fileAvailable: true,
-      }).returning();
-
-      return {
-        note: await enrichVoiceNote(row),
-        error: null,
-      };
-    } catch (dbErr) {
-      // DB write failed — clean up the already-saved file
-      await storage.delete(storagePath).catch(() => {});
-      console.error("Voice note upload error:", dbErr);
-      return { note: null, error: "Failed to upload voice note" };
-    }
-  } catch (err) {
-    console.error("Voice note storage error:", err);
-    return { note: null, error: "Failed to save voice note file" };
+    return {
+      note: await enrichVoiceNote(row),
+      error: null,
+    };
+  } catch (dbErr) {
+    console.error("Voice note upload error:", dbErr);
+    return { note: null, error: "Failed to upload voice note" };
   }
 }
 
@@ -174,6 +159,7 @@ export async function getVoiceNotes(
       mimeType: voiceNotesTable.mimeType,
       fileSize: voiceNotesTable.fileSize,
       storagePath: voiceNotesTable.storagePath,
+      hasFileData: sql<boolean>`(${voiceNotesTable.fileData} IS NOT NULL)`,
       durationMs: voiceNotesTable.durationMs,
       transcript: voiceNotesTable.transcript,
       transcriptStatus: voiceNotesTable.transcriptStatus,
@@ -192,24 +178,16 @@ export async function getVoiceNotes(
     )
     .orderBy(desc(voiceNotesTable.createdAt));
 
-  // Verify file existence for each note (fail-open: assume exists on error)
   const result: VoiceNoteResponse[] = [];
-  const store = getStorageProvider();
   for (const row of rows) {
-    let fileExists = true;
-    try {
-      fileExists = await store.exists(row.storagePath);
-    } catch {
-      fileExists = true;
-    }
-
+    const fileExists = row.hasFileData;
     if (!fileExists) {
       console.warn(`[VoiceNote] File missing: id=${row.id} path=${row.storagePath}`);
     }
 
     result.push({
       ...row,
-      url: fileExists ? store.getUrl(row.storagePath) : "",
+      url: fileExists ? `/api/voice-notes/${row.id}/stream` : "",
       fileAvailable: fileExists,
       createdAt: row.createdAt?.toISOString?.() || String(row.createdAt),
     });
@@ -219,8 +197,7 @@ export async function getVoiceNotes(
 }
 
 // ────────────────────────────────────────
-// Delete: removes file from disk + DB record
-// Never leaves orphan records or files
+// Delete: removes DB record (audio bytes are in the DB)
 // ────────────────────────────────────────
 export async function deleteVoiceNote(
   noteId: number,
@@ -234,12 +211,7 @@ export async function deleteVoiceNote(
   if (!existing) return { success: false, error: "Voice note not found" };
   if (existing.deletedAt) return { success: false, error: "Already deleted" };
 
-  // Delete physical file
-  if (existing.storagePath) {
-    await storage.delete(existing.storagePath).catch(() => {});
-  }
-
-  // Hard delete the DB record (not soft delete — spec says remove)
+  // Hard delete the DB record (includes the audio bytes)
   await db.delete(voiceNotesTable)
     .where(eq(voiceNotesTable.id, noteId));
 
@@ -247,52 +219,64 @@ export async function deleteVoiceNote(
 }
 
 // ────────────────────────────────────────
+// Get audio bytes for streaming
+// ────────────────────────────────────────
+export async function getVoiceNoteAudioData(
+  noteId: number
+): Promise<{ data: Buffer; mimeType: string; fileName: string } | null> {
+  const [note] = await db
+    .select({
+      fileData: voiceNotesTable.fileData,
+      mimeType: voiceNotesTable.mimeType,
+      originalName: voiceNotesTable.originalName,
+      deletedAt: voiceNotesTable.deletedAt,
+    })
+    .from(voiceNotesTable)
+    .where(eq(voiceNotesTable.id, noteId));
+
+  if (!note || note.deletedAt || !note.fileData) return null;
+
+  return {
+    data: note.fileData as Buffer,
+    mimeType: note.mimeType,
+    fileName: note.originalName,
+  };
+}
+
+// ────────────────────────────────────────
 // Verify a single note's file availability
 // ────────────────────────────────────────
 export async function verifyFileAvailability(noteId: number): Promise<boolean> {
   const [note] = await db
-    .select({ storagePath: voiceNotesTable.storagePath })
+    .select({ hasData: sql<boolean>`(${voiceNotesTable.fileData} IS NOT NULL)` })
     .from(voiceNotesTable)
     .where(eq(voiceNotesTable.id, noteId));
 
   if (!note) return false;
-  return getStorageProvider().exists(note.storagePath);
+  return note.hasData;
 }
 
 // ────────────────────────────────────────
 // Check if user can access a voice note based on role
-// Sales can hear Production notes
-// Production can hear Sales notes
-// Support can hear Production notes
-// Admin can hear everything
 // ────────────────────────────────────────
 export function canAccessVoiceNote(userRole: string, noteRole: string): boolean {
   if (userRole === "admin") return true;
-  // All roles can access all voice notes across the CRM
-  // Cross-role access is always allowed
   return true;
 }
 
 // ────────────────────────────────────────
 // Cleanup: delete all voice notes for a production order
-// Called when order reaches Dispatch or Delivery
 // ────────────────────────────────────────
 export async function cleanupVoiceNotesForOrder(
   productionOrderId: number,
   reason: string
 ): Promise<{ deletedCount: number }> {
   const voiceNotes = await db
-    .select({ id: voiceNotesTable.id, storagePath: voiceNotesTable.storagePath })
+    .select({ id: voiceNotesTable.id })
     .from(voiceNotesTable)
     .where(eq(voiceNotesTable.productionOrderId, productionOrderId));
 
   if (voiceNotes.length === 0) return { deletedCount: 0 };
-
-  for (const vn of voiceNotes) {
-    if (vn.storagePath) {
-      try { await storage.delete(vn.storagePath); } catch (_) { /* best-effort */ }
-    }
-  }
 
   await db
     .delete(voiceNotesTable)
@@ -357,7 +341,7 @@ export async function cleanupOrphanVoiceNotes(): Promise<{ deletedCount: number 
 export interface VoiceNoteDiagnostic {
   id: number;
   storagePath: string;
-  generatedUrl: string;
+  hasFileData: boolean;
   dealId: number | null;
   productionOrderId: number | null;
   proformaInvoiceId: number | null;
@@ -367,49 +351,16 @@ export interface VoiceNoteDiagnostic {
   mimeType: string;
   fileSize: number;
   fileAvailable: boolean;
-  storageCheckResult: boolean;
-  storageCheckError: string | null;
-  httpStatus: number | null;
   createdAt: string;
 }
 
 export async function getVoiceNotesDiagnostics(): Promise<{
   storageProvider: string;
-  supabaseConfigured: boolean;
-  supabaseApiKeyValid: boolean | null;
-  supabaseBuckets: string[];
   totalRecords: number;
   availableCount: number;
   unavailableCount: number;
   notes: VoiceNoteDiagnostic[];
 }> {
-  const store = getStorageProvider();
-  const providerName = process.env.SUPABASE_URL ? "Supabase" : "Local";
-  const supabaseConfigured = !!process.env.SUPABASE_URL && !!process.env.SUPABASE_KEY;
-
-  // Check Supabase API key validity and list buckets
-  let supabaseApiKeyValid: boolean | null = null;
-  let supabaseBuckets: string[] = [];
-  if (supabaseConfigured) {
-    try {
-      const listUrl = `${process.env.SUPABASE_URL}/storage/v1/bucket`;
-      const res = await fetch(listUrl, {
-        headers: { Authorization: `Bearer ${process.env.SUPABASE_KEY}` },
-      });
-      supabaseApiKeyValid = res.ok;
-      if (res.ok) {
-        const buckets = await res.json() as { id: string; public: boolean }[];
-        supabaseBuckets = buckets.map(b => `${b.id} (public=${b.public})`);
-      } else {
-        const errText = await res.text().catch(() => "");
-        console.error(`[VoiceNote Diag] Supabase API key invalid: HTTP ${res.status}: ${errText}`);
-      }
-    } catch (err: any) {
-      supabaseApiKeyValid = false;
-      console.error(`[VoiceNote Diag] Supabase connection failed: ${err?.message}`);
-    }
-  }
-
   const rows = await db
     .select({
       id: voiceNotesTable.id,
@@ -424,6 +375,7 @@ export async function getVoiceNotesDiagnostics(): Promise<{
       fileSize: voiceNotesTable.fileSize,
       isReplaced: voiceNotesTable.isReplaced,
       deletedAt: voiceNotesTable.deletedAt,
+      hasFileData: sql<boolean>`(${voiceNotesTable.fileData} IS NOT NULL)`,
       createdAt: voiceNotesTable.createdAt,
     })
     .from(voiceNotesTable)
@@ -443,21 +395,8 @@ export async function getVoiceNotesDiagnostics(): Promise<{
       uploadedByName = user?.name || null;
     }
 
-    let storageCheckResult = false;
-    let storageCheckError: string | null = null;
-    let httpStatus: number | null = null;
-
-    try {
-      const verification = await (store as any).verifyPublicAccess(row.storagePath);
-      storageCheckResult = verification.accessible;
-      if (!verification.accessible) {
-        storageCheckError = verification.error || "Not accessible";
-      }
-    } catch (err: any) {
-      storageCheckError = err?.message || "Exception during check";
-    }
-
-    if (storageCheckResult) {
+    const fileExists = row.hasFileData;
+    if (fileExists) {
       availableCount++;
     } else {
       unavailableCount++;
@@ -466,7 +405,7 @@ export async function getVoiceNotesDiagnostics(): Promise<{
     diagnostics.push({
       id: row.id,
       storagePath: row.storagePath,
-      generatedUrl: storageCheckResult ? store.getUrl(row.storagePath) : "",
+      hasFileData: fileExists,
       dealId: row.dealId,
       productionOrderId: row.productionOrderId,
       proformaInvoiceId: row.proformaInvoiceId,
@@ -475,19 +414,13 @@ export async function getVoiceNotesDiagnostics(): Promise<{
       createdByRole: row.createdByRole,
       mimeType: row.mimeType,
       fileSize: row.fileSize,
-      fileAvailable: storageCheckResult,
-      storageCheckResult,
-      storageCheckError,
-      httpStatus,
+      fileAvailable: fileExists,
       createdAt: row.createdAt?.toISOString?.() || String(row.createdAt),
     });
   }
 
   return {
-    storageProvider: providerName,
-    supabaseConfigured,
-    supabaseApiKeyValid,
-    supabaseBuckets,
+    storageProvider: "Database",
     totalRecords: rows.length,
     availableCount,
     unavailableCount,
@@ -508,8 +441,7 @@ async function enrichVoiceNote(row: any): Promise<VoiceNoteResponse> {
     uploadedByName = user?.name || null;
   }
 
-  const store = getStorageProvider();
-  const fileExists = await store.exists(row.storagePath);
+  const fileExists = !!row.fileData;
 
   return {
     id: row.id,
@@ -527,7 +459,7 @@ async function enrichVoiceNote(row: any): Promise<VoiceNoteResponse> {
     mimeType: row.mimeType,
     fileSize: row.fileSize,
     storagePath: row.storagePath,
-    url: fileExists ? store.getUrl(row.storagePath) : "",
+    url: fileExists ? `/api/voice-notes/${row.id}/stream` : "",
     durationMs: row.durationMs || null,
     transcript: row.transcript || null,
     transcriptStatus: row.transcriptStatus || "pending",
