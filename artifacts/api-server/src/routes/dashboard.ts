@@ -3,6 +3,7 @@ import { db, contactsTable, dealsTable, usersTable, activitiesTable, ordersTable
 import { eq, inArray, and, desc, gte, lte } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
+import { getAccessibleUnits } from "../lib/unit-filter";
 
 const router: IRouter = Router();
 
@@ -33,6 +34,8 @@ async function getUser(req: any) {
   if (user.role === "admin" && ownerId) {
     effectiveOwnerId = ownerId;
   } else if (user.role === "sales") {
+    effectiveOwnerId = user.id;
+  } else if (user.role === "production_and_support") {
     effectiveOwnerId = user.id;
   }
 
@@ -405,6 +408,20 @@ router.get("/dashboard/support-kpi", async (req, res) => {
     const prodDateConds: any[] = [];
     if (startDate) { orderDateConds.push(gte(ordersTable.createdAt, new Date(startDate))); complaintDateConds.push(gte(complaintsTable.createdAt, new Date(startDate))); prodDateConds.push(gte(productionOrdersTable.createdAt, new Date(startDate))); }
     if (endDate) { const end = new Date(endDate); end.setHours(23, 59, 59, 999); orderDateConds.push(lte(ordersTable.createdAt, end)); complaintDateConds.push(lte(complaintsTable.createdAt, end)); prodDateConds.push(lte(productionOrdersTable.createdAt, end)); }
+
+    // Unit isolation for support-kpi
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits) {
+      orderDateConds.push(inArray(ordersTable.productionUnit, accessibleUnits));
+      prodDateConds.push(inArray(productionOrdersTable.productionUnit, accessibleUnits));
+      // Complaints filtered by contact unit (subquery)
+      const unitContactIds = await db.select({ id: contactsTable.id }).from(contactsTable).where(inArray(contactsTable.unit, accessibleUnits));
+      if (unitContactIds.length > 0) {
+        complaintDateConds.push(inArray(complaintsTable.contactId, unitContactIds.map(c => c.id)));
+      } else {
+        complaintDateConds.push(eq(complaintsTable.contactId, -1)); // no results
+      }
+    }
 
     // Repeat orders
     const allOrders = await db.select().from(ordersTable).where(and(...orderDateConds));

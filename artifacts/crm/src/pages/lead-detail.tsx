@@ -13,7 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, ChevronDown, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText, Factory, Send } from "lucide-react";
+import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, ChevronDown, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText, Factory, Send, Search } from "lucide-react";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
@@ -120,6 +121,10 @@ export default function LeadDetail() {
 
   const [expandedTimelineEvent, setExpandedTimelineEvent] = useState<number | null>(null);
   const [expandedProdTimeline, setExpandedProdTimeline] = useState<number | null>(null);
+  const [expandedDeals, setExpandedDeals] = useState<string[]>([]);
+  const [expandedSubGroups, setExpandedSubGroups] = useState<string[]>([]);
+  const [timelineSearch, setTimelineSearch] = useState("");
+  const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [showMoveCategory, setShowMoveCategory] = useState(false);
@@ -330,6 +335,7 @@ export default function LeadDetail() {
       key: string; type: string; icon: string; bg: string; description: string;
       createdAt: string; userName: string | null; notes: string | null;
       activityId?: number; callStatus?: string | null; followUpDate?: string | null; isEdited?: boolean | null; dealStage?: string;
+      dealId?: number | null;
     }> = [];
 
     if (activities) {
@@ -341,6 +347,7 @@ export default function LeadDetail() {
           createdAt: act.createdAt, userName: act.user?.name || null,
           notes: act.notes || (act as any).notesDisplay || null,
           activityId: act.id, callStatus: act.callStatus, followUpDate: act.followUpDate, isEdited: act.isEdited,
+          dealId: act.dealId || null,
         });
       }
     }
@@ -348,10 +355,16 @@ export default function LeadDetail() {
       for (const ev of timeline) {
         if (["follow_up","call","whatsapp","email","note","activity"].includes(ev.type)) continue;
         const ts = TIMELINE_ICONS[ev.type] || { bg: "#f3f4f6", icon: "•" };
+        // Match timeline events to deals
+        let eventDealId: number | null = null;
+        if (ev.type === "deal_created" || ev.type === "deal_updated") {
+          const matchingDeal = deals?.find(d => ev.description.includes(d.title || `Deal #${d.id}`));
+          eventDealId = matchingDeal?.id || null;
+        }
         items.push({
           key: `tl-${items.length}`, type: ev.type, icon: ts.icon, bg: ts.bg,
           description: ev.description, createdAt: ev.createdAt, userName: ev.user?.name || null,
-          notes: ev.notes || null, dealStage: ev.dealStage,
+          notes: ev.notes || null, dealStage: ev.dealStage, dealId: eventDealId,
         });
       }
     }
@@ -362,7 +375,85 @@ export default function LeadDetail() {
     // Sort newest first
     filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     return filtered;
-  }, [activities, timeline, actFromDate, actToDate]);
+  }, [activities, timeline, actFromDate, actToDate, deals]);
+
+  // Group timeline events by deal
+  type TimelineEvent = typeof mergedTimeline[number];
+  type SubGroupKey = "calls" | "notes" | "followUps" | "production" | "documents" | "other";
+  type DealGroup = {
+    dealId: number | null;
+    deal: typeof deals extends (infer D)[] | undefined ? D | null : null;
+    events: TimelineEvent[];
+    subGroups: Record<SubGroupKey, TimelineEvent[]>;
+    totalCount: number;
+    lastActivity: string | null;
+  };
+
+  const groupedByDeal = useMemo(() => {
+    const groupMap = new Map<number | null, DealGroup>();
+
+    // Initialize groups for existing deals
+    if (deals) {
+      for (const d of deals) {
+        groupMap.set(d.id, {
+          dealId: d.id, deal: d, events: [],
+          subGroups: { calls: [], notes: [], followUps: [], production: [], documents: [], other: [] },
+          totalCount: 0, lastActivity: null,
+        });
+      }
+    }
+
+    // Search filter
+    const searchLower = timelineSearch.toLowerCase();
+    const filtered = timelineSearch
+      ? mergedTimeline.filter(e =>
+          e.description.toLowerCase().includes(searchLower) ||
+          (e.notes || "").toLowerCase().includes(searchLower) ||
+          e.type.toLowerCase().includes(searchLower))
+      : mergedTimeline;
+
+    for (const event of filtered) {
+      const dId = event.dealId ?? null;
+      if (!groupMap.has(dId)) {
+        groupMap.set(dId, {
+          dealId: dId, deal: null, events: [],
+          subGroups: { calls: [], notes: [], followUps: [], production: [], documents: [], other: [] },
+          totalCount: 0, lastActivity: null,
+        });
+      }
+      const group = groupMap.get(dId)!;
+      group.events.push(event);
+      group.totalCount++;
+
+      // Sub-group classification
+      const t = event.type;
+      if (t === "Call") group.subGroups.calls.push(event);
+      else if (t === "Note") group.subGroups.notes.push(event);
+      else if (t === "FollowUp") group.subGroups.followUps.push(event);
+      else if (["production_order_created", "production_status_change", "category_change", "unit_change"].includes(t)
+        || t.toLowerCase().includes("production") || t.toLowerCase().includes("dispatch")) {
+        group.subGroups.production.push(event);
+      } else if (["document_uploaded", "document_replaced"].includes(t)) {
+        group.subGroups.documents.push(event);
+      } else {
+        group.subGroups.other.push(event);
+      }
+
+      if (!group.lastActivity || event.createdAt > group.lastActivity) {
+        group.lastActivity = event.createdAt;
+      }
+    }
+
+    // Sort: deal groups by most recent activity (newest first), general last
+    const groups = Array.from(groupMap.values()).filter(g => g.events.length > 0);
+    groups.sort((a, b) => {
+      if (a.dealId === null) return 1;
+      if (b.dealId === null) return -1;
+      return new Date(b.lastActivity || 0).getTime() - new Date(a.lastActivity || 0).getTime();
+    });
+
+    return groups;
+  }, [mergedTimeline, deals, timelineSearch]);
 
   if (isLoading) return <div className="p-8">Loading...</div>;
   if (!contact) return <div className="p-8">Contact not found.</div>;
@@ -830,12 +921,13 @@ export default function LeadDetail() {
 
         {/* ========== RIGHT CONTENT ========== */}
         <div className="lg:col-span-2 space-y-4">
-          {/* Merged Activity Timeline (replaces Follow-up History + Activity Timeline + Activity Log) */}
+          {/* ═══ GROUPED ACTIVITY TIMELINE ═══ */}
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
                   <ListOrdered className="h-3.5 w-3.5" /> Activity Timeline
+                  <Badge variant="outline" className="text-[10px] font-normal ml-1">{mergedTimeline.length}</Badge>
                 </CardTitle>
                 <Dialog open={actDialogOpen} onOpenChange={setActDialogOpen}>
                   <DialogTrigger asChild>
@@ -865,9 +957,9 @@ export default function LeadDetail() {
                 </Dialog>
               </div>
             </CardHeader>
-            <CardContent>
-              {/* Quick date filter */}
-              <div className="flex flex-wrap items-center gap-1.5 mb-3">
+            <CardContent className="space-y-3">
+              {/* Filters row */}
+              <div className="flex flex-wrap items-center gap-1.5">
                 {QUICK_BTNS.map(b => (
                   <button key={b.key} className={`date-quick-btn ${actQuick === b.key ? "active" : ""}`} onClick={() => applyQuick(b.key)}>
                     {b.label}
@@ -877,64 +969,144 @@ export default function LeadDetail() {
                 <Input type="date" value={actFromDate} onChange={e => { setActFromDate(e.target.value); setActQuick("custom"); }} className="h-7 w-36 text-xs" />
                 <span className="text-xs text-muted-foreground">–</span>
                 <Input type="date" value={actToDate} onChange={e => { setActToDate(e.target.value); setActQuick("custom"); }} className="h-7 w-36 text-xs" />
-                {actQuick !== "all" && (
-                  <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full ml-1">
-                    {mergedTimeline.length} shown
-                  </span>
-                )}
+                <div className="relative ml-auto min-w-[160px] max-w-[200px]">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                  <Input placeholder="Search timeline..." value={timelineSearch}
+                    onChange={e => setTimelineSearch(e.target.value)} className="h-7 pl-7 text-xs" />
+                </div>
               </div>
 
-              {mergedTimeline.length === 0 ? (
+              {/* Grouped Accordion Timeline */}
+              {groupedByDeal.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-6 border rounded-lg bg-card">
-                  {actQuick !== "all" ? "No events in this period." : "No timeline events yet."}
+                  {actQuick !== "all" || timelineSearch ? "No events match your filters." : "No timeline events yet."}
                 </p>
               ) : (
-                <div className="relative pl-6 space-y-0">
-                  {mergedTimeline.map((event, idx) => {
-                    const isLast = idx === mergedTimeline.length - 1;
-                    const isExpanded = expandedTimelineEvent === idx;
-                    return (
-                      <div key={event.key} className="relative pb-0">
-                        {!isLast && <div className="absolute left-[11px] top-5 bottom-0 w-0.5 bg-border" />}
-                        <div
-                          className="flex items-start gap-3 cursor-pointer select-none py-2 -ml-6 pl-6 rounded-md hover:bg-muted/40 transition-colors"
-                          onClick={() => setExpandedTimelineEvent(isExpanded ? null : idx)}
-                        >
-                          <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs z-10 ring-2 ring-background" style={{ backgroundColor: event.bg }}>
+                <Accordion type="multiple" value={expandedDeals} onValueChange={setExpandedDeals} className="space-y-2">
+                  {groupedByDeal.map((group) => {
+                    const gKey = group.dealId ?? "general";
+                    const accordionVal = `deal-${gKey}`;
+                    const formatDate = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+                    const formatTime = (d: string) => new Date(d).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+
+                    const SUBGROUP_META: Record<SubGroupKey, { label: string; icon: string; color: string }> = {
+                      calls: { label: "Calls", icon: "📞", color: "bg-green-50 text-green-700 border-green-200" },
+                      notes: { label: "Notes", icon: "📝", color: "bg-yellow-50 text-yellow-700 border-yellow-200" },
+                      followUps: { label: "Follow Ups", icon: "🔔", color: "bg-orange-50 text-orange-700 border-orange-200" },
+                      production: { label: "Production & Status", icon: "🏭", color: "bg-blue-50 text-blue-700 border-blue-200" },
+                      documents: { label: "Documents", icon: "📄", color: "bg-purple-50 text-purple-700 border-purple-200" },
+                      other: { label: "Other", icon: "•", color: "bg-gray-50 text-gray-700 border-gray-200" },
+                    };
+
+                    const renderEvent = (event: TimelineEvent, eventIdx: number) => {
+                      const uniqueKey = `${gKey}-${event.key}-${eventIdx}`;
+                      const isExpanded = expandedTimelineEvent === eventIdx;
+                      return (
+                        <div key={uniqueKey} className="flex items-start gap-2 py-1.5 px-2 rounded hover:bg-muted/30 transition-colors cursor-pointer group/event"
+                          onClick={() => setExpandedTimelineEvent(isExpanded ? null : eventIdx)}>
+                          <div className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] ring-1 ring-background" style={{ backgroundColor: event.bg }}>
                             {event.icon}
                           </div>
-                          <div className="flex-1 min-w-0 pt-0.5">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <ChevronDown
-                                className={`h-3 w-3 text-muted-foreground flex-shrink-0 transition-transform duration-200 ${isExpanded ? "" : "-rotate-90"}`}
-                              />
-                              <span className="text-xs font-medium">{event.description}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[11px] font-medium">{event.description}</span>
                               <span className="text-[10px] text-muted-foreground">
-                                {new Date(event.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
-                                {" \u2022 "}
-                                {new Date(event.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                                {formatDate(event.createdAt)} • {formatTime(event.createdAt)}
                               </span>
                               {event.type === "FollowUp" && event.callStatus && (
-                                <Badge variant="outline" className={`text-[10px] ${event.callStatus === "Completed" ? "border-green-300 text-green-700" : event.callStatus === "Cancelled" ? "border-red-300 text-red-700" : "border-orange-300 text-orange-700"}`}>
+                                <Badge variant="outline" className={`text-[9px] px-1 py-0 ${event.callStatus === "Completed" ? "border-green-300 text-green-700" : event.callStatus === "Cancelled" ? "border-red-300 text-red-700" : "border-orange-300 text-orange-700"}`}>
                                   {event.callStatus}
                                 </Badge>
                               )}
                             </div>
                             {isExpanded && (
-                              <div className="mt-1.5 pl-5 space-y-1 text-xs text-muted-foreground">
+                              <div className="mt-1 pl-3 space-y-0.5 text-[11px] text-muted-foreground border-l-2 border-border ml-0.5">
                                 {event.userName && <p><span className="font-medium text-foreground">By:</span> {event.userName}</p>}
                                 {event.notes && <p className="whitespace-pre-wrap"><span className="font-medium text-foreground">Notes:</span> {event.notes}</p>}
-                                {event.dealStage && <p><span className="font-medium text-foreground">Stage:</span> <Badge variant="outline" className="text-[10px]">{event.dealStage}</Badge></p>}
+                                {event.dealStage && <p><span className="font-medium text-foreground">Stage:</span> <Badge variant="outline" className="text-[9px]">{event.dealStage}</Badge></p>}
                                 {event.followUpDate && <p><span className="font-medium text-foreground">Follow-up:</span> {event.followUpDate}</p>}
-                                <p><span className="font-medium text-foreground">Time:</span> {new Date(event.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}</p>
                               </div>
                             )}
                           </div>
                         </div>
-                      </div>
+                      );
+                    };
+
+                    return (
+                      <AccordionItem key={accordionVal} value={accordionVal} className="border rounded-lg overflow-hidden">
+                        <AccordionTrigger className="px-3 py-2.5 hover:no-underline hover:bg-muted/30 [&[data-state=open]]:bg-muted/20">
+                          <div className="flex-1 flex items-center justify-between mr-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <FolderTree className="h-4 w-4 text-amber-600 shrink-0" />
+                              {group.deal ? (
+                                <div className="min-w-0">
+                                  <span className="text-sm font-semibold truncate block">{group.deal.title || `Deal #${group.deal.id}`}</span>
+                                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                                    <span>{formatDate(group.deal.createdAt)}</span>
+                                    {group.deal.totalValue && <span className="font-medium text-foreground">₹{Number(group.deal.totalValue).toLocaleString()}</span>}
+                                    <span className={`px-1.5 py-0 rounded-full font-medium ${STAGE_BADGE_COLORS[group.deal.stage] || "bg-gray-100"}`}>{group.deal.stage}</span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-sm font-semibold">General</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3 text-[10px] text-muted-foreground shrink-0">
+                              {group.lastActivity && <span>Last: {formatDate(group.lastActivity)}</span>}
+                              <Badge variant="outline" className="text-[10px]">{group.totalCount} activities</Badge>
+                            </div>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="px-3 pb-3 pt-0">
+                          <div className="space-y-2 mt-1">
+                            {(Object.keys(group.subGroups) as SubGroupKey[]).map(sgKey => {
+                              const sgEvents = group.subGroups[sgKey];
+                              if (sgEvents.length === 0) return null;
+                              const meta = SUBGROUP_META[sgKey];
+                              const sgAccordionVal = `${accordionVal}-${sgKey}`;
+                              const isVisible = expandedSubGroups.includes(sgAccordionVal);
+                              const showCount = visibleCounts[sgAccordionVal] || 5;
+                              return (
+                                <div key={sgKey} className="border rounded-md overflow-hidden">
+                                  <button
+                                    className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium hover:bg-muted/30 transition-colors"
+                                    onClick={() => {
+                                      setExpandedSubGroups(prev =>
+                                        prev.includes(sgAccordionVal)
+                                          ? prev.filter(s => s !== sgAccordionVal)
+                                          : [...prev, sgAccordionVal]
+                                      );
+                                    }}
+                                  >
+                                    <div className="flex items-center gap-1.5">
+                                      <span>{meta.icon}</span>
+                                      <span>{meta.label}</span>
+                                      <Badge variant="outline" className={`text-[9px] px-1 py-0 ${meta.color}`}>{sgEvents.length}</Badge>
+                                    </div>
+                                    <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform duration-200 ${isVisible ? "" : "-rotate-90"}`} />
+                                  </button>
+                                  {isVisible && (
+                                    <div className="border-t bg-muted/10">
+                                      {sgEvents.slice(0, showCount).map((ev, i) => renderEvent(ev, i))}
+                                      {sgEvents.length > showCount && (
+                                        <button
+                                          className="w-full text-center text-[11px] text-primary hover:underline py-1.5 font-medium"
+                                          onClick={() => setVisibleCounts(prev => ({ ...prev, [sgAccordionVal]: (prev[sgAccordionVal] || 5) + 10 }))}
+                                        >
+                                          Show More ({sgEvents.length - showCount} remaining)
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
                     );
                   })}
-                </div>
+                </Accordion>
               )}
             </CardContent>
           </Card>

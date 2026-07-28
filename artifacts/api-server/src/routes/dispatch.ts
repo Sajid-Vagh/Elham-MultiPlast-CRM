@@ -118,6 +118,10 @@ router.post("/dispatch", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
+    if (user.role !== "admin" && user.role !== "production_and_support") {
+      res.status(403).json({ error: "Only support/admin can create dispatch" }); return;
+    }
+
     const { items, ...dispatchData } = req.body;
     const dispatchNumber = await generateId("dispatch");
 
@@ -174,6 +178,21 @@ router.patch("/dispatch/:id", async (req, res) => {
     const [existing] = await db.select().from(dispatchTable).where(eq(dispatchTable.id, id));
     if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits) {
+      let dispatchUnit: string | null = null;
+      if (existing.productionOrderId) {
+        const [po] = await db.select({ productionUnit: productionOrdersTable.productionUnit }).from(productionOrdersTable).where(eq(productionOrdersTable.id, existing.productionOrderId));
+        dispatchUnit = po?.productionUnit ?? null;
+      } else if (existing.orderId) {
+        const [o] = await db.select({ productionUnit: ordersTable.productionUnit }).from(ordersTable).where(eq(ordersTable.id, existing.orderId));
+        dispatchUnit = o?.productionUnit ?? null;
+      }
+      if (dispatchUnit && !accessibleUnits.includes(dispatchUnit)) {
+        res.status(403).json({ error: "Access denied: unit mismatch" }); return;
+      }
+    }
+
     const updatePayload: any = { ...updateData, updatedAt: new Date() };
     if (status) {
       updatePayload.status = status;
@@ -218,7 +237,27 @@ router.delete("/dispatch/:id", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    await db.update(dispatchTable).set({ isDeleted: true, deletedAt: new Date(), deletedBy: user.id }).where(eq(dispatchTable.id, Number(req.params.id)));
+
+    const id = Number(req.params.id);
+    const [existing] = await db.select().from(dispatchTable).where(eq(dispatchTable.id, id));
+    if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits) {
+      let dispatchUnit: string | null = null;
+      if (existing.productionOrderId) {
+        const [po] = await db.select({ productionUnit: productionOrdersTable.productionUnit }).from(productionOrdersTable).where(eq(productionOrdersTable.id, existing.productionOrderId));
+        dispatchUnit = po?.productionUnit ?? null;
+      } else if (existing.orderId) {
+        const [o] = await db.select({ productionUnit: ordersTable.productionUnit }).from(ordersTable).where(eq(ordersTable.id, existing.orderId));
+        dispatchUnit = o?.productionUnit ?? null;
+      }
+      if (dispatchUnit && !accessibleUnits.includes(dispatchUnit)) {
+        res.status(403).json({ error: "Access denied: unit mismatch" }); return;
+      }
+    }
+
+    await db.update(dispatchTable).set({ isDeleted: true, deletedAt: new Date(), deletedBy: user.id }).where(eq(dispatchTable.id, id));
     res.status(204).send();
   } catch (err) {
     console.error("Delete dispatch error:", err);
@@ -240,6 +279,21 @@ router.post("/dispatch/:id/builty", builtyUpload.single("file"), async (req, res
 
     const [dispatch] = await db.select().from(dispatchTable).where(eq(dispatchTable.id, id));
     if (!dispatch) { res.status(404).json({ error: "Dispatch not found" }); return; }
+
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits) {
+      let dispatchUnit: string | null = null;
+      if (dispatch.productionOrderId) {
+        const [po] = await db.select({ productionUnit: productionOrdersTable.productionUnit }).from(productionOrdersTable).where(eq(productionOrdersTable.id, dispatch.productionOrderId));
+        dispatchUnit = po?.productionUnit ?? null;
+      } else if (dispatch.orderId) {
+        const [o] = await db.select({ productionUnit: ordersTable.productionUnit }).from(ordersTable).where(eq(ordersTable.id, dispatch.orderId));
+        dispatchUnit = o?.productionUnit ?? null;
+      }
+      if (dispatchUnit && !accessibleUnits.includes(dispatchUnit)) {
+        res.status(403).json({ error: "Access denied: unit mismatch" }); return;
+      }
+    }
 
     const storagePath = await storage.save(file.originalname, file.buffer, "builty");
     const fileUrl = storage.getUrl(storagePath);

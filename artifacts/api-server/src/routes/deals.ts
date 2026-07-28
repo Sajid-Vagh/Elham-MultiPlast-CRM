@@ -66,7 +66,7 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
     }
 
     // Fetch active deals for allowed contacts (not Won, not Lost)
-    const allDeals = await db
+    let allDeals = await db
       .select()
       .from(dealsTable)
       .where(
@@ -76,6 +76,11 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
         )
       )
       .orderBy(desc(dealsTable.createdAt));
+
+    // Role-based deal isolation: sales users only see their own deals
+    if (user.role === "sales") {
+      allDeals = allDeals.filter(d => d.salesOwnerId === user.id);
+    }
 
     // Enrich deals with contact info and active PI summary
     const enrichedDeals = [];

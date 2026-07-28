@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, activitiesTable, usersTable, contactsTable, dealsTable, notificationsTable } from "@workspace/db";
-import { eq, and, gte, lte, isNull, SQL, desc } from "drizzle-orm";
+import { eq, and, or, gte, lte, isNull, SQL, desc } from "drizzle-orm";
 import { CreateActivityBody, UpdateActivityBody, ListActivitiesQueryParams, UpdateActivityParams, DeleteActivityParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -111,7 +111,17 @@ router.get("/activities", async (req, res) => {
 
     if (user.role === "sales") {
       conditions.push(eq(activitiesTable.createdBy, user.id));
+    } else if (user.role === "production") {
+      // Production users only see activities they created
+      conditions.push(eq(activitiesTable.createdBy, user.id));
+    } else if (user.role === "production_and_support") {
+      // Support users see activities they created or assigned to them
+      conditions.push(or(
+        eq(activitiesTable.createdBy, user.id),
+        eq(activitiesTable.assignedTo, user.id),
+      )!);
     }
+    // Admin sees all — no filter
 
     if (params.success) {
       if (params.data.dealId) conditions.push(eq(activitiesTable.dealId, params.data.dealId));

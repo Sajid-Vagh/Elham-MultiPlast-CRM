@@ -67,15 +67,27 @@ router.get("/search", async (req, res) => {
         .where(or(ilike(productsTable.name, s), ilike(productsTable.productCode, s)))
         .limit(10),
 
-      // Complaints — search by complaint number, customer name, product name
-      db.select({ id: complaintsTable.id, complaintNumber: complaintsTable.complaintNumber, customerName: complaintsTable.customerName, status: complaintsTable.status })
-        .from(complaintsTable)
-        .where(and(eq(complaintsTable.isDeleted, false), or(
-          ilike(complaintsTable.complaintNumber, s),
-          ilike(complaintsTable.customerName, s),
-          ilike(complaintsTable.productName, s),
-        )))
-        .limit(10),
+      // Complaints — search by complaint number, customer name, product name (unit-filtered via contacts)
+      (async () => {
+        const compConditions: (SQL | undefined)[] = [eq(complaintsTable.isDeleted, false),
+          or(
+            ilike(complaintsTable.complaintNumber, s),
+            ilike(complaintsTable.customerName, s),
+            ilike(complaintsTable.productName, s),
+          ),
+        ];
+        if (user.role === "sales") {
+          // Sales users only see complaints linked to contacts they own
+          compConditions.push(sql`${complaintsTable.contactId} IN (SELECT c.id FROM contacts c WHERE c.sales_owner_id = ${user.id})`);
+        }
+        if (accessibleUnits) {
+          compConditions.push(sql`${complaintsTable.contactId} IN (SELECT c2.id FROM contacts c2 WHERE c2.unit IN (${sql.join(accessibleUnits.map(u => sql`${u}`), sql`, `)}))`);
+        }
+        return db.select({ id: complaintsTable.id, complaintNumber: complaintsTable.complaintNumber, customerName: complaintsTable.customerName, status: complaintsTable.status })
+          .from(complaintsTable)
+          .where(and(...compConditions))
+          .limit(10);
+      })(),
 
       // Deals — search by title, include active PI status
       (async () => {
@@ -141,22 +153,28 @@ router.get("/search", async (req, res) => {
         ))
         .limit(10),
 
-      // Proforma Invoices — search by invoice number, customer name
-      db.select({
-        id: proformaInvoicesTable.id,
-        invoiceNumber: proformaInvoicesTable.invoiceNumber,
-        customerName: proformaInvoicesTable.customerName,
-        status: proformaInvoicesTable.status,
-      })
-        .from(proformaInvoicesTable)
-        .where(and(
-          eq(proformaInvoicesTable.isDeleted, false),
+      // Proforma Invoices — search by invoice number, customer name (role-filtered)
+      (async () => {
+        const piConditions: (SQL | undefined)[] = [eq(proformaInvoicesTable.isDeleted, false),
           or(
             ilike(proformaInvoicesTable.invoiceNumber, s),
             ilike(proformaInvoicesTable.customerName, s),
           ),
-        ))
-        .limit(10),
+        ];
+        if (user.role === "sales") {
+          // Sales users only see PIs linked to deals they own
+          piConditions.push(sql`${proformaInvoicesTable.dealId} IN (SELECT d.id FROM deals d WHERE d.sales_owner_id = ${user.id})`);
+        }
+        return db.select({
+          id: proformaInvoicesTable.id,
+          invoiceNumber: proformaInvoicesTable.invoiceNumber,
+          customerName: proformaInvoicesTable.customerName,
+          status: proformaInvoicesTable.status,
+        })
+          .from(proformaInvoicesTable)
+          .where(and(...piConditions))
+          .limit(10);
+      })(),
 
       // Activities — search by notes content (recent only)
       (async () => {

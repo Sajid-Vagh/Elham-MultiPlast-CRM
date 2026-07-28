@@ -33,7 +33,7 @@ async function getUnitContactIds(unit: string): Promise<Set<number>> {
 async function restrictToOwnDeals(req: any, params: any) {
   const user = await getUserFromRequest(req);
   if (!user) { return null; }
-  if (user.role === "sales" && !user.canViewAllReports) {
+  if ((user.role === "sales" || user.role === "production_and_support") && !user.canViewAllReports) {
     params.salesOwnerId = user.id;
   }
   return user;
@@ -69,7 +69,7 @@ router.get("/reports/summary", async (req, res) => {
     const requestedUnit = req.query.unit as string | undefined;
     const unitFilter = (user.unit === "All" || user.role === "admin") ? requestedUnit : user.unit;
 
-    if (user && user.role === "sales" && !user.canViewAllReports) {
+    if (user && (user.role === "sales" || user.role === "production_and_support") && !user.canViewAllReports) {
       contacts = contacts.filter(c => c.salesOwnerId === user.id);
       deals = deals.filter(d => d.salesOwnerId === user.id);
     } else if (user?.role === "admin" && ownerId) {
@@ -181,7 +181,7 @@ router.get("/reports/by-owner", async (req, res) => {
     const authUser = await getUserFromRequest(req);
     if (!authUser) { res.status(403).json({ error: "Unauthorized" }); return; }
     let deals = await db.select().from(dealsTable);
-    if (authUser.role === "sales" && !authUser.canViewAllReports) {
+    if ((authUser.role === "sales" || authUser.role === "production_and_support") && !authUser.canViewAllReports) {
       deals = deals.filter(d => d.salesOwnerId === authUser.id);
     }
     // Apply owner filter from query if admin
@@ -192,7 +192,7 @@ router.get("/reports/by-owner", async (req, res) => {
 
     const users = await db.select().from(usersTable);
     // Only include sales users
-    let salesUsers = users.filter(u => u.role === "admin" || u.role === "sales");
+    let salesUsers = users.filter(u => u.role === "admin" || u.role === "sales" || u.role === "production_and_support");
 
     if (params.success) {
       const { startDate, endDate } = getDateRange(req);
@@ -210,8 +210,8 @@ router.get("/reports/by-owner", async (req, res) => {
       }
     }
 
-    // Sales users should only see their own performance
-    if (authUser.role === "sales" && !authUser.canViewAllReports) {
+    // Sales/Support users should only see their own performance
+    if ((authUser.role === "sales" || authUser.role === "production_and_support") && !authUser.canViewAllReports) {
       salesUsers = salesUsers.filter(u => u.id === authUser.id);
     }
 

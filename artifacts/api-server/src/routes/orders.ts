@@ -33,6 +33,30 @@ async function enrichOrder(order: any) {
   };
 }
 
+// Helper: verify order access (unit isolation + role ownership)
+async function verifyOrderAccess(
+  user: { id: number; role: string; unit?: string | null },
+  orderId: number
+): Promise<{ order: any; error?: string; status?: number }> {
+  const accessibleUnits = getAccessibleUnits(user);
+  const conds: any[] = [eq(ordersTable.id, orderId)];
+  if (accessibleUnits) conds.push(inArray(ordersTable.productionUnit, accessibleUnits));
+  const [order] = await db.select().from(ordersTable).where(and(...conds)).limit(1);
+  if (!order) return { order: null, error: "Order not found", status: 404 };
+  if (user.role !== "admin") {
+    if (user.role === "sales" && order.salesOwnerId !== user.id) {
+      return { order: null, error: "Forbidden", status: 403 };
+    }
+    if (user.role === "production_and_support" && order.supportOwnerId !== user.id) {
+      return { order: null, error: "Forbidden", status: 403 };
+    }
+    if (user.role === "production" && order.productionOwnerId !== user.id) {
+      return { order: null, error: "Forbidden", status: 403 };
+    }
+  }
+  return { order };
+}
+
 // List orders
 router.get("/orders", async (req, res) => {
   try {
@@ -265,13 +289,8 @@ router.get("/orders/:id", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const id = Number(req.params.id);
-    const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
-    if (!order) { res.status(404).json({ error: "Not found" }); return; }
-
-    const accessibleUnits = getAccessibleUnits(user);
-    if (accessibleUnits && !accessibleUnits.includes(order.productionUnit)) {
-      res.status(403).json({ error: "Forbidden" }); return;
-    }
+    const { order, error, status } = await verifyOrderAccess(user, id);
+    if (!order) { res.status(status!).json({ error }); return; }
 
     res.json(await enrichOrder(order));
   } catch (err) {
@@ -412,16 +431,8 @@ router.patch("/orders/:id", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const id = Number(req.params.id);
-    const [existing] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
-    if (!existing) { res.status(404).json({ error: "Not found" }); return; }
-
-    // Enforce ownership + unit isolation
-    if (user.role !== "admin") {
-      const accessibleUnits = getAccessibleUnits(user);
-      if (accessibleUnits && !accessibleUnits.includes(existing.productionUnit)) {
-        res.status(403).json({ error: "Forbidden" }); return;
-      }
-    }
+    const { order: existing, error, status } = await verifyOrderAccess(user, id);
+    if (!existing) { res.status(status!).json({ error }); return; }
 
     const { items, transportSnapshot, ...updateData } = req.body;
 
@@ -542,8 +553,8 @@ router.delete("/orders/:id", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const id = Number(req.params.id);
-    const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
-    if (!order) { res.status(404).json({ error: "Not found" }); return; }
+    const { order, error, status } = await verifyOrderAccess(user, id);
+    if (!order) { res.status(status!).json({ error }); return; }
 
     await db.update(ordersTable).set({ isDeleted: true, deletedAt: new Date(), deletedBy: user.id }).where(eq(ordersTable.id, id));
 
@@ -587,6 +598,9 @@ router.get("/orders/:id/timeline", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const id = Number(req.params.id);
+    const { order, error, status } = await verifyOrderAccess(user, id);
+    if (!order) { res.status(status!).json({ error }); return; }
+
     const events = await db.select({
       id: orderTimelineTable.id,
       type: orderTimelineTable.type,
@@ -613,6 +627,9 @@ router.get("/orders/:id/revisions", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const id = Number(req.params.id);
+    const { order, error, status } = await verifyOrderAccess(user, id);
+    if (!order) { res.status(status!).json({ error }); return; }
+
     const revisions = await db.select({
       id: orderRevisionsTable.id,
       version: orderRevisionsTable.version,
@@ -643,8 +660,8 @@ router.post("/orders/:id/revisions", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const orderId = Number(req.params.id);
-    const [existing] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
-    if (!existing) { res.status(404).json({ error: "Order not found" }); return; }
+    const { order: existing, error, status } = await verifyOrderAccess(user, orderId);
+    if (!existing) { res.status(status!).json({ error }); return; }
 
     const { reason, changes, department, approvalRequired } = req.body;
     if (!reason) { res.status(400).json({ error: "Reason is required" }); return; }
@@ -740,6 +757,15 @@ router.get("/orders/product-demand", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
+    const accessibleUnits = getAccessibleUnits(user);
+    const extraConds: string[] = [];
+    if (accessibleUnits) {
+      extraConds.push(`AND o.production_unit IN ('${accessibleUnits.join("','")}')`);
+    }
+    if (user.role === "sales") {
+      extraConds.push(`AND o.sales_owner_id = ${user.id}`);
+    }
+
     const demand = await db.execute(sql`
       SELECT
         oi.product_name,
@@ -759,6 +785,7 @@ router.get("/orders/product-demand", async (req, res) => {
       WHERE o.is_deleted = false
         AND oi.status NOT IN ('Completed', 'Cancelled', 'Dispatched')
         AND o.status NOT IN ('Cancelled', 'Completed')
+        ${sql.raw(extraConds.join(" "))}
       GROUP BY oi.product_name, oi.product_code, oi.bottle_type, oi.bottle_weight, oi.cap_colour, oi.colour, oi.capacity
       ORDER BY remaining DESC
     `);
@@ -777,6 +804,19 @@ router.get("/orders/by-product/:productName", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const productName = decodeURIComponent(req.params.productName);
+    const conditions: any[] = [
+      eq(orderItemsTable.productName, productName),
+      eq(ordersTable.isDeleted, false),
+    ];
+
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits) {
+      conditions.push(inArray(ordersTable.productionUnit, accessibleUnits));
+    }
+    if (user.role === "sales") {
+      conditions.push(eq(ordersTable.salesOwnerId, user.id));
+    }
+
     const items = await db.select({
       orderId: orderItemsTable.orderId,
       orderNumber: ordersTable.orderNumber,
@@ -790,10 +830,7 @@ router.get("/orders/by-product/:productName", async (req, res) => {
       batchNumber: orderItemsTable.batchNumber,
     }).from(orderItemsTable)
       .innerJoin(ordersTable, eq(ordersTable.id, orderItemsTable.orderId))
-      .where(and(
-        eq(orderItemsTable.productName, productName),
-        eq(ordersTable.isDeleted, false),
-      ));
+      .where(and(...conditions));
 
     const enriched = await Promise.all(items.map(async (item) => {
       const owner = item.salesOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, item.salesOwnerId)).then(r => r[0]) : null;
