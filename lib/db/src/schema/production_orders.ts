@@ -125,6 +125,8 @@ export const productionOrdersTable = pgTable("production_orders", {
   productionSheetGeneratedBy: integer("production_sheet_generated_by").references(() => usersTable.id, { onDelete: "set null" }),
   productionSheetVersion: integer("production_sheet_version").notNull().default(0),
   needsReprint: boolean("needs_reprint").notNull().default(false),
+  // Ready To Dispatch timestamp
+  readyAt: timestamp("ready_at", { withTimezone: true }),
 });
 
 export const productionTimelineTable = pgTable("production_timeline", {

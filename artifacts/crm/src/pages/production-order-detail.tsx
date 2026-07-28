@@ -393,12 +393,12 @@ export default function ProductionOrderDetail() {
                           </div>
                         );
                       }
-                      if (allReady && order.status === "Production On Going") {
+                      if (allReady && (order.status === "Production On Going" || order.status === "Packaging")) {
                         return (
-                          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-center">
-                            <CheckCircle2 className="h-6 w-6 text-blue-600 mx-auto mb-2" />
-                            <p className="text-sm font-semibold text-blue-800">All Products Ready</p>
-                            <p className="text-xs text-blue-600 mt-1">Order will automatically move to Ready To Dispatch...</p>
+                          <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-center">
+                            <CheckCircle2 className="h-6 w-6 text-green-600 mx-auto mb-2" />
+                            <p className="text-sm font-semibold text-green-800">All Products Ready</p>
+                            <p className="text-xs text-green-600 mt-1">Order is transitioning to Ready To Dispatch — Dispatch team notified.</p>
                           </div>
                         );
                       }
@@ -592,7 +592,17 @@ export default function ProductionOrderDetail() {
             <Card className="border-indigo-200">
               <CardHeader><CardTitle className="flex items-center gap-2 text-indigo-700"><Truck className="h-4 w-4" /> Dispatch Details</CardTitle></CardHeader>
               <CardContent>
+                {order.dispatchStatus === "Pending Dispatch" && !order.transportName && !order.lrNumber ? (
+                  <div className="flex items-center gap-3 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+                    <Clock className="h-5 w-5 text-indigo-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-semibold text-indigo-800">Awaiting Transport Assignment</p>
+                      <p className="text-xs text-indigo-600 mt-0.5">Order is ready. Dispatch team will load vehicle and book transport.</p>
+                    </div>
+                  </div>
+                ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                  {order.dispatchStatus && <div><span className="text-muted-foreground">Dispatch Status</span><p className="font-medium mt-1">{order.dispatchStatus}</p></div>}
                   {order.transportName && <div><span className="text-muted-foreground">Transport Name</span><p className="font-medium mt-1">{order.transportName}</p></div>}
                   {order.lrNumber && <div><span className="text-muted-foreground">LR / Builty Number</span><p className="font-medium mt-1">{order.lrNumber}</p></div>}
                   {order.builtyUrl && <div><span className="text-muted-foreground">Builty</span><p className="font-medium mt-1"><a href={order.builtyUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">View Builty</a></p></div>}
@@ -602,6 +612,7 @@ export default function ProductionOrderDetail() {
                   {order.deliveryDate && <div><span className="text-muted-foreground">Delivery Date</span><p className="font-medium mt-1">{order.deliveryDate}</p></div>}
                   {order.deliveredBy && <div><span className="text-muted-foreground">Delivered By</span><p className="font-medium mt-1">{order.deliveredBy.name}</p></div>}
                 </div>
+                )}
               </CardContent>
             </Card>
           )}

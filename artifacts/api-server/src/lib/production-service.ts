@@ -283,6 +283,7 @@ export async function recalculateOrderStatus(orderId: number, triggeredBy?: { id
     updateData.status = "Ready To Dispatch";
     updateData.dispatchStatus = "Pending Dispatch";
     updateData.isFrozen = true;
+    updateData.readyAt = now;
   } else if (newStatus === "Production On Going") {
     updateData.status = "Production On Going";
     updateData.startedById = order.startedById || triggeredBy?.id || null;
@@ -970,9 +971,10 @@ export async function markReadyForDispatch(
     status: "Ready To Dispatch",
     dispatchStatus: "Pending Dispatch",
     isFrozen: true,
+    readyAt: now,
     updatedBy: user.id,
     updatedAt: now,
-  }).where(eq(productionOrdersTable.id, orderId));
+  } as any).where(eq(productionOrdersTable.id, orderId));
 
   await addTimelineEntry(db, orderId, "Ready To Dispatch",
     `Status: ${order.status} → Ready To Dispatch\nReady for dispatch. Marked by ${user.name}${notes ? `\n${notes}` : ""}`,
@@ -1716,6 +1718,7 @@ export async function updateOrderStatus(
   if (newStatus === "Ready To Dispatch") {
     updateData.dispatchStatus = "Pending Dispatch";
     updateData.isFrozen = true;
+    updateData.readyAt = now;
   }
 
   if (newStatus === "Cancelled") {
@@ -2879,9 +2882,10 @@ export async function repairStuckOrders(user: PermissionUser): Promise<{
       status: "Ready To Dispatch",
       dispatchStatus: "Pending Dispatch",
       isFrozen: true,
+      readyAt: now,
       updatedAt: now,
       updatedBy: user.id,
-    }).where(eq(productionOrdersTable.id, order.id));
+    } as any).where(eq(productionOrdersTable.id, order.id));
 
     await addTimelineEntry(db, order.id, "Ready To Dispatch",
       `SYSTEM REPAIR: ${order.status} → Ready To Dispatch\nAll product lines were Ready but order status was not updated.`,
