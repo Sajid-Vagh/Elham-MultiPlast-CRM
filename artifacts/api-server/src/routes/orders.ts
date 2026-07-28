@@ -92,6 +92,172 @@ router.get("/orders", async (req, res) => {
   }
 });
 
+// ── Global Orders (enhanced listing for all roles) ──
+router.get("/orders/global", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const {
+      status, dispatchStatus, search, salesOwnerId, supportOwnerId,
+      productionUnit, customer, startDate, endDate, datePreset,
+      page = "1", limit = "50",
+    } = req.query as Record<string, string>;
+
+    const conditions: any[] = [eq(ordersTable.isDeleted, false)];
+
+    // Role-based filtering
+    if (user.role === "sales") conditions.push(eq(ordersTable.salesOwnerId, user.id));
+    if (user.role === "production_and_support") conditions.push(eq(ordersTable.supportOwnerId, user.id));
+    if (user.role === "production") conditions.push(eq(ordersTable.productionOwnerId, user.id));
+
+    // Status filters
+    if (status && status !== "All") conditions.push(eq(ordersTable.status, status));
+
+    // Date presets
+    const now = new Date();
+    if (datePreset && datePreset !== "custom") {
+      let presetStart: Date | null = null;
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      switch (datePreset) {
+        case "today":
+          presetStart = todayStart;
+          break;
+        case "yesterday": {
+          const y = new Date(todayStart);
+          y.setDate(y.getDate() - 1);
+          presetStart = y;
+          conditions.push(gte(ordersTable.createdAt, y));
+          const todayEnd = new Date(todayStart);
+          conditions.push(lte(ordersTable.createdAt, todayEnd));
+          break;
+        }
+        case "this-week": {
+          const weekStart = new Date(todayStart);
+          weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+          presetStart = weekStart;
+          break;
+        }
+        case "this-month": {
+          presetStart = new Date(now.getFullYear(), now.getMonth(), 1);
+          break;
+        }
+      }
+      if (presetStart && datePreset !== "yesterday") {
+        conditions.push(gte(ordersTable.createdAt, presetStart));
+      }
+    } else if (startDate) {
+      conditions.push(gte(ordersTable.createdAt, new Date(startDate)));
+    }
+    if (endDate) {
+      conditions.push(lte(ordersTable.createdAt, parseEndDate(endDate)));
+    }
+
+    // Owner filters
+    if (salesOwnerId && salesOwnerId !== "All") conditions.push(eq(ordersTable.salesOwnerId, Number(salesOwnerId)));
+    if (supportOwnerId && supportOwnerId !== "All") conditions.push(eq(ordersTable.supportOwnerId, Number(supportOwnerId)));
+    if (productionUnit && productionUnit !== "All") conditions.push(eq(ordersTable.productionUnit, productionUnit));
+
+    // Customer search
+    if (customer) {
+      const s = `%${customer}%`;
+      conditions.push(or(
+        ilike(ordersTable.customerName, s),
+        ilike(ordersTable.companyName, s),
+      )!);
+    }
+
+    // General search
+    if (search) {
+      const s = `%${search}%`;
+      conditions.push(or(
+        ilike(ordersTable.orderNumber, s),
+        ilike(ordersTable.customerName, s),
+        ilike(ordersTable.companyName, s),
+        ilike(ordersTable.mobile, s),
+      )!);
+    }
+
+    // Unit access
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits) {
+      conditions.push(inArray(ordersTable.productionUnit, accessibleUnits));
+    }
+
+    const pageNum = Math.max(1, Number(page));
+    const limitNum = Math.min(100, Math.max(1, Number(limit)));
+    const offset = (pageNum - 1) * limitNum;
+
+    const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(ordersTable).where(and(...conditions));
+    const orders = await db.select().from(ordersTable).where(and(...conditions)).orderBy(desc(ordersTable.createdAt)).limit(limitNum).offset(offset);
+
+    // Enrich with items count, totals, production info, dispatch status
+    const enriched = await Promise.all(orders.map(async (order) => {
+      const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
+      const salesOwner = order.salesOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, order.salesOwnerId)).then(r => r[0]) : null;
+      const supportOwner = order.supportOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, order.supportOwnerId)).then(r => r[0]) : null;
+
+      const safe = (u: any) => u ? (({ passwordHash: _, ...rest }) => rest)(u) : null;
+
+      // Get production order status and dispatch status
+      let productionStatus = null;
+      let dispatchStatusVal = null;
+      try {
+        const { productionOrdersTable } = await import("@workspace/db");
+        const [prodOrder] = await db.select().from(productionOrdersTable)
+          .where(eq(productionOrdersTable.dealId, order.dealId))
+          .orderBy(desc(productionOrdersTable.createdAt))
+          .limit(1);
+        if (prodOrder) {
+          productionStatus = prodOrder.status;
+          dispatchStatusVal = prodOrder.dispatchStatus;
+        }
+      } catch { /* production_orders may not exist */ }
+
+      const totalQuantity = items.reduce((sum, i) => sum + Number(i.quantity || 0), 0);
+
+      return {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        customerName: order.customerName,
+        companyName: order.companyName,
+        mobile: order.mobile,
+        status: order.status,
+        grandTotal: order.grandTotal,
+        createdAt: order.createdAt,
+        productionUnit: order.productionUnit,
+        isRepeatOrder: order.isRepeatOrder,
+        salesOwner: safe(salesOwner),
+        supportOwner: safe(supportOwner),
+        productionStatus,
+        dispatchStatus: dispatchStatusVal,
+        itemsCount: items.length,
+        totalQuantity,
+        products: items.slice(0, 5).map(i => ({
+          productName: i.productName,
+          bottleWeight: (i as any).bottleWeight || null,
+          bottleColour: (i as any).colour || null,
+          machineType: (i as any).machineType || null,
+          quantity: i.quantity,
+        })),
+      };
+    }));
+
+    res.json({
+      data: enriched,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: countResult?.count ?? 0,
+        totalPages: Math.ceil((countResult?.count ?? 0) / limitNum),
+      },
+    });
+  } catch (err) {
+    console.error("Global orders list error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // Get single order
 router.get("/orders/:id", async (req, res) => {
   try {

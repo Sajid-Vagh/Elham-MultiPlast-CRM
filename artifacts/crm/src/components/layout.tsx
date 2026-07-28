@@ -7,7 +7,7 @@ import { NotificationPopup } from "./notification-popup";
 import {
   LayoutDashboard, Users, Briefcase,
   Package, BarChart, Download, Settings, LogOut, Bell, X, Clock, Phone, FolderTree, FileText, CheckCheck,
-  Factory, ClipboardList, Truck, AlertTriangle, Layers, MapPin, Database
+  Factory, ClipboardList, Truck, AlertTriangle, Layers, MapPin, Database, ShoppingCart
 } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -205,6 +205,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: Bell, label: "Activity", href: "/follow-ups", color: "#f59e0b" },
     { icon: FolderTree, label: "Categories", href: "/categories", color: "#f97316" },
     { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" },
+    { icon: ShoppingCart, label: "Orders", href: "/orders", color: "#0ea5e9" },
     { icon: FileText, label: "Proforma Invoices", href: "/proforma-invoices", color: "#06b6d4" },
     { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
     { icon: MapPin, label: "Freight Lookup", href: "/transport-logistics/lookup", color: "#14b8a6" },
@@ -219,6 +220,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: AlertTriangle, label: "Complaints", href: "/complaints", color: "#ef4444" },
     { icon: Bell, label: "Activity", href: "/follow-ups", color: "#f59e0b" },
     { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" },
+    { icon: ShoppingCart, label: "Orders", href: "/orders", color: "#0ea5e9" },
     { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
     { icon: FileText, label: "Proforma Invoices", href: "/proforma-invoices", color: "#06b6d4" },
     { icon: Database, label: "Masters", href: "/masters", color: "#14b8a6" },
@@ -228,6 +230,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   const productionNavItems = [
     { icon: Factory, label: "Production Dashboard", href: "/production/dashboard", color: "#7c3aed" },
     { icon: ClipboardList, label: "Production Orders", href: "/production/orders", color: "#7c3aed" },
+    { icon: ShoppingCart, label: "Orders", href: "/orders", color: "#0ea5e9" },
     { icon: Layers, label: "Batches", href: "/production/batches", color: "#7c3aed" },
     { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
     { icon: Truck, label: "Dispatch", href: "/dispatch", color: "#f43f5e" },

@@ -39,6 +39,8 @@ import TransportLogistics from "@/pages/transport-logistics";
 import TransportLogisticsLookup from "@/pages/transport-logistics-readonly";
 import MastersPage from "@/pages/masters";
 import Inventory from "@/pages/inventory";
+import OrdersList from "@/pages/orders-list";
+import OrderDetailGlobal from "@/pages/order-detail-global";
 import { readWorkspace, getHomeRoute } from "@/lib/use-workspace";
 
 const queryClient = new QueryClient({
@@ -198,6 +200,18 @@ function Router() {
       <Route path="/complaints">
         <ProtectedLayout>
           <RoleGuard allowedRoles={SUPPORT_ROLES}><ComplaintsPage /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+
+      {/* Orders Module (all roles) */}
+      <Route path="/orders/:id">
+        {(params) => <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin", "sales", "production_and_support", "production"]}><OrderDetailGlobal /></RoleGuard>
+        </ProtectedLayout>}
+      </Route>
+      <Route path="/orders">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin", "sales", "production_and_support", "production"]}><OrdersList /></RoleGuard>
         </ProtectedLayout>
       </Route>
 

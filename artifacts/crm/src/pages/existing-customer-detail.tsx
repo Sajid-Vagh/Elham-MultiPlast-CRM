@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Phone, Mail, MapPin, Building, Calendar, Package, ShoppingCart, Repeat, MessageSquare, StickyNote, Clock, Truck, AlertTriangle, ClipboardList, User, Mic } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, Building, Calendar, Package, ShoppingCart, Repeat, MessageSquare, StickyNote, Clock, Truck, AlertTriangle, ClipboardList, User, Mic, TrendingUp, BarChart3, Star, History } from "lucide-react";
 import { VoiceNoteSection } from "@/components/voice-note-player";
 import { VoiceNoteUploader } from "@/components/voice-note-uploader";
 import { useToast } from "@/hooks/use-toast";
@@ -24,6 +24,34 @@ const STATUS_COLORS: Record<string, string> = {
   "Repeat Order Due": "bg-amber-100 text-amber-700",
   "Complaint Open": "bg-red-100 text-red-700",
   "Inactive": "bg-gray-100 text-gray-500",
+};
+
+const ORDER_STATUS_COLORS: Record<string, string> = {
+  "Draft": "bg-gray-100 text-gray-600",
+  "Pending Verification": "bg-yellow-100 text-yellow-700",
+  "Confirmed": "bg-blue-100 text-blue-700",
+  "Production Pending": "bg-orange-100 text-orange-700",
+  "Production Started": "bg-purple-100 text-purple-700",
+  "Production Running": "bg-purple-100 text-purple-700",
+  "Quality Check": "bg-indigo-100 text-indigo-700",
+  "Ready for Dispatch": "bg-cyan-100 text-cyan-700",
+  "Partially Dispatched": "bg-teal-100 text-teal-700",
+  "Dispatched": "bg-blue-100 text-blue-700",
+  "Delivered": "bg-green-100 text-green-700",
+  "Completed": "bg-emerald-100 text-emerald-700",
+  "Cancelled": "bg-red-100 text-red-600",
+};
+
+const PROD_STATUS_COLORS: Record<string, string> = {
+  "Pending": "bg-gray-100 text-gray-600",
+  "Accepted": "bg-blue-100 text-blue-700",
+  "Planning": "bg-indigo-100 text-indigo-700",
+  "In Production": "bg-orange-100 text-orange-700",
+  "Packing": "bg-yellow-100 text-yellow-700",
+  "Ready For Dispatch": "bg-green-100 text-green-700",
+  "In Transport": "bg-purple-100 text-purple-700",
+  "Completed": "bg-emerald-100 text-emerald-700",
+  "Cancelled": "bg-red-100 text-red-600",
 };
 
 export default function ExistingCustomerDetail() {
@@ -60,6 +88,18 @@ export default function ExistingCustomerDetail() {
     queryKey: ["existing-customer-orders", id],
     queryFn: async () => {
       const res = await fetch(`/api/existing-customers/${id}/orders`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    enabled: !!id,
+  });
+
+  const { data: purchaseSummary } = useQuery({
+    queryKey: ["existing-customer-purchase-summary", id],
+    queryFn: async () => {
+      const res = await fetch(`/api/existing-customers/${id}/purchase-summary`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
       });
       if (!res.ok) throw new Error("Failed to fetch");
@@ -213,10 +253,11 @@ export default function ExistingCustomerDetail() {
       if (!res.ok) throw new Error("Failed to create repeat order");
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["existing-customer-orders", id] });
       queryClient.invalidateQueries({ queryKey: ["existing-customer-repeat-orders", id] });
       queryClient.invalidateQueries({ queryKey: ["existing-customer", id] });
+      queryClient.invalidateQueries({ queryKey: ["existing-customer-purchase-summary", id] });
       queryClient.invalidateQueries({ queryKey: ["existing-customer-timeline", id] });
       setRepeatOrderDialog(false);
       setRepeatOrderRemarks("");
@@ -241,6 +282,11 @@ export default function ExistingCustomerDetail() {
 
   const c = customer;
   const contact = c.contact || {};
+  const ps = purchaseSummary;
+  const lastOrd = ps?.lastOrder;
+  const oh = ps?.orderHistory;
+  const recentOrders = ps?.recentOrders || [];
+  const insights = ps?.insights;
 
   return (
     <div className="p-6 space-y-4 max-w-6xl">
@@ -312,36 +358,191 @@ export default function ExistingCustomerDetail() {
         </Card>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <Card className="p-3 text-center">
-          <ShoppingCart className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
-          <p className="text-2xl font-bold">{c.totalOrders || 0}</p>
-          <p className="text-xs text-muted-foreground">Total Orders</p>
+      {/* Order History Summary */}
+      {oh && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2"><History className="h-4 w-4" /> Order History Summary</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+              <div className="text-center p-2 bg-muted/30 rounded-lg">
+                <p className="text-xl font-bold">{oh.totalOrders}</p>
+                <p className="text-[10px] text-muted-foreground uppercase">Total Orders</p>
+              </div>
+              <div className="text-center p-2 bg-green-50 rounded-lg">
+                <p className="text-xl font-bold text-green-700">{oh.completedOrders}</p>
+                <p className="text-[10px] text-muted-foreground uppercase">Completed</p>
+              </div>
+              <div className="text-center p-2 bg-orange-50 rounded-lg">
+                <p className="text-xl font-bold text-orange-700">{oh.pendingOrders}</p>
+                <p className="text-[10px] text-muted-foreground uppercase">Pending</p>
+              </div>
+              <div className="text-center p-2 bg-red-50 rounded-lg">
+                <p className="text-xl font-bold text-red-600">{oh.cancelledOrders}</p>
+                <p className="text-[10px] text-muted-foreground uppercase">Cancelled</p>
+              </div>
+              <div className="text-center p-2 bg-amber-50 rounded-lg">
+                <p className="text-xl font-bold text-amber-700">{oh.repeatOrders}</p>
+                <p className="text-[10px] text-muted-foreground uppercase">Repeat</p>
+              </div>
+              <div className="text-center p-2 bg-blue-50 rounded-lg">
+                <p className="text-xl font-bold text-blue-700">₹{Number(oh.totalRevenue || 0).toLocaleString("en-IN")}</p>
+                <p className="text-[10px] text-muted-foreground uppercase">Revenue</p>
+              </div>
+              <div className="text-center p-2 bg-purple-50 rounded-lg">
+                <p className="text-xl font-bold text-purple-700">₹{Number(oh.avgOrderValue || 0).toLocaleString("en-IN")}</p>
+                <p className="text-[10px] text-muted-foreground uppercase">Avg Value</p>
+              </div>
+              <div className="text-center p-2 bg-cyan-50 rounded-lg">
+                <p className="text-sm font-bold text-cyan-700">{oh.firstOrderDate ? new Date(oh.firstOrderDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "-"}</p>
+                <p className="text-[10px] text-muted-foreground uppercase">First Order</p>
+              </div>
+            </div>
+          </CardContent>
         </Card>
-        <Card className="p-3 text-center">
-          <Package className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
-          <p className="text-2xl font-bold">₹{Number(c.totalRevenue || 0).toLocaleString("en-IN")}</p>
-          <p className="text-xs text-muted-foreground">Total Revenue</p>
+      )}
+
+      {/* Last Order Summary with Products */}
+      {lastOrd && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2"><ShoppingCart className="h-4 w-4" /> Last Order Summary</CardTitle>
+              <div className="flex items-center gap-2">
+                {lastOrd.productionStatus && (
+                  <Badge className={`text-xs ${PROD_STATUS_COLORS[lastOrd.productionStatus] || "bg-gray-100"}`}>{lastOrd.productionStatus}</Badge>
+                )}
+                {lastOrd.dispatchStatus && (
+                  <Badge className={`text-xs bg-cyan-100 text-cyan-700`}>{lastOrd.dispatchStatus}</Badge>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+              <div><span className="text-muted-foreground">Order #:</span> <span className="font-medium">{lastOrd.orderNumber}</span></div>
+              <div><span className="text-muted-foreground">Date:</span> <span className="font-medium">{new Date(lastOrd.createdAt).toLocaleDateString("en-IN")}</span></div>
+              <div><span className="text-muted-foreground">Amount:</span> <span className="font-bold">₹{Number(lastOrd.grandTotal || 0).toLocaleString("en-IN")}</span></div>
+              <div><span className="text-muted-foreground">Status:</span> <Badge variant="outline" className={`ml-1 ${ORDER_STATUS_COLORS[lastOrd.status] || ""}`}>{lastOrd.status}</Badge></div>
+              {lastOrd.salesOwner && <div><span className="text-muted-foreground">Sales Owner:</span> <span className="font-medium">{lastOrd.salesOwner.name}</span></div>}
+              {lastOrd.freight && <div><span className="text-muted-foreground">Freight:</span> <span className="font-medium">₹{Number(lastOrd.freight).toLocaleString("en-IN")}</span></div>}
+              {lastOrd.paymentTerms && <div><span className="text-muted-foreground">Payment:</span> <span className="font-medium">{lastOrd.paymentTerms}</span></div>}
+              {lastOrd.deliveryTerms && <div><span className="text-muted-foreground">Delivery:</span> <span className="font-medium">{lastOrd.deliveryTerms}</span></div>}
+              {lastOrd.dispatchAddress && <div className="col-span-2"><span className="text-muted-foreground">Dispatch Address:</span> <span className="font-medium">{lastOrd.dispatchAddress}</span></div>}
+            </div>
+
+            {/* Products from last order */}
+            {lastOrd.products && lastOrd.products.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Products ({lastOrd.products.length})</p>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">Product Name</TableHead>
+                        <TableHead className="text-xs">Material</TableHead>
+                        <TableHead className="text-xs">Bottle Weight</TableHead>
+                        <TableHead className="text-xs">Bottle Color</TableHead>
+                        <TableHead className="text-xs">Cap Color</TableHead>
+                        <TableHead className="text-xs">Neck Size</TableHead>
+                        <TableHead className="text-xs">Machine</TableHead>
+                        <TableHead className="text-xs">HSN</TableHead>
+                        <TableHead className="text-xs text-right">Qty</TableHead>
+                        <TableHead className="text-xs text-right">Rate</TableHead>
+                        <TableHead className="text-xs text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {lastOrd.products.map((p: any, idx: number) => (
+                        <TableRow key={idx}>
+                          <TableCell className="font-medium text-xs">{p.productName || "-"}</TableCell>
+                          <TableCell className="text-xs">{p.materialType || "-"}</TableCell>
+                          <TableCell className="text-xs">{p.bottleWeight || "-"}</TableCell>
+                          <TableCell className="text-xs">
+                            <div className="flex items-center gap-1">
+                              {p.bottleColour && <span className="w-2.5 h-2.5 rounded-full border shrink-0" style={{ backgroundColor: p.bottleColour?.toLowerCase() }} />}
+                              {p.bottleColour || "-"}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs">{p.capColour || "-"}</TableCell>
+                          <TableCell className="text-xs">{p.neckSize || "-"}</TableCell>
+                          <TableCell className="text-xs">{p.machineType || "-"}</TableCell>
+                          <TableCell className="text-xs">{p.hsnCode || "-"}</TableCell>
+                          <TableCell className="text-xs text-right">{Number(p.quantity || 0).toLocaleString()}</TableCell>
+                          <TableCell className="text-xs text-right">₹{Number(p.rate || 0).toLocaleString("en-IN")}</TableCell>
+                          <TableCell className="text-xs text-right font-medium">₹{Number(p.amount || 0).toLocaleString("en-IN")}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+          </CardContent>
         </Card>
-        <Card className="p-3 text-center">
-          <Repeat className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
-          <p className="text-2xl font-bold">{c.repeatOrderCount || 0}</p>
-          <p className="text-xs text-muted-foreground">Repeat Orders</p>
+      )}
+
+      {/* Quick Customer Insights */}
+      {insights && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2"><TrendingUp className="h-4 w-4" /> Quick Customer Insights</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {insights.mostOrderedProduct && (
+                <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+                  <p className="text-[10px] text-blue-600 font-semibold uppercase">Most Ordered Product</p>
+                  <p className="font-bold text-sm text-blue-800 mt-0.5">{insights.mostOrderedProduct}</p>
+                </div>
+              )}
+              {insights.mostOrderedMaterial && (
+                <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
+                  <p className="text-[10px] text-purple-600 font-semibold uppercase">Most Ordered Material</p>
+                  <p className="font-bold text-sm text-purple-800 mt-0.5">{insights.mostOrderedMaterial}</p>
+                </div>
+              )}
+              {insights.mostUsedBottleColor && (
+                <div className="p-3 bg-amber-50 rounded-lg border border-amber-100">
+                  <p className="text-[10px] text-amber-600 font-semibold uppercase">Most Used Bottle Color</p>
+                  <p className="font-bold text-sm text-amber-800 mt-0.5">{insights.mostUsedBottleColor}</p>
+                </div>
+              )}
+              {insights.mostUsedMachine && (
+                <div className="p-3 bg-orange-50 rounded-lg border border-orange-100">
+                  <p className="text-[10px] text-orange-600 font-semibold uppercase">Most Used Machine</p>
+                  <p className="font-bold text-sm text-orange-800 mt-0.5">{insights.mostUsedMachine}</p>
+                </div>
+              )}
+              {insights.averageBottleWeight && (
+                <div className="p-3 bg-teal-50 rounded-lg border border-teal-100">
+                  <p className="text-[10px] text-teal-600 font-semibold uppercase">Avg Bottle Weight</p>
+                  <p className="font-bold text-sm text-teal-800 mt-0.5">{insights.averageBottleWeight}</p>
+                </div>
+              )}
+              {insights.totalPurchasedQuantity > 0 && (
+                <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                  <p className="text-[10px] text-indigo-600 font-semibold uppercase">Total Purchased Qty</p>
+                  <p className="font-bold text-sm text-indigo-800 mt-0.5">{insights.totalPurchasedQuantity.toLocaleString()} PCS</p>
+                </div>
+              )}
+              {insights.lastPurchasedProduct && (
+                <div className="p-3 bg-cyan-50 rounded-lg border border-cyan-100">
+                  <p className="text-[10px] text-cyan-600 font-semibold uppercase">Last Purchased Product</p>
+                  <p className="font-bold text-sm text-cyan-800 mt-0.5">{insights.lastPurchasedProduct}</p>
+                </div>
+              )}
+              {insights.repeatCustomerSince && (
+                <div className="p-3 bg-rose-50 rounded-lg border border-rose-100">
+                  <p className="text-[10px] text-rose-600 font-semibold uppercase">Repeat Customer Since</p>
+                  <p className="font-bold text-sm text-rose-800 mt-0.5">{new Date(insights.repeatCustomerSince).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
         </Card>
-        <Card className="p-3 text-center">
-          <StickyNote className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
-          <p className="text-2xl font-bold">{notes.length}</p>
-          <p className="text-xs text-muted-foreground">Notes</p>
-        </Card>
-        {c.repeatOrderDueDate && (
-          <Card className="p-3 text-center">
-            <Clock className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
-            <p className="text-sm font-bold">{c.repeatOrderDueDate}</p>
-            <p className="text-xs text-muted-foreground">Repeat Due</p>
-          </Card>
-        )}
-      </div>
+      )}
 
       {/* Status Cards Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -374,39 +575,6 @@ export default function ExistingCustomerDetail() {
         )}
       </div>
 
-      {/* Last Order Info */}
-      {c.lastOrder && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Last Order</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div><span className="text-muted-foreground">Order #:</span> <span className="font-medium">{c.lastOrder.orderNumber}</span></div>
-            <div><span className="text-muted-foreground">Amount:</span> <span className="font-medium">₹{Number(c.lastOrder.grandTotal || 0).toLocaleString("en-IN")}</span></div>
-            <div><span className="text-muted-foreground">Status:</span> <Badge variant="outline">{c.lastOrder.status}</Badge></div>
-            <div><span className="text-muted-foreground">Date:</span> <span className="font-medium">{new Date(c.lastOrder.createdAt).toLocaleDateString("en-IN")}</span></div>
-            {c.lastOrder.freight && <div><span className="text-muted-foreground">Freight:</span> <span className="font-medium">₹{Number(c.lastOrder.freight).toLocaleString("en-IN")}</span></div>}
-            {c.lastOrder.paymentTerms && <div><span className="text-muted-foreground">Payment Terms:</span> <span className="font-medium">{c.lastOrder.paymentTerms}</span></div>}
-            {c.lastOrder.deliveryTerms && <div><span className="text-muted-foreground">Delivery Terms:</span> <span className="font-medium">{c.lastOrder.deliveryTerms}</span></div>}
-            {c.lastOrder.dispatchAddress && <div className="col-span-2"><span className="text-muted-foreground">Dispatch Address:</span> <span className="font-medium">{c.lastOrder.dispatchAddress}</span></div>}
-            {c.lastOrder.transportDetails && <div className="col-span-2"><span className="text-muted-foreground">Transport:</span> <span className="font-medium">{c.lastOrder.transportDetails}</span></div>}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* First Order */}
-      {c.firstOrder && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">First Order</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-4 text-sm">
-            <div><span className="text-muted-foreground">Order #:</span> <span className="font-medium">{c.firstOrder.orderNumber}</span></div>
-            <div><span className="text-muted-foreground">Date:</span> <span className="font-medium">{new Date(c.firstOrder.createdAt).toLocaleDateString("en-IN")}</span></div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Assigned Team */}
       <Card>
         <CardHeader><CardTitle className="text-base">Assigned Team</CardTitle></CardHeader>
@@ -417,6 +585,46 @@ export default function ExistingCustomerDetail() {
           <div><span className="text-muted-foreground">Repeat Orders:</span> <span className="font-medium">{c.repeatOrderCount || 0}</span></div>
         </CardContent>
       </Card>
+
+      {/* Recent Orders (last 5) */}
+      {recentOrders.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2"><BarChart3 className="h-4 w-4" /> Recent Orders</CardTitle>
+              {orders.length > 5 && <Button variant="link" size="sm" className="text-xs" onClick={() => {}}>View All ({orders.length})</Button>}
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Order No</TableHead>
+                  <TableHead className="text-xs">Date</TableHead>
+                  <TableHead className="text-xs">Status</TableHead>
+                  <TableHead className="text-xs">Amount</TableHead>
+                  <TableHead className="text-xs">Production</TableHead>
+                  <TableHead className="text-xs">Dispatch</TableHead>
+                  <TableHead className="text-xs">Sales Owner</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {recentOrders.map((order: any) => (
+                  <TableRow key={order.id} className="cursor-pointer hover:bg-muted/30" onClick={() => setLocation(`/orders/${order.id}`)}>
+                    <TableCell className="font-medium text-sm">{order.orderNumber}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{new Date(order.createdAt).toLocaleDateString("en-IN")}</TableCell>
+                    <TableCell><Badge variant="outline" className={`text-xs ${ORDER_STATUS_COLORS[order.status] || ""}`}>{order.status}</Badge></TableCell>
+                    <TableCell className="font-medium text-sm">₹{Number(order.grandTotal || 0).toLocaleString("en-IN")}</TableCell>
+                    <TableCell>{order.productionStatus && <Badge className={`text-xs ${PROD_STATUS_COLORS[order.productionStatus] || "bg-gray-100"}`}>{order.productionStatus}</Badge>}</TableCell>
+                    <TableCell>{order.dispatchStatus && <Badge className="text-xs bg-cyan-100 text-cyan-700">{order.dispatchStatus}</Badge>}</TableCell>
+                    <TableCell className="text-sm">{order.salesOwner?.name || "-"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Tabs */}
       <Tabs defaultValue="orders">
@@ -450,7 +658,7 @@ export default function ExistingCustomerDetail() {
                   </TableHeader>
                   <TableBody>
                     {orders.map((order: any) => (
-                      <TableRow key={order.id}>
+                      <TableRow key={order.id} className="cursor-pointer hover:bg-muted/30" onClick={() => setLocation(`/orders/${order.id}`)}>
                         <TableCell className="font-medium">{order.orderNumber}</TableCell>
                         <TableCell><Badge variant="outline">{order.status}</Badge></TableCell>
                         <TableCell>{order.items?.length || 0}</TableCell>
@@ -486,7 +694,7 @@ export default function ExistingCustomerDetail() {
                   </TableHeader>
                   <TableBody>
                     {repeatOrders.map((order: any) => (
-                      <TableRow key={order.id}>
+                      <TableRow key={order.id} className="cursor-pointer hover:bg-muted/30" onClick={() => setLocation(`/orders/${order.id}`)}>
                         <TableCell className="font-medium">{order.orderNumber}</TableCell>
                         <TableCell><Badge variant="outline">{order.status}</Badge></TableCell>
                         <TableCell>{order.items?.length || 0}</TableCell>
