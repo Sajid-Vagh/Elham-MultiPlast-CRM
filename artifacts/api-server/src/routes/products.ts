@@ -1,9 +1,10 @@
 import { Router, type IRouter } from "express";
-import { db, productsTable, usersTable, productionOrdersTable, proformaInvoicesTable, proformaInvoiceItemsTable } from "@workspace/db";
-import { eq, or, sql, and, inArray, isNull } from "drizzle-orm";
+import { db, productsTable, usersTable } from "@workspace/db";
+import { eq, or, sql } from "drizzle-orm";
 import { CreateProductBody, UpdateProductBody, GetProductParams, UpdateProductParams, DeleteProductParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
+import { getMachineReport } from "../lib/production-service";
 
 const router: IRouter = Router();
 
@@ -188,147 +189,18 @@ router.get("/products/machine-report", async (req, res) => {
       res.status(403).json({ error: "Permission Denied" }); return;
     }
 
-    const requestedUnit = req.query.unit as string | undefined;
-    const unitFilter = (user.unit === "All" || user.role === "admin") ? requestedUnit : user.unit;
-    const machineTypeFilter = req.query.machineType as string | undefined;
-    const productFilter = req.query.product as string | undefined;
-    const statusFilter = req.query.status as string | undefined;
-    const dateFrom = req.query.dateFrom as string | undefined;
-    const dateTo = req.query.dateTo as string | undefined;
-
-    // Unit-based access for production managers
-    let accessibleUnits: string[] | null = null;
-    if (user.role === "production") {
-      if (user.unit && user.unit !== "All") {
-        accessibleUnits = [user.unit];
-      }
-      // If unit is "All" or empty, production manager sees all (Himatnagar default)
-    }
-
-    // Build production order conditions
-    const conditions: any[] = [];
-    if (unitFilter && unitFilter !== "All") {
-      conditions.push(eq(productionOrdersTable.productionUnit, unitFilter));
-    } else if (accessibleUnits) {
-      conditions.push(inArray(productionOrdersTable.productionUnit, accessibleUnits));
-    }
-    if (statusFilter && statusFilter !== "All") {
-      conditions.push(eq(productionOrdersTable.status, statusFilter));
-    }
-    if (dateFrom) {
-      conditions.push(sql`${productionOrdersTable.createdAt} >= ${dateFrom}`);
-    }
-    if (dateTo) {
-      conditions.push(sql`${productionOrdersTable.createdAt} <= ${dateTo}::timestamp + interval '1 day'`);
-    }
-
-    // Fetch production orders
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-    const orders = await db
-      .select({
-        id: productionOrdersTable.id,
-        status: productionOrdersTable.status,
-        productionUnit: productionOrdersTable.productionUnit,
-        createdAt: productionOrdersTable.createdAt,
-        proformaInvoiceId: productionOrdersTable.proformaInvoiceId,
-      })
-      .from(productionOrdersTable)
-      .where(whereClause);
-
-    if (orders.length === 0) {
-      res.json({
-        summary: { totalOrders: 0, totalBottles: 0, totalQuantity: 0, pending: 0, inProduction: 0, completed: 0 },
-        machineBreakdown: [],
-        orders: [],
-      });
-      return;
-    }
-
-    // Fetch PI items for these orders
-    const piIds = [...new Set(orders.map(o => o.proformaInvoiceId).filter(Boolean))] as number[];
-    let piItems: any[] = [];
-    if (piIds.length > 0) {
-      piItems = await db
-        .select({
-          invoiceId: proformaInvoiceItemsTable.invoiceId,
-          productName: proformaInvoiceItemsTable.productName,
-          quantity: proformaInvoiceItemsTable.quantity,
-          unit: proformaInvoiceItemsTable.unit,
-        })
-        .from(proformaInvoiceItemsTable)
-        .where(inArray(proformaInvoiceItemsTable.invoiceId, piIds));
-    }
-
-    // Fetch products for machine type mapping
-    const allProducts = await db.select().from(productsTable);
-    const productMap = new Map(allProducts.map(p => [p.name?.toLowerCase(), p]));
-
-    // Build enriched order data
-    const enrichedOrders = orders.map(order => {
-      const items = piItems.filter(i => i.invoiceId === order.proformaInvoiceId);
-      const totalQty = items.reduce((sum, i) => sum + Number(i.quantity || 0), 0);
-      const productName = items[0]?.productName || "Unknown";
-      const product = productMap.get(productName.toLowerCase());
-      const machineType = product?.machineType || null;
-
-      const isInProduction = ["Production On Going", "Packaging"].includes(order.status);
-      const isCompleted = order.status === "Completed";
-      const isPending = order.status === "Pending" || order.status === "Material Ready";
-
-      const materialType = product?.materialType || null;
-
-      return {
-        id: order.id,
-        status: order.status,
-        productionUnit: order.productionUnit,
-        createdAt: order.createdAt,
-        productName,
-        machineType,
-        materialType,
-        totalQuantity: totalQty,
-        isInProduction,
-        isCompleted,
-        isPending,
-      };
+    const result = await getMachineReport(user, {
+      unit: req.query.unit as string | undefined,
+      machineType: req.query.machineType as string | undefined,
+      product: req.query.product as string | undefined,
+      status: req.query.status as string | undefined,
+      dateFrom: req.query.dateFrom as string | undefined,
+      dateTo: req.query.dateTo as string | undefined,
     });
 
-    // Apply machine type filter and exclude PET (outsourced) products
-    let filteredOrders = enrichedOrders.filter(o => o.materialType !== "PET");
-    if (machineTypeFilter && machineTypeFilter !== "All") {
-      filteredOrders = filteredOrders.filter(o => o.machineType === machineTypeFilter);
-    }
-    if (productFilter && productFilter !== "All") {
-      filteredOrders = filteredOrders.filter(o => o.productName === productFilter);
-    }
-
-    // Summary
-    const summary = {
-      totalOrders: filteredOrders.length,
-      totalBottles: filteredOrders.reduce((s, o) => s + o.totalQuantity, 0),
-      totalQuantity: filteredOrders.reduce((s, o) => s + o.totalQuantity, 0),
-      pending: filteredOrders.filter(o => o.isPending).length,
-      inProduction: filteredOrders.filter(o => o.isInProduction).length,
-      completed: filteredOrders.filter(o => o.isCompleted).length,
-    };
-
-    // Machine-wise breakdown
-    const machineMap = new Map<string, { count: number; bottles: number }>();
-    for (const order of filteredOrders) {
-      const key = order.machineType || "Unassigned";
-      const existing = machineMap.get(key) || { count: 0, bottles: 0 };
-      existing.count++;
-      existing.bottles += order.totalQuantity;
-      machineMap.set(key, existing);
-    }
-    const machineBreakdown = [...machineMap.entries()].map(([machineType, data]) => ({
-      machineType,
-      orderCount: data.count,
-      totalBottles: data.bottles,
-    }));
-
-    res.json({ summary, machineBreakdown, orders: filteredOrders });
+    res.json(result);
   } catch (err) {
-    req.log.error({ err }, "Machine-wise report error");
+    console.error("Machine-wise report error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

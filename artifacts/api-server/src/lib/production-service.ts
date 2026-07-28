@@ -1577,14 +1577,13 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
   };
 }
 
-export async function listOrders(
+export function buildOrderConditions(
   user: PermissionUser,
   filters: {
-    status?: string; dispatchStatus?: string; priority?: string; search?: string;
-    dateFrom?: string; dateTo?: string; createdBy?: string;
-    unit?: string; origin?: string; page?: string; limit?: string;
+    status?: string; unit?: string; dateFrom?: string; dateTo?: string;
+    dispatchStatus?: string; priority?: string; origin?: string; createdBy?: string;
   }
-) {
+): SQL[] {
   const conditions: SQL[] = [];
 
   if (user.role !== "admin") {
@@ -1621,6 +1620,140 @@ export async function listOrders(
   }
   if (filters.dateFrom) conditions.push(gte(productionOrdersTable.createdAt, new Date(filters.dateFrom)));
   if (filters.dateTo) conditions.push(lte(productionOrdersTable.createdAt, new Date(filters.dateTo + "T23:59:59")));
+
+  return conditions;
+}
+
+export async function getMachineReport(
+  user: PermissionUser,
+  filters: { unit?: string; machineType?: string; product?: string; status?: string; dateFrom?: string; dateTo?: string }
+) {
+  const conditions = buildOrderConditions(user, {
+    status: filters.status,
+    unit: filters.unit,
+    dateFrom: filters.dateFrom,
+    dateTo: filters.dateTo,
+  });
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const orders = await db
+    .select({
+      id: productionOrdersTable.id,
+      status: productionOrdersTable.status,
+      productionUnit: productionOrdersTable.productionUnit,
+      createdAt: productionOrdersTable.createdAt,
+      proformaInvoiceId: productionOrdersTable.proformaInvoiceId,
+    })
+    .from(productionOrdersTable)
+    .where(whereClause);
+
+  if (orders.length === 0) {
+    return {
+      summary: { totalOrders: 0, totalBottles: 0, pending: 0, inProduction: 0, completed: 0 },
+      machineBreakdown: [],
+      orders: [],
+    };
+  }
+
+  const piIds = [...new Set(orders.map(o => o.proformaInvoiceId).filter(Boolean))] as number[];
+  let piItems: any[] = [];
+  if (piIds.length > 0) {
+    piItems = await db
+      .select({
+        invoiceId: proformaInvoiceItemsTable.invoiceId,
+        productName: proformaInvoiceItemsTable.productName,
+        quantity: proformaInvoiceItemsTable.quantity,
+        weight: proformaInvoiceItemsTable.weight,
+      })
+      .from(proformaInvoiceItemsTable)
+      .where(inArray(proformaInvoiceItemsTable.invoiceId, piIds));
+  }
+
+  const allProducts = await db.select().from(productsTable);
+  const productMap = new Map(allProducts.map(p => [p.name?.toLowerCase(), p]));
+
+  const enrichedOrders = orders.map(order => {
+    const items = piItems.filter(i => i.invoiceId === order.proformaInvoiceId);
+    const totalQty = items.reduce((sum, i) => sum + Number(i.quantity || 0), 0);
+    const productName = items[0]?.productName || "Unknown";
+    const product = productMap.get(productName.toLowerCase());
+    const machineType = product?.machineType || null;
+    const materialType = product?.materialType || null;
+    const bottleColour = product?.bottleColour || null;
+    const bottleWeight = product?.bottleWeight || null;
+    const productCode = product?.productCode || null;
+
+    return {
+      id: order.id,
+      status: order.status,
+      productionUnit: order.productionUnit,
+      createdAt: order.createdAt,
+      productName,
+      machineType,
+      materialType,
+      bottleColour,
+      bottleWeight,
+      productCode,
+      totalQuantity: totalQty,
+    };
+  });
+
+  let filteredOrders = enrichedOrders.filter(o => o.materialType !== "PET");
+  if (filters.machineType && filters.machineType !== "All") {
+    filteredOrders = filteredOrders.filter(o => o.machineType === filters.machineType);
+  }
+  if (filters.product && filters.product !== "All") {
+    filteredOrders = filteredOrders.filter(o => o.productName === filters.product);
+  }
+
+  const isPending = (s: string) => s === "Pending" || s === "Material Ready";
+  const isInProduction = (s: string) => s === "Production On Going" || s === "Packaging";
+  const isCompleted = (s: string) => s === "Completed";
+
+  const summary = {
+    totalOrders: filteredOrders.length,
+    totalBottles: filteredOrders.reduce((s, o) => s + o.totalQuantity, 0),
+    pending: filteredOrders.filter(o => isPending(o.status)).length,
+    inProduction: filteredOrders.filter(o => isInProduction(o.status)).length,
+    completed: filteredOrders.filter(o => isCompleted(o.status)).length,
+  };
+
+  const machineMap = new Map<string, {
+    orderCount: number; totalBottles: number;
+    pendingQty: number; inProductionQty: number; completedQty: number;
+  }>();
+  for (const order of filteredOrders) {
+    const key = order.machineType || "Unassigned";
+    const existing = machineMap.get(key) || { orderCount: 0, totalBottles: 0, pendingQty: 0, inProductionQty: 0, completedQty: 0 };
+    existing.orderCount++;
+    existing.totalBottles += order.totalQuantity;
+    if (isPending(order.status)) existing.pendingQty += order.totalQuantity;
+    if (isInProduction(order.status)) existing.inProductionQty += order.totalQuantity;
+    if (isCompleted(order.status)) existing.completedQty += order.totalQuantity;
+    machineMap.set(key, existing);
+  }
+  const machineBreakdown = [...machineMap.entries()].map(([machineType, data]) => ({
+    machineType,
+    orderCount: data.orderCount,
+    totalBottles: data.totalBottles,
+    pendingQty: data.pendingQty,
+    inProductionQty: data.inProductionQty,
+    completedQty: data.completedQty,
+  }));
+
+  return { summary, machineBreakdown, orders: filteredOrders };
+}
+
+export async function listOrders(
+  user: PermissionUser,
+  filters: {
+    status?: string; dispatchStatus?: string; priority?: string; search?: string;
+    dateFrom?: string; dateTo?: string; createdBy?: string;
+    unit?: string; origin?: string; page?: string; limit?: string;
+  }
+) {
+  const conditions = buildOrderConditions(user, filters);
 
   if (filters.search) {
     const searchLower = filters.search.toLowerCase();

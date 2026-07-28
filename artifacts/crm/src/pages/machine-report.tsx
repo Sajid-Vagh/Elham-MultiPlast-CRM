@@ -12,12 +12,12 @@ import { useUserUnits } from "@/lib/use-user-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 
 const MACHINE_TYPES = ["All", "250ml Machine", "1L Machine", "5L Machine"];
-const STATUS_OPTIONS = ["All", "Pending", "Material Ready", "Production Started", "In Process", "Quality Check", "Packing", "Ready For Dispatch", "Completed", "On Hold", "Cancelled"];
+const STATUS_OPTIONS = ["All", "Pending", "Production On Going", "Packaging", "Ready To Dispatch", "Completed", "Cancelled"];
 
 interface ReportData {
-  summary: { totalOrders: number; totalBottles: number; totalQuantity: number; pending: number; inProduction: number; completed: number };
-  machineBreakdown: { machineType: string; orderCount: number; totalBottles: number }[];
-  orders: { id: number; status: string; productionUnit: string; createdAt: string; productName: string; machineType: string | null; totalQuantity: number }[];
+  summary: { totalOrders: number; totalBottles: number; pending: number; inProduction: number; completed: number };
+  machineBreakdown: { machineType: string; orderCount: number; totalBottles: number; pendingQty: number; inProductionQty: number; completedQty: number }[];
+  orders: { id: number; status: string; productionUnit: string; createdAt: string; productName: string; machineType: string | null; totalQuantity: number; bottleColour: string | null; bottleWeight: string | null; productCode: string | null }[];
 }
 
 export default function MachineReport() {
@@ -54,12 +54,15 @@ export default function MachineReport() {
   ];
 
   const statusColor = (s: string) => {
-    if (s === "Completed") return "bg-green-100 text-green-700 border-green-300";
-    if (["Production Started", "In Process"].includes(s)) return "bg-orange-100 text-orange-700 border-orange-300";
-    if (s === "Pending") return "bg-gray-100 text-gray-700 border-gray-300";
-    if (s === "Material Ready") return "bg-blue-100 text-blue-700 border-blue-300";
-    if (s === "Cancelled") return "bg-red-100 text-red-700 border-red-300";
-    return "bg-yellow-100 text-yellow-700 border-yellow-300";
+    const map: Record<string, string> = {
+      "Completed": "bg-green-100 text-green-700 border-green-300",
+      "Production On Going": "bg-orange-100 text-orange-700 border-orange-300",
+      "Packaging": "bg-yellow-100 text-yellow-700 border-yellow-300",
+      "Ready To Dispatch": "bg-blue-100 text-blue-700 border-blue-300",
+      "Pending": "bg-gray-100 text-gray-700 border-gray-300",
+      "Cancelled": "bg-red-100 text-red-700 border-red-300",
+    };
+    return map[s] || "bg-gray-100 text-gray-700 border-gray-300";
   };
 
   return (
@@ -69,7 +72,6 @@ export default function MachineReport() {
         <p className="text-muted-foreground mt-1">Production analytics by machine type (excludes outsourced/PET products)</p>
       </div>
 
-      {/* Filters */}
       <div className="flex flex-wrap gap-3">
         {showUnitFilter && (
           <div className="flex items-center gap-2">
@@ -96,7 +98,6 @@ export default function MachineReport() {
         </Select>
       </div>
 
-      {/* Summary Cards */}
       {isLoading ? (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-24" />)}
@@ -117,7 +118,6 @@ export default function MachineReport() {
         </div>
       )}
 
-      {/* Machine-wise Breakdown */}
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><Factory className="h-5 w-5" /> Machine-wise Breakdown</CardTitle></CardHeader>
         <CardContent>
@@ -130,7 +130,10 @@ export default function MachineReport() {
                   <h3 className="font-semibold text-sm">{m.machineType}</h3>
                   <div className="mt-2 space-y-1">
                     <p className="text-xs text-muted-foreground">Orders: <span className="font-medium text-foreground">{m.orderCount}</span></p>
-                    <p className="text-xs text-muted-foreground">Bottles: <span className="font-medium text-foreground">{m.totalBottles.toLocaleString()}</span></p>
+                    <p className="text-xs text-muted-foreground">Total Qty: <span className="font-medium text-foreground">{m.totalBottles.toLocaleString()} PCS</span></p>
+                    <p className="text-xs text-muted-foreground">Pending: <span className="font-medium text-gray-700">{m.pendingQty.toLocaleString()} PCS</span></p>
+                    <p className="text-xs text-muted-foreground">In Production: <span className="font-medium text-orange-700">{m.inProductionQty.toLocaleString()} PCS</span></p>
+                    <p className="text-xs text-muted-foreground">Completed: <span className="font-medium text-green-700">{m.completedQty.toLocaleString()} PCS</span></p>
                   </div>
                 </div>
               ))}
@@ -139,7 +142,6 @@ export default function MachineReport() {
         </CardContent>
       </Card>
 
-      {/* Orders Table */}
       <Card>
         <CardHeader><CardTitle>Production Orders ({orders.length})</CardTitle></CardHeader>
         <CardContent>
@@ -149,7 +151,10 @@ export default function MachineReport() {
                 <TableRow>
                   <TableHead>Order #</TableHead>
                   <TableHead>Product</TableHead>
-                  <TableHead>Machine Type</TableHead>
+                  <TableHead>Code</TableHead>
+                  <TableHead>Machine</TableHead>
+                  <TableHead>Colour</TableHead>
+                  <TableHead>Weight</TableHead>
                   <TableHead>Unit</TableHead>
                   <TableHead>Qty</TableHead>
                   <TableHead>Status</TableHead>
@@ -158,15 +163,18 @@ export default function MachineReport() {
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={7}><Skeleton className="h-20" /></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10}><Skeleton className="h-20" /></TableCell></TableRow>
                 ) : orders.length === 0 ? (
-                  <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No orders found.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No orders found.</TableCell></TableRow>
                 ) : (
                   orders.map(o => (
                     <TableRow key={o.id}>
                       <TableCell className="font-mono text-sm">#{o.id}</TableCell>
                       <TableCell className="font-medium">{o.productName}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{o.productCode || "-"}</TableCell>
                       <TableCell>{o.machineType || <span className="text-muted-foreground">Unassigned</span>}</TableCell>
+                      <TableCell>{o.bottleColour || "-"}</TableCell>
+                      <TableCell>{o.bottleWeight || "-"}</TableCell>
                       <TableCell>{o.productionUnit || "-"}</TableCell>
                       <TableCell>{o.totalQuantity.toLocaleString()}</TableCell>
                       <TableCell><Badge variant="outline" className={`text-xs ${statusColor(o.status)}`}>{o.status}</Badge></TableCell>
