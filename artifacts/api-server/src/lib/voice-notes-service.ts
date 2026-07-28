@@ -328,7 +328,7 @@ export async function cleanupOrphanVoiceNotes(): Promise<{ deletedCount: number 
   if (orderIds.length === 0) return { deletedCount: 0 };
 
   const terminalOrders = await db
-    .select({ id: productionOrdersTable.id })
+    .select({ id: productionOrdersTable.id, status: productionOrdersTable.status, dispatchStatus: productionOrdersTable.dispatchStatus })
     .from(productionOrdersTable)
     .where(
       inArray(productionOrdersTable.id, orderIds)
@@ -336,30 +336,163 @@ export async function cleanupOrphanVoiceNotes(): Promise<{ deletedCount: number 
 
   const terminalOrderIds = terminalOrders
     .filter(o => {
-      const status = terminalOrders.find(t => t.id === o.id);
-      return status != null;
+      const isTerminal = TERMINAL_STATUSES.includes(o.status) ||
+        TERMINAL_DISPATCH_STATUSES.includes(o.dispatchStatus || "");
+      return isTerminal;
     })
     .map(o => o.id);
 
   let deletedTotal = 0;
   for (const orderId of terminalOrderIds) {
-    const [order] = await db
-      .select({ status: productionOrdersTable.status, dispatchStatus: productionOrdersTable.dispatchStatus })
-      .from(productionOrdersTable)
-      .where(eq(productionOrdersTable.id, orderId));
-
-    if (!order) continue;
-
-    const isTerminal = TERMINAL_STATUSES.includes(order.status) ||
-      TERMINAL_DISPATCH_STATUSES.includes(order.dispatchStatus || "");
-
-    if (isTerminal) {
-      const result = await cleanupVoiceNotesForOrder(orderId, "Daily orphan cleanup");
-      deletedTotal += result.deletedCount;
-    }
+    const result = await cleanupVoiceNotesForOrder(orderId, "Daily orphan cleanup");
+    deletedTotal += result.deletedCount;
   }
 
   return { deletedCount: deletedTotal };
+}
+
+// ────────────────────────────────────────
+// Diagnostics: check every voice note's storage status
+// ────────────────────────────────────────
+export interface VoiceNoteDiagnostic {
+  id: number;
+  storagePath: string;
+  generatedUrl: string;
+  dealId: number | null;
+  productionOrderId: number | null;
+  proformaInvoiceId: number | null;
+  orderId: number | null;
+  uploadedByName: string | null;
+  createdByRole: string;
+  mimeType: string;
+  fileSize: number;
+  fileAvailable: boolean;
+  storageCheckResult: boolean;
+  storageCheckError: string | null;
+  httpStatus: number | null;
+  createdAt: string;
+}
+
+export async function getVoiceNotesDiagnostics(): Promise<{
+  storageProvider: string;
+  supabaseConfigured: boolean;
+  supabaseApiKeyValid: boolean | null;
+  supabaseBuckets: string[];
+  totalRecords: number;
+  availableCount: number;
+  unavailableCount: number;
+  notes: VoiceNoteDiagnostic[];
+}> {
+  const store = getStorageProvider();
+  const providerName = process.env.SUPABASE_URL ? "Supabase" : "Local";
+  const supabaseConfigured = !!process.env.SUPABASE_URL && !!process.env.SUPABASE_KEY;
+
+  // Check Supabase API key validity and list buckets
+  let supabaseApiKeyValid: boolean | null = null;
+  let supabaseBuckets: string[] = [];
+  if (supabaseConfigured) {
+    try {
+      const listUrl = `${process.env.SUPABASE_URL}/storage/v1/bucket`;
+      const res = await fetch(listUrl, {
+        headers: { Authorization: `Bearer ${process.env.SUPABASE_KEY}` },
+      });
+      supabaseApiKeyValid = res.ok;
+      if (res.ok) {
+        const buckets = await res.json() as { id: string; public: boolean }[];
+        supabaseBuckets = buckets.map(b => `${b.id} (public=${b.public})`);
+      } else {
+        const errText = await res.text().catch(() => "");
+        console.error(`[VoiceNote Diag] Supabase API key invalid: HTTP ${res.status}: ${errText}`);
+      }
+    } catch (err: any) {
+      supabaseApiKeyValid = false;
+      console.error(`[VoiceNote Diag] Supabase connection failed: ${err?.message}`);
+    }
+  }
+
+  const rows = await db
+    .select({
+      id: voiceNotesTable.id,
+      storagePath: voiceNotesTable.storagePath,
+      dealId: voiceNotesTable.dealId,
+      productionOrderId: voiceNotesTable.productionOrderId,
+      proformaInvoiceId: voiceNotesTable.proformaInvoiceId,
+      orderId: voiceNotesTable.orderId,
+      uploadedById: voiceNotesTable.uploadedById,
+      createdByRole: voiceNotesTable.createdByRole,
+      mimeType: voiceNotesTable.mimeType,
+      fileSize: voiceNotesTable.fileSize,
+      isReplaced: voiceNotesTable.isReplaced,
+      deletedAt: voiceNotesTable.deletedAt,
+      createdAt: voiceNotesTable.createdAt,
+    })
+    .from(voiceNotesTable)
+    .orderBy(desc(voiceNotesTable.createdAt));
+
+  const diagnostics: VoiceNoteDiagnostic[] = [];
+  let availableCount = 0;
+  let unavailableCount = 0;
+
+  for (const row of rows) {
+    let uploadedByName: string | null = null;
+    if (row.uploadedById) {
+      const [user] = await db
+        .select({ name: usersTable.name })
+        .from(usersTable)
+        .where(eq(usersTable.id, row.uploadedById));
+      uploadedByName = user?.name || null;
+    }
+
+    let storageCheckResult = false;
+    let storageCheckError: string | null = null;
+    let httpStatus: number | null = null;
+
+    try {
+      const verification = await (store as any).verifyPublicAccess(row.storagePath);
+      storageCheckResult = verification.accessible;
+      if (!verification.accessible) {
+        storageCheckError = verification.error || "Not accessible";
+      }
+    } catch (err: any) {
+      storageCheckError = err?.message || "Exception during check";
+    }
+
+    if (storageCheckResult) {
+      availableCount++;
+    } else {
+      unavailableCount++;
+    }
+
+    diagnostics.push({
+      id: row.id,
+      storagePath: row.storagePath,
+      generatedUrl: storageCheckResult ? store.getUrl(row.storagePath) : "",
+      dealId: row.dealId,
+      productionOrderId: row.productionOrderId,
+      proformaInvoiceId: row.proformaInvoiceId,
+      orderId: row.orderId,
+      uploadedByName,
+      createdByRole: row.createdByRole,
+      mimeType: row.mimeType,
+      fileSize: row.fileSize,
+      fileAvailable: storageCheckResult,
+      storageCheckResult,
+      storageCheckError,
+      httpStatus,
+      createdAt: row.createdAt?.toISOString?.() || String(row.createdAt),
+    });
+  }
+
+  return {
+    storageProvider: providerName,
+    supabaseConfigured,
+    supabaseApiKeyValid,
+    supabaseBuckets,
+    totalRecords: rows.length,
+    availableCount,
+    unavailableCount,
+    notes: diagnostics,
+  };
 }
 
 // ────────────────────────────────────────

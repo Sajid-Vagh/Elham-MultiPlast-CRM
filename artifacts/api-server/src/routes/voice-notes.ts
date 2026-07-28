@@ -13,6 +13,7 @@ import {
   deleteVoiceNote,
   verifyFileAvailability,
   validateVoiceNoteFile,
+  getVoiceNotesDiagnostics,
   type VoiceNoteEntityType,
 } from "../lib/voice-notes-service";
 
@@ -469,6 +470,24 @@ router.get("/voice-notes/:id/download", async (req: Request, res: Response) => {
   } catch (err) {
     console.error("Download voice note error:", err);
     if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ────────────────────────────────────────────────
+// GET /voice-notes/diagnostics — Full diagnostic report for all voice notes
+// Admin-only endpoint for debugging storage issues
+// ────────────────────────────────────────────────
+router.get("/voice-notes/diagnostics", async (req: Request, res: Response) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (user.role !== "admin") { res.status(403).json({ error: "Admin only" }); return; }
+
+    const diagnostics = await getVoiceNotesDiagnostics();
+    res.json(diagnostics);
+  } catch (err) {
+    console.error("Voice note diagnostics error:", err);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

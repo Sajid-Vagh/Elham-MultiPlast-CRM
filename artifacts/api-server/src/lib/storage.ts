@@ -96,11 +96,27 @@ class SupabaseStorageProvider implements StorageProvider {
     const storagePath = `${bucket}/${uniqueName}`;
     const uploadUrl = `${this.baseUrl}/storage/v1/object/${storagePath}`;
 
+    // Determine MIME type from filename extension
+    const ext = filename.split(".").pop()?.toLowerCase() || "";
+    const mimeMap: Record<string, string> = {
+      webm: "audio/webm",
+      mp3: "audio/mpeg",
+      wav: "audio/wav",
+      ogg: "audio/ogg",
+      m4a: "audio/mp4",
+      mp4: "audio/mp4",
+      pdf: "application/pdf",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      png: "image/png",
+    };
+    const contentType = mimeMap[ext] || "application/octet-stream";
+
     const res = await fetch(uploadUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/octet-stream",
+        "Content-Type": contentType,
         "x-upsert": "true",
       },
       body: buffer,
@@ -134,11 +150,26 @@ class SupabaseStorageProvider implements StorageProvider {
   }
 
   async exists(storagePath: string): Promise<boolean> {
-    // Use HEAD — lightweight check that doesn't download the file
+    // Try public URL first — lightweight HEAD check
     try {
       const publicUrl = `${this.baseUrl}/storage/v1/object/public/${storagePath}`;
       const res = await fetch(publicUrl, { method: "HEAD", redirect: "follow" });
-      return res.ok;
+      if (res.ok) return true;
+      // If 403/404, try authenticated access as fallback (bucket might be private)
+      if (res.status === 403 || res.status === 404) {
+        const authUrl = `${this.baseUrl}/storage/v1/object/${storagePath}`;
+        const authRes = await fetch(authUrl, {
+          method: "HEAD",
+          headers: { Authorization: `Bearer ${this.apiKey}` },
+        });
+        if (authRes.ok) {
+          // File exists but bucket is not public — fix it
+          console.warn(`[storage] Bucket for ${storagePath.split("/")[0]} is not public. Attempting to fix.`);
+          await this.ensureBucketPublic(storagePath.split("/")[0]);
+          return true;
+        }
+      }
+      return false;
     } catch {
       return false;
     }
@@ -157,6 +188,22 @@ class SupabaseStorageProvider implements StorageProvider {
       const publicUrl = `${this.baseUrl}/storage/v1/object/public/${storagePath}`;
       const res = await fetch(publicUrl, { method: "HEAD", redirect: "follow" });
       if (res.ok) return { accessible: true };
+      // If bucket is private, try authenticated access
+      if (res.status === 403 || res.status === 404) {
+        const authUrl = `${this.baseUrl}/storage/v1/object/${storagePath}`;
+        const authRes = await fetch(authUrl, {
+          method: "HEAD",
+          headers: { Authorization: `Bearer ${this.apiKey}` },
+        });
+        if (authRes.ok) {
+          // File exists but bucket isn't public — fix it
+          const bucket = storagePath.split("/")[0];
+          console.warn(`[storage] Bucket "${bucket}" is not public. Fixing...`);
+          await this.ensureBucketPublic(bucket);
+          return { accessible: true };
+        }
+        return { accessible: false, error: `HTTP ${res.status}: file not accessible publicly or via auth` };
+      }
       return { accessible: false, error: `HTTP ${res.status}: ${res.statusText}` };
     } catch (err: any) {
       return { accessible: false, error: err?.message || "Network error" };
