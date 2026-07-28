@@ -26,6 +26,7 @@ import {
   loadVehicle, markDispatched, markDelivered,
   getDispatchDashboard, listDispatchOrders,
   updateProductLineStatus, getProductLineItems, syncProductionOrderItems,
+  repairStuckOrders,
 } from "../lib/production-service";
 import { transferOrder, getTransferHistory } from "../lib/production-transfer-service";
 
@@ -1017,6 +1018,23 @@ router.post("/production/orders/:id/mark-reprint", async (req, res) => {
     res.json({ success: true, needsReprint: needsReprint ?? true });
   } catch (err) {
     console.error("Mark reprint error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── POST /production/repair-stuck-orders — Fix data inconsistencies ──
+router.post("/production/repair-stuck-orders", async (req, res) => {
+  try {
+    const user = await requireAuth(req, res);
+    if (!user) return;
+    if (user.role !== "admin" && user.role !== "production_manager" && user.role !== "production_and_support") {
+      res.status(403).json({ error: "Only admin or production users can run repair" });
+      return;
+    }
+    const result = await repairStuckOrders(user);
+    res.json(result);
+  } catch (err) {
+    console.error("Repair stuck orders error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

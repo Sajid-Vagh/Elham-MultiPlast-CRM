@@ -269,7 +269,7 @@ export async function recalculateOrderStatus(orderId: number, triggeredBy?: { id
   const validTransitions: Record<string, string[]> = {
     "Pending": ["Production On Going", "Ready To Dispatch"],
     "Production On Going": ["Ready To Dispatch", "Packaging"],
-    "Packaging": ["Ready To Dispatch"],
+    "Packaging": ["Ready To Dispatch", "Production On Going"],
   };
 
   const allowed = validTransitions[order.status];
@@ -969,6 +969,7 @@ export async function markReadyForDispatch(
   await db.update(productionOrdersTable).set({
     status: "Ready To Dispatch",
     dispatchStatus: "Pending Dispatch",
+    isFrozen: true,
     updatedBy: user.id,
     updatedAt: now,
   }).where(eq(productionOrdersTable.id, orderId));
@@ -1712,6 +1713,11 @@ export async function updateOrderStatus(
     updateData.startedAt = updateData.startedAt || now;
   }
 
+  if (newStatus === "Ready To Dispatch") {
+    updateData.dispatchStatus = "Pending Dispatch";
+    updateData.isFrozen = true;
+  }
+
   if (newStatus === "Cancelled") {
     if (!data.remarks?.trim()) {
       return { error: "Cancellation reason is required", status: 400 };
@@ -2010,6 +2016,10 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
   let pendingPieces = 0;
   let inProductionPieces = 0;
   let readyPieces = 0;
+  let readyToDispatchPieces = 0;
+
+  // Build a lookup for order status by orderId
+  const orderStatusMap = new Map(activeOrders.map(o => [o.id, o.status]));
 
   for (const line of productLines) {
     const ordered = Number(line.orderedQuantity);
@@ -2017,7 +2027,14 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
     const remaining = ordered - ready;
     if (line.productionStatus === "Pending") pendingPieces += remaining > 0 ? remaining : ordered;
     else if (line.productionStatus === "In Production") inProductionPieces += remaining > 0 ? remaining : ordered;
-    else if (line.productionStatus === "Ready") readyPieces += ready;
+    else if (line.productionStatus === "Ready") {
+      readyPieces += ready;
+      // Only count as "Ready To Dispatch" if the parent order is actually in "Ready To Dispatch" status
+      const parentStatus = orderStatusMap.get(line.productionOrderId);
+      if (parentStatus === "Ready To Dispatch") {
+        readyToDispatchPieces += ready;
+      }
+    }
   }
 
   // Fallback: for orders missing product_line_items, sum quantities from PI items
@@ -2041,11 +2058,14 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
     }
   }
 
+  // Count orders waiting in dispatch queue (Ready To Dispatch status)
+  const dispatchPendingCount = allOrders.filter(o => o.status === "Ready To Dispatch").length;
+
   return {
     pendingCount: pendingPieces,
     productionOnGoingCount: inProductionPieces,
     packagingCount: 0,
-    readyToDispatchCount: readyPieces,
+    readyToDispatchCount: readyToDispatchPieces,
     completedToday: allOrders.filter(o => {
       if (o.status !== "Completed") return false;
       const t = o.updatedAt ? new Date(o.updatedAt) : null;
@@ -2054,6 +2074,7 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
     delayedOrders: activeOrders.filter(o => o.isDelayed).length,
     activeOrders: activeOrders.length,
     totalOrders: allOrders.length,
+    dispatchPendingCount,
     productLineStats: {
       pendingPieces,
       inProductionPieces,
@@ -2820,4 +2841,118 @@ export async function getManufacturingSummaryDetail(
   }
 
   return { items };
+}
+
+/**
+ * Repair stuck orders: sync product line statuses with order statuses.
+ * Called on-demand to fix data inconsistencies.
+ */
+export async function repairStuckOrders(user: PermissionUser): Promise<{
+  fixedToReadyToDispatch: number;
+  fixedToProductionOnGoing: number;
+  fixedDispatchStatus: number;
+  details: string[];
+}> {
+  const details: string[] = [];
+  let fixedToReadyToDispatch = 0;
+  let fixedToProductionOnGoing = 0;
+  let fixedDispatchStatus = 0;
+
+  // ── FIX A: Orders where ALL product lines are "Ready" but order is NOT "Ready To Dispatch" ──
+  const nonTerminalStatuses = ["Pending", "Production On Going", "Packaging"];
+  const allNonTerminal = await db.select().from(productionOrdersTable)
+    .where(or(...nonTerminalStatuses.map(s => eq(productionOrdersTable.status, s))));
+
+  for (const order of allNonTerminal) {
+    const items = await db.select({ productionStatus: productionOrderItemsTable.productionStatus })
+      .from(productionOrderItemsTable)
+      .where(eq(productionOrderItemsTable.productionOrderId, order.id));
+
+    if (items.length === 0) continue;
+
+    const allReady = items.every(i => i.productionStatus === "Ready");
+    if (!allReady) continue;
+
+    // All products Ready but order is stuck — force transition
+    const now = new Date();
+    await db.update(productionOrdersTable).set({
+      status: "Ready To Dispatch",
+      dispatchStatus: "Pending Dispatch",
+      isFrozen: true,
+      updatedAt: now,
+      updatedBy: user.id,
+    }).where(eq(productionOrdersTable.id, order.id));
+
+    await addTimelineEntry(db, order.id, "Ready To Dispatch",
+      `SYSTEM REPAIR: ${order.status} → Ready To Dispatch\nAll product lines were Ready but order status was not updated.`,
+      user.id);
+
+    await writeAuditTrail(db, {
+      productionOrderId: order.id, action: "system_repair",
+      oldValue: order.status, newValue: "Ready To Dispatch",
+      changedById: user.id, changedByName: user.name || "System",
+      reason: "Data repair: all product lines were Ready but order status was stuck",
+    });
+
+    details.push(`Order #${order.id}: ${order.status} → Ready To Dispatch (all products ready)`);
+    fixedToReadyToDispatch++;
+  }
+
+  // ── FIX B: Orders stuck in "Packaging" where NOT all products are Ready → revert to "Production On Going" ──
+  const packagingOrders = await db.select().from(productionOrdersTable)
+    .where(eq(productionOrdersTable.status, "Packaging"));
+
+  for (const order of packagingOrders) {
+    const items = await db.select({ productionStatus: productionOrderItemsTable.productionStatus })
+      .from(productionOrderItemsTable)
+      .where(eq(productionOrderItemsTable.productionOrderId, order.id));
+
+    if (items.length === 0) continue;
+
+    const allReady = items.every(i => i.productionStatus === "Ready");
+    if (allReady) continue; // Already handled in Fix A
+
+    // Not all products ready — order shouldn't be in Packaging
+    const now = new Date();
+    await db.update(productionOrdersTable).set({
+      status: "Production On Going",
+      isFrozen: true,
+      updatedAt: now,
+      updatedBy: user.id,
+    }).where(eq(productionOrdersTable.id, order.id));
+
+    await addTimelineEntry(db, order.id, "Production On Going",
+      `SYSTEM REPAIR: Packaging → Production On Going\nNot all product lines are Ready.`,
+      user.id);
+
+    await writeAuditTrail(db, {
+      productionOrderId: order.id, action: "system_repair",
+      oldValue: "Packaging", newValue: "Production On Going",
+      changedById: user.id, changedByName: user.name || "System",
+      reason: "Data repair: not all product lines are Ready, reverting from Packaging",
+    });
+
+    details.push(`Order #${order.id}: Packaging → Production On Going (not all products ready)`);
+    fixedToProductionOnGoing++;
+  }
+
+  // ── FIX C: Orders with status "Ready To Dispatch" but null dispatchStatus ──
+  const rtdOrders = await db.select().from(productionOrdersTable)
+    .where(and(
+      eq(productionOrdersTable.status, "Ready To Dispatch"),
+      sql`${productionOrdersTable.dispatchStatus} IS NULL`
+    ));
+
+  for (const order of rtdOrders) {
+    await db.update(productionOrdersTable).set({
+      dispatchStatus: "Pending Dispatch",
+      updatedAt: new Date(),
+      updatedBy: user.id,
+    }).where(eq(productionOrdersTable.id, order.id));
+
+    details.push(`Order #${order.id}: set dispatchStatus = "Pending Dispatch" (was null)`);
+    fixedDispatchStatus++;
+  }
+
+  return { fixedToReadyToDispatch, fixedToProductionOnGoing, fixedDispatchStatus, details };
 }
