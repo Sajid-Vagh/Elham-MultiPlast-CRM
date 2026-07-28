@@ -16,11 +16,10 @@ import { ManufacturingSummary } from "@/components/manufacturing-summary";
 import { useToast } from "@/hooks/use-toast";
 
 const KPI_CONFIG = [
-  { key: "pendingCount", label: "Pending", color: "bg-gray-100 text-gray-700 border-gray-300", hoverStatus: "Pending", icon: Clock },
-  { key: "productionOnGoingCount", label: "Production On Going", color: "bg-orange-100 text-orange-700 border-orange-300", hoverStatus: "Production On Going", icon: Clock },
-  { key: "packagingCount", label: "Packaging", color: "bg-yellow-100 text-yellow-700 border-yellow-300", hoverStatus: "Packaging", icon: Clock },
-  { key: "readyToDispatchCount", label: "Ready to Dispatch", color: "bg-green-100 text-green-700 border-green-300", hoverStatus: "Ready To Dispatch", icon: Truck },
-  { key: "delayedOrders", label: "Delayed", color: "bg-red-100 text-red-700 border-red-300", hoverStatus: "delayed", icon: AlertTriangle },
+  { key: "pendingCount", label: "Pending PCS", color: "bg-gray-100 text-gray-700 border-gray-300", hoverStatus: "Pending", icon: Clock },
+  { key: "productionOnGoingCount", label: "In Production PCS", color: "bg-orange-100 text-orange-700 border-orange-300", hoverStatus: "Production On Going", icon: Clock },
+  { key: "readyToDispatchCount", label: "Ready PCS", color: "bg-green-100 text-green-700 border-green-300", hoverStatus: "Ready To Dispatch", icon: Truck },
+  { key: "delayedOrders", label: "Delayed Orders", color: "bg-red-100 text-red-700 border-red-300", hoverStatus: "delayed", icon: AlertTriangle },
 ];
 
 const QUICK_ACTIONS = [
@@ -128,8 +127,8 @@ export default function ProductionDashboard() {
         </div>
       </div>
 
-      {/* Status Count Cards — Production Only */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      {/* Status Count Cards — Product Line Based */}
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {KPI_CONFIG.map((kpi) => {
           const Icon = kpi.icon;
           return (
@@ -141,6 +140,7 @@ export default function ProductionDashboard() {
                   <Icon className={`h-3.5 w-3.5 ${kpi.color.split(" ")[1]}`} />
                 </div>
                 <p className="text-xl font-bold">{dashboard?.[kpi.key] ?? 0}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">pieces</p>
               </CardContent>
             </Card>
           );
@@ -206,6 +206,16 @@ export default function ProductionDashboard() {
               <div><p className="text-xs text-muted-foreground">Completed Today</p><p className="text-xl font-bold">{dashboard?.completedToday ?? 0}</p></div>
               <div><p className="text-xs text-muted-foreground">Delayed</p><p className="text-xl font-bold text-red-600">{dashboard?.delayedOrders ?? 0}</p></div>
             </div>
+            {dashboard?.productLineStats && (
+              <div className="mt-3 pt-3 border-t">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Product Line Summary</p>
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div><p className="text-xs text-muted-foreground">Pending</p><p className="font-bold text-gray-700">{dashboard.productLineStats.pendingPieces.toLocaleString()} PCS</p></div>
+                  <div><p className="text-xs text-muted-foreground">In Production</p><p className="font-bold text-orange-700">{dashboard.productLineStats.inProductionPieces.toLocaleString()} PCS</p></div>
+                  <div><p className="text-xs text-muted-foreground">Ready</p><p className="font-bold text-green-700">{dashboard.productLineStats.readyPieces.toLocaleString()} PCS</p></div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
         <Card>

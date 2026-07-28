@@ -3,9 +3,10 @@ import {
   productionMessagesTable, proformaInvoicesTable, proformaInvoiceItemsTable,
   usersTable, contactsTable, dealsTable, activitiesTable,
   productionAuditTrailTable, notificationsTable, productsTable,
+  productionOrderItemsTable,
   PRODUCTION_STATUSES, VALID_STATUS_TRANSITIONS,
-  VALID_DISPATCH_TRANSITIONS,
-  type ProductionStatus, type NoteType,
+  VALID_DISPATCH_TRANSITIONS, PRODUCT_LINE_STATUSES,
+  type ProductionStatus, type NoteType, type ProductLineStatus,
 } from "@workspace/db";
 import { eq, and, desc, sql, gte, lte, or, inArray, type SQL } from "drizzle-orm";
 import { getActivePiForDeal } from "./proforma-service";
@@ -201,6 +202,238 @@ async function notifySupportOfReadyForDispatch(params: {
   }
 }
 
+// ═══════════════════════════════════════════════════
+// PRODUCT LINE PRODUCTION STATUS FUNCTIONS
+// ═══════════════════════════════════════════════════
+
+export async function syncProductionOrderItems(productionOrderId: number, invoiceId: number | null): Promise<void> {
+  if (!invoiceId) return;
+
+  const existing = await db.select({ id: productionOrderItemsTable.id })
+    .from(productionOrderItemsTable)
+    .where(eq(productionOrderItemsTable.productionOrderId, productionOrderId))
+    .limit(1);
+  if (existing.length > 0) return;
+
+  const invoiceItems = await db.select().from(proformaInvoiceItemsTable)
+    .where(eq(proformaInvoiceItemsTable.invoiceId, invoiceId));
+
+  if (invoiceItems.length === 0) return;
+
+  const allProducts = await db.select().from(productsTable);
+  const productMap = new Map(allProducts.map(p => [p.name?.toLowerCase(), p]));
+
+  for (const item of invoiceItems) {
+    const product = productMap.get(item.productName?.toLowerCase());
+    await db.insert(productionOrderItemsTable).values({
+      productionOrderId,
+      piItemId: item.id,
+      productName: item.productName,
+      materialType: product?.materialType || null,
+      machineType: product?.machineType || null,
+      bottleColour: product?.bottleColour || null,
+      bottleWeight: product?.bottleWeight || null,
+      capColour: product?.capColour || null,
+      hsnCode: item.hsnCode || null,
+      orderedQuantity: String(item.quantity),
+      readyQuantity: "0",
+      productionStatus: "Pending",
+    });
+  }
+}
+
+export function computeOverallOrderStatus(items: { productionStatus: string }[]): string {
+  if (items.length === 0) return "Pending";
+  const statuses = items.map(i => i.productionStatus);
+  const allPending = statuses.every(s => s === "Pending");
+  if (allPending) return "Pending";
+  const allReady = statuses.every(s => s === "Ready");
+  if (allReady) return "Ready For Dispatch";
+  return "Production On Going";
+}
+
+export async function recalculateOrderStatus(orderId: number): Promise<void> {
+  const items = await db.select({ productionStatus: productionOrderItemsTable.productionStatus })
+    .from(productionOrderItemsTable)
+    .where(eq(productionOrderItemsTable.productionOrderId, orderId));
+  if (items.length === 0) return;
+
+  const newStatus = computeOverallOrderStatus(items);
+  const [order] = await db.select({ status: productionOrdersTable.status })
+    .from(productionOrdersTable)
+    .where(eq(productionOrdersTable.id, orderId));
+  if (!order) return;
+
+  const validTransitions: Record<string, string[]> = {
+    "Pending": ["Production On Going"],
+    "Production On Going": ["Ready For Dispatch", "Packaging"],
+    "Packaging": ["Ready For Dispatch"],
+  };
+
+  const allowed = validTransitions[order.status];
+  if (allowed && allowed.includes(newStatus)) {
+    const now = new Date();
+    const updateData: any = { updatedAt: now };
+    if (newStatus === "Ready For Dispatch") {
+      updateData.status = "Ready For Dispatch";
+      updateData.dispatchStatus = "Pending Dispatch";
+    } else if (newStatus === "Production On Going") {
+      updateData.status = "Production On Going";
+      updateData.startedById = updateData.startedById || undefined;
+      updateData.startedAt = updateData.startedAt || now;
+    }
+    if (updateData.status) {
+      await db.update(productionOrdersTable).set(updateData).where(eq(productionOrdersTable.id, orderId));
+    }
+  }
+}
+
+export async function updateProductLineStatus(
+  user: PermissionUser,
+  orderId: number,
+  itemId: number,
+  data: { productionStatus: string; readyQuantity?: number }
+): Promise<any> {
+  const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
+  if (!order) return { error: "Production order not found", status: 404 };
+
+  const [item] = await db.select().from(productionOrderItemsTable).where(eq(productionOrderItemsTable.id, itemId));
+  if (!item) return { error: "Product line not found", status: 404 };
+  if (item.productionOrderId !== orderId) return { error: "Item does not belong to this order", status: 400 };
+
+  const newStatus = data.productionStatus as ProductLineStatus;
+  if (!PRODUCT_LINE_STATUSES.includes(newStatus)) {
+    return { error: `Invalid status: ${newStatus}. Valid: ${PRODUCT_LINE_STATUSES.join(", ")}`, status: 400 };
+  }
+  if (item.productionStatus === newStatus && data.readyQuantity === undefined) {
+    return { error: "No change", status: 400 };
+  }
+
+  const now = new Date();
+  const orderedQty = Number(item.orderedQuantity);
+  let readyQty = data.readyQuantity !== undefined ? data.readyQuantity : Number(item.readyQuantity);
+
+  if (readyQty < 0) readyQty = 0;
+  if (readyQty > orderedQty) readyQty = orderedQty;
+
+  const updateData: any = { productionStatus: newStatus, readyQuantity: String(readyQty), updatedAt: now };
+
+  if (newStatus === "In Production" && !item.startedAt) {
+    updateData.startedAt = now;
+  }
+  if (newStatus === "Ready") {
+    readyQty = orderedQty;
+    updateData.readyQuantity = String(orderedQty);
+    updateData.completedAt = now;
+  }
+
+  const remaining = orderedQty - readyQty;
+  if (readyQty > 0 && readyQty < orderedQty && newStatus !== "Ready") {
+    updateData.productionStatus = "In Production";
+  }
+  if (remaining <= 0 && newStatus !== "Ready") {
+    updateData.productionStatus = "Ready";
+    updateData.readyQuantity = String(orderedQty);
+    updateData.completedAt = now;
+  }
+
+  await db.update(productionOrderItemsTable).set(updateData).where(eq(productionOrderItemsTable.id, itemId));
+
+  const oldStatus = item.productionStatus;
+  const statusChanged = oldStatus !== updateData.productionStatus;
+  if (statusChanged) {
+    await addTimelineEntry(db, orderId, updateData.productionStatus,
+      `${item.productName}: ${oldStatus} → ${updateData.productionStatus}\nReady: ${updateData.readyQuantity} / ${orderedQty} PCS\nBy: ${user.name}`,
+      user.id);
+
+    await writeAuditTrail(db, {
+      productionOrderId: orderId,
+      action: "product_status_change",
+      oldValue: `${item.productName}: ${oldStatus}`,
+      newValue: `${item.productName}: ${updateData.productionStatus} (${updateData.readyQuantity}/${orderedQty})`,
+      changedById: user.id, changedByName: user.name || "",
+    });
+  }
+
+  if (updateData.productionStatus === "Ready" && oldStatus !== "Ready") {
+    const [invoice] = order.proformaInvoiceId
+      ? await db.select({ invoiceNumber: proformaInvoicesTable.invoiceNumber })
+          .from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, order.proformaInvoiceId))
+      : [];
+
+    await notifySalesOfProductionEvent({
+      productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
+      title: "Product Ready",
+      message: `${item.productName} is Ready — Order #${invoice?.invoiceNumber || orderId} — Ready for Dispatch`,
+      excludeUserId: user.id, createdByRole: order.createdByRole,
+    });
+
+    const supportUsers = await db.select({ id: usersTable.id })
+      .from(usersTable)
+      .where(or(eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
+    for (const su of supportUsers) {
+      if (su.id !== user.id) {
+        await db.insert(notificationsTable).values({
+          userId: su.id, type: "production_status",
+          title: "Product Ready",
+          message: `${item.productName} is Ready — Order #${orderId} — Ready for Dispatch`,
+          link: `/production/orders/${orderId}`,
+          relatedId: orderId, relatedType: "production_order",
+        });
+      }
+    }
+  }
+
+  await logProductionActivity(db, {
+    dealId: order.dealId, contactId: null,
+    eventName: `Product Status: ${item.productName} → ${updateData.productionStatus}`,
+    orderId, details: `Ready: ${updateData.readyQuantity} / ${orderedQty} PCS`,
+    userName: user.name || "", createdBy: user.id,
+  });
+
+  await recalculateOrderStatus(orderId);
+
+  const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
+  return { order: await enrichProductionOrder(updated!, user) };
+}
+
+export async function getProductLineItems(orderId: number) {
+  const items = await db.select().from(productionOrderItemsTable)
+    .where(eq(productionOrderItemsTable.productionOrderId, orderId));
+  return items.map(i => ({
+    ...i,
+    orderedQuantity: Number(i.orderedQuantity),
+    readyQuantity: Number(i.readyQuantity),
+    remainingQuantity: Number(i.orderedQuantity) - Number(i.readyQuantity),
+    progressPercent: Number(i.orderedQuantity) > 0
+      ? Math.round((Number(i.readyQuantity) / Number(i.orderedQuantity)) * 100)
+      : 0,
+  }));
+}
+
+export async function notifyProductionUsersOfProductReady(params: {
+  productionOrderId: number;
+  productName: string;
+  excludeUserId: number;
+}) {
+  const { productionOrderId, productName, excludeUserId } = params;
+  const supportUsers = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(or(eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
+  for (const su of supportUsers) {
+    if (su.id !== excludeUserId) {
+      await db.insert(notificationsTable).values({
+        userId: su.id, type: "production_status",
+        title: "Product Ready",
+        message: `${productName} is Ready — Order #${productionOrderId}`,
+        link: `/production/orders/${productionOrderId}`,
+        relatedId: productionOrderId, relatedType: "production_order",
+      });
+    }
+  }
+}
+
 export async function enrichProductionOrder(order: any, user?: { role: string }) {
   let invoice: any = null;
   if (order.proformaInvoiceId) {
@@ -358,6 +591,19 @@ export async function enrichProductionOrder(order: any, user?: { role: string })
     })
   );
 
+  const productLineItems = await db.select().from(productionOrderItemsTable)
+    .where(eq(productionOrderItemsTable.productionOrderId, order.id));
+
+  const enrichedProductLineItems = productLineItems.map((i: any) => ({
+    ...i,
+    orderedQuantity: Number(i.orderedQuantity),
+    readyQuantity: Number(i.readyQuantity),
+    remainingQuantity: Number(i.orderedQuantity) - Number(i.readyQuantity),
+    progressPercent: Number(i.orderedQuantity) > 0
+      ? Math.round((Number(i.readyQuantity) / Number(i.orderedQuantity)) * 100)
+      : 0,
+  }));
+
   const result = {
     ...order,
     invoice: invoice
@@ -375,6 +621,7 @@ export async function enrichProductionOrder(order: any, user?: { role: string })
         }
       : null,
     items: enrichedItems,
+    productLineItems: enrichedProductLineItems,
     contact,
     assignedManager,
     lastUpdatedBy,
@@ -1563,30 +1810,74 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
   if (startDate) conditions.push(gte(productionOrdersTable.createdAt, new Date(startDate)));
   if (endDate) conditions.push(lte(productionOrdersTable.createdAt, new Date(endDate + "T23:59:59")));
 
+  const activeConditions = [...conditions, or(
+    eq(productionOrdersTable.status, "Pending"),
+    eq(productionOrdersTable.status, "Production On Going"),
+    eq(productionOrdersTable.status, "Packaging"),
+    eq(productionOrdersTable.status, "Ready To Dispatch"),
+  )!];
+
+  const activeOrders = await db.select().from(productionOrdersTable)
+    .where(activeConditions.length > 0 ? and(...activeConditions) : undefined);
+
   const allOrders = await db.select().from(productionOrdersTable)
     .where(conditions.length > 0 ? and(...conditions) : undefined);
 
   const today = new Date();
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
-  // Production-only statuses (no Ready To Dispatch, no Completed, no Cancelled)
-  const productionOnly = allOrders.filter(o =>
-    o.status === "Pending" || o.status === "Production On Going" || o.status === "Packaging"
+  const activeOrderIds = activeOrders.map(o => o.id);
+  let productLines: { productionOrderId: number; productionStatus: string; orderedQuantity: string; readyQuantity: string }[] = [];
+  if (activeOrderIds.length > 0) {
+    productLines = await db.select({
+      productionOrderId: productionOrderItemsTable.productionOrderId,
+      productionStatus: productionOrderItemsTable.productionStatus,
+      orderedQuantity: productionOrderItemsTable.orderedQuantity,
+      readyQuantity: productionOrderItemsTable.readyQuantity,
+    }).from(productionOrderItemsTable)
+      .where(inArray(productionOrderItemsTable.productionOrderId, activeOrderIds));
+  }
+
+  const linesWithNoItems = activeOrders.filter(o =>
+    !productLines.some(pl => pl.productionOrderId === o.id)
   );
 
+  let pendingPieces = 0;
+  let inProductionPieces = 0;
+  let readyPieces = 0;
+
+  for (const line of productLines) {
+    const ordered = Number(line.orderedQuantity);
+    const ready = Number(line.readyQuantity);
+    const remaining = ordered - ready;
+    if (line.productionStatus === "Pending") pendingPieces += remaining > 0 ? remaining : ordered;
+    else if (line.productionStatus === "In Production") inProductionPieces += remaining > 0 ? remaining : ordered;
+    else if (line.productionStatus === "Ready") readyPieces += ready;
+  }
+
+  for (const o of linesWithNoItems) {
+    if (o.status === "Pending") pendingPieces++;
+    else if (o.status === "Production On Going" || o.status === "Packaging") inProductionPieces++;
+  }
+
   return {
-    pendingCount: allOrders.filter(o => o.status === "Pending").length,
-    productionOnGoingCount: allOrders.filter(o => o.status === "Production On Going").length,
-    packagingCount: allOrders.filter(o => o.status === "Packaging").length,
-    readyToDispatchCount: allOrders.filter(o => o.status === "Ready To Dispatch").length,
+    pendingCount: pendingPieces,
+    productionOnGoingCount: inProductionPieces,
+    packagingCount: 0,
+    readyToDispatchCount: readyPieces,
     completedToday: allOrders.filter(o => {
       if (o.status !== "Completed") return false;
       const t = o.updatedAt ? new Date(o.updatedAt) : null;
       return t && t >= todayStart;
     }).length,
-    delayedOrders: productionOnly.filter(o => o.isDelayed).length,
-    activeOrders: productionOnly.length,
+    delayedOrders: activeOrders.filter(o => o.isDelayed).length,
+    activeOrders: activeOrders.length,
     totalOrders: allOrders.length,
+    productLineStats: {
+      pendingPieces,
+      inProductionPieces,
+      readyPieces,
+    },
   };
 }
 
@@ -1669,22 +1960,9 @@ export async function getMachineReport(
     };
   }
 
-  const piIds = [...new Set(orders.map(o => o.proformaInvoiceId).filter(Boolean))] as number[];
-  let piItems: any[] = [];
-  if (piIds.length > 0) {
-    piItems = await db
-      .select({
-        invoiceId: proformaInvoiceItemsTable.invoiceId,
-        productName: proformaInvoiceItemsTable.productName,
-        quantity: proformaInvoiceItemsTable.quantity,
-        weight: proformaInvoiceItemsTable.weight,
-      })
-      .from(proformaInvoiceItemsTable)
-      .where(inArray(proformaInvoiceItemsTable.invoiceId, piIds));
-  }
-
-  const allProducts = await db.select().from(productsTable);
-  const productMap = new Map(allProducts.map(p => [p.name?.toLowerCase(), p]));
+  const orderIds = orders.map(o => o.id);
+  const productLines = await db.select().from(productionOrderItemsTable)
+    .where(inArray(productionOrderItemsTable.productionOrderId, orderIds));
 
   const invoiceToOrder = new Map(orders.map(o => [o.proformaInvoiceId, o]));
 
@@ -1692,29 +1970,42 @@ export async function getMachineReport(
     orderId: number; status: string; productionUnit: string | null; createdAt: Date | null;
     productName: string; machineType: string | null; materialType: string | null;
     bottleColour: string | null; bottleWeight: string | null; productCode: string | null;
-    quantity: number;
+    quantity: number; readyQuantity: number; productionStatus: string;
   }[] = [];
 
-  for (const item of piItems) {
-    const order = invoiceToOrder.get(item.invoiceId);
+  for (const line of productLines) {
+    const order = orders.find(o => o.id === line.productionOrderId);
     if (!order) continue;
-
-    const productName = item.productName || "Unknown";
-    const product = productMap.get(productName.toLowerCase());
 
     productRows.push({
       orderId: order.id,
       status: order.status,
       productionUnit: order.productionUnit,
       createdAt: order.createdAt,
-      productName,
-      machineType: product?.machineType || null,
-      materialType: product?.materialType || null,
-      bottleColour: product?.bottleColour || null,
-      bottleWeight: product?.bottleWeight || null,
-      productCode: product?.productCode || null,
-      quantity: Number(item.quantity || 0),
+      productName: line.productName,
+      machineType: line.machineType || null,
+      materialType: line.materialType || null,
+      bottleColour: line.bottleColour || null,
+      bottleWeight: line.bottleWeight || null,
+      productCode: null,
+      quantity: Number(line.orderedQuantity),
+      readyQuantity: Number(line.readyQuantity),
+      productionStatus: line.productionStatus,
     });
+  }
+
+  if (productRows.length === 0) {
+    for (const item of await db.select().from(proformaInvoiceItemsTable)
+      .where(inArray(proformaInvoiceItemsTable.invoiceId, orders.map(o => o.proformaInvoiceId).filter(Boolean) as number[]))) {
+      const order = invoiceToOrder.get(item.invoiceId);
+      if (!order) continue;
+      productRows.push({
+        orderId: order.id, status: order.status, productionUnit: order.productionUnit,
+        createdAt: order.createdAt, productName: item.productName, machineType: null,
+        materialType: null, bottleColour: null, bottleWeight: null, productCode: null,
+        quantity: Number(item.quantity), readyQuantity: 0, productionStatus: order.status === "Completed" ? "Ready" : "Pending",
+      });
+    }
   }
 
   let filteredRows = productRows;
@@ -1725,16 +2016,16 @@ export async function getMachineReport(
     filteredRows = filteredRows.filter(r => r.productName === filters.product);
   }
 
-  const isPending = (s: string) => s === "Pending" || s === "Material Ready";
-  const isInProduction = (s: string) => s === "Production On Going" || s === "Packaging";
-  const isCompleted = (s: string) => s === "Completed";
+  const isPending = (s: string) => s === "Pending";
+  const isInProduction = (s: string) => s === "In Production";
+  const isCompleted = (s: string) => s === "Ready";
 
   const summary = {
     totalProducts: filteredRows.length,
     totalBottles: filteredRows.reduce((s, r) => s + r.quantity, 0),
-    pending: filteredRows.filter(r => isPending(r.status)).length,
-    inProduction: filteredRows.filter(r => isInProduction(r.status)).length,
-    completed: filteredRows.filter(r => isCompleted(r.status)).length,
+    pending: filteredRows.filter(r => isPending(r.productionStatus)).length,
+    inProduction: filteredRows.filter(r => isInProduction(r.productionStatus)).length,
+    completed: filteredRows.filter(r => isCompleted(r.productionStatus)).length,
   };
 
   const machineMap = new Map<string, {
@@ -1747,13 +2038,13 @@ export async function getMachineReport(
     existing.productCount++;
     existing.orderIds.add(row.orderId);
     existing.totalBottles += row.quantity;
-    if (isPending(row.status)) existing.pendingQty += row.quantity;
-    if (isInProduction(row.status)) existing.inProductionQty += row.quantity;
-    if (isCompleted(row.status)) existing.completedQty += row.quantity;
+    const remaining = row.quantity - row.readyQuantity;
+    if (isPending(row.productionStatus)) existing.pendingQty += remaining > 0 ? remaining : row.quantity;
+    if (isInProduction(row.productionStatus)) existing.inProductionQty += remaining > 0 ? remaining : row.quantity;
+    if (isCompleted(row.productionStatus)) existing.completedQty += row.readyQuantity;
     machineMap.set(key, existing);
   }
 
-  // Build material → machines grouping
   const materialMachineMap = new Map<string, Map<string, {
     productCount: number; orderIds: Set<number>; totalBottles: number;
     pendingQty: number; inProductionQty: number; completedQty: number;
@@ -1767,9 +2058,10 @@ export async function getMachineReport(
     existing.productCount++;
     existing.orderIds.add(row.orderId);
     existing.totalBottles += row.quantity;
-    if (isPending(row.status)) existing.pendingQty += row.quantity;
-    if (isInProduction(row.status)) existing.inProductionQty += row.quantity;
-    if (isCompleted(row.status)) existing.completedQty += row.quantity;
+    const remaining = row.quantity - row.readyQuantity;
+    if (isPending(row.productionStatus)) existing.pendingQty += remaining > 0 ? remaining : row.quantity;
+    if (isInProduction(row.productionStatus)) existing.inProductionQty += remaining > 0 ? remaining : row.quantity;
+    if (isCompleted(row.productionStatus)) existing.completedQty += row.readyQuantity;
     innerMap.set(machine, existing);
   }
 
@@ -2050,6 +2342,16 @@ export async function getProgressByDeal(user: PermissionUser, dealId: number) {
     packingCompletedAt: po.packingCompletedAt,
     transportBookedAt: po.transportBookedAt,
     dispatchStatus: po.dispatchStatus, lrNumber: po.lrNumber, dispatchRemarks: po.dispatchRemarks,
+    productLineItems: (await db.select().from(productionOrderItemsTable)
+      .where(eq(productionOrderItemsTable.productionOrderId, po.id))).map(i => ({
+      ...i,
+      orderedQuantity: Number(i.orderedQuantity),
+      readyQuantity: Number(i.readyQuantity),
+      remainingQuantity: Number(i.orderedQuantity) - Number(i.readyQuantity),
+      progressPercent: Number(i.orderedQuantity) > 0
+        ? Math.round((Number(i.readyQuantity) / Number(i.orderedQuantity)) * 100)
+        : 0,
+    })),
   };
 }
 
@@ -2142,38 +2444,40 @@ export async function getManufacturingSummary(user: PermissionUser, unitFilter?:
         ${effectiveUnit && effectiveUnit !== "all" ? sql`AND po.production_unit = ${effectiveUnit}` : sql``}
         ${originFilter && originFilter !== "all" ? sql`AND po.created_by_role = ${originFilter}` : sql``}
     ),
-    order_quantities AS (
+    product_lines AS (
       SELECT
-        ao.po_id,
-        pii.product_name,
+        poi.production_order_id AS po_id,
+        poi.product_name,
+        poi.production_status,
+        poi.ordered_quantity,
+        poi.ready_quantity,
         COALESCE(NULLIF(pii.weight, ''), '-') AS weight,
         COALESCE(NULLIF(p.bottle_colour, ''), 'N/A') AS colour,
         COALESCE(NULLIF(p.bottle_colour_code, ''), '') AS colour_code,
         COALESCE(NULLIF(p.material_type, 'HDPE'), 'HDPE') AS material_type,
-        SUM(pii.quantity::numeric) AS qty,
         INITCAP(TRIM(
           regexp_replace(
             regexp_replace(
               regexp_replace(
-                LOWER(pii.product_name),
-                '\s*\d+(\.\d+)?\s*(ml|l|gm|g|kg|ltr|litre|liter|cm|mm)\s*$', '', 'i'
+                LOWER(poi.product_name),
+                '\\s*\\d+(\\.\\d+)?\\s*(ml|l|gm|g|kg|ltr|litre|liter|cm|mm)\\s*$', '', 'i'
               ),
-              '\s*(blue|red|green|white|yellow|black|orange|pink|grey|gray|transparent|natural|brown|purple|navy|maroon|beige|cream|silver|golden|off\s*white)\s*$', '', 'i'
+              '\\s*(blue|red|green|white|yellow|black|orange|pink|grey|gray|transparent|natural|brown|purple|navy|maroon|beige|cream|silver|golden|off\\s*white)\\s*$', '', 'i'
             ),
-            '\s*(hdpe|pp|pet|petg)\s*$', '', 'i'
+            '\\s*(hdpe|pp|pet|petg)\\s*$', '', 'i'
           )
         )) AS product_family,
         COALESCE(
-          (regexp_match(LOWER(pii.product_name), '(\d+(\.\d+)?)\s*(ml|l|gm|g|kg|ltr|litre|liter|cm|mm)'))[1]::numeric,
+          (regexp_match(LOWER(poi.product_name), '(\\d+(\\.\\d+)?)\\s*(ml|l|gm|g|kg|ltr|litre|liter|cm|mm)'))[1]::numeric,
           0
         ) AS capacity_sort
       FROM active_orders ao
-      JOIN proforma_invoices pi ON pi.id = ao.resolved_invoice_id
-      JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
-      LEFT JOIN products p ON lower(p.name) = lower(pii.product_name)
-      WHERE pi.is_deleted = false
+      JOIN production_order_items poi ON poi.production_order_id = ao.po_id
+      LEFT JOIN proforma_invoices pi ON pi.id = ao.resolved_invoice_id
+      LEFT JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id AND lower(pii.product_name) = lower(poi.product_name)
+      LEFT JOIN products p ON lower(p.name) = lower(poi.product_name)
+      WHERE poi.production_status != 'Ready'
         ${materialCondition}
-      GROUP BY ao.po_id, pii.product_name, pii.weight, p.bottle_colour, p.bottle_colour_code, p.material_type
     )
     SELECT
       product_family AS "productFamily",
@@ -2182,12 +2486,12 @@ export async function getManufacturingSummary(user: PermissionUser, unitFilter?:
       colour,
       colour_code AS "colourCode",
       material_type AS "materialType",
-      SUM(qty) AS "totalQuantity",
+      SUM((ordered_quantity - ready_quantity)::numeric) AS "totalQuantity",
       COUNT(DISTINCT po_id) AS "orderCount",
       array_agg(DISTINCT po_id) AS "orderIds"
-    FROM order_quantities
+    FROM product_lines
     GROUP BY product_family, product_name, weight, colour, colour_code, material_type, capacity_sort
-    HAVING SUM(qty) > 0
+    HAVING SUM((ordered_quantity - ready_quantity)::numeric) > 0
     ORDER BY product_family, capacity_sort, material_type, colour, weight
   `);
 
@@ -2203,7 +2507,6 @@ export async function getManufacturingSummary(user: PermissionUser, unitFilter?:
     orderIds: r.orderIds as number[],
   }));
 
-  // Material-wise summary
   const materialSummary: Record<string, { productCount: number; totalPending: number }> = {};
   for (const g of groups) {
     const mt = g.materialType;

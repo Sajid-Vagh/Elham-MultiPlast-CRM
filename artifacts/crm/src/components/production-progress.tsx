@@ -236,6 +236,50 @@ export default function ProductionProgress({ dealId }: Props) {
           )}
         </div>
 
+        {/* Product Line Status — per product progress */}
+        {progress.productLineItems && progress.productLineItems.length > 0 && (
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Product Progress</p>
+            <div className="space-y-2">
+              {progress.productLineItems.map((item: any) => {
+                const pct = item.progressPercent || 0;
+                const statusIcon = item.productionStatus === "Ready"
+                  ? <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  : item.productionStatus === "In Production"
+                  ? <Loader2 className="h-4 w-4 text-orange-500 animate-spin" />
+                  : <Circle className="h-4 w-4 text-gray-400" />;
+                const statusLabel = item.productionStatus === "Ready"
+                  ? "Ready"
+                  : item.productionStatus === "In Production"
+                  ? "In Production"
+                  : "Pending";
+                const statusColor = item.productionStatus === "Ready"
+                  ? "bg-green-100 text-green-700 border-green-200"
+                  : item.productionStatus === "In Production"
+                  ? "bg-orange-100 text-orange-700 border-orange-200"
+                  : "bg-gray-100 text-gray-600 border-gray-200";
+                return (
+                  <div key={item.id} className="flex items-center gap-2 p-2 rounded-lg border bg-muted/20">
+                    {statusIcon}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium truncate">{item.productName}</span>
+                        <Badge variant="outline" className={`text-[10px] ml-2 ${statusColor}`}>{statusLabel}</Badge>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full transition-all duration-300 ${item.productionStatus === "Ready" ? "bg-green-500" : item.productionStatus === "In Production" ? "bg-orange-500" : "bg-gray-400"}`} style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="text-[10px] text-muted-foreground w-20 text-right">{item.readyQuantity.toLocaleString()} / {item.orderedQuantity.toLocaleString()} PCS</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Timeline */}
         {progress.timeline && progress.timeline.length > 0 && (
           <div>

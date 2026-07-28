@@ -91,6 +91,12 @@ export default function ProductionOrderDetail() {
   const prevMsgCountRef = useRef(0);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  const [readyQtyDialogOpen, setReadyQtyDialogOpen] = useState(false);
+  const [readyQtyItemId, setReadyQtyItemId] = useState<number | null>(null);
+  const [readyQtyProductName, setReadyQtyProductName] = useState("");
+  const [readyQtyOrdered, setReadyQtyOrdered] = useState(0);
+  const [readyQtyInput, setReadyQtyInput] = useState("");
+
   const { data: order, isLoading } = useQuery({
     queryKey: PRODUCTION_ORDER_QUERY_KEY(id),
     queryFn: () => customFetch<any>(`/production/orders/${id}`),
@@ -170,6 +176,24 @@ export default function ProductionOrderDetail() {
       }),
     onSuccess: () => { onProductionChange(queryClient, id); setNoteDialogOpen(false); setNewNote(""); toast({ title: "Note added" }); },
     onError: () => toast({ title: "Failed to add note", variant: "destructive" }),
+  });
+
+  const updateProductLineStatus = useMutation({
+    mutationFn: (data: { itemId: number; productionStatus: string; readyQuantity?: number }) =>
+      customFetch<any>(`/production/orders/${id}/product-lines/${data.itemId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ productionStatus: data.productionStatus, readyQuantity: data.readyQuantity }),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => {
+      onProductionChange(queryClient, id);
+      queryClient.invalidateQueries({ queryKey: PRODUCTION_ORDER_QUERY_KEY(id) });
+      setReadyQtyDialogOpen(false);
+      setReadyQtyItemId(null);
+      setReadyQtyInput("");
+      toast({ title: "Product status updated" });
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed", variant: "destructive" }),
   });
 
   // ── Order Conversation ──
@@ -487,6 +511,174 @@ export default function ProductionOrderDetail() {
             </CardContent>
           </Card>
 
+          {/* ═══ PRODUCT LINE PRODUCTION STATUS ═══ */}
+          {order.productLineItems && order.productLineItems.length > 0 && (
+            <Card className="border-blue-200">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-blue-700">
+                  <Factory className="h-4 w-4" /> Product Line Production Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/* Desktop: Table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[1000px]">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2 px-2 font-medium">Product</th>
+                        <th className="text-left py-2 px-2 font-medium">Material</th>
+                        <th className="text-left py-2 px-2 font-medium">Bottle Color</th>
+                        <th className="text-right py-2 px-2 font-medium">Bottle Wt</th>
+                        <th className="text-left py-2 px-2 font-medium">Cap Color</th>
+                        <th className="text-left py-2 px-2 font-medium">Machine</th>
+                        <th className="text-right py-2 px-2 font-medium">Qty</th>
+                        <th className="text-right py-2 px-2 font-medium">Ready</th>
+                        <th className="text-right py-2 px-2 font-medium">Remaining</th>
+                        <th className="text-left py-2 px-2 font-medium min-w-[160px]">Progress</th>
+                        <th className="text-center py-2 px-2 font-medium">Status</th>
+                        {isProductionUser && !isTerminal && <th className="text-center py-2 px-2 font-medium">Actions</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {order.productLineItems.map((item: any) => {
+                        const remaining = item.orderedQuantity - item.readyQuantity;
+                        const pct = item.progressPercent || 0;
+                        const statusColor = item.productionStatus === "Ready"
+                          ? "bg-green-100 text-green-700"
+                          : item.productionStatus === "In Production"
+                          ? "bg-orange-100 text-orange-700"
+                          : "bg-gray-100 text-gray-700";
+                        return (
+                          <tr key={item.id} className="border-b last:border-0 hover:bg-muted/30">
+                            <td className="py-2 px-2">
+                              <div className="font-medium">{item.productName}</div>
+                            </td>
+                            <td className="py-2 px-2">
+                              {item.materialType
+                                ? <Badge variant="outline" className={`text-xs ${item.materialType === "PET" ? "bg-amber-50 text-amber-700 border-amber-200" : item.materialType === "PP" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-slate-50 text-slate-700 border-slate-200"}`}>{item.materialType}</Badge>
+                                : <span className="text-muted-foreground">--</span>
+                              }
+                            </td>
+                            <td className="py-2 px-2">{item.bottleColour || <span className="text-muted-foreground">--</span>}</td>
+                            <td className="py-2 px-2 text-right">{item.bottleWeight || <span className="text-muted-foreground">--</span>}</td>
+                            <td className="py-2 px-2">{item.capColour || <span className="text-muted-foreground">--</span>}</td>
+                            <td className="py-2 px-2">{item.materialType === "PET" ? <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs">Outsourced</Badge> : (item.machineType || <span className="text-muted-foreground">--</span>)}</td>
+                            <td className="py-2 px-2 text-right font-medium">{item.orderedQuantity.toLocaleString()}</td>
+                            <td className="py-2 px-2 text-right font-medium text-green-700">{item.readyQuantity.toLocaleString()}</td>
+                            <td className="py-2 px-2 text-right font-medium">{remaining.toLocaleString()}</td>
+                            <td className="py-2 px-2">
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                  <div className={`h-full rounded-full transition-all duration-300 ${item.productionStatus === "Ready" ? "bg-green-500" : item.productionStatus === "In Production" ? "bg-orange-500" : "bg-gray-400"}`} style={{ width: `${pct}%` }} />
+                                </div>
+                                <span className="text-xs text-muted-foreground w-10 text-right">{pct}%</span>
+                              </div>
+                            </td>
+                            <td className="py-2 px-2 text-center">
+                              <Badge className={`text-xs ${statusColor}`} variant="outline">{item.productionStatus}</Badge>
+                            </td>
+                            {isProductionUser && !isTerminal && (
+                              <td className="py-2 px-2 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  {item.productionStatus === "Pending" && (
+                                    <Button size="sm" variant="outline" className="h-6 text-xs bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-200"
+                                      disabled={updateProductLineStatus.isPending}
+                                      onClick={() => updateProductLineStatus.mutate({ itemId: item.id, productionStatus: "In Production" })}>
+                                      In Production
+                                    </Button>
+                                  )}
+                                  {item.productionStatus === "In Production" && (
+                                    <Button size="sm" variant="outline" className="h-6 text-xs bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                                      disabled={updateProductLineStatus.isPending}
+                                      onClick={() => {
+                                        setReadyQtyItemId(item.id);
+                                        setReadyQtyProductName(item.productName);
+                                        setReadyQtyOrdered(item.orderedQuantity);
+                                        setReadyQtyInput(String(item.readyQuantity || 0));
+                                        setReadyQtyDialogOpen(true);
+                                      }}>
+                                      Ready
+                                    </Button>
+                                  )}
+                                  {item.productionStatus === "Ready" && (
+                                    <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">Ready</Badge>
+                                  )}
+                                </div>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Mobile: Card layout */}
+                <div className="md:hidden space-y-3 mt-3">
+                  {order.productLineItems.map((item: any) => {
+                    const remaining = item.orderedQuantity - item.readyQuantity;
+                    const pct = item.progressPercent || 0;
+                    const statusColor = item.productionStatus === "Ready"
+                      ? "bg-green-100 text-green-700"
+                      : item.productionStatus === "In Production"
+                      ? "bg-orange-100 text-orange-700"
+                      : "bg-gray-100 text-gray-700";
+                    return (
+                      <div key={item.id} className="border rounded-lg p-3 space-y-2 text-sm">
+                        <div className="flex items-center justify-between">
+                          <div className="font-medium">{item.productName}</div>
+                          <Badge className={`text-xs ${statusColor}`} variant="outline">{item.productionStatus}</Badge>
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                          <div><span className="text-muted-foreground">Material:</span> {item.materialType || "--"}</div>
+                          <div><span className="text-muted-foreground">Machine:</span> {item.materialType === "PET" ? "Outsourced" : (item.machineType || "--")}</div>
+                          <div><span className="text-muted-foreground">Bottle Color:</span> {item.bottleColour || "--"}</div>
+                          <div><span className="text-muted-foreground">Cap Color:</span> {item.capColour || "--"}</div>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span>Qty: <b>{item.orderedQuantity.toLocaleString()}</b></span>
+                            <span className="text-green-700">Ready: <b>{item.readyQuantity.toLocaleString()}</b></span>
+                            <span>Remaining: <b>{remaining.toLocaleString()}</b></span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full transition-all duration-300 ${item.productionStatus === "Ready" ? "bg-green-500" : item.productionStatus === "In Production" ? "bg-orange-500" : "bg-gray-400"}`} style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="text-xs text-muted-foreground">{pct}%</span>
+                          </div>
+                        </div>
+                        {isProductionUser && !isTerminal && (
+                          <div className="flex gap-1 pt-1 border-t">
+                            {item.productionStatus === "Pending" && (
+                              <Button size="sm" variant="outline" className="flex-1 h-7 text-xs bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-200"
+                                disabled={updateProductLineStatus.isPending}
+                                onClick={() => updateProductLineStatus.mutate({ itemId: item.id, productionStatus: "In Production" })}>
+                                Start
+                              </Button>
+                            )}
+                            {item.productionStatus === "In Production" && (
+                              <Button size="sm" variant="outline" className="flex-1 h-7 text-xs bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                                disabled={updateProductLineStatus.isPending}
+                                onClick={() => {
+                                  setReadyQtyItemId(item.id);
+                                  setReadyQtyProductName(item.productName);
+                                  setReadyQtyOrdered(item.orderedQuantity);
+                                  setReadyQtyInput(String(item.readyQuantity || 0));
+                                  setReadyQtyDialogOpen(true);
+                                }}>
+                                Ready
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Product Details */}
           {order.items && order.items.length > 0 && (
             <Card>
@@ -773,6 +965,58 @@ export default function ProductionOrderDetail() {
             <Button className="bg-blue-600 hover:bg-blue-700" disabled={!transportName.trim() || !lrNumber.trim() || loadVehicleMutation.isPending}
               onClick={handleLoadVehicle}>
               {loadVehicleMutation.isPending ? "Loading..." : "Load Vehicle"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Ready Quantity Dialog */}
+      <Dialog open={readyQtyDialogOpen} onOpenChange={setReadyQtyDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Mark Ready — {readyQtyProductName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="text-sm text-muted-foreground">
+              Ordered: <span className="font-medium text-foreground">{readyQtyOrdered.toLocaleString()}</span> PCS
+            </div>
+            <div>
+              <Label>Ready Quantity *</Label>
+              <Input
+                type="number"
+                min={0}
+                max={readyQtyOrdered}
+                value={readyQtyInput}
+                onChange={e => setReadyQtyInput(e.target.value)}
+                placeholder="Enter ready quantity"
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Remaining: {Math.max(0, readyQtyOrdered - (parseInt(readyQtyInput) || 0)).toLocaleString()} PCS
+                {parseInt(readyQtyInput) >= readyQtyOrdered && (
+                  <span className="text-green-600 ml-1">— Will be marked as Ready</span>
+                )}
+                {parseInt(readyQtyInput) > 0 && parseInt(readyQtyInput) < readyQtyOrdered && (
+                  <span className="text-orange-600 ml-1">— Will stay In Production</span>
+                )}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReadyQtyDialogOpen(false)}>Cancel</Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700"
+              disabled={!readyQtyInput || parseInt(readyQtyInput) < 0 || updateProductLineStatus.isPending}
+              onClick={() => {
+                if (readyQtyItemId === null) return;
+                const qty = Math.min(parseInt(readyQtyInput) || 0, readyQtyOrdered);
+                updateProductLineStatus.mutate({
+                  itemId: readyQtyItemId,
+                  productionStatus: qty >= readyQtyOrdered ? "Ready" : "In Production",
+                  readyQuantity: qty,
+                });
+              }}>
+              {updateProductLineStatus.isPending ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>

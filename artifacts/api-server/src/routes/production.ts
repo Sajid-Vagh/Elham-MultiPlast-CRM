@@ -25,6 +25,7 @@ import {
   updateOrderStatus,
   loadVehicle, markDispatched, markDelivered,
   getDispatchDashboard, listDispatchOrders,
+  updateProductLineStatus, getProductLineItems, syncProductionOrderItems,
 } from "../lib/production-service";
 import { transferOrder, getTransferHistory } from "../lib/production-transfer-service";
 
@@ -902,6 +903,61 @@ router.get("/production/sheet", async (req, res) => {
     await sendWorkbook(res, wb, filename);
   } catch (err) {
     console.error("Production sheet error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ═══════════════════════════════════════════════════
+// PRODUCT LINE PRODUCTION STATUS ENDPOINTS
+// ═══════════════════════════════════════════════════
+
+// ── GET /production/orders/:id/product-lines ──
+router.get("/production/orders/:id/product-lines", async (req, res) => {
+  try {
+    const user = await requireAuth(req, res);
+    if (!user) return;
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    res.json(await getProductLineItems(id));
+  } catch (err) {
+    console.error("Get product line items error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── PATCH /production/orders/:id/product-lines/:itemId/status ──
+router.patch("/production/orders/:id/product-lines/:itemId/status", async (req, res) => {
+  try {
+    const user = await requireProductionUser(req, res);
+    if (!user) return;
+    const orderId = Number(req.params.id);
+    const itemId = Number(req.params.itemId);
+    if (isNaN(orderId) || isNaN(itemId)) { res.status(400).json({ error: "Invalid id" }); return; }
+    const { productionStatus, readyQuantity } = req.body;
+    if (!productionStatus) { res.status(400).json({ error: "productionStatus is required" }); return; }
+    const result = await updateProductLineStatus(user, orderId, itemId, { productionStatus, readyQuantity });
+    if (result?.error) { res.status(result.status).json({ error: result.error }); return; }
+    res.json(result.order);
+  } catch (err) {
+    console.error("Update product line status error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── POST /production/orders/:id/product-lines/sync ──
+router.post("/production/orders/:id/product-lines/sync", async (req, res) => {
+  try {
+    const user = await requireProductionUser(req, res);
+    if (!user) return;
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    const [order] = await db.select({ proformaInvoiceId: productionOrdersTable.proformaInvoiceId })
+      .from(productionOrdersTable).where(eq(productionOrdersTable.id, id));
+    if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+    await syncProductionOrderItems(id, order.proformaInvoiceId);
+    res.json(await getProductLineItems(id));
+  } catch (err) {
+    console.error("Sync product line items error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

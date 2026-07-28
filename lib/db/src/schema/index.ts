@@ -13,6 +13,7 @@ export * from "./documents";
 export * from "./customer_master";
 export * from "./gst_verification_log";
 export * from "./production_orders";
+export * from "./production_order_items";
 export * from "./orders";
 export * from "./quotations";
 export * from "./order_revisions";

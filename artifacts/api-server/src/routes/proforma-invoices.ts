@@ -1903,6 +1903,9 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
             createdBy: user.id,
           });
 
+          const { syncProductionOrderItems } = await import("../lib/production-service");
+          await syncProductionOrderItems(newOrder.id, id);
+
           // Fetch product items for notification
           const items = await db
             .select()
