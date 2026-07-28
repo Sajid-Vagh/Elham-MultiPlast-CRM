@@ -330,33 +330,101 @@ export default function ProductionOrderDetail() {
                   })}
                 </div>
 
-                {/* Action Button */}
+                {/* Action Button — auto when product lines exist, manual fallback otherwise */}
                 <div className="border-t pt-4">
-                  {order.status === "Pending" && (
-                    <Button className="bg-orange-600 hover:bg-orange-700 w-full" size="lg" disabled={startProductionOnGoing.isPending}
-                      onClick={() => startProductionOnGoing.mutate()}>
-                      <Factory className="h-4 w-4 mr-2" /> Start Production On Going
-                    </Button>
-                  )}
-                  {order.status === "Production On Going" && (
-                    <Button className="bg-yellow-600 hover:bg-yellow-700 w-full" size="lg" disabled={moveToPackaging.isPending}
-                      onClick={() => moveToPackaging.mutate()}>
-                      <ClipboardList className="h-4 w-4 mr-2" /> Move to Packaging
-                    </Button>
-                  )}
-                  {order.status === "Packaging" && (
-                    <Button className="bg-green-600 hover:bg-green-700 w-full" size="lg" disabled={markReadyForDispatch.isPending}
-                      onClick={() => markReadyForDispatch.mutate()}>
-                      <Truck className="h-4 w-4 mr-2" /> Mark Ready To Dispatch
-                    </Button>
-                  )}
-                  {isReadyToDispatch && (
-                    <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-center">
-                      <Truck className="h-6 w-6 text-green-600 mx-auto mb-2" />
-                      <p className="text-sm font-semibold text-green-800">Waiting for Dispatch Team</p>
-                      <p className="text-xs text-green-600 mt-1">This order has been handed over to the Support/Dispatch team.</p>
-                    </div>
-                  )}
+                  {(() => {
+                    const hasProductLines = order.productLineItems && order.productLineItems.length > 0;
+
+                    if (hasProductLines) {
+                      const allReady = order.productLineItems.every((i: any) => i.productionStatus === "Ready");
+                      const anyInProduction = order.productLineItems.some((i: any) => i.productionStatus === "In Production");
+                      const allPending = order.productLineItems.every((i: any) => i.productionStatus === "Pending");
+                      const readyCount = order.productLineItems.filter((i: any) => i.productionStatus === "Ready").length;
+                      const totalCount = order.productLineItems.length;
+
+                      if (allReady && isReadyToDispatch) {
+                        return (
+                          <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-center">
+                            <Truck className="h-6 w-6 text-green-600 mx-auto mb-2" />
+                            <p className="text-sm font-semibold text-green-800">All Products Ready — Handed to Dispatch</p>
+                            <p className="text-xs text-green-600 mt-1">Dispatch team has been notified automatically.</p>
+                          </div>
+                        );
+                      }
+                      if (allReady && order.status === "Production On Going") {
+                        return (
+                          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-center">
+                            <CheckCircle2 className="h-6 w-6 text-blue-600 mx-auto mb-2" />
+                            <p className="text-sm font-semibold text-blue-800">All Products Ready</p>
+                            <p className="text-xs text-blue-600 mt-1">Order will automatically move to Ready To Dispatch...</p>
+                          </div>
+                        );
+                      }
+                      if (order.status === "Pending" && allPending) {
+                        return (
+                          <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                            <p className="text-sm text-gray-600">Update Product Lines below to start production.</p>
+                            <p className="text-xs text-gray-500 mt-1">Order status updates automatically when products progress.</p>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium text-blue-800">Production Progress</span>
+                            <span className="text-xs font-bold text-blue-700">{readyCount}/{totalCount} Products Ready</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div className="h-full bg-blue-500 rounded-full transition-all duration-300" style={{ width: `${totalCount > 0 ? (readyCount / totalCount) * 100 : 0}%` }} />
+                            </div>
+                            <span className="text-xs text-blue-600">{totalCount > 0 ? Math.round((readyCount / totalCount) * 100) : 0}%</span>
+                          </div>
+                          <p className="text-xs text-blue-600 mt-2">
+                            {anyInProduction
+                              ? "Production ongoing — update product lines when ready."
+                              : "Order auto-advances when all product lines are Ready."}
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    // MANUAL mode: no product lines — keep legacy buttons
+                    if (order.status === "Pending") {
+                      return (
+                        <Button className="bg-orange-600 hover:bg-orange-700 w-full" size="lg" disabled={startProductionOnGoing.isPending}
+                          onClick={() => startProductionOnGoing.mutate()}>
+                          <Factory className="h-4 w-4 mr-2" /> Start Production On Going
+                        </Button>
+                      );
+                    }
+                    if (order.status === "Production On Going") {
+                      return (
+                        <Button className="bg-yellow-600 hover:bg-yellow-700 w-full" size="lg" disabled={moveToPackaging.isPending}
+                          onClick={() => moveToPackaging.mutate()}>
+                          <ClipboardList className="h-4 w-4 mr-2" /> Move to Packaging
+                        </Button>
+                      );
+                    }
+                    if (order.status === "Packaging") {
+                      return (
+                        <Button className="bg-green-600 hover:bg-green-700 w-full" size="lg" disabled={markReadyForDispatch.isPending}
+                          onClick={() => markReadyForDispatch.mutate()}>
+                          <Truck className="h-4 w-4 mr-2" /> Mark Ready To Dispatch
+                        </Button>
+                      );
+                    }
+                    if (isReadyToDispatch) {
+                      return (
+                        <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-center">
+                          <Truck className="h-6 w-6 text-green-600 mx-auto mb-2" />
+                          <p className="text-sm font-semibold text-green-800">Waiting for Dispatch Team</p>
+                          <p className="text-xs text-green-600 mt-1">This order has been handed over to the Support/Dispatch team.</p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
 
                 {order.isFrozen && !isReadyToDispatch && (

@@ -248,44 +248,106 @@ export function computeOverallOrderStatus(items: { productionStatus: string }[])
   const allPending = statuses.every(s => s === "Pending");
   if (allPending) return "Pending";
   const allReady = statuses.every(s => s === "Ready");
-  if (allReady) return "Ready For Dispatch";
+  if (allReady) return "Ready To Dispatch";
   return "Production On Going";
 }
 
-export async function recalculateOrderStatus(orderId: number): Promise<void> {
+export async function recalculateOrderStatus(orderId: number, triggeredBy?: { id: number; name: string }): Promise<void> {
   const items = await db.select({ productionStatus: productionOrderItemsTable.productionStatus })
     .from(productionOrderItemsTable)
     .where(eq(productionOrderItemsTable.productionOrderId, orderId));
   if (items.length === 0) return;
 
   const newStatus = computeOverallOrderStatus(items);
-  const [order] = await db.select({ status: productionOrdersTable.status })
-    .from(productionOrdersTable)
+  const [order] = await db.select().from(productionOrdersTable)
     .where(eq(productionOrdersTable.id, orderId));
   if (!order) return;
 
+  // No change needed
+  if (order.status === newStatus) return;
+
   const validTransitions: Record<string, string[]> = {
-    "Pending": ["Production On Going"],
-    "Production On Going": ["Ready For Dispatch", "Packaging"],
-    "Packaging": ["Ready For Dispatch"],
+    "Pending": ["Production On Going", "Ready To Dispatch"],
+    "Production On Going": ["Ready To Dispatch", "Packaging"],
+    "Packaging": ["Ready To Dispatch"],
   };
 
   const allowed = validTransitions[order.status];
-  if (allowed && allowed.includes(newStatus)) {
-    const now = new Date();
-    const updateData: any = { updatedAt: now };
-    if (newStatus === "Ready For Dispatch") {
-      updateData.status = "Ready For Dispatch";
-      updateData.dispatchStatus = "Pending Dispatch";
-    } else if (newStatus === "Production On Going") {
-      updateData.status = "Production On Going";
-      updateData.startedById = updateData.startedById || undefined;
-      updateData.startedAt = updateData.startedAt || now;
-    }
-    if (updateData.status) {
-      await db.update(productionOrdersTable).set(updateData).where(eq(productionOrdersTable.id, orderId));
-    }
+  if (!allowed || !allowed.includes(newStatus)) return;
+
+  const now = new Date();
+  const updateData: any = { updatedAt: now, updatedBy: triggeredBy?.id || null };
+  const oldStatus = order.status;
+
+  if (newStatus === "Ready To Dispatch") {
+    updateData.status = "Ready To Dispatch";
+    updateData.dispatchStatus = "Pending Dispatch";
+    updateData.isFrozen = true;
+  } else if (newStatus === "Production On Going") {
+    updateData.status = "Production On Going";
+    updateData.startedById = order.startedById || triggeredBy?.id || null;
+    updateData.startedAt = order.startedAt || now;
+    updateData.isFrozen = true;
   }
+
+  if (updateData.status) {
+    await db.update(productionOrdersTable).set(updateData).where(eq(productionOrdersTable.id, orderId));
+  }
+
+  // ── Timeline ──
+  const actorName = triggeredBy?.name || "System";
+  await addTimelineEntry(db, orderId, newStatus,
+    `Auto: ${oldStatus} → ${newStatus}\nAll product lines updated.\nBy: ${actorName}`,
+    triggeredBy?.id || 0);
+
+  // ── Audit Trail ──
+  await writeAuditTrail(db, {
+    productionOrderId: orderId, action: "auto_status_change",
+    oldValue: oldStatus, newValue: newStatus,
+    changedById: triggeredBy?.id || 0, changedByName: actorName,
+    reason: "All product lines updated — automatic transition",
+  });
+
+  // ── Invoice lookup for notifications ──
+  const [invoice] = order.proformaInvoiceId
+    ? await db.select({ invoiceNumber: proformaInvoicesTable.invoiceNumber })
+        .from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, order.proformaInvoiceId))
+    : [];
+  const invoiceNum = invoice?.invoiceNumber || orderId;
+
+  // ── Status-specific side effects ──
+  if (newStatus === "Ready To Dispatch") {
+    await notifySupportOfReadyForDispatch({
+      productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
+      title: "Ready To Dispatch",
+      message: `Order #${invoiceNum} — all products ready. Dispatch action required.`,
+      excludeUserId: triggeredBy?.id || 0,
+    });
+
+    await notifySalesOfProductionEvent({
+      productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
+      title: "Ready To Dispatch",
+      message: `Order #${invoiceNum} is ready for dispatch. All product lines complete.`,
+      excludeUserId: triggeredBy?.id || 0, createdByRole: order.createdByRole,
+    });
+  }
+
+  if (newStatus === "Production On Going") {
+    await notifySalesOfProductionEvent({
+      productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
+      title: "Production Started",
+      message: `Order #${invoiceNum} production started.`,
+      excludeUserId: triggeredBy?.id || 0, createdByRole: order.createdByRole,
+    });
+  }
+
+  // ── Activity Log ──
+  await logProductionActivity(db, {
+    dealId: order.dealId, contactId: null,
+    eventName: `Auto Status: ${oldStatus} → ${newStatus}`,
+    orderId, details: `All product lines updated. Automatic transition.`,
+    userName: actorName, createdBy: triggeredBy?.id || 0,
+  });
 }
 
 export async function updateProductLineStatus(
@@ -391,7 +453,7 @@ export async function updateProductLineStatus(
     userName: user.name || "", createdBy: user.id,
   });
 
-  await recalculateOrderStatus(orderId);
+  await recalculateOrderStatus(orderId, { id: user.id, name: user.name || "Unknown" });
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
   return { order: await enrichProductionOrder(updated!, user) };
