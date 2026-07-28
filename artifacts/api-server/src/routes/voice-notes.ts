@@ -452,6 +452,7 @@ router.get("/voice-notes/:id/download", async (req: Request, res: Response) => {
     const fileExists = await store.exists(note.storagePath);
 
     if (!fileExists) {
+      console.warn(`[VoiceNote] Download blocked: id=${id} path=${note.storagePath} — file missing from storage`);
       res.status(404).json({ error: "This voice note is unavailable." }); return;
     }
 

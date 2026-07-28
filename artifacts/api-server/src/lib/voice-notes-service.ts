@@ -77,6 +77,14 @@ export async function uploadVoiceNote(
   try {
     const storagePath = await storage.save(file.originalname, file.buffer, "voice-notes");
 
+    // Verify upload succeeded before creating DB record
+    const verification = await storage.verifyPublicAccess(storagePath);
+    if (!verification.accessible) {
+      console.error(`[VoiceNote] Upload verification failed for ${storagePath}: ${verification.error}`);
+      await storage.delete(storagePath).catch(() => {});
+      return { note: null, error: "Voice note file could not be verified in storage" };
+    }
+
     try {
       const [row] = await db.insert(voiceNotesTable).values({
         dealId: params.dealId || null,
@@ -192,17 +200,11 @@ export async function getVoiceNotes(
     try {
       fileExists = await store.exists(row.storagePath);
     } catch {
-      // On error, assume file exists — let frontend audio handle actual failure
       fileExists = true;
     }
 
-    // Only permanently mark unavailable if check succeeded AND file is genuinely missing
-    // AND the note was previously known to be available (avoid marking new/unknown notes)
-    if (!fileExists && row.fileAvailable) {
-      await db.update(voiceNotesTable)
-        .set({ fileAvailable: false })
-        .where(eq(voiceNotesTable.id, row.id))
-        .catch(() => {});
+    if (!fileExists) {
+      console.warn(`[VoiceNote] File missing: id=${row.id} path=${row.storagePath}`);
     }
 
     result.push({

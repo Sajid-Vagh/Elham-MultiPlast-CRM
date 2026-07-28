@@ -85,6 +85,11 @@ async function main() {
     logger.info({ dir: docsDir }, "Created documents subdirectory");
   }
 
+  // Warn if Supabase is not configured — voice notes will use ephemeral local storage
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_KEY) {
+    logger.warn("[STORAGE] SUPABASE_URL / SUPABASE_KEY not set. Using local filesystem — files will be lost on deploy/restart. Voice notes require Supabase for persistence.");
+  }
+
   const server = app.listen(port, (err) => {
     if (err) {
       logger.error({ err }, "Error listening on port");

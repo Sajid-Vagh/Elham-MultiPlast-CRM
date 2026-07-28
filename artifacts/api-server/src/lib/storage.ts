@@ -9,6 +9,7 @@ export interface StorageProvider {
   exists(storagePath: string): Promise<boolean>;
   getUrl(storagePath: string): string;
   getPhysicalPath(storagePath: string): string;
+  verifyPublicAccess(storagePath: string): Promise<{ accessible: boolean; error?: string }>;
 }
 
 const UPLOADS_ROOT = path.resolve(process.cwd(), "uploads");
@@ -57,6 +58,12 @@ class LocalStorageProvider implements StorageProvider {
 
   getPhysicalPath(storagePath: string): string {
     return path.join(UPLOADS_ROOT, storagePath);
+  }
+
+  async verifyPublicAccess(storagePath: string): Promise<{ accessible: boolean; error?: string }> {
+    const exists = await this.exists(storagePath);
+    if (!exists) return { accessible: false, error: "File does not exist on disk" };
+    return { accessible: true };
   }
 }
 
@@ -127,10 +134,10 @@ class SupabaseStorageProvider implements StorageProvider {
   }
 
   async exists(storagePath: string): Promise<boolean> {
-    // Use public URL — no auth needed for public buckets, avoids 405 on HEAD /object/info/
+    // Use HEAD — lightweight check that doesn't download the file
     try {
       const publicUrl = `${this.baseUrl}/storage/v1/object/public/${storagePath}`;
-      const res = await fetch(publicUrl, { method: "GET", redirect: "follow" });
+      const res = await fetch(publicUrl, { method: "HEAD", redirect: "follow" });
       return res.ok;
     } catch {
       return false;
@@ -138,20 +145,28 @@ class SupabaseStorageProvider implements StorageProvider {
   }
 
   getUrl(storagePath: string): string {
-    // Use public URL — bucket must be public
     return `${this.baseUrl}/storage/v1/object/public/${storagePath}`;
   }
 
   getPhysicalPath(storagePath: string): string {
-    // Cloud storage — no local path. Return the public URL for logging.
     return this.getUrl(storagePath);
+  }
+
+  async verifyPublicAccess(storagePath: string): Promise<{ accessible: boolean; error?: string }> {
+    try {
+      const publicUrl = `${this.baseUrl}/storage/v1/object/public/${storagePath}`;
+      const res = await fetch(publicUrl, { method: "HEAD", redirect: "follow" });
+      if (res.ok) return { accessible: true };
+      return { accessible: false, error: `HTTP ${res.status}: ${res.statusText}` };
+    } catch (err: any) {
+      return { accessible: false, error: err?.message || "Network error" };
+    }
   }
 
   private async ensureBucket(bucket: string): Promise<void> {
     if (this.buckets.has(bucket)) return;
 
     try {
-      // Check if bucket exists
       const listUrl = `${this.baseUrl}/storage/v1/bucket`;
       const res = await fetch(listUrl, { headers: this.headers() });
       if (res.ok) {
@@ -164,7 +179,11 @@ class SupabaseStorageProvider implements StorageProvider {
       // Non-critical — bucket might already exist
     }
 
-    if (this.buckets.has(bucket)) return;
+    if (this.buckets.has(bucket)) {
+      // Bucket exists — ensure it is public (may have been created as private)
+      await this.ensureBucketPublic(bucket);
+      return;
+    }
 
     // Create the bucket as public
     try {
@@ -176,7 +195,7 @@ class SupabaseStorageProvider implements StorageProvider {
           id: bucket,
           name: bucket,
           public: true,
-          file_size_limit: 10 * 1024 * 1024, // 10MB
+          file_size_limit: 10 * 1024 * 1024,
           allowed_mime_types: [
             "audio/webm", "audio/mpeg", "audio/mp3",
             "audio/wav", "audio/wave", "audio/x-wav",
@@ -187,12 +206,30 @@ class SupabaseStorageProvider implements StorageProvider {
       });
       if (res.ok) {
         this.buckets.add(bucket);
+        console.log(`[storage] Created Supabase bucket "${bucket}" (public)`);
       } else {
         const text = await res.text().catch(() => "");
         console.error(`Failed to create Supabase bucket "${bucket}":`, text);
       }
     } catch (err) {
       console.error(`Error creating Supabase bucket "${bucket}":`, err);
+    }
+  }
+
+  private async ensureBucketPublic(bucket: string): Promise<void> {
+    try {
+      const url = `${this.baseUrl}/storage/v1/bucket/${bucket}`;
+      const res = await fetch(url, {
+        method: "UPDATE",
+        headers: this.headers(),
+        body: JSON.stringify({ public: true }),
+      });
+      if (!res.ok && res.status !== 404) {
+        const text = await res.text().catch(() => "");
+        console.warn(`[storage] Could not set bucket "${bucket}" to public: ${text}`);
+      }
+    } catch {
+      // Non-critical — bucket might already be public
     }
   }
 }
