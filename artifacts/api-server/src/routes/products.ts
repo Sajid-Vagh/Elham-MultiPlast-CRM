@@ -4,7 +4,6 @@ import { eq, or, sql } from "drizzle-orm";
 import { CreateProductBody, UpdateProductBody, GetProductParams, UpdateProductParams, DeleteProductParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
-import { getMachineReport } from "../lib/production-service";
 
 const router: IRouter = Router();
 
@@ -175,32 +174,6 @@ router.delete("/products/:id", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Delete product error");
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// ── MACHINE-WISE PRODUCTION REPORT ──
-// Accessible by: admin, production_and_support, production
-router.get("/products/machine-report", async (req, res) => {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (!["admin", "production_and_support", "production"].includes(user.role)) {
-      res.status(403).json({ error: "Permission Denied" }); return;
-    }
-
-    const result = await getMachineReport(user, {
-      unit: req.query.unit as string | undefined,
-      machineType: req.query.machineType as string | undefined,
-      product: req.query.product as string | undefined,
-      status: req.query.status as string | undefined,
-      dateFrom: req.query.dateFrom as string | undefined,
-      dateTo: req.query.dateTo as string | undefined,
-    });
-
-    res.json(result);
-  } catch (err) {
-    console.error("Machine-wise report error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

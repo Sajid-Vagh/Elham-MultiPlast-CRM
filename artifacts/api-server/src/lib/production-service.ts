@@ -1699,7 +1699,7 @@ export async function getMachineReport(
     };
   });
 
-  let filteredOrders = enrichedOrders.filter(o => o.materialType !== "PET");
+  let filteredOrders = enrichedOrders;
   if (filters.machineType && filters.machineType !== "All") {
     filteredOrders = filteredOrders.filter(o => o.machineType === filters.machineType);
   }

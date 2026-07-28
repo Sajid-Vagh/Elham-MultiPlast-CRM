@@ -37,7 +37,7 @@ export default function MachineReport() {
 
   const { data, isLoading } = useQuery<ReportData>({
     queryKey: ["machine-report", unitFilter, machineFilter, statusFilter],
-    queryFn: () => customFetch<ReportData>(`/products/machine-report${qs ? `?${qs}` : ""}`),
+    queryFn: () => customFetch<ReportData>(`/production/machine-report${qs ? `?${qs}` : ""}`),
     enabled: !!user,
   });
 
@@ -69,7 +69,7 @@ export default function MachineReport() {
     <div className="p-8 space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Machine-wise Production Report</h1>
-        <p className="text-muted-foreground mt-1">Production analytics by machine type (excludes outsourced/PET products)</p>
+        <p className="text-muted-foreground mt-1">Production analytics by machine type</p>
       </div>
 
       <div className="flex flex-wrap gap-3">

@@ -21,6 +21,7 @@ import {
   getProgressByDeal, getProductionByContact, getModifiedSince,
   handlePiModification, approveModification, addTimelineEntry,
   getManufacturingSummary, getManufacturingSummaryDetail,
+  getMachineReport,
   updateOrderStatus,
   loadVehicle, markDispatched, markDelivered,
   getDispatchDashboard, listDispatchOrders,
@@ -91,6 +92,19 @@ router.get("/production/dashboard", async (req, res) => {
     res.json(await getDashboard(user, unitFilter, originFilter, startDate, endDate));
   } catch (err) {
     console.error("Production dashboard error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Machine-wise Production Report ──
+router.get("/production/machine-report", async (req, res) => {
+  try {
+    const user = await requireProductionUser(req, res);
+    if (!user) return;
+    const { unit, machineType, product, status, dateFrom, dateTo } = req.query as Record<string, string | undefined>;
+    res.json(await getMachineReport(user, { unit, machineType, product, status, dateFrom, dateTo }));
+  } catch (err) {
+    console.error("Machine-wise report error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
