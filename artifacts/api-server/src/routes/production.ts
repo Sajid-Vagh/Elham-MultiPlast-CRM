@@ -962,6 +962,40 @@ router.post("/production/orders/:id/product-lines/sync", async (req, res) => {
   }
 });
 
+// ── POST /production/product-lines/backfill — Sync items for ALL orders missing them ──
+router.post("/production/product-lines/backfill", async (req, res) => {
+  try {
+    const user = await requireProductionUser(req, res);
+    if (!user) return;
+
+    const ordersWithoutItems = await db.execute(sql`
+      SELECT po.id, po.proforma_invoice_id
+      FROM production_orders po
+      WHERE po.proforma_invoice_id IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM production_order_items poi WHERE poi.production_order_id = po.id
+        )
+    `);
+
+    const rows = ordersWithoutItems.rows || [];
+    let synced = 0;
+    let skipped = 0;
+    for (const row of rows) {
+      try {
+        await syncProductionOrderItems(row.id as number, row.proforma_invoice_id as number);
+        synced++;
+      } catch {
+        skipped++;
+      }
+    }
+
+    res.json({ total: rows.length, synced, skipped, message: `Synced ${synced} orders, skipped ${skipped}` });
+  } catch (err) {
+    console.error("Backfill product line items error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ── POST /production/orders/:id/mark-reprint — Toggle needsReprint ──
 router.post("/production/orders/:id/mark-reprint", async (req, res) => {
   try {

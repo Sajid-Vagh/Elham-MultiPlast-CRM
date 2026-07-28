@@ -591,8 +591,15 @@ export async function enrichProductionOrder(order: any, user?: { role: string })
     })
   );
 
-  const productLineItems = await db.select().from(productionOrderItemsTable)
+  let productLineItems = await db.select().from(productionOrderItemsTable)
     .where(eq(productionOrderItemsTable.productionOrderId, order.id));
+
+  // Auto-sync items from PI if empty (backward compat for pre-existing orders)
+  if (productLineItems.length === 0 && order.proformaInvoiceId) {
+    await syncProductionOrderItems(order.id, order.proformaInvoiceId);
+    productLineItems = await db.select().from(productionOrderItemsTable)
+      .where(eq(productionOrderItemsTable.productionOrderId, order.id));
+  }
 
   const enrichedProductLineItems = productLineItems.map((i: any) => ({
     ...i,
@@ -1855,9 +1862,25 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
     else if (line.productionStatus === "Ready") readyPieces += ready;
   }
 
-  for (const o of linesWithNoItems) {
-    if (o.status === "Pending") pendingPieces++;
-    else if (o.status === "Production On Going" || o.status === "Packaging") inProductionPieces++;
+  // Fallback: for orders missing product_line_items, sum quantities from PI items
+  if (linesWithNoItems.length > 0) {
+    const noItemOrderIds = linesWithNoItems.map(o => o.id);
+    const noItemInvoiceIds = linesWithNoItems.map(o => o.proformaInvoiceId).filter(Boolean) as number[];
+    if (noItemInvoiceIds.length > 0) {
+      const piItems = await db.select({
+        invoiceId: proformaInvoiceItemsTable.invoiceId,
+        quantity: proformaInvoiceItemsTable.quantity,
+      }).from(proformaInvoiceItemsTable)
+        .where(inArray(proformaInvoiceItemsTable.invoiceId, noItemInvoiceIds));
+      const invoiceToOrder = new Map(linesWithNoItems.map(o => [o.proformaInvoiceId, o]));
+      for (const pi of piItems) {
+        const order = invoiceToOrder.get(pi.invoiceId);
+        if (!order) continue;
+        const qty = Number(pi.quantity);
+        if (order.status === "Pending") pendingPieces += qty;
+        else if (order.status === "Production On Going" || order.status === "Packaging") inProductionPieces += qty;
+      }
+    }
   }
 
   return {

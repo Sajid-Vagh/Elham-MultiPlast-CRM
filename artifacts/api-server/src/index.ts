@@ -90,6 +90,35 @@ async function main() {
     logger.warn("[STORAGE] SUPABASE_URL / SUPABASE_KEY not set. Using local filesystem — files will be lost on deploy/restart. Voice notes require Supabase for persistence.");
   }
 
+  // Auto-backfill production_order_items for pre-existing orders (non-blocking)
+  (async () => {
+    try {
+      const { sql } = await import("drizzle-orm");
+      const rows = await db.execute(sql`
+        SELECT po.id, po.proforma_invoice_id
+        FROM production_orders po
+        WHERE po.proforma_invoice_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM production_order_items poi WHERE poi.production_order_id = po.id
+          )
+      `);
+      const orders = (rows.rows || []) as { id: number; proforma_invoice_id: number }[];
+      if (orders.length > 0) {
+        const { syncProductionOrderItems } = await import("./lib/production-service");
+        let synced = 0;
+        for (const o of orders) {
+          try {
+            await syncProductionOrderItems(o.id, o.proforma_invoice_id);
+            synced++;
+          } catch { /* skip */ }
+        }
+        logger.info({ total: orders.length, synced }, "Backfilled production_order_items for existing orders");
+      }
+    } catch (err) {
+      logger.warn({ err }, "Startup backfill of production_order_items failed (non-critical)");
+    }
+  })();
+
   const server = app.listen(port, (err) => {
     if (err) {
       logger.error({ err }, "Error listening on port");
