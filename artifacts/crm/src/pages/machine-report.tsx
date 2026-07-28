@@ -15,9 +15,9 @@ const MACHINE_TYPES = ["All", "250ml Machine", "1L Machine", "5L Machine"];
 const STATUS_OPTIONS = ["All", "Pending", "Production On Going", "Packaging", "Ready To Dispatch", "Completed", "Cancelled"];
 
 interface ReportData {
-  summary: { totalOrders: number; totalBottles: number; pending: number; inProduction: number; completed: number };
-  machineBreakdown: { machineType: string; orderCount: number; totalBottles: number; pendingQty: number; inProductionQty: number; completedQty: number }[];
-  orders: { id: number; status: string; productionUnit: string; createdAt: string; productName: string; machineType: string | null; totalQuantity: number; bottleColour: string | null; bottleWeight: string | null; productCode: string | null }[];
+  summary: { totalProducts: number; totalBottles: number; pending: number; inProduction: number; completed: number };
+  machineBreakdown: { machineType: string; productCount: number; orderCount: number; totalBottles: number; pendingQty: number; inProductionQty: number; completedQty: number }[];
+  orders: { orderId: number; status: string; productionUnit: string; createdAt: string; productName: string; machineType: string | null; quantity: number; bottleColour: string | null; bottleWeight: string | null; productCode: string | null }[];
 }
 
 export default function MachineReport() {
@@ -46,7 +46,7 @@ export default function MachineReport() {
   const orders = data?.orders || [];
 
   const SUMMARY_CARDS = [
-    { label: "Total Orders", value: summary?.totalOrders ?? 0, icon: Package, color: "text-blue-600" },
+    { label: "Total Products", value: summary?.totalProducts ?? 0, icon: Package, color: "text-blue-600" },
     { label: "Total Bottles", value: (summary?.totalBottles ?? 0).toLocaleString(), icon: BarChart3, color: "text-purple-600" },
     { label: "Pending", value: summary?.pending ?? 0, icon: Clock, color: "text-gray-600" },
     { label: "In Production", value: summary?.inProduction ?? 0, icon: Settings2, color: "text-orange-600" },
@@ -129,6 +129,7 @@ export default function MachineReport() {
                 <div key={m.machineType} className="border rounded-lg p-4">
                   <h3 className="font-semibold text-sm">{m.machineType}</h3>
                   <div className="mt-2 space-y-1">
+                    <p className="text-xs text-muted-foreground">Products: <span className="font-medium text-foreground">{m.productCount}</span></p>
                     <p className="text-xs text-muted-foreground">Orders: <span className="font-medium text-foreground">{m.orderCount}</span></p>
                     <p className="text-xs text-muted-foreground">Total Qty: <span className="font-medium text-foreground">{m.totalBottles.toLocaleString()} PCS</span></p>
                     <p className="text-xs text-muted-foreground">Pending: <span className="font-medium text-gray-700">{m.pendingQty.toLocaleString()} PCS</span></p>
@@ -143,7 +144,7 @@ export default function MachineReport() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Production Orders ({orders.length})</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Product Lines ({orders.length})</CardTitle></CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <Table>
@@ -165,18 +166,18 @@ export default function MachineReport() {
                 {isLoading ? (
                   <TableRow><TableCell colSpan={10}><Skeleton className="h-20" /></TableCell></TableRow>
                 ) : orders.length === 0 ? (
-                  <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No orders found.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No product lines found.</TableCell></TableRow>
                 ) : (
-                  orders.map(o => (
-                    <TableRow key={o.id}>
-                      <TableCell className="font-mono text-sm">#{o.id}</TableCell>
+                  orders.map((o, idx) => (
+                    <TableRow key={`${o.orderId}-${idx}`}>
+                      <TableCell className="font-mono text-sm">#{o.orderId}</TableCell>
                       <TableCell className="font-medium">{o.productName}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{o.productCode || "-"}</TableCell>
                       <TableCell>{o.machineType || <span className="text-muted-foreground">Unassigned</span>}</TableCell>
                       <TableCell>{o.bottleColour || "-"}</TableCell>
                       <TableCell>{o.bottleWeight || "-"}</TableCell>
                       <TableCell>{o.productionUnit || "-"}</TableCell>
-                      <TableCell>{o.totalQuantity.toLocaleString()}</TableCell>
+                      <TableCell>{o.quantity.toLocaleString()}</TableCell>
                       <TableCell><Badge variant="outline" className={`text-xs ${statusColor(o.status)}`}>{o.status}</Badge></TableCell>
                       <TableCell className="text-sm text-muted-foreground">{o.createdAt ? new Date(o.createdAt).toLocaleDateString("en-IN") : "-"}</TableCell>
                     </TableRow>

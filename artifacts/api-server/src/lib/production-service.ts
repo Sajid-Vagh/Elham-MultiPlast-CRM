@@ -1686,38 +1686,43 @@ export async function getMachineReport(
   const allProducts = await db.select().from(productsTable);
   const productMap = new Map(allProducts.map(p => [p.name?.toLowerCase(), p]));
 
-  const enrichedOrders = orders.map(order => {
-    const items = piItems.filter(i => i.invoiceId === order.proformaInvoiceId);
-    const totalQty = items.reduce((sum, i) => sum + Number(i.quantity || 0), 0);
-    const productName = items[0]?.productName || "Unknown";
-    const product = productMap.get(productName.toLowerCase());
-    const machineType = product?.machineType || null;
-    const materialType = product?.materialType || null;
-    const bottleColour = product?.bottleColour || null;
-    const bottleWeight = product?.bottleWeight || null;
-    const productCode = product?.productCode || null;
+  const invoiceToOrder = new Map(orders.map(o => [o.proformaInvoiceId, o]));
 
-    return {
-      id: order.id,
+  const productRows: {
+    orderId: number; status: string; productionUnit: string | null; createdAt: Date | null;
+    productName: string; machineType: string | null; materialType: string | null;
+    bottleColour: string | null; bottleWeight: string | null; productCode: string | null;
+    quantity: number;
+  }[] = [];
+
+  for (const item of piItems) {
+    const order = invoiceToOrder.get(item.invoiceId);
+    if (!order) continue;
+
+    const productName = item.productName || "Unknown";
+    const product = productMap.get(productName.toLowerCase());
+
+    productRows.push({
+      orderId: order.id,
       status: order.status,
       productionUnit: order.productionUnit,
       createdAt: order.createdAt,
       productName,
-      machineType,
-      materialType,
-      bottleColour,
-      bottleWeight,
-      productCode,
-      totalQuantity: totalQty,
-    };
-  });
+      machineType: product?.machineType || null,
+      materialType: product?.materialType || null,
+      bottleColour: product?.bottleColour || null,
+      bottleWeight: product?.bottleWeight || null,
+      productCode: product?.productCode || null,
+      quantity: Number(item.quantity || 0),
+    });
+  }
 
-  let filteredOrders = enrichedOrders;
+  let filteredRows = productRows;
   if (filters.machineType && filters.machineType !== "All") {
-    filteredOrders = filteredOrders.filter(o => o.machineType === filters.machineType);
+    filteredRows = filteredRows.filter(r => r.machineType === filters.machineType);
   }
   if (filters.product && filters.product !== "All") {
-    filteredOrders = filteredOrders.filter(o => o.productName === filters.product);
+    filteredRows = filteredRows.filter(r => r.productName === filters.product);
   }
 
   const isPending = (s: string) => s === "Pending" || s === "Material Ready";
@@ -1725,37 +1730,39 @@ export async function getMachineReport(
   const isCompleted = (s: string) => s === "Completed";
 
   const summary = {
-    totalOrders: filteredOrders.length,
-    totalBottles: filteredOrders.reduce((s, o) => s + o.totalQuantity, 0),
-    pending: filteredOrders.filter(o => isPending(o.status)).length,
-    inProduction: filteredOrders.filter(o => isInProduction(o.status)).length,
-    completed: filteredOrders.filter(o => isCompleted(o.status)).length,
+    totalProducts: filteredRows.length,
+    totalBottles: filteredRows.reduce((s, r) => s + r.quantity, 0),
+    pending: filteredRows.filter(r => isPending(r.status)).length,
+    inProduction: filteredRows.filter(r => isInProduction(r.status)).length,
+    completed: filteredRows.filter(r => isCompleted(r.status)).length,
   };
 
   const machineMap = new Map<string, {
-    orderCount: number; totalBottles: number;
+    productCount: number; orderIds: Set<number>; totalBottles: number;
     pendingQty: number; inProductionQty: number; completedQty: number;
   }>();
-  for (const order of filteredOrders) {
-    const key = order.machineType || "Unassigned";
-    const existing = machineMap.get(key) || { orderCount: 0, totalBottles: 0, pendingQty: 0, inProductionQty: 0, completedQty: 0 };
-    existing.orderCount++;
-    existing.totalBottles += order.totalQuantity;
-    if (isPending(order.status)) existing.pendingQty += order.totalQuantity;
-    if (isInProduction(order.status)) existing.inProductionQty += order.totalQuantity;
-    if (isCompleted(order.status)) existing.completedQty += order.totalQuantity;
+  for (const row of filteredRows) {
+    const key = row.machineType || "Unassigned";
+    const existing = machineMap.get(key) || { productCount: 0, orderIds: new Set<number>(), totalBottles: 0, pendingQty: 0, inProductionQty: 0, completedQty: 0 };
+    existing.productCount++;
+    existing.orderIds.add(row.orderId);
+    existing.totalBottles += row.quantity;
+    if (isPending(row.status)) existing.pendingQty += row.quantity;
+    if (isInProduction(row.status)) existing.inProductionQty += row.quantity;
+    if (isCompleted(row.status)) existing.completedQty += row.quantity;
     machineMap.set(key, existing);
   }
   const machineBreakdown = [...machineMap.entries()].map(([machineType, data]) => ({
     machineType,
-    orderCount: data.orderCount,
+    productCount: data.productCount,
+    orderCount: data.orderIds.size,
     totalBottles: data.totalBottles,
     pendingQty: data.pendingQty,
     inProductionQty: data.inProductionQty,
     completedQty: data.completedQty,
   }));
 
-  return { summary, machineBreakdown, orders: filteredOrders };
+  return { summary, machineBreakdown, orders: filteredRows };
 }
 
 export async function listOrders(
