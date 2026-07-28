@@ -70,21 +70,27 @@ class LocalStorageProvider implements StorageProvider {
 // ────────────────────────────────────────────
 // Supabase Storage (persistent cloud storage)
 // Survives Render.com deploys/restarts
+//
+// Auth: Supabase Storage REST API requires the `apikey` header
+// for publishable/anon keys. The `Authorization: Bearer` header
+// only works with JWT-formatted keys (anon JWT or service_role JWT).
 // ────────────────────────────────────────────
 class SupabaseStorageProvider implements StorageProvider {
   private baseUrl: string;
   private apiKey: string;
   private buckets: Set<string> = new Set();
+  private bucketCheckDone = false;
 
   constructor(baseUrl: string, apiKey: string) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.apiKey = apiKey;
   }
 
-  private headers(): Record<string, string> {
+  // Storage API headers — uses `apikey` header for publishable keys
+  private authHeaders(): Record<string, string> {
     return {
+      apikey: this.apiKey,
       Authorization: `Bearer ${this.apiKey}`,
-      "Content-Type": "application/json",
     };
   }
 
@@ -96,7 +102,6 @@ class SupabaseStorageProvider implements StorageProvider {
     const storagePath = `${bucket}/${uniqueName}`;
     const uploadUrl = `${this.baseUrl}/storage/v1/object/${storagePath}`;
 
-    // Determine MIME type from filename extension
     const ext = filename.split(".").pop()?.toLowerCase() || "";
     const mimeMap: Record<string, string> = {
       webm: "audio/webm",
@@ -115,7 +120,7 @@ class SupabaseStorageProvider implements StorageProvider {
     const res = await fetch(uploadUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${this.apiKey}`,
+        ...this.authHeaders(),
         "Content-Type": contentType,
         "x-upsert": "true",
       },
@@ -132,9 +137,7 @@ class SupabaseStorageProvider implements StorageProvider {
 
   async get(storagePath: string): Promise<Buffer | null> {
     const url = `${this.baseUrl}/storage/v1/object/${storagePath}`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${this.apiKey}` },
-    });
+    const res = await fetch(url, { headers: this.authHeaders() });
     if (!res.ok) return null;
     const arrayBuf = await res.arrayBuffer();
     return Buffer.from(arrayBuf);
@@ -142,35 +145,41 @@ class SupabaseStorageProvider implements StorageProvider {
 
   async delete(storagePath: string): Promise<boolean> {
     const url = `${this.baseUrl}/storage/v1/object/${storagePath}`;
-    const res = await fetch(url, {
-      method: "DELETE",
-      headers: this.headers(),
-    });
+    const res = await fetch(url, { method: "DELETE", headers: this.authHeaders() });
     return res.ok;
   }
 
   async exists(storagePath: string): Promise<boolean> {
-    // Try public URL first — lightweight HEAD check
+    const bucket = storagePath.split("/")[0];
+
+    // 1. Try public URL (works if bucket is public)
     try {
       const publicUrl = `${this.baseUrl}/storage/v1/object/public/${storagePath}`;
       const res = await fetch(publicUrl, { method: "HEAD", redirect: "follow" });
       if (res.ok) return true;
-      // If 403/404, try authenticated access as fallback (bucket might be private)
-      if (res.status === 403 || res.status === 404) {
-        const authUrl = `${this.baseUrl}/storage/v1/object/${storagePath}`;
-        const authRes = await fetch(authUrl, {
-          method: "HEAD",
-          headers: { Authorization: `Bearer ${this.apiKey}` },
-        });
-        if (authRes.ok) {
-          // File exists but bucket is not public — fix it
-          console.warn(`[storage] Bucket for ${storagePath.split("/")[0]} is not public. Attempting to fix.`);
-          await this.ensureBucketPublic(storagePath.split("/")[0]);
-          return true;
-        }
+    } catch { /* continue to auth check */ }
+
+    // 2. Try authenticated access with apikey header
+    try {
+      const authUrl = `${this.baseUrl}/storage/v1/object/${storagePath}`;
+      const res = await fetch(authUrl, {
+        method: "HEAD",
+        headers: this.authHeaders(),
+      });
+      if (res.ok) {
+        // File exists but bucket might not be public — fix it
+        console.warn(`[storage] File exists via auth but bucket "${bucket}" not public. Setting public.`);
+        await this.ensureBucketPublic(bucket);
+        return true;
       }
+      if (res.status === 404) {
+        console.warn(`[storage] File NOT FOUND in storage: ${storagePath}`);
+        return false;
+      }
+      console.warn(`[storage] Storage access check failed for ${storagePath}: HTTP ${res.status}`);
       return false;
-    } catch {
+    } catch (err: any) {
+      console.error(`[storage] Storage access error for ${storagePath}:`, err?.message);
       return false;
     }
   }
@@ -184,63 +193,71 @@ class SupabaseStorageProvider implements StorageProvider {
   }
 
   async verifyPublicAccess(storagePath: string): Promise<{ accessible: boolean; error?: string }> {
+    // Try public URL
     try {
       const publicUrl = `${this.baseUrl}/storage/v1/object/public/${storagePath}`;
       const res = await fetch(publicUrl, { method: "HEAD", redirect: "follow" });
       if (res.ok) return { accessible: true };
-      // If bucket is private, try authenticated access
-      if (res.status === 403 || res.status === 404) {
-        const authUrl = `${this.baseUrl}/storage/v1/object/${storagePath}`;
-        const authRes = await fetch(authUrl, {
-          method: "HEAD",
-          headers: { Authorization: `Bearer ${this.apiKey}` },
-        });
-        if (authRes.ok) {
-          // File exists but bucket isn't public — fix it
-          const bucket = storagePath.split("/")[0];
-          console.warn(`[storage] Bucket "${bucket}" is not public. Fixing...`);
-          await this.ensureBucketPublic(bucket);
-          return { accessible: true };
-        }
-        return { accessible: false, error: `HTTP ${res.status}: file not accessible publicly or via auth` };
+    } catch { /* continue */ }
+
+    // Try authenticated access
+    try {
+      const authUrl = `${this.baseUrl}/storage/v1/object/${storagePath}`;
+      const res = await fetch(authUrl, {
+        method: "HEAD",
+        headers: this.authHeaders(),
+      });
+      if (res.ok) {
+        await this.ensureBucketPublic(storagePath.split("/")[0]);
+        return { accessible: true };
       }
-      return { accessible: false, error: `HTTP ${res.status}: ${res.statusText}` };
+      return { accessible: false, error: `HTTP ${res.status}: file not found in storage` };
     } catch (err: any) {
       return { accessible: false, error: err?.message || "Network error" };
     }
   }
 
-  private async ensureBucket(bucket: string): Promise<void> {
-    if (this.buckets.has(bucket)) return;
+  // ────────────────────────────────────────
+  // Bucket management
+  // ────────────────────────────────────────
+  async ensureBucketExists(): Promise<boolean> {
+    if (this.buckets.has("voice-notes")) return true;
+    if (this.bucketCheckDone) return this.buckets.has("voice-notes");
 
+    this.bucketCheckDone = true;
+
+    // 1. Try listing buckets with apikey header
     try {
-      const listUrl = `${this.baseUrl}/storage/v1/bucket`;
-      const res = await fetch(listUrl, { headers: this.headers() });
+      const res = await fetch(`${this.baseUrl}/storage/v1/bucket`, {
+        headers: this.authHeaders(),
+      });
       if (res.ok) {
-        const buckets = await res.json() as { id: string }[];
-        for (const b of buckets) {
-          this.buckets.add(b.id);
-        }
+        const buckets = await res.json() as { id: string; public: boolean }[];
+        for (const b of buckets) this.buckets.add(b.id);
+        console.log(`[storage] Supabase buckets found: [${buckets.map(b => `${b.id}(public=${b.public})`).join(", ")}]`);
+      } else {
+        const text = await res.text().catch(() => "");
+        console.error(`[storage] Failed to list Supabase buckets: HTTP ${res.status}: ${text}`);
       }
-    } catch {
-      // Non-critical — bucket might already exist
+    } catch (err: any) {
+      console.error(`[storage] Error listing Supabase buckets:`, err?.message);
     }
 
-    if (this.buckets.has(bucket)) {
-      // Bucket exists — ensure it is public (may have been created as private)
-      await this.ensureBucketPublic(bucket);
-      return;
+    if (this.buckets.has("voice-notes")) {
+      console.log(`[storage] Bucket "voice-notes" exists.`);
+      await this.ensureBucketPublic("voice-notes");
+      return true;
     }
 
-    // Create the bucket as public
+    // 2. Try creating via Storage REST API (requires service_role key)
+    console.log(`[storage] Bucket "voice-notes" not found. Attempting to create via API...`);
     try {
-      const createUrl = `${this.baseUrl}/storage/v1/bucket`;
-      const res = await fetch(createUrl, {
+      const res = await fetch(`${this.baseUrl}/storage/v1/bucket`, {
         method: "POST",
-        headers: this.headers(),
+        headers: { ...this.authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: bucket,
-          name: bucket,
+          id: "voice-notes",
+          name: "voice-notes",
           public: true,
           file_size_limit: 10 * 1024 * 1024,
           allowed_mime_types: [
@@ -252,15 +269,52 @@ class SupabaseStorageProvider implements StorageProvider {
         }),
       });
       if (res.ok) {
-        this.buckets.add(bucket);
-        console.log(`[storage] Created Supabase bucket "${bucket}" (public)`);
-      } else {
-        const text = await res.text().catch(() => "");
-        console.error(`Failed to create Supabase bucket "${bucket}":`, text);
+        this.buckets.add("voice-notes");
+        console.log(`[storage] Created bucket "voice-notes" via API`);
+        return true;
       }
-    } catch (err) {
-      console.error(`Error creating Supabase bucket "${bucket}":`, err);
+      const text = await res.text().catch(() => "");
+      console.warn(`[storage] API bucket creation failed: ${text}`);
+    } catch (err: any) {
+      console.warn(`[storage] API bucket creation error:`, err?.message);
     }
+
+    // 3. Try creating via database (insert into storage.buckets)
+    console.log(`[storage] Trying database bucket creation...`);
+    try {
+      const { db } = await import("@workspace/db");
+      // Use raw SQL to insert bucket into storage schema
+      await db.execute(
+        `INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+         VALUES ('voice-notes', 'voice-notes', true, 10485760,
+           ARRAY['audio/webm','audio/mpeg','audio/mp3','audio/wav','audio/wave','audio/x-wav','audio/ogg','audio/mp4','audio/m4a','application/pdf','image/jpeg','image/png'])
+         ON CONFLICT (id) DO UPDATE SET public = true`
+      );
+      this.buckets.add("voice-notes");
+      console.log(`[storage] Created bucket "voice-notes" via database`);
+      // Set bucket public via API
+      await this.ensureBucketPublic("voice-notes");
+      return true;
+    } catch (err: any) {
+      console.warn(`[storage] Database bucket creation failed:`, err?.message);
+    }
+
+    console.error(`[storage] ═══════════════════════════════════════════════════════`);
+    console.error(`[storage] CRITICAL: Cannot create "voice-notes" bucket.`);
+    console.error(`[storage] Voice notes will NOT be stored or playable.`);
+    console.error(`[storage] FIX: Create the bucket manually in Supabase Dashboard:`);
+    console.error(`[storage]   1. Go to https://supabase.com/dashboard/project/rzcbdtxlkspdgksycamg/storage/buckets`);
+    console.error(`[storage]   2. Click "New Bucket"`);
+    console.error(`[storage]   3. Name: voice-notes | Public: ON | Size limit: 10 MB`);
+    console.error(`[storage]   4. Allowed MIME types: audio/webm, audio/mpeg, audio/mp3, audio/wav, audio/ogg, audio/mp4, audio/m4a`);
+    console.error(`[storage] ═══════════════════════════════════════════════════════`);
+
+    return false;
+  }
+
+  private async ensureBucket(bucket: string): Promise<void> {
+    if (this.buckets.has(bucket)) return;
+    await this.ensureBucketExists();
   }
 
   private async ensureBucketPublic(bucket: string): Promise<void> {
@@ -268,15 +322,17 @@ class SupabaseStorageProvider implements StorageProvider {
       const url = `${this.baseUrl}/storage/v1/bucket/${bucket}`;
       const res = await fetch(url, {
         method: "UPDATE",
-        headers: this.headers(),
+        headers: { ...this.authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ public: true }),
       });
-      if (!res.ok && res.status !== 404) {
+      if (res.ok) {
+        console.log(`[storage] Bucket "${bucket}" set to public`);
+      } else if (res.status !== 404) {
         const text = await res.text().catch(() => "");
-        console.warn(`[storage] Could not set bucket "${bucket}" to public: ${text}`);
+        console.warn(`[storage] Could not set bucket "${bucket}" to public: HTTP ${res.status}: ${text}`);
       }
     } catch {
-      // Non-critical — bucket might already be public
+      // Non-critical
     }
   }
 }
@@ -290,10 +346,17 @@ function createProvider(): StorageProvider {
 
   if (supabaseUrl && supabaseKey) {
     console.log("[storage] Using Supabase Storage:", supabaseUrl);
-    return new SupabaseStorageProvider(supabaseUrl, supabaseKey);
+    const p = new SupabaseStorageProvider(supabaseUrl, supabaseKey);
+    // Run bucket check in background (non-blocking)
+    p.ensureBucketExists().then(ok => {
+      if (ok) console.log("[storage] Supabase Storage ready");
+      else console.warn("[storage] Supabase Storage NOT ready — voice notes disabled until bucket is created");
+    });
+    return p;
   }
 
   console.log("[storage] Using local filesystem storage:", UPLOADS_ROOT);
+  console.warn("[storage] ⚠ Files stored locally will be LOST on Render deploy/restart. Set SUPABASE_URL + SUPABASE_KEY for persistence.");
   return new LocalStorageProvider();
 }
 
