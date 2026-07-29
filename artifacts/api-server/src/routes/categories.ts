@@ -78,19 +78,30 @@ router.get("/categories/:category/contacts", async (req, res) => {
     const isAdmin = user.role === "admin";
     const { category } = req.params;
     const requestedUnit = req.query.unit as string | undefined;
-    const unit = (user.unit === "All" || user.role === "admin") ? requestedUnit : user.unit;
+    const isExistingClient = category === "Existing Client";
 
-    if (!CATEGORIES.includes(category as any)) {
+    // Accept "Existing Client" (virtual category) or any DB CATEGORY
+    if (!isExistingClient && !CATEGORIES.includes(category as any)) {
       res.status(400).json({ error: "Invalid category" });
       return;
     }
 
     const baseConditions: SQL[] = [];
-    if (!isAdmin) {
+    // Bypass ownerId filter for Existing Client (global view)
+    if (!isAdmin && !isExistingClient) {
       baseConditions.push(eq(contactsTable.salesOwnerId, user.id));
     }
-    if (unit) {
-      baseConditions.push(eq(contactsTable.unit, unit));
+
+    // For Existing Client, unit filter comes from dropdown only (not user.unit)
+    if (isExistingClient) {
+      if (requestedUnit) {
+        baseConditions.push(eq(contactsTable.unit, requestedUnit));
+      }
+    } else {
+      const unit = (user.unit === "All" || user.role === "admin") ? requestedUnit : user.unit;
+      if (unit) {
+        baseConditions.push(eq(contactsTable.unit, unit));
+      }
     }
 
     let contacts: (typeof contactsTable.$inferSelect)[];
@@ -114,10 +125,12 @@ router.get("/categories/:category/contacts", async (req, res) => {
       const virtualContacts = myClientContacts.filter(c => activeDealContactIds.has(c.id));
       contacts = [...rfuContacts, ...virtualContacts];
     } else {
+      // Map "Existing Client" → "My Client" in the DB query
+      const dbCategory = isExistingClient ? "My Client" : category;
       contacts = await db
         .select()
         .from(contactsTable)
-        .where(and(eq(contactsTable.category, category), ...baseConditions))
+        .where(and(eq(contactsTable.category, dbCategory), ...baseConditions))
         .orderBy(desc(contactsTable.createdAt));
     }
 
