@@ -135,7 +135,6 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
     const errs: Record<string, string> = {};
     if (scheduleNext) {
       if (!nextDate) errs.nextDate = "Next activity date is required";
-      if (!nextTime) errs.nextTime = "Next activity time is required";
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -339,7 +338,7 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
                   <div className="space-y-2">
                     <Label className="text-sm font-medium flex items-center gap-1.5">
                       <Clock className="h-4 w-4 text-muted-foreground" />
-                      Time <span className="text-destructive">*</span>
+                      Time
                     </Label>
                     <Input
                       type="time"
