@@ -2783,7 +2783,7 @@ export async function getManufacturingSummary(user: PermissionUser, unitFilter?:
       FROM active_orders ao
       JOIN production_order_items poi ON poi.production_order_id = ao.po_id
       LEFT JOIN proforma_invoices pi ON pi.id = ao.resolved_invoice_id
-      LEFT JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id AND lower(pii.product_name) = lower(poi.product_name)
+      LEFT JOIN proforma_invoice_items pii ON pii.id = poi.pi_item_id
       LEFT JOIN products p ON lower(p.name) = lower(poi.product_name)
       WHERE poi.production_status != 'Ready'
         ${materialCondition}
