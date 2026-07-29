@@ -2091,12 +2091,17 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
     ne(productionOrdersTable.status, "Cancelled"),
     or(
       eq(productionOrdersTable.status, "Pending"),
+      // V2 statuses
       eq(productionOrdersTable.status, "Accepted"),
       eq(productionOrdersTable.status, "Planning"),
       eq(productionOrdersTable.status, "In Production"),
       eq(productionOrdersTable.status, "Packing"),
       eq(productionOrdersTable.status, "Ready For Dispatch"),
       eq(productionOrdersTable.status, "In Transport"),
+      // V1 legacy statuses (migration 048 not yet applied)
+      eq(productionOrdersTable.status, "Production On Going"),
+      eq(productionOrdersTable.status, "Packaging"),
+      eq(productionOrdersTable.status, "Ready To Dispatch"),
     )!,
   )!];
 
@@ -2493,7 +2498,7 @@ export async function getPendingSummary(user: PermissionUser, unitFilter?: strin
     FROM production_order_items oi
     JOIN production_orders po ON po.id = oi.production_order_id
     LEFT JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
-    WHERE po.status IN ('Pending', 'Accepted', 'Planning')
+    WHERE po.status IN ('Pending', 'Accepted', 'Planning', 'Production On Going')
       AND (pi.id IS NULL OR pi.is_deleted = false)
       ${unitCondition}
     GROUP BY oi.product_name
