@@ -53,6 +53,7 @@ export default function Leads() {
 
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
+  const canSeeExistingClient = me?.role === "admin" || me?.role === "production" || me?.role === "production_and_support";
   const { units: activeUnits } = useActiveUnits();
 
   // Fetch category counts (using same filters as the list for consistency)
@@ -250,7 +251,7 @@ export default function Leads() {
             {totalCount}
           </span>
         </button>
-        {CATEGORIES.map(cat => {
+        {CATEGORIES.filter(cat => cat !== "Existing Client" || canSeeExistingClient).map(cat => {
           const count = categoryCounts?.find(c => c.category === cat)?.count ?? 0;
           return (
             <button

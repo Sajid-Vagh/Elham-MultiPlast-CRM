@@ -53,13 +53,13 @@ router.get("/contacts", async (req, res) => {
     const categoryParam = req.query.category as string | undefined;
     const isExistingClient = categoryParam === "Existing Client";
 
-    if (user.role !== "admin" && !isExistingClient) {
+    if (user.role !== "admin" && (user.role === "sales" || !isExistingClient)) {
       conditions.push(eq(contactsTable.salesOwnerId, user.id));
     }
 
-    // Skip unit restriction for Existing Client — filter comes from dropdown only
+    // Skip unit restriction for Existing Client when not sales — filter comes from dropdown only
     const accessibleUnits = getAccessibleUnits(user);
-    if (accessibleUnits && !isExistingClient) {
+    if (accessibleUnits && (user.role === "sales" || !isExistingClient)) {
       conditions.push(inArray(contactsTable.unit, accessibleUnits));
     }
 
