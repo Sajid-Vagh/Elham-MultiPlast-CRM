@@ -67,8 +67,18 @@ router.get("/orders", async (req, res) => {
     const conditions: any[] = [eq(ordersTable.isDeleted, false)];
 
     if (user.role === "sales") conditions.push(eq(ordersTable.salesOwnerId, user.id));
-    if (user.role === "production_and_support") conditions.push(eq(ordersTable.supportOwnerId, user.id));
-    if (user.role === "production") conditions.push(eq(ordersTable.productionOwnerId, user.id));
+    if (user.role === "production_and_support") {
+      conditions.push(or(
+        eq(ordersTable.supportOwnerId, user.id),
+        sql`${ordersTable.supportOwnerId} IS NULL`
+      )!);
+    }
+    if (user.role === "production") {
+      conditions.push(or(
+        eq(ordersTable.productionOwnerId, user.id),
+        sql`${ordersTable.productionOwnerId} IS NULL`
+      )!);
+    }
 
     if (status && status !== "All") conditions.push(eq(ordersTable.status, status));
     if (source) conditions.push(eq(ordersTable.source, source));
@@ -130,10 +140,20 @@ router.get("/orders/global", async (req, res) => {
 
     const conditions: any[] = [eq(ordersTable.isDeleted, false)];
 
-    // Role-based filtering
+    // Role-based filtering — null owner means unassigned, visible to all users of that role
     if (user.role === "sales") conditions.push(eq(ordersTable.salesOwnerId, user.id));
-    if (user.role === "production_and_support") conditions.push(eq(ordersTable.supportOwnerId, user.id));
-    if (user.role === "production") conditions.push(eq(ordersTable.productionOwnerId, user.id));
+    if (user.role === "production_and_support") {
+      conditions.push(or(
+        eq(ordersTable.supportOwnerId, user.id),
+        sql`${ordersTable.supportOwnerId} IS NULL`
+      )!);
+    }
+    if (user.role === "production") {
+      conditions.push(or(
+        eq(ordersTable.productionOwnerId, user.id),
+        sql`${ordersTable.productionOwnerId} IS NULL`
+      )!);
+    }
 
     // Status filters
     if (status && status !== "All") conditions.push(eq(ordersTable.status, status));
