@@ -244,18 +244,20 @@ export async function syncProductionOrderItems(productionOrderId: number, invoic
 
 export async function resyncProductionOrderItems(
   productionOrderId: number,
-  invoiceId: number | null
+  invoiceId: number | null,
+  txDb?: typeof db
 ): Promise<{ added: number; updated: number; deleted: number }> {
+  const d = txDb || db;
   if (!invoiceId) return { added: 0, updated: 0, deleted: 0 };
 
-  const piItems = await db.select().from(proformaInvoiceItemsTable)
+  const piItems = await d.select().from(proformaInvoiceItemsTable)
     .where(eq(proformaInvoiceItemsTable.invoiceId, invoiceId));
   if (piItems.length === 0) return { added: 0, updated: 0, deleted: 0 };
 
-  const existingItems = await db.select().from(productionOrderItemsTable)
+  const existingItems = await d.select().from(productionOrderItemsTable)
     .where(eq(productionOrderItemsTable.productionOrderId, productionOrderId));
 
-  const allProducts = await db.select().from(productsTable);
+  const allProducts = await d.select().from(productsTable);
   const productMap = new Map(allProducts.map(p => [p.name?.toLowerCase(), p]));
 
   const matchedIds = new Set<number>();
@@ -273,7 +275,7 @@ export async function resyncProductionOrderItems(
 
     if (existing) {
       matchedIds.add(existing.id);
-      await db.update(productionOrderItemsTable).set({
+      await d.update(productionOrderItemsTable).set({
         productName: piItem.productName,
         materialType: product?.materialType || null,
         machineType: product?.machineType || null,
@@ -287,7 +289,7 @@ export async function resyncProductionOrderItems(
       }).where(eq(productionOrderItemsTable.id, existing.id));
       updated++;
     } else {
-      await db.insert(productionOrderItemsTable).values({
+      await d.insert(productionOrderItemsTable).values({
         productionOrderId,
         piItemId: piItem.id,
         productName: piItem.productName,
@@ -308,7 +310,7 @@ export async function resyncProductionOrderItems(
   let deleted = 0;
   for (const item of existingItems) {
     if (!matchedIds.has(item.id) && item.productionStatus === "Pending") {
-      await db.delete(productionOrderItemsTable).where(eq(productionOrderItemsTable.id, item.id));
+      await d.delete(productionOrderItemsTable).where(eq(productionOrderItemsTable.id, item.id));
       deleted++;
     }
   }
@@ -1618,25 +1620,27 @@ export async function listDispatchOrders(
 export async function handlePiModification(
   user: PermissionUser,
   productionOrderId: number,
-  newPiVersion: number
+  newPiVersion: number,
+  txDb?: typeof db
 ): Promise<any> {
-  const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, productionOrderId));
+  const d = txDb || db;
+  const [order] = await d.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, productionOrderId));
   if (!order) return { error: "Production order not found", status: 404 };
 
   const preProductionStatuses = ["Pending", "Accepted", "Planning"];
   const inProductionStatuses = ["In Production", "Packing"];
 
   if (preProductionStatuses.includes(order.status)) {
-    const syncResult = await resyncProductionOrderItems(productionOrderId, order.proformaInvoiceId);
+    const syncResult = await resyncProductionOrderItems(productionOrderId, order.proformaInvoiceId, txDb);
 
-    await db.update(productionOrdersTable).set({
+    await d.update(productionOrdersTable).set({
       piVersionAtCreation: newPiVersion, updatedAt: new Date(), updatedBy: user.id,
       needsReprint: order.productionSheetVersion > 0,
     }).where(eq(productionOrdersTable.id, productionOrderId));
 
     const syncMsg = `PI updated to Version ${newPiVersion}. Auto-synced (${syncResult.added} added, ${syncResult.updated} updated, ${syncResult.deleted} removed).`;
-    await addTimelineEntry(db, productionOrderId, order.status, syncMsg, user.id);
-    await logProductionActivity(db, {
+    await addTimelineEntry(d, productionOrderId, order.status, syncMsg, user.id);
+    await logProductionActivity(d, {
       dealId: order.dealId, contactId: null, eventName: `PI Modified — Auto-synced (${syncResult.added} added, ${syncResult.updated} updated, ${syncResult.deleted} removed)`,
       orderId: productionOrderId, userName: user.name || "", createdBy: user.id,
     });
@@ -1644,12 +1648,12 @@ export async function handlePiModification(
   }
 
   if (inProductionStatuses.includes(order.status)) {
-    await db.update(productionOrdersTable).set({
+    await d.update(productionOrdersTable).set({
       piVersionAtCreation: newPiVersion, updatedAt: new Date(), updatedBy: user.id,
       needsReprint: true,
     }).where(eq(productionOrdersTable.id, productionOrderId));
-    await addTimelineEntry(db, productionOrderId, order.status, `PI modified to Version ${newPiVersion}. Awaiting production approval.`, user.id);
-    await logProductionActivity(db, {
+    await addTimelineEntry(d, productionOrderId, order.status, `PI modified to Version ${newPiVersion}. Awaiting production approval.`, user.id);
+    await logProductionActivity(d, {
       dealId: order.dealId, contactId: null, eventName: `PI Modified — Approval Required (Version ${newPiVersion})`,
       orderId: productionOrderId, userName: user.name || "", createdBy: user.id,
     });
@@ -1668,17 +1672,17 @@ export async function handlePiModification(
 
   if (order.status === "Completed" || order.status === "In Transport") {
     const label = order.status === "Completed" ? "production completion" : "in-transport stage";
-    await addTimelineEntry(db, productionOrderId, order.status, `PI modified after ${label}. No auto-sync.`, user.id);
+    await addTimelineEntry(d, productionOrderId, order.status, `PI modified after ${label}. No auto-sync.`, user.id);
     return { action: "rejected", message: `Production already ${label}. Suggest creating a new deal.` };
   }
 
   if (order.status === "Ready For Dispatch") {
-    await db.update(productionOrdersTable).set({
+    await d.update(productionOrdersTable).set({
       needsReprint: true,
       updatedAt: new Date(),
       updatedBy: user.id,
     }).where(eq(productionOrdersTable.id, productionOrderId));
-    await addTimelineEntry(db, productionOrderId, order.status, `PI modified to Version ${newPiVersion}. Dispatch stage — review required.`, user.id);
+    await addTimelineEntry(d, productionOrderId, order.status, `PI modified to Version ${newPiVersion}. Dispatch stage — review required.`, user.id);
     await notifyProductionUsers({
       productionUnit: order.productionUnit || "Himatnagar",
       title: "PI Modified — Dispatch Review",
@@ -1706,22 +1710,34 @@ export async function approveModification(
   if (approve) {
     await addTimelineEntry(db, orderId, order.status, `Production approved PI modification.`, user.id);
 
+    // Find the PI to sync from — by dealId's active PI, or fallback to current proformaInvoiceId
+    let pi: any = null;
     if (order.dealId) {
-      const pi = await getActivePiForDeal(db, order.dealId);
-      if (pi) {
-        await db.update(productionOrdersTable).set({
+      pi = await getActivePiForDeal(db, order.dealId);
+    }
+    if (!pi && order.proformaInvoiceId) {
+      const [piRow] = await db.select().from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, order.proformaInvoiceId));
+      pi = piRow;
+    }
+
+    if (pi) {
+      // Wrap order update + items sync in a transaction
+      await db.transaction(async (tx) => {
+        await tx.update(productionOrdersTable).set({
           proformaInvoiceId: pi.id,
           piVersionAtCreation: pi.version,
           updatedAt: now,
           updatedBy: user.id,
         }).where(eq(productionOrdersTable.id, orderId));
 
-        await writeAuditTrail(db, {
+        const syncResult = await resyncProductionOrderItems(orderId, pi.id, tx as unknown as typeof db);
+
+        await writeAuditTrail(tx, {
           productionOrderId: orderId, action: "pi_modification_approved",
           changedById: user.id, changedByName: user.name || "",
-          reason: `PI Version ${pi.version} approved — production order synced`,
+          reason: `PI Version ${pi.version} approved — production order synced (${syncResult.added} added, ${syncResult.updated} updated, ${syncResult.deleted} removed)`,
         });
-      }
+      });
     }
 
     await notifySalesOfProductionEvent({

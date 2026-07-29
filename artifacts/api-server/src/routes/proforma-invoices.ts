@@ -1303,8 +1303,6 @@ async function updateInvoiceHandler(req: any, res: any) {
         createdBy: user.id,
       };
 
-      const [newInvoice] = await db.insert(proformaInvoicesTable).values(merged).returning();
-
       const newItems = items || oldItems.map((it: any) => ({
         productName: it.productName, hsnCode: it.hsnCode, bottleType: it.bottleType,
         capacity: it.capacity, weight: it.weight, quantity: Number(it.quantity),
@@ -1312,22 +1310,86 @@ async function updateInvoiceHandler(req: any, res: any) {
         discount: Number(it.discount || 0), gstPercent: Number(it.gstPercent || 0), amount: Number(it.amount),
       }));
 
-      await db.delete(proformaInvoiceItemsTable).where(eq(proformaInvoiceItemsTable.invoiceId, newInvoice!.id));
-      for (const item of newItems) {
-        await db.insert(proformaInvoiceItemsTable).values({
-          invoiceId: newInvoice!.id,
-          productName: item.productName,
-          hsnCode: item.hsnCode || null,
-          bottleType: item.bottleType || null,
-          capacity: item.capacity || null,
-          weight: item.weight || null,
-          quantity: String(item.quantity),
-          unit: item.unit || "Pcs",
-          rate: String(item.rate),
-          discountPercent: String(item.discountPercent || 0),
-          discount: String(item.discount || 0),
-          gstPercent: String(item.gstPercent || 0),
-          amount: String(item.amount),
+      // ── Atomic Transaction: New invoice creation + Items + Production sync ──
+      let newInvoice: any = null;
+      let linkedOrderId: number | null = null;
+      let linkedOrderUnit: string | null = null;
+
+      try {
+        await db.transaction(async (tx) => {
+          [newInvoice] = await tx.insert(proformaInvoicesTable).values(merged).returning();
+
+          await tx.delete(proformaInvoiceItemsTable).where(eq(proformaInvoiceItemsTable.invoiceId, newInvoice!.id));
+          for (const item of newItems) {
+            await tx.insert(proformaInvoiceItemsTable).values({
+              invoiceId: newInvoice!.id,
+              productName: item.productName,
+              hsnCode: item.hsnCode || null,
+              bottleType: item.bottleType || null,
+              capacity: item.capacity || null,
+              weight: item.weight || null,
+              quantity: String(item.quantity),
+              unit: item.unit || "Pcs",
+              rate: String(item.rate),
+              discountPercent: String(item.discountPercent || 0),
+              discount: String(item.discount || 0),
+              gstPercent: String(item.gstPercent || 0),
+              amount: String(item.amount),
+            });
+          }
+
+          // Find linked production order — first by dealId, then by proformaInvoiceId
+          let linkedOrder: any = null;
+          if (existing.dealId) {
+            const [byDeal] = await tx
+              .select()
+              .from(productionOrdersTable)
+              .where(eq(productionOrdersTable.dealId, existing.dealId))
+              .orderBy(desc(productionOrdersTable.createdAt))
+              .limit(1);
+            if (byDeal) linkedOrder = byDeal;
+          }
+
+          if (!linkedOrder) {
+            const [byPi] = await tx
+              .select()
+              .from(productionOrdersTable)
+              .where(eq(productionOrdersTable.proformaInvoiceId, id))
+              .limit(1);
+            if (byPi) linkedOrder = byPi;
+          }
+
+          if (linkedOrder) {
+            linkedOrderId = linkedOrder.id;
+            linkedOrderUnit = linkedOrder.productionUnit;
+
+            // Update production order to point to the new active PI
+            await tx
+              .update(productionOrdersTable)
+              .set({ proformaInvoiceId: newInvoice!.id, updatedAt: new Date(), updatedBy: user.id })
+              .where(eq(productionOrdersTable.id, linkedOrder.id));
+
+            const { handlePiModification } = await import("../lib/production-service");
+            await handlePiModification(user, linkedOrder.id, nextVersion, tx as unknown as typeof db);
+          }
+        });
+      } catch (syncErr) {
+        req.log.warn({ err: syncErr }, "Production sync failed for PI revision");
+      }
+
+      const reasonNote = revisionReason ? `\nReason: ${revisionReason}` : "";
+
+      // Notify production users about PI revision (outside transaction)
+      if (linkedOrderId) {
+        await notifyProductionUsers({
+          productionUnit: linkedOrderUnit || "Himatnagar",
+          title: "Proforma Invoice Revised",
+          message: `Invoice ${existing.invoiceNumber} revised to ${newInvoiceNumber} (Version ${nextVersion}) by ${user.name}.${reasonNote}`,
+          link: `/production/orders/${linkedOrderId}`,
+          relatedId: newInvoice!.id,
+          relatedType: "proforma_invoice",
+          type: "pi_revision",
+          excludeUserId: user.id,
         });
       }
 
@@ -1346,7 +1408,6 @@ async function updateInvoiceHandler(req: any, res: any) {
       }
 
       const ts = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-      const reasonNote = revisionReason ? `\nReason: ${revisionReason}` : "";
       const diffNote = diffLines.length > 0 ? `\n\nChanges:\n${diffLines.join("\n")}` : "";
 
       if (existing.dealId) {
@@ -1366,50 +1427,6 @@ async function updateInvoiceHandler(req: any, res: any) {
         changedBy: user.id,
         notes: `Version ${nextVersion} created as ${newInvoiceNumber}${reasonNote}`,
       });
-
-      // ── Production Sync for non-draft PI revision ──
-      // Find production order linked to this deal and notify production
-      try {
-        let linkedOrder: any = null;
-        if (existing.dealId) {
-          // Find production order by dealId
-          const [byDeal] = await db
-            .select()
-            .from(productionOrdersTable)
-            .where(eq(productionOrdersTable.dealId, existing.dealId))
-            .orderBy(desc(productionOrdersTable.createdAt))
-            .limit(1);
-          if (byDeal) {
-            linkedOrder = byDeal;
-            // Update production order to point to the new active PI
-            await db
-              .update(productionOrdersTable)
-              .set({ proformaInvoiceId: newInvoice!.id, updatedAt: new Date(), updatedBy: user.id })
-              .where(eq(productionOrdersTable.id, byDeal.id));
-          }
-        }
-
-        if (linkedOrder) {
-          const { handlePiModification } = await import("../lib/production-service");
-          await handlePiModification(user, linkedOrder.id, nextVersion);
-        }
-
-        // Notify production users about PI revision
-        if (existing.dealId) {
-          await notifyProductionUsers({
-            productionUnit: linkedOrder?.productionUnit || "Himatnagar",
-            title: "Proforma Invoice Revised",
-            message: `Invoice ${existing.invoiceNumber} revised to ${newInvoiceNumber} (Version ${nextVersion}) by ${user.name}.${reasonNote}`,
-            link: `/production/orders/${linkedOrder?.id || ""}`,
-            relatedId: newInvoice!.id,
-            relatedType: "proforma_invoice",
-            type: "pi_revision",
-            excludeUserId: user.id,
-          });
-        }
-      } catch (syncErr) {
-        req.log.warn({ err: syncErr }, "Production sync failed for PI revision");
-      }
 
       // ── Auto-recalculate deal wonAmount when deal is Won ──
       if (existing.dealId) {
@@ -1497,27 +1514,6 @@ async function updateInvoiceHandler(req: any, res: any) {
         .where(eq(proformaInvoicesTable.id, id));
     }
 
-    if (items) {
-      await db.delete(proformaInvoiceItemsTable).where(eq(proformaInvoiceItemsTable.invoiceId, id));
-      for (const item of items) {
-        await db.insert(proformaInvoiceItemsTable).values({
-          invoiceId: id,
-          productName: item.productName,
-          hsnCode: item.hsnCode || null,
-          bottleType: item.bottleType || null,
-          capacity: item.capacity || null,
-          weight: item.weight || null,
-          quantity: String(item.quantity),
-          unit: item.unit || "Pcs",
-          rate: String(item.rate),
-          discountPercent: String(item.discountPercent || 0),
-          discount: String(item.discount || 0),
-          gstPercent: String(item.gstPercent || 0),
-          amount: String(item.amount),
-        });
-      }
-    }
-
     const [invoice] = await db
       .select()
       .from(proformaInvoicesTable)
@@ -1593,43 +1589,66 @@ async function updateInvoiceHandler(req: any, res: any) {
       }
     }
 
+    // ── Atomic Transaction: Items update + Production sync ──
     try {
-      const currentInvoice = invoice!;
-      const piId = currentInvoice.id;
-      const piDealId = currentInvoice.dealId;
+      await db.transaction(async (tx) => {
+        if (items) {
+          await tx.delete(proformaInvoiceItemsTable).where(eq(proformaInvoiceItemsTable.invoiceId, id));
+          for (const item of items) {
+            await tx.insert(proformaInvoiceItemsTable).values({
+              invoiceId: id,
+              productName: item.productName,
+              hsnCode: item.hsnCode || null,
+              bottleType: item.bottleType || null,
+              capacity: item.capacity || null,
+              weight: item.weight || null,
+              quantity: String(item.quantity),
+              unit: item.unit || "Pcs",
+              rate: String(item.rate),
+              discountPercent: String(item.discountPercent || 0),
+              discount: String(item.discount || 0),
+              gstPercent: String(item.gstPercent || 0),
+              amount: String(item.amount),
+            });
+          }
+        }
 
-      let linkedOrder: any = null;
+        const piId = invoice!.id;
+        const piDealId = invoice!.dealId;
 
-      const [byPi] = await db
-        .select()
-        .from(productionOrdersTable)
-        .where(eq(productionOrdersTable.proformaInvoiceId, piId))
-        .limit(1);
-      if (byPi) {
-        linkedOrder = byPi;
-      }
+        let linkedOrder: any = null;
 
-      if (!linkedOrder && piDealId) {
-        const [byDeal] = await db
+        const [byPi] = await tx
           .select()
           .from(productionOrdersTable)
-          .where(eq(productionOrdersTable.dealId, piDealId))
-          .orderBy(desc(productionOrdersTable.createdAt))
+          .where(eq(productionOrdersTable.proformaInvoiceId, piId))
           .limit(1);
-        if (byDeal) {
-          linkedOrder = byDeal;
-          await db
-            .update(productionOrdersTable)
-            .set({ proformaInvoiceId: piId })
-            .where(eq(productionOrdersTable.id, byDeal.id));
+        if (byPi) {
+          linkedOrder = byPi;
         }
-      }
 
-      if (linkedOrder) {
-        const { handlePiModification } = await import("../lib/production-service");
-        const nextVersion = (existing.version || 1) + 1;
-        await handlePiModification(user, linkedOrder.id, nextVersion);
-      }
+        if (!linkedOrder && piDealId) {
+          const [byDeal] = await tx
+            .select()
+            .from(productionOrdersTable)
+            .where(eq(productionOrdersTable.dealId, piDealId))
+            .orderBy(desc(productionOrdersTable.createdAt))
+            .limit(1);
+          if (byDeal) {
+            linkedOrder = byDeal;
+            await tx
+              .update(productionOrdersTable)
+              .set({ proformaInvoiceId: piId })
+              .where(eq(productionOrdersTable.id, byDeal.id));
+          }
+        }
+
+        if (linkedOrder) {
+          const { handlePiModification } = await import("../lib/production-service");
+          const nextVersion = (existing.version || 1) + 1;
+          await handlePiModification(user, linkedOrder.id, nextVersion, tx as unknown as typeof db);
+        }
+      });
     } catch (syncErr) {
       req.log.warn({ err: syncErr }, "Production auto-sync failed for PI update");
     }
