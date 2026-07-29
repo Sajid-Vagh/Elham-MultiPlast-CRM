@@ -77,7 +77,9 @@ export default function Leads() {
 
   const totalCount = useMemo(() => {
     if (!categoryCounts) return 0;
-    return categoryCounts.reduce((sum, c) => sum + c.count, 0);
+    return categoryCounts
+      .filter(c => c.category !== "Existing Client")
+      .reduce((sum, c) => sum + c.count, 0);
   }, [categoryCounts]);
 
   const { data: contacts, isLoading } = useQuery({
