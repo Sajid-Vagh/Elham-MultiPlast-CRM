@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ArrowLeft, Phone, PhoneOff, Search, Eye, Pencil, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -23,6 +24,7 @@ import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { useDateFilter } from "@/lib/use-date-filter";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import ActivityDetailDrawer from "@/components/activity-detail-drawer";
+import CustomerProfileDrawer from "@/components/customer-profile-drawer";
 
 const PAGE_SIZE = 15;
 
@@ -54,6 +56,22 @@ function getStatusBadge(status: string | null | undefined, followUpDate?: string
     if (followUpDate === today) return { label: "Today", className: "bg-orange-100 text-orange-700 border-orange-200" };
   }
   return { label: "Upcoming", className: "bg-blue-100 text-blue-700 border-blue-200" };
+}
+
+function parseNotes(notes: string | null | undefined): string {
+  if (!notes) return "";
+  try {
+    const parsed = JSON.parse(notes);
+    if (Array.isArray(parsed)) {
+      return parsed.map((item: any) => item.text || item.note || item.content || JSON.stringify(item)).filter(Boolean).join("\n");
+    }
+    if (typeof parsed === "object" && parsed !== null) {
+      return parsed.text || parsed.note || parsed.content || notes;
+    }
+    return notes;
+  } catch {
+    return notes;
+  }
 }
 
 const STATUS_OPTIONS = [
@@ -94,6 +112,9 @@ export default function FollowUps() {
   const [sortBy, setSortBy] = useState("date-desc");
   const [page, setPage] = useState(1);
   const [modalActivity, setModalActivity] = useState<FollowUpActivity | null>(null);
+  const [customerDrawerContactId, setCustomerDrawerContactId] = useState<number | null>(null);
+  const [callConfirmActivity, setCallConfirmActivity] = useState<FollowUpActivity | null>(null);
+  const [callConfirmSaving, setCallConfirmSaving] = useState(false);
   const { toast } = useToast();
   const { data: me } = useGetMe();
   const { data: users } = useCustomerFacingUsers();
@@ -185,11 +206,11 @@ export default function FollowUps() {
     );
   };
 
-  const handleToggleStatus = (activityId: number, currentStatus: string | null | undefined) => {
+  const handlePhoneAction = (activityId: number, currentStatus: string | null | undefined) => {
     if (currentStatus === "Pending") {
       const activity = activities?.find(a => a.id === activityId) || null;
       if (activity) {
-        setModalActivity(activity);
+        setCallConfirmActivity(activity);
       }
       return;
     }
@@ -209,8 +230,53 @@ export default function FollowUps() {
     );
   };
 
-  const handleOpenActivityModal = (activity: FollowUpActivity) => {
-    setModalActivity(activity);
+  const handleCallConfirmNo = () => {
+    if (!callConfirmActivity) return;
+    setCallConfirmSaving(true);
+    updateActivity.mutate(
+      { id: callConfirmActivity.id, data: { callStatus: "Completed" } as any },
+      {
+        onSuccess: () => {
+          toast({ title: "Call marked as Completed" });
+          refetch();
+          onActivityChange(queryClient);
+          setCallConfirmActivity(null);
+          setCallConfirmSaving(false);
+        },
+        onError: () => {
+          toast({ title: "Failed to update status", variant: "destructive" });
+          setCallConfirmSaving(false);
+        }
+      }
+    );
+  };
+
+  const handleCallConfirmYes = () => {
+    if (!callConfirmActivity) return;
+    setCallConfirmSaving(true);
+    updateActivity.mutate(
+      { id: callConfirmActivity.id, data: { callStatus: "Completed" } as any },
+      {
+        onSuccess: () => {
+          toast({ title: "Call marked as Completed" });
+          refetch();
+          onActivityChange(queryClient);
+          const activity = callConfirmActivity;
+          setCallConfirmActivity(null);
+          setCallConfirmSaving(false);
+          setModalActivity(activity);
+        },
+        onError: () => {
+          toast({ title: "Failed to update status", variant: "destructive" });
+          setCallConfirmSaving(false);
+        }
+      }
+    );
+  };
+
+  const handleOpenCustomerDrawer = (activity: FollowUpActivity) => {
+    const cId = activity.contact?.id || activity.deal?.contact?.id || activity.contactId || null;
+    if (cId) setCustomerDrawerContactId(cId);
   };
 
   // Filters, search, sort
@@ -466,7 +532,7 @@ export default function FollowUps() {
                       <TableRow
                         key={activity.id}
                         className={`${isTerminal ? "opacity-60" : ""} cursor-pointer hover:bg-muted/50`}
-                        onClick={() => handleOpenActivityModal(activity)}
+                        onClick={() => handleOpenCustomerDrawer(activity)}
                       >
                         <TableCell>
                           <div className="flex flex-col">
@@ -505,13 +571,13 @@ export default function FollowUps() {
                         <TableCell className="hidden xl:table-cell text-sm">{salesPerson}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-0.5 justify-end" onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => handleOpenActivityModal(activity)} title="Activity">
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => handleOpenCustomerDrawer(activity)} title="Customer Profile">
                               <Eye className="h-3.5 w-3.5" />
                             </Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => openEditDialog(activity)} title="Edit Follow-up">
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className={`h-7 w-7 ${activity.callStatus === "Pending" ? "text-orange-600" : "text-muted-foreground"}`} onClick={() => handleToggleStatus(activity.id, activity.callStatus)} title={activity.callStatus === "Pending" ? "Mark as Completed" : "Mark as Pending"}>
+                            <Button variant="ghost" size="icon" className={`h-7 w-7 ${activity.callStatus === "Pending" ? "text-orange-600" : "text-muted-foreground"}`} onClick={() => handlePhoneAction(activity.id, activity.callStatus)} title={activity.callStatus === "Pending" ? "Mark as Completed" : "Mark as Pending"}>
                               {activity.callStatus === "Pending" ? <Phone className="h-3.5 w-3.5" /> : <PhoneOff className="h-3.5 w-3.5" />}
                             </Button>
                           </div>
@@ -564,7 +630,7 @@ export default function FollowUps() {
               <div>
                 <Label className="text-xs text-muted-foreground">Notes History</Label>
                 <div className="text-xs text-muted-foreground whitespace-pre-wrap bg-muted/30 p-2 rounded-md max-h-32 overflow-y-auto mt-1">
-                  {editingActivity.notesDisplay}
+                  {parseNotes(editingActivity.notesDisplay)}
                 </div>
               </div>
             )}
@@ -609,6 +675,27 @@ export default function FollowUps() {
         </DialogContent>
       </Dialog>
 
+      {/* Call Completion Confirmation Dialog */}
+      <AlertDialog open={callConfirmActivity !== null} onOpenChange={(open) => { if (!open) setCallConfirmActivity(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Call Action</AlertDialogTitle>
+            <AlertDialogDescription>
+              Do you want to schedule the next follow-up call?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel disabled={callConfirmSaving}>Cancel</AlertDialogCancel>
+            <Button variant="outline" onClick={handleCallConfirmNo} disabled={callConfirmSaving}>
+              {callConfirmSaving ? "Saving..." : "No"}
+            </Button>
+            <Button onClick={handleCallConfirmYes} disabled={callConfirmSaving}>
+              {callConfirmSaving ? "Saving..." : "Yes"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <ActivityDetailDrawer
         open={modalActivity !== null}
         onOpenChange={(open) => { if (!open) setModalActivity(null); }}
@@ -618,6 +705,12 @@ export default function FollowUps() {
         contactCompany={modalActivity?.contact?.companyName || modalActivity?.deal?.contact?.companyName}
         contactMobile={modalActivity?.contact?.mobile || modalActivity?.deal?.contact?.mobile}
         activity={modalActivity ? { id: modalActivity.id, type: modalActivity.type, notesDisplay: modalActivity.notesDisplay, notes: modalActivity.notes, callStatus: modalActivity.callStatus, followUpType: modalActivity.followUpType } : null}
+      />
+
+      <CustomerProfileDrawer
+        contactId={customerDrawerContactId}
+        open={customerDrawerContactId !== null}
+        onOpenChange={(open) => { if (!open) setCustomerDrawerContactId(null); }}
       />
     </div>
   );
