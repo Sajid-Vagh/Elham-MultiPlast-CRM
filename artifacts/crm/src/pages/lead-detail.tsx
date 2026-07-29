@@ -112,6 +112,7 @@ export default function LeadDetail() {
 
   const [actDealId, setActDealId] = useState("");
   const [activityModalOpen, setActivityModalOpen] = useState(false);
+  const [completingActivity, setCompletingActivity] = useState<any>(null);
 
   const [expandedTimelineEvent, setExpandedTimelineEvent] = useState<number | null>(null);
   const [expandedProdTimeline, setExpandedProdTimeline] = useState<number | null>(null);
@@ -701,10 +702,10 @@ export default function LeadDetail() {
                     <p className="text-xs text-muted-foreground whitespace-pre-wrap bg-muted/30 p-2.5 rounded-md">{upcomingFollowUp.notes}</p>
                   )}
                   <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                    <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => { setActDealId(deal?.id?.toString() || ""); setActivityModalOpen(true); }}>
-                      <CheckCircle className="h-3 w-3 mr-1" /> Activity
+                    <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => { setActDealId(deal?.id?.toString() || ""); setCompletingActivity(upcomingFollowUp); setActivityModalOpen(true); }}>
+                      <CheckCircle className="h-3 w-3 mr-1" /> Mark as Complete
                     </Button>
-                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setActDealId(deal?.id?.toString() || ""); setActivityModalOpen(true); }}>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setActDealId(deal?.id?.toString() || ""); setCompletingActivity(null); setActivityModalOpen(true); }}>
                       <RotateCcw className="h-3 w-3 mr-1" /> Reschedule
                     </Button>
                     <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => window.open(`tel:${contact.mobile}`)}>
@@ -715,7 +716,7 @@ export default function LeadDetail() {
               ) : (
                 <div>
                   <p className="text-xs text-muted-foreground mb-2">No upcoming follow-up scheduled.</p>
-                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setActDealId(deal?.id?.toString() || ""); setActivityModalOpen(true); }}>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setActDealId(deal?.id?.toString() || ""); setCompletingActivity(null); setActivityModalOpen(true); }}>
                     <Calendar className="h-3 w-3 mr-1" /> Schedule Follow-up
                   </Button>
                 </div>
@@ -1519,12 +1520,20 @@ export default function LeadDetail() {
       {/* Activity Modal */}
       <ActivityDetailDrawer
         open={activityModalOpen}
-        onOpenChange={setActivityModalOpen}
+        onOpenChange={(open) => { if (!open) { setActivityModalOpen(false); setCompletingActivity(null); } }}
         contactId={contactId}
         dealId={deal?.id || (actDealId ? Number(actDealId) : null)}
         contactName={contact?.name ?? undefined}
         contactCompany={contact?.companyName ?? undefined}
         contactMobile={contact?.mobile ?? undefined}
+        activity={completingActivity ? {
+          id: completingActivity.id,
+          type: completingActivity.type,
+          notesDisplay: completingActivity.notesDisplay,
+          notes: completingActivity.notes,
+          callStatus: completingActivity.callStatus,
+          followUpType: completingActivity.followUpType,
+        } : null}
       />
 
       <MoveCategoryDialog
