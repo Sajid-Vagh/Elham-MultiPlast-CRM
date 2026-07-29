@@ -173,10 +173,10 @@ export default function DealDetail() {
     return list;
   }, [activities, actFromDate, actToDate]);
 
+  const WON_UNITS = useMemo(() => activeUnits.filter(u => u !== "Not Sure"), [activeUnits]);
+
   if (isLoading) return <div className="p-8">Loading...</div>;
   if (!deal) return <div className="p-8">Deal not found.</div>;
-
-  const WON_UNITS = useMemo(() => activeUnits.filter(u => u !== "Not Sure"), [activeUnits]);
 
   const handleStageSelect = (newStage: string) => {
     if (newStage === deal.stage) return;

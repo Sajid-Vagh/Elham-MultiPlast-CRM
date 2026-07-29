@@ -261,19 +261,6 @@ export default function ProductionOrderDetail() {
     prevMsgCountRef.current = productionMessages.length;
   }, [productionMessages]);
 
-  if (!id || isNaN(Number(id))) {
-    return <div className="p-6 text-center"><p className="text-muted-foreground">Invalid order ID.</p><Button variant="link" onClick={() => setLocation("/production/orders")}>Back to Orders</Button></div>;
-  }
-
-  if (isLoading) return <div className="p-6 space-y-6"><Skeleton className="h-8 w-48" /><Skeleton className="h-40 w-full" /><Skeleton className="h-60 w-full" /></div>;
-
-  if (!order) return <div className="p-6"><Button variant="ghost" onClick={() => setLocation("/production/orders")}><ArrowLeft className="h-4 w-4 mr-2" /> Back</Button><div className="py-12 text-center text-muted-foreground">Order not found</div></div>;
-
-  const isTerminal = order.status === "Completed" || order.status === "Cancelled";
-  const isReadyToDispatch = order.status === "Ready To Dispatch";
-  const ds = order.dispatchStatus;
-  const isOutsourced = order.items?.some((item: any) => item.materialType === "PET");
-
   const mergedItems = useMemo(() => {
     const pli = order?.productLineItems || [];
     const piItems = order?.items || [];
@@ -310,6 +297,19 @@ export default function ProductionOrderDetail() {
       };
     });
   }, [order?.productLineItems, order?.items]);
+
+  if (!id || isNaN(Number(id))) {
+    return <div className="p-6 text-center"><p className="text-muted-foreground">Invalid order ID.</p><Button variant="link" onClick={() => setLocation("/production/orders")}>Back to Orders</Button></div>;
+  }
+
+  if (isLoading) return <div className="p-6 space-y-6"><Skeleton className="h-8 w-48" /><Skeleton className="h-40 w-full" /><Skeleton className="h-60 w-full" /></div>;
+
+  if (!order) return <div className="p-6"><Button variant="ghost" onClick={() => setLocation("/production/orders")}><ArrowLeft className="h-4 w-4 mr-2" /> Back</Button><div className="py-12 text-center text-muted-foreground">Order not found</div></div>;
+
+  const isTerminal = order.status === "Completed" || order.status === "Cancelled";
+  const isReadyToDispatch = order.status === "Ready To Dispatch";
+  const ds = order.dispatchStatus;
+  const isOutsourced = order.items?.some((item: any) => item.materialType === "PET");
 
   const handleLoadVehicle = () => {
     if (!transportName.trim()) { toast({ title: "Transport name is required", variant: "destructive" }); return; }
