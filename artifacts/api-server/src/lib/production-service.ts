@@ -8,7 +8,7 @@ import {
   VALID_DISPATCH_TRANSITIONS, PRODUCT_LINE_STATUSES,
   type ProductionStatus, type NoteType, type ProductLineStatus,
 } from "@workspace/db";
-import { eq, and, desc, sql, gte, lte, or, inArray, type SQL } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte, or, ne, inArray, type SQL } from "drizzle-orm";
 import { getActivePiForDeal } from "./proforma-service";
 import { notifyProductionUsers, notifyDealEvent } from "./notification-service";
 import { createNotification } from "../routes/notifications";
@@ -240,6 +240,80 @@ export async function syncProductionOrderItems(productionOrderId: number, invoic
       productionStatus: "Pending",
     });
   }
+}
+
+export async function resyncProductionOrderItems(
+  productionOrderId: number,
+  invoiceId: number | null
+): Promise<{ added: number; updated: number; deleted: number }> {
+  if (!invoiceId) return { added: 0, updated: 0, deleted: 0 };
+
+  const piItems = await db.select().from(proformaInvoiceItemsTable)
+    .where(eq(proformaInvoiceItemsTable.invoiceId, invoiceId));
+  if (piItems.length === 0) return { added: 0, updated: 0, deleted: 0 };
+
+  const existingItems = await db.select().from(productionOrderItemsTable)
+    .where(eq(productionOrderItemsTable.productionOrderId, productionOrderId));
+
+  const allProducts = await db.select().from(productsTable);
+  const productMap = new Map(allProducts.map(p => [p.name?.toLowerCase(), p]));
+
+  const matchedIds = new Set<number>();
+  let added = 0;
+  let updated = 0;
+
+  for (const piItem of piItems) {
+    const byPiItemId = existingItems.find(e => e.piItemId === piItem.id && !matchedIds.has(e.id));
+    const byName = !byPiItemId ? existingItems.find(e =>
+      e.productName?.toLowerCase() === piItem.productName?.toLowerCase() && !matchedIds.has(e.id)
+    ) : null;
+    const existing = byPiItemId || byName;
+
+    const product = productMap.get(piItem.productName?.toLowerCase());
+
+    if (existing) {
+      matchedIds.add(existing.id);
+      await db.update(productionOrderItemsTable).set({
+        productName: piItem.productName,
+        materialType: product?.materialType || null,
+        machineType: product?.machineType || null,
+        bottleColour: product?.bottleColour || null,
+        bottleWeight: product?.bottleWeight || null,
+        capColour: product?.capColour || null,
+        hsnCode: piItem.hsnCode || null,
+        orderedQuantity: String(piItem.quantity),
+        piItemId: piItem.id,
+        updatedAt: new Date(),
+      }).where(eq(productionOrderItemsTable.id, existing.id));
+      updated++;
+    } else {
+      await db.insert(productionOrderItemsTable).values({
+        productionOrderId,
+        piItemId: piItem.id,
+        productName: piItem.productName,
+        materialType: product?.materialType || null,
+        machineType: product?.machineType || null,
+        bottleColour: product?.bottleColour || null,
+        bottleWeight: product?.bottleWeight || null,
+        capColour: product?.capColour || null,
+        hsnCode: piItem.hsnCode || null,
+        orderedQuantity: String(piItem.quantity),
+        readyQuantity: "0",
+        productionStatus: "Pending",
+      });
+      added++;
+    }
+  }
+
+  let deleted = 0;
+  for (const item of existingItems) {
+    if (!matchedIds.has(item.id) && item.productionStatus === "Pending") {
+      await db.delete(productionOrderItemsTable).where(eq(productionOrderItemsTable.id, item.id));
+      deleted++;
+    }
+  }
+
+  return { added, updated, deleted };
 }
 
 export function computeOverallOrderStatus(items: { productionStatus: string }[]): string {
@@ -1544,17 +1618,21 @@ export async function handlePiModification(
   const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, productionOrderId));
   if (!order) return { error: "Production order not found", status: 404 };
 
-  const preProductionStatuses = ["Pending"];
-  const inProductionStatuses = ["Production On Going", "Packaging"];
+  const preProductionStatuses = ["Pending", "Accepted", "Planning"];
+  const inProductionStatuses = ["In Production", "Packing"];
 
   if (preProductionStatuses.includes(order.status)) {
+    const syncResult = await resyncProductionOrderItems(productionOrderId, order.proformaInvoiceId);
+
     await db.update(productionOrdersTable).set({
       piVersionAtCreation: newPiVersion, updatedAt: new Date(), updatedBy: user.id,
       needsReprint: order.productionSheetVersion > 0,
     }).where(eq(productionOrdersTable.id, productionOrderId));
-    await addTimelineEntry(db, productionOrderId, order.status, `PI updated to Version ${newPiVersion}. Auto-synced.`, user.id);
+
+    const syncMsg = `PI updated to Version ${newPiVersion}. Auto-synced (${syncResult.added} added, ${syncResult.updated} updated, ${syncResult.deleted} removed).`;
+    await addTimelineEntry(db, productionOrderId, order.status, syncMsg, user.id);
     await logProductionActivity(db, {
-      dealId: order.dealId, contactId: null, eventName: `PI Modified — Auto-synced to Version ${newPiVersion}`,
+      dealId: order.dealId, contactId: null, eventName: `PI Modified — Auto-synced (${syncResult.added} added, ${syncResult.updated} updated, ${syncResult.deleted} removed)`,
       orderId: productionOrderId, userName: user.name || "", createdBy: user.id,
     });
     return { action: "auto_synced", order: await enrichProductionOrder(order, user) };
@@ -1583,12 +1661,13 @@ export async function handlePiModification(
     return { action: "approval_required", order: await enrichProductionOrder(order, user) };
   }
 
-  if (order.status === "Completed") {
-    await addTimelineEntry(db, productionOrderId, order.status, `PI modified after production completion. No auto-sync.`, user.id);
-    return { action: "rejected", message: "Production already completed. Suggest creating a new deal." };
+  if (order.status === "Completed" || order.status === "In Transport") {
+    const label = order.status === "Completed" ? "production completion" : "in-transport stage";
+    await addTimelineEntry(db, productionOrderId, order.status, `PI modified after ${label}. No auto-sync.`, user.id);
+    return { action: "rejected", message: `Production already ${label}. Suggest creating a new deal.` };
   }
 
-  if (order.status === "Ready To Dispatch") {
+  if (order.status === "Ready For Dispatch") {
     await db.update(productionOrdersTable).set({
       needsReprint: true,
       updatedAt: new Date(),
@@ -1986,11 +2065,18 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
   if (startDate) conditions.push(gte(productionOrdersTable.createdAt, new Date(startDate)));
   if (endDate) conditions.push(lte(productionOrdersTable.createdAt, new Date(endDate + "T23:59:59")));
 
-  const activeConditions = [...conditions, or(
-    eq(productionOrdersTable.status, "Pending"),
-    eq(productionOrdersTable.status, "Production On Going"),
-    eq(productionOrdersTable.status, "Packaging"),
-    eq(productionOrdersTable.status, "Ready To Dispatch"),
+  const activeConditions = [...conditions, and(
+    ne(productionOrdersTable.status, "Completed"),
+    ne(productionOrdersTable.status, "Cancelled"),
+    or(
+      eq(productionOrdersTable.status, "Pending"),
+      eq(productionOrdersTable.status, "Accepted"),
+      eq(productionOrdersTable.status, "Planning"),
+      eq(productionOrdersTable.status, "In Production"),
+      eq(productionOrdersTable.status, "Packing"),
+      eq(productionOrdersTable.status, "Ready For Dispatch"),
+      eq(productionOrdersTable.status, "In Transport"),
+    )!,
   )!];
 
   const activeOrders = await db.select().from(productionOrdersTable)
@@ -2369,8 +2455,14 @@ export async function getPendingSummary(user: PermissionUser, unitFilter?: strin
     ? (user as any).unit
     : (unitFilter && unitFilter !== "All" && unitFilter !== "all" ? unitFilter : undefined);
 
+  // Restrict to pre-production statuses only
+  const statusFilter = `'Pending', 'Accepted', 'Planning'`;
+  const unitCondition = effectiveUnit && effectiveUnit !== "all"
+    ? sql`AND EXISTS (SELECT 1 FROM production_orders po2 WHERE po2.id = po.id AND po2.production_unit = ${effectiveUnit})`
+    : sql``;
+
   const results = await db.execute(sql`
-    WITH resolved_invoices AS (
+    WITH active_orders AS (
       SELECT
         po.id AS po_id,
         COALESCE(
@@ -2381,22 +2473,26 @@ export async function getPendingSummary(user: PermissionUser, unitFilter?: strin
            ORDER BY pi2.created_at DESC LIMIT 1)
         ) AS resolved_invoice_id
       FROM production_orders po
-      WHERE po.status NOT IN ('Completed', 'Cancelled', 'Ready To Dispatch')
+      WHERE po.status IN (${sql.raw(statusFilter)})
+        ${unitCondition}
     )
     SELECT
-      pii.product_name AS "productName",
-      SUM(pii.quantity::numeric) AS "totalQuantity",
-      COUNT(DISTINCT ri.po_id) AS "orderCount",
-      array_agg(DISTINCT ri.po_id) AS "orderIds"
-    FROM resolved_invoices ri
-    JOIN proforma_invoices pi ON pi.id = ri.resolved_invoice_id
-    JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
-    WHERE ri.resolved_invoice_id IS NOT NULL
-      AND pi.is_deleted = false
-      ${effectiveUnit && effectiveUnit !== "all" ? sql`AND EXISTS (SELECT 1 FROM production_orders po WHERE po.id = ri.po_id AND po.production_unit = ${effectiveUnit})` : sql``}
-    GROUP BY pii.product_name
-    HAVING SUM(pii.quantity::numeric) > 0
-    ORDER BY SUM(pii.quantity::numeric) DESC
+      product_name AS "productName",
+      SUM(quantity::numeric) AS "totalQuantity",
+      COUNT(DISTINCT po_id) AS "orderCount",
+      array_agg(DISTINCT po_id) AS "orderIds"
+    FROM (
+      -- Deduplicate by invoice_item_id so the same items aren't summed twice
+      -- when multiple POs resolve to the same invoice
+      SELECT DISTINCT ON (pii.id) pii.id, pii.product_name AS product_name, pii.quantity, ao.po_id
+      FROM active_orders ao
+      JOIN proforma_invoice_items pii ON pii.invoice_id = ao.resolved_invoice_id
+      WHERE ao.resolved_invoice_id IS NOT NULL
+      ORDER BY pii.id
+    ) deduped
+    GROUP BY product_name
+    HAVING SUM(quantity::numeric) > 0
+    ORDER BY SUM(quantity::numeric) DESC
   `);
 
   const summary = (results.rows || []).map((r: any) => ({

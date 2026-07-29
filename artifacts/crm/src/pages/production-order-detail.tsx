@@ -274,6 +274,43 @@ export default function ProductionOrderDetail() {
   const ds = order.dispatchStatus;
   const isOutsourced = order.items?.some((item: any) => item.materialType === "PET");
 
+  const mergedItems = useMemo(() => {
+    const pli = order?.productLineItems || [];
+    const piItems = order?.items || [];
+    if (pli.length === 0) return [];
+
+    const byId = new Map<number, any>(piItems.map((i: any) => [i.id, i]));
+    const byName = new Map<string, any>(piItems.map((i: any) => [i.productName?.toLowerCase(), i]));
+
+    return pli.map((p: any) => {
+      const matched: any = byId.get(p.piItemId) || byName.get(p.productName?.toLowerCase());
+      const oqty = Number(p.orderedQuantity || 0);
+      const rqty = Number(p.readyQuantity || 0);
+      return {
+        productName: p.productName || matched?.productName,
+        materialType: p.materialType || matched?.materialType,
+        bottleColour: p.bottleColour || matched?.bottleColour,
+        bottleWeight: p.bottleWeight || matched?.bottleWeight,
+        capColour: p.capColour || matched?.capColour,
+        neckSize: p.neckSize,
+        machineType: p.machineType || matched?.machineType,
+        hsnCode: p.hsnCode || matched?.hsnCode,
+        bottleType: matched?.bottleType,
+        capacity: matched?.capacity,
+        productCode: matched?.productCode,
+        rate: matched?.rate,
+        amount: matched?.amount,
+        productionStatus: p.productionStatus || "Pending",
+        orderedQuantity: oqty,
+        readyQuantity: rqty,
+        remainingQuantity: oqty - rqty,
+        progressPercent: oqty > 0 ? Math.round((rqty / oqty) * 100) : 0,
+        pliId: p.id,
+        piItemId: p.piItemId,
+      };
+    });
+  }, [order?.productLineItems, order?.items]);
+
   const handleLoadVehicle = () => {
     if (!transportName.trim()) { toast({ title: "Transport name is required", variant: "destructive" }); return; }
     if (!lrNumber.trim()) { toast({ title: "LR / Builty number is required", variant: "destructive" }); return; }
@@ -632,47 +669,55 @@ export default function ProductionOrderDetail() {
             </CardContent>
           </Card>
 
-          {/* ═══ PRODUCT LINE PRODUCTION STATUS ═══ */}
-          {order.productLineItems && order.productLineItems.length > 0 && (
+          {/* ═══ ORDER ITEMS & PRODUCTION STATUS ═══ */}
+          {mergedItems.length > 0 && (
             <Card className="border-blue-200">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-blue-700">
-                  <Factory className="h-4 w-4" /> Product Line Production Status
+                  <Factory className="h-4 w-4" /> Order Items & Production Status
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {/* Desktop: Table */}
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm min-w-[1000px]">
+                  <table className="w-full text-sm min-w-[1100px]">
                     <thead>
                       <tr className="border-b">
                         <th className="text-left py-2 px-2 font-medium">Product</th>
                         <th className="text-left py-2 px-2 font-medium">Material</th>
-                        <th className="text-left py-2 px-2 font-medium">Bottle Color</th>
-                        <th className="text-right py-2 px-2 font-medium">Bottle Wt</th>
-                        <th className="text-left py-2 px-2 font-medium">Cap Color</th>
+                        <th className="text-left py-2 px-2 font-medium">Color</th>
+                        <th className="text-right py-2 px-2 font-medium">Wt (gm)</th>
+                        <th className="text-left py-2 px-2 font-medium">Cap</th>
+                        <th className="text-left py-2 px-2 font-medium">Neck</th>
                         <th className="text-left py-2 px-2 font-medium">Machine</th>
+                        <th className="text-left py-2 px-2 font-medium">HSN</th>
                         <th className="text-right py-2 px-2 font-medium">Qty</th>
+                        <th className="text-right py-2 px-2 font-medium">Rate</th>
+                        <th className="text-right py-2 px-2 font-medium">Amt</th>
                         <th className="text-right py-2 px-2 font-medium">Ready</th>
-                        <th className="text-right py-2 px-2 font-medium">Remaining</th>
-                        <th className="text-left py-2 px-2 font-medium min-w-[160px]">Progress</th>
+                        <th className="text-right py-2 px-2 font-medium">Rem</th>
+                        <th className="text-left py-2 px-2 font-medium min-w-[140px]">Progress</th>
                         <th className="text-center py-2 px-2 font-medium">Status</th>
                         {isProductionUser && !isTerminal && <th className="text-center py-2 px-2 font-medium">Actions</th>}
                       </tr>
                     </thead>
                     <tbody>
-                      {order.productLineItems.map((item: any) => {
-                        const remaining = item.orderedQuantity - item.readyQuantity;
-                        const pct = item.progressPercent || 0;
+                      {mergedItems.map((item: any) => {
                         const statusColor = item.productionStatus === "Ready"
                           ? "bg-green-100 text-green-700"
                           : item.productionStatus === "In Production"
                           ? "bg-orange-100 text-orange-700"
                           : "bg-gray-100 text-gray-700";
                         return (
-                          <tr key={item.id} className="border-b last:border-0 hover:bg-muted/30">
+                          <tr key={item.pliId} className="border-b last:border-0 hover:bg-muted/30">
                             <td className="py-2 px-2">
                               <div className="font-medium">{item.productName}</div>
+                              {(item.bottleType || item.capacity) && (
+                                <div className="text-xs text-muted-foreground">
+                                  {[item.bottleType, item.capacity].filter(Boolean).join(" · ")}
+                                </div>
+                              )}
+                              {item.productCode && <div className="text-xs text-muted-foreground">Code: {item.productCode}</div>}
                             </td>
                             <td className="py-2 px-2">
                               {item.materialType
@@ -683,16 +728,25 @@ export default function ProductionOrderDetail() {
                             <td className="py-2 px-2">{item.bottleColour || <span className="text-muted-foreground">--</span>}</td>
                             <td className="py-2 px-2 text-right">{item.bottleWeight || <span className="text-muted-foreground">--</span>}</td>
                             <td className="py-2 px-2">{item.capColour || <span className="text-muted-foreground">--</span>}</td>
-                            <td className="py-2 px-2">{item.materialType === "PET" ? <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs">Outsourced</Badge> : (item.machineType || <span className="text-muted-foreground">--</span>)}</td>
+                            <td className="py-2 px-2">{item.neckSize || <span className="text-muted-foreground">--</span>}</td>
+                            <td className="py-2 px-2">
+                              {item.materialType === "PET"
+                                ? <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs">Outsourced</Badge>
+                                : (item.machineType || <span className="text-muted-foreground">--</span>)
+                              }
+                            </td>
+                            <td className="py-2 px-2 text-muted-foreground">{item.hsnCode || "--"}</td>
                             <td className="py-2 px-2 text-right font-medium">{item.orderedQuantity.toLocaleString()}</td>
+                            <td className="py-2 px-2 text-right">{item.rate ? Number(item.rate).toFixed(2) : "--"}</td>
+                            <td className="py-2 px-2 text-right font-medium">{item.amount ? Number(item.amount).toFixed(2) : "--"}</td>
                             <td className="py-2 px-2 text-right font-medium text-green-700">{item.readyQuantity.toLocaleString()}</td>
-                            <td className="py-2 px-2 text-right font-medium">{remaining.toLocaleString()}</td>
+                            <td className="py-2 px-2 text-right font-medium">{item.remainingQuantity.toLocaleString()}</td>
                             <td className="py-2 px-2">
                               <div className="flex items-center gap-2">
                                 <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                  <div className={`h-full rounded-full transition-all duration-300 ${item.productionStatus === "Ready" ? "bg-green-500" : item.productionStatus === "In Production" ? "bg-orange-500" : "bg-gray-400"}`} style={{ width: `${pct}%` }} />
+                                  <div className={`h-full rounded-full transition-all duration-300 ${item.productionStatus === "Ready" ? "bg-green-500" : item.productionStatus === "In Production" ? "bg-orange-500" : "bg-gray-400"}`} style={{ width: `${item.progressPercent}%` }} />
                                 </div>
-                                <span className="text-xs text-muted-foreground w-10 text-right">{pct}%</span>
+                                <span className="text-xs text-muted-foreground w-10 text-right">{item.progressPercent}%</span>
                               </div>
                             </td>
                             <td className="py-2 px-2 text-center">
@@ -704,7 +758,7 @@ export default function ProductionOrderDetail() {
                                   {item.productionStatus === "Pending" && (
                                     <Button size="sm" variant="outline" className="h-6 text-xs bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-200"
                                       disabled={updateProductLineStatus.isPending}
-                                      onClick={() => updateProductLineStatus.mutate({ itemId: item.id, productionStatus: "In Production" })}>
+                                      onClick={() => updateProductLineStatus.mutate({ itemId: item.pliId, productionStatus: "In Production" })}>
                                       In Production
                                     </Button>
                                   )}
@@ -712,7 +766,7 @@ export default function ProductionOrderDetail() {
                                     <Button size="sm" variant="outline" className="h-6 text-xs bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
                                       disabled={updateProductLineStatus.isPending}
                                       onClick={() => {
-                                        setReadyQtyItemId(item.id);
+                                        setReadyQtyItemId(item.pliId);
                                         setReadyQtyProductName(item.productName);
                                         setReadyQtyOrdered(item.orderedQuantity);
                                         setReadyQtyInput(String(item.readyQuantity || 0));
@@ -735,37 +789,46 @@ export default function ProductionOrderDetail() {
                 </div>
                 {/* Mobile: Card layout */}
                 <div className="md:hidden space-y-3 mt-3">
-                  {order.productLineItems.map((item: any) => {
-                    const remaining = item.orderedQuantity - item.readyQuantity;
-                    const pct = item.progressPercent || 0;
+                  {mergedItems.map((item: any) => {
                     const statusColor = item.productionStatus === "Ready"
                       ? "bg-green-100 text-green-700"
                       : item.productionStatus === "In Production"
                       ? "bg-orange-100 text-orange-700"
                       : "bg-gray-100 text-gray-700";
                     return (
-                      <div key={item.id} className="border rounded-lg p-3 space-y-2 text-sm">
+                      <div key={item.pliId} className="border rounded-lg p-3 space-y-2 text-sm">
                         <div className="flex items-center justify-between">
                           <div className="font-medium">{item.productName}</div>
                           <Badge className={`text-xs ${statusColor}`} variant="outline">{item.productionStatus}</Badge>
                         </div>
+                        {(item.bottleType || item.capacity) && (
+                          <div className="text-xs text-muted-foreground">{[item.bottleType, item.capacity].filter(Boolean).join(" · ")}</div>
+                        )}
                         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                           <div><span className="text-muted-foreground">Material:</span> {item.materialType || "--"}</div>
                           <div><span className="text-muted-foreground">Machine:</span> {item.materialType === "PET" ? "Outsourced" : (item.machineType || "--")}</div>
-                          <div><span className="text-muted-foreground">Bottle Color:</span> {item.bottleColour || "--"}</div>
-                          <div><span className="text-muted-foreground">Cap Color:</span> {item.capColour || "--"}</div>
+                          <div><span className="text-muted-foreground">Color:</span> {item.bottleColour || "--"}</div>
+                          <div><span className="text-muted-foreground">Cap:</span> {item.capColour || "--"}</div>
+                          <div><span className="text-muted-foreground">Wt:</span> {item.bottleWeight ? `${item.bottleWeight} gm` : "--"}</div>
+                          <div><span className="text-muted-foreground">HSN:</span> {item.hsnCode || "--"}</div>
                         </div>
+                        {item.rate || item.amount ? (
+                          <div className="flex justify-between text-xs border-t pt-1">
+                            <span>{item.rate ? `Rate: ₹${Number(item.rate).toFixed(2)}` : ""}</span>
+                            <span>{item.amount ? <b>Amt: ₹${Number(item.amount).toFixed(2)}</b> : ""}</span>
+                          </div>
+                        ) : null}
                         <div className="space-y-1">
                           <div className="flex justify-between text-xs">
                             <span>Qty: <b>{item.orderedQuantity.toLocaleString()}</b></span>
                             <span className="text-green-700">Ready: <b>{item.readyQuantity.toLocaleString()}</b></span>
-                            <span>Remaining: <b>{remaining.toLocaleString()}</b></span>
+                            <span>Rem: <b>{item.remainingQuantity.toLocaleString()}</b></span>
                           </div>
                           <div className="flex items-center gap-2">
                             <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                              <div className={`h-full rounded-full transition-all duration-300 ${item.productionStatus === "Ready" ? "bg-green-500" : item.productionStatus === "In Production" ? "bg-orange-500" : "bg-gray-400"}`} style={{ width: `${pct}%` }} />
+                              <div className={`h-full rounded-full transition-all duration-300 ${item.productionStatus === "Ready" ? "bg-green-500" : item.productionStatus === "In Production" ? "bg-orange-500" : "bg-gray-400"}`} style={{ width: `${item.progressPercent}%` }} />
                             </div>
-                            <span className="text-xs text-muted-foreground">{pct}%</span>
+                            <span className="text-xs text-muted-foreground">{item.progressPercent}%</span>
                           </div>
                         </div>
                         {isProductionUser && !isTerminal && (
@@ -773,7 +836,7 @@ export default function ProductionOrderDetail() {
                             {item.productionStatus === "Pending" && (
                               <Button size="sm" variant="outline" className="flex-1 h-7 text-xs bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-200"
                                 disabled={updateProductLineStatus.isPending}
-                                onClick={() => updateProductLineStatus.mutate({ itemId: item.id, productionStatus: "In Production" })}>
+                                onClick={() => updateProductLineStatus.mutate({ itemId: item.pliId, productionStatus: "In Production" })}>
                                 Start
                               </Button>
                             )}
@@ -781,7 +844,7 @@ export default function ProductionOrderDetail() {
                               <Button size="sm" variant="outline" className="flex-1 h-7 text-xs bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
                                 disabled={updateProductLineStatus.isPending}
                                 onClick={() => {
-                                  setReadyQtyItemId(item.id);
+                                  setReadyQtyItemId(item.pliId);
                                   setReadyQtyProductName(item.productName);
                                   setReadyQtyOrdered(item.orderedQuantity);
                                   setReadyQtyInput(String(item.readyQuantity || 0));
@@ -795,98 +858,6 @@ export default function ProductionOrderDetail() {
                       </div>
                     );
                   })}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Product Details */}
-          {order.items && order.items.length > 0 && (
-            <Card>
-              <CardHeader><CardTitle>Product Details</CardTitle></CardHeader>
-              <CardContent>
-                {/* Desktop / Tablet: Table with horizontal scroll */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm min-w-[900px]">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-2 px-2 font-medium">Product</th>
-                        <th className="text-left py-2 px-2 font-medium">Material</th>
-                        <th className="text-left py-2 px-2 font-medium">Bottle Color</th>
-                        <th className="text-right py-2 px-2 font-medium">Bottle Wt (gm)</th>
-                        <th className="text-left py-2 px-2 font-medium">Cap Color</th>
-                        <th className="text-right py-2 px-2 font-medium">Cap Wt (gm)</th>
-                        <th className="text-left py-2 px-2 font-medium">Neck Size</th>
-                        <th className="text-left py-2 px-2 font-medium">Machine</th>
-                        <th className="text-left py-2 px-2 font-medium">HSN</th>
-                        <th className="text-right py-2 px-2 font-medium">Qty</th>
-                        <th className="text-right py-2 px-2 font-medium">Rate</th>
-                        <th className="text-right py-2 px-2 font-medium">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {order.items.map((item: any, idx: number) => (
-                        <tr key={idx} className="border-b last:border-0 hover:bg-muted/30">
-                          <td className="py-2 px-2">
-                            <div className="font-medium">{item.productName}</div>
-                            {(item.bottleType || item.capacity) && (
-                              <div className="text-xs text-muted-foreground">
-                                {[item.bottleType, item.capacity].filter(Boolean).join(" · ")}
-                              </div>
-                            )}
-                            {item.productCode && <div className="text-xs text-muted-foreground">Code: {item.productCode}</div>}
-                          </td>
-                          <td className="py-2 px-2">
-                            {item.materialType
-                              ? <Badge variant="outline" className={`text-xs ${item.materialType === "PET" ? "bg-amber-50 text-amber-700 border-amber-200" : item.materialType === "PP" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-slate-50 text-slate-700 border-slate-200"}`}>{item.materialType}</Badge>
-                              : <span className="text-muted-foreground">--</span>
-                            }
-                          </td>
-                          <td className="py-2 px-2">{item.bottleColour || <span className="text-muted-foreground">--</span>}</td>
-                          <td className="py-2 px-2 text-right">{item.bottleWeight || <span className="text-muted-foreground">--</span>}</td>
-                          <td className="py-2 px-2">{item.capColour || <span className="text-muted-foreground">--</span>}</td>
-                          <td className="py-2 px-2 text-right"><span className="text-muted-foreground">--</span></td>
-                          <td className="py-2 px-2"><span className="text-muted-foreground">--</span></td>
-                          <td className="py-2 px-2">
-                            {item.materialType === "PET"
-                              ? <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs">Outsourced</Badge>
-                              : <span className="text-sm">{item.machineType || <span className="text-muted-foreground">--</span>}</span>
-                            }
-                          </td>
-                          <td className="py-2 px-2 text-muted-foreground">{item.hsnCode || "--"}</td>
-                          <td className="py-2 px-2 text-right font-medium">{Number(item.quantity).toFixed(2)}</td>
-                          <td className="py-2 px-2 text-right">{Number(item.rate).toFixed(2)}</td>
-                          <td className="py-2 px-2 text-right font-medium">{Number(item.amount).toFixed(2)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {/* Mobile: Card layout */}
-                <div className="md:hidden space-y-3 mt-3">
-                  {order.items.map((item: any, idx: number) => (
-                    <div key={idx} className="border rounded-lg p-3 space-y-2 text-sm">
-                      <div className="font-medium">{item.productName}</div>
-                      {(item.bottleType || item.capacity) && (
-                        <div className="text-xs text-muted-foreground">{[item.bottleType, item.capacity].filter(Boolean).join(" · ")}</div>
-                      )}
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                        <div><span className="text-muted-foreground">Material:</span> {item.materialType || "--"}</div>
-                        <div><span className="text-muted-foreground">Bottle Color:</span> {item.bottleColour || "--"}</div>
-                        <div><span className="text-muted-foreground">Bottle Wt:</span> {item.bottleWeight ? `${item.bottleWeight} gm` : "--"}</div>
-                        <div><span className="text-muted-foreground">Cap Color:</span> {item.capColour || "--"}</div>
-                        <div><span className="text-muted-foreground">Cap Wt:</span> --</div>
-                        <div><span className="text-muted-foreground">Neck Size:</span> --</div>
-                        <div><span className="text-muted-foreground">Machine:</span> {item.materialType === "PET" ? "Outsourced" : (item.machineType || "--")}</div>
-                        <div><span className="text-muted-foreground">HSN:</span> {item.hsnCode || "--"}</div>
-                      </div>
-                      <div className="flex justify-between text-xs border-t pt-1">
-                        <span>Qty: <b>{Number(item.quantity).toFixed(2)}</b></span>
-                        <span>Rate: {Number(item.rate).toFixed(2)}</span>
-                        <span>Amount: <b>{Number(item.amount).toFixed(2)}</b></span>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </CardContent>
             </Card>
