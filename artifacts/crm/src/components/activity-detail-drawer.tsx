@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useUpdateActivity } from "@workspace/api-client-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -15,6 +15,7 @@ import { STAGE_BADGE_COLORS } from "@/lib/deal-stages";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { X, Pencil, Phone, PhoneOff, Calendar, MessageSquare, ExternalLink, Clock, CheckCircle2 } from "lucide-react";
 import { Link } from "wouter";
+import { ScheduleFollowUpDialog } from "@/components/schedule-follow-up-dialog";
 
 const ACT_STYLE: Record<string, { bg: string; fg: string; icon: string }> = {
   "Call":     { bg: "#dcfce7", fg: "#15803d", icon: "📞" },
@@ -91,6 +92,35 @@ export default function ActivityDetailDrawer({ activity, open, onClose, onEdit }
     staleTime: 30_000,
   });
 
+  const { data: contactActivities } = useQuery({
+    queryKey: ["contact-activities-summary", contactId],
+    queryFn: async () => {
+      if (!contactId) return [];
+      const token = localStorage.getItem("crm_token");
+      const res = await fetch(`/api/activities?contactId=${contactId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!contactId && open,
+    staleTime: 30_000,
+  });
+
+  const lastCallActivity = useMemo(() => {
+    if (!contactActivities) return null;
+    return (contactActivities as any[]).find(
+      (a: any) => a.callStatus === "Completed" && a.notesDisplay
+    );
+  }, [contactActivities]);
+
+  const nextFollowUpActivity = useMemo(() => {
+    if (!contactActivities) return null;
+    return (contactActivities as any[]).find(
+      (a: any) => a.callStatus === "Pending" && a.type === "FollowUp" && a.notesDisplay
+    );
+  }, [contactActivities]);
+
   const updateActivity = useUpdateActivity();
 
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
@@ -103,7 +133,14 @@ export default function ActivityDetailDrawer({ activity, open, onClose, onEdit }
   const [editTime, setEditTime] = useState("");
   const [editStatus, setEditStatus] = useState("Pending");
 
-  const handleMarkComplete = () => {
+  const [confirmCompleteOpen, setConfirmCompleteOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+
+  const handleMarkCompleteClick = () => {
+    setConfirmCompleteOpen(true);
+  };
+
+  const handleJustComplete = () => {
     if (!activity) return;
     updateActivity.mutate(
       { id: activity.id, data: { callStatus: "Completed" } as any },
@@ -111,7 +148,24 @@ export default function ActivityDetailDrawer({ activity, open, onClose, onEdit }
         onSuccess: () => {
           toast({ title: "Activity marked as completed" });
           onActivityChange(queryClient);
+          setConfirmCompleteOpen(false);
           onClose();
+        },
+        onError: () => toast({ title: "Failed to update", variant: "destructive" }),
+      },
+    );
+  };
+
+  const handleCompleteAndSchedule = () => {
+    if (!activity) return;
+    updateActivity.mutate(
+      { id: activity.id, data: { callStatus: "Completed" } as any },
+      {
+        onSuccess: () => {
+          toast({ title: "Activity marked as completed" });
+          onActivityChange(queryClient);
+          setConfirmCompleteOpen(false);
+          setScheduleOpen(true);
         },
         onError: () => toast({ title: "Failed to update", variant: "destructive" }),
       },
@@ -231,7 +285,7 @@ export default function ActivityDetailDrawer({ activity, open, onClose, onEdit }
                   </Button>
                 )}
                 {!isCompleted && (
-                  <Button size="sm" variant="outline" className="text-green-700 border-green-300 hover:bg-green-50" onClick={handleMarkComplete} disabled={updateActivity.isPending}>
+                  <Button size="sm" variant="outline" className="text-green-700 border-green-300 hover:bg-green-50" onClick={handleMarkCompleteClick} disabled={updateActivity.isPending}>
                     <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Mark Complete
                   </Button>
                 )}
@@ -317,6 +371,41 @@ export default function ActivityDetailDrawer({ activity, open, onClose, onEdit }
                 </div>
               </div>
 
+              {/* Call Notes Summary */}
+              {(lastCallActivity?.notesDisplay || nextFollowUpActivity?.notesDisplay) && (
+                <div>
+                  <h3 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wider">Call Notes Summary</h3>
+                  <div className="space-y-2">
+                    {lastCallActivity?.notesDisplay && (
+                      <div className="text-sm bg-muted/30 p-3 rounded-lg">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-semibold text-muted-foreground">Last Call Notes</span>
+                          {lastCallActivity.followUpDate && (
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(lastCallActivity.followUpDate + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs whitespace-pre-wrap max-h-20 overflow-y-auto">{lastCallActivity.notesDisplay}</p>
+                      </div>
+                    )}
+                    {nextFollowUpActivity?.notesDisplay && (
+                      <div className="text-sm bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-semibold text-blue-700">Next Follow-up Notes</span>
+                          {nextFollowUpActivity.followUpDate && (
+                            <span className="text-xs text-blue-600">
+                              {new Date(nextFollowUpActivity.followUpDate + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs whitespace-pre-wrap max-h-20 overflow-y-auto text-blue-900">{nextFollowUpActivity.notesDisplay}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Recent Timeline */}
               {timeline && timeline.length > 0 && (
                 <div>
@@ -391,6 +480,36 @@ export default function ActivityDetailDrawer({ activity, open, onClose, onEdit }
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Mark Complete Confirmation Dialog */}
+      <Dialog open={confirmCompleteOpen} onOpenChange={setConfirmCompleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mark as Complete?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">
+            Do you want to schedule the next follow-up?
+          </p>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={handleJustComplete} disabled={updateActivity.isPending}>
+              No, Just Complete
+            </Button>
+            <Button onClick={handleCompleteAndSchedule} disabled={updateActivity.isPending}>
+              Yes, Schedule Next
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Schedule Next Follow-up */}
+      {contactId && (
+        <ScheduleFollowUpDialog
+          open={scheduleOpen}
+          onOpenChange={setScheduleOpen}
+          contactId={contactId}
+          dealId={activity?.dealId}
+        />
+      )}
     </>
   );
 }
