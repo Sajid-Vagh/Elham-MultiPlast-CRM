@@ -2476,44 +2476,29 @@ export async function getPendingSummary(user: PermissionUser, unitFilter?: strin
     ? (user as any).unit
     : (unitFilter && unitFilter !== "All" && unitFilter !== "all" ? unitFilter : undefined);
 
-  // Restrict to pre-production statuses only
-  const statusFilter = `'Pending', 'Accepted', 'Planning'`;
   const unitCondition = effectiveUnit && effectiveUnit !== "all"
-    ? sql`AND EXISTS (SELECT 1 FROM production_orders po2 WHERE po2.id = po.id AND po2.production_unit = ${effectiveUnit})`
+    ? sql`AND po.production_unit = ${effectiveUnit}`
     : sql``;
 
+  // Read from production_order_items (synced via resyncProductionOrderItems on PI update)
+  // instead of proforma_invoice_items, to avoid Cartesian products and cross-version double-counting.
+  // Only count items from pre-production orders (Pending/Accepted/Planning).
+  // Exclude soft-deleted invoices via LEFT JOIN on proforma_invoices.is_deleted.
   const results = await db.execute(sql`
-    WITH active_orders AS (
-      SELECT
-        po.id AS po_id,
-        COALESCE(
-          po.proforma_invoice_id,
-          (SELECT pi2.id FROM proforma_invoices pi2
-           JOIN deals d ON d.contact_id = pi2.contact_id
-           WHERE d.id = po.deal_id AND pi2.is_deleted = false
-           ORDER BY pi2.created_at DESC LIMIT 1)
-        ) AS resolved_invoice_id
-      FROM production_orders po
-      WHERE po.status IN (${sql.raw(statusFilter)})
-        ${unitCondition}
-    )
     SELECT
-      product_name AS "productName",
-      SUM(quantity::numeric) AS "totalQuantity",
-      COUNT(DISTINCT po_id) AS "orderCount",
-      array_agg(DISTINCT po_id) AS "orderIds"
-    FROM (
-      -- Deduplicate by invoice_item_id so the same items aren't summed twice
-      -- when multiple POs resolve to the same invoice
-      SELECT DISTINCT ON (pii.id) pii.id, pii.product_name AS product_name, pii.quantity, ao.po_id
-      FROM active_orders ao
-      JOIN proforma_invoice_items pii ON pii.invoice_id = ao.resolved_invoice_id
-      WHERE ao.resolved_invoice_id IS NOT NULL
-      ORDER BY pii.id
-    ) deduped
-    GROUP BY product_name
-    HAVING SUM(quantity::numeric) > 0
-    ORDER BY SUM(quantity::numeric) DESC
+      oi.product_name AS "productName",
+      SUM(oi.ordered_quantity::numeric) AS "totalQuantity",
+      COUNT(DISTINCT oi.production_order_id) AS "orderCount",
+      array_agg(DISTINCT oi.production_order_id) AS "orderIds"
+    FROM production_order_items oi
+    JOIN production_orders po ON po.id = oi.production_order_id
+    LEFT JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
+    WHERE po.status IN ('Pending', 'Accepted', 'Planning')
+      AND (pi.id IS NULL OR pi.is_deleted = false)
+      ${unitCondition}
+    GROUP BY oi.product_name
+    HAVING SUM(oi.ordered_quantity::numeric) > 0
+    ORDER BY SUM(oi.ordered_quantity::numeric) DESC
   `);
 
   const summary = (results.rows || []).map((r: any) => ({
