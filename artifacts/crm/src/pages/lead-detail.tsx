@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import {
-  useGetContact, useListDeals, useListActivities, useCreateDeal, useCreateActivity,
+  useGetContact, useListDeals, useListActivities, useCreateDeal,
   useUpdateContact, useDeleteContact, useListUsers, useListContactProformaInvoices, getListContactProformaInvoicesQueryKey,
   getGetContactQueryKey, useGetMe, useUpdateDeal
 } from "@workspace/api-client-react";
@@ -27,7 +27,7 @@ import { DocumentManager } from "@/components/document-manager";
 import { DocumentUploadDialog } from "@/components/document-upload-dialog";
 import { VoiceNoteSection } from "@/components/voice-note-player";
 import { VoiceNoteUploader } from "@/components/voice-note-uploader";
-import { ScheduleFollowUpDialog } from "@/components/schedule-follow-up-dialog";
+import ActivityDetailDrawer from "@/components/activity-detail-drawer";
 import { PiSentDialog } from "@/components/pi-sent-dialog";
 import { STAGE_BADGE_COLORS } from "@/lib/deal-stages";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
@@ -90,7 +90,6 @@ export default function LeadDetail() {
   const { data: contactProformas } = useListContactProformaInvoices(contactId, { query: { enabled: !!contactId, queryKey: getListContactProformaInvoicesQueryKey(contactId) } });
 
   const createDeal = useCreateDeal();
-  const createActivity = useCreateActivity();
   const deleteContact = useDeleteContact();
   const updateContact = useUpdateContact();
   const updateDeal = useUpdateDeal();
@@ -111,13 +110,8 @@ export default function LeadDetail() {
   const [editTitleValue, setEditTitleValue] = useState("");
   const [editTitleOpen, setEditTitleOpen] = useState(false);
 
-  const [actType, setActType] = useState("Call");
-  const [actNotes, setActNotes] = useState("");
-  const [actFollowUp, setActFollowUp] = useState("");
-  const [actFollowUpTime, setActFollowUpTime] = useState("");
-  const [actFollowType, setActFollowType] = useState("Call");
   const [actDealId, setActDealId] = useState("");
-  const [actDialogOpen, setActDialogOpen] = useState(false);
+  const [activityModalOpen, setActivityModalOpen] = useState(false);
 
   const [expandedTimelineEvent, setExpandedTimelineEvent] = useState<number | null>(null);
   const [expandedProdTimeline, setExpandedProdTimeline] = useState<number | null>(null);
@@ -313,8 +307,7 @@ export default function LeadDetail() {
   const [lostOpen, setLostOpen] = useState(false);
   const [lostSubmitting, setLostSubmitting] = useState(false);
 
-  // Schedule follow-up dialog
-  const [schedFuOpen, setSchedFuOpen] = useState(false);
+  // Activity modal
 
   // Activity date filter
   const [actQuick, setActQuick] = useState("all");
@@ -490,21 +483,6 @@ export default function LeadDetail() {
     );
   };
 
-  const handleCreateActivity = () => {
-    if (!actDealId) { toast({ title: "Select a deal", variant: "destructive" }); return; }
-    const payload = { dealId: Number(actDealId), contactId, type: actType as any, notes: actNotes || null, followUpDate: actFollowUp || null, followUpTime: actFollowUpTime || null };
-    createActivity.mutate({ data: payload }, {
-      onSuccess: () => {
-        onActivityChange(queryClient, Number(actDealId), contactId);
-        toast({ title: "Activity logged" });
-        setActDialogOpen(false); setActNotes(""); setActFollowUp(""); setActFollowUpTime("");
-      },
-      onError: () => {
-        toast({ title: "Error logging activity", variant: "destructive" });
-      },
-    });
-  };
-
   const handleDelete = () => {
     deleteContact.mutate({ id: contactId }, {
       onSuccess: () => {
@@ -529,17 +507,6 @@ export default function LeadDetail() {
         setEditReason("");
       },
       onError: () => toast({ title: "Error updating", variant: "destructive" }),
-    });
-  };
-
-  const handleCompleteFollowUp = (activityId: number) => {
-    fetch(`/api/activities/${activityId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
-      body: JSON.stringify({ callStatus: "Completed" }),
-    }).then(() => {
-      onActivityChange(queryClient, undefined, contactId);
-      toast({ title: "Follow-up completed" });
     });
   };
 
@@ -734,10 +701,10 @@ export default function LeadDetail() {
                     <p className="text-xs text-muted-foreground whitespace-pre-wrap bg-muted/30 p-2.5 rounded-md">{upcomingFollowUp.notes}</p>
                   )}
                   <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                    <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => handleCompleteFollowUp(upcomingFollowUp.id)}>
-                      <CheckCircle className="h-3 w-3 mr-1" /> Mark Completed
+                    <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => { setActDealId(deal?.id?.toString() || ""); setActivityModalOpen(true); }}>
+                      <CheckCircle className="h-3 w-3 mr-1" /> Activity
                     </Button>
-                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setActDealId(deal?.id?.toString() || ""); setSchedFuOpen(true); }}>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setActDealId(deal?.id?.toString() || ""); setActivityModalOpen(true); }}>
                       <RotateCcw className="h-3 w-3 mr-1" /> Reschedule
                     </Button>
                     <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => window.open(`tel:${contact.mobile}`)}>
@@ -748,7 +715,7 @@ export default function LeadDetail() {
               ) : (
                 <div>
                   <p className="text-xs text-muted-foreground mb-2">No upcoming follow-up scheduled.</p>
-                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setActDealId(deal?.id?.toString() || ""); setSchedFuOpen(true); }}>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setActDealId(deal?.id?.toString() || ""); setActivityModalOpen(true); }}>
                     <Calendar className="h-3 w-3 mr-1" /> Schedule Follow-up
                   </Button>
                 </div>
@@ -866,7 +833,7 @@ export default function LeadDetail() {
                 <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setCommentDialogOpen(true)}>
                   <MessageSquare className="h-3.5 w-3.5 shrink-0" /> Edit Comments
                 </Button>
-                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => { setActDealId(deal?.id?.toString() || ""); setSchedFuOpen(true); }}>
+                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => { setActDealId(deal?.id?.toString() || ""); setActivityModalOpen(true); }}>
                   <Calendar className="h-3.5 w-3.5 shrink-0" /> Schedule Follow-up
                 </Button>
                 {contact.category !== "My Client" && !contact.isMyClient && (
@@ -929,32 +896,9 @@ export default function LeadDetail() {
                   <ListOrdered className="h-3.5 w-3.5" /> Activity Timeline
                   <Badge variant="outline" className="text-[10px] font-normal ml-1">{mergedTimeline.length}</Badge>
                 </CardTitle>
-                <Dialog open={actDialogOpen} onOpenChange={setActDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" /> Log Activity</Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader><DialogTitle>Log Activity</DialogTitle></DialogHeader>
-                    <div className="space-y-4 pt-2">
-                      <div><Label>Deal</Label>
-                        <Select value={actDealId} onValueChange={setActDealId}>
-                          <SelectTrigger><SelectValue placeholder="Select deal" /></SelectTrigger>
-                          <SelectContent>{deals?.map(d => <SelectItem key={d.id} value={d.id.toString()}>{d.title || `Deal #${d.id}`}</SelectItem>)}</SelectContent>
-                        </Select>
-                      </div>
-                      <div><Label>Type</Label>
-                        <Select value={actType} onValueChange={setActType}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>{["WhatsApp","Call","Email"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                        </Select>
-                      </div>
-                      <div><Label>Notes</Label><Textarea value={actNotes} onChange={e => setActNotes(e.target.value)} placeholder="Discussion notes..." /></div>
-                      <div><Label>Follow-up Date</Label><Input type="date" value={actFollowUp} onChange={e => setActFollowUp(e.target.value)} /></div>
-                      {actFollowUp && <div><Label>Follow-up Time</Label><Input type="time" value={actFollowUpTime} onChange={e => setActFollowUpTime(e.target.value)} /></div>}
-                      <Button onClick={handleCreateActivity} disabled={createActivity.isPending} className="w-full">Log</Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
+                <Button size="sm" variant="outline" onClick={() => { setActDealId(deal?.id?.toString() || ""); setActivityModalOpen(true); }}>
+                  <Plus className="h-4 w-4 mr-1" /> Activity
+                </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -1572,12 +1516,15 @@ export default function LeadDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* Schedule Follow-up Dialog */}
-      <ScheduleFollowUpDialog
-        open={schedFuOpen}
-        onOpenChange={setSchedFuOpen}
+      {/* Activity Modal */}
+      <ActivityDetailDrawer
+        open={activityModalOpen}
+        onOpenChange={setActivityModalOpen}
         contactId={contactId}
         dealId={deal?.id || (actDealId ? Number(actDealId) : null)}
+        contactName={contact?.name ?? undefined}
+        contactCompany={contact?.companyName ?? undefined}
+        contactMobile={contact?.mobile ?? undefined}
       />
 
       <MoveCategoryDialog

@@ -22,7 +22,6 @@ import { useUnitFilter } from "@/lib/use-unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { useDateFilter } from "@/lib/use-date-filter";
 import { DateRangeFilter } from "@/components/date-range-filter";
-import { ScheduleFollowUpDialog } from "@/components/schedule-follow-up-dialog";
 import ActivityDetailDrawer from "@/components/activity-detail-drawer";
 
 const PAGE_SIZE = 15;
@@ -94,12 +93,7 @@ export default function FollowUps() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [sortBy, setSortBy] = useState("date-desc");
   const [page, setPage] = useState(1);
-  const [drawerActivity, setDrawerActivity] = useState<FollowUpActivity | null>(null);
-  const [completeConfirmOpen, setCompleteConfirmOpen] = useState(false);
-  const [completingActivity, setCompletingActivity] = useState<FollowUpActivity | null>(null);
-  const [schedFuOpen, setSchedFuOpen] = useState(false);
-  const [schedContactId, setSchedContactId] = useState(0);
-  const [schedDealId, setSchedDealId] = useState<number | null>(null);
+  const [modalActivity, setModalActivity] = useState<FollowUpActivity | null>(null);
   const { toast } = useToast();
   const { data: me } = useGetMe();
   const { data: users } = useCustomerFacingUsers();
@@ -195,8 +189,7 @@ export default function FollowUps() {
     if (currentStatus === "Pending") {
       const activity = activities?.find(a => a.id === activityId) || null;
       if (activity) {
-        setCompletingActivity(activity);
-        setCompleteConfirmOpen(true);
+        setModalActivity(activity);
       }
       return;
     }
@@ -216,47 +209,8 @@ export default function FollowUps() {
     );
   };
 
-  const handleCompleteOnly = () => {
-    if (!completingActivity) return;
-    updateActivity.mutate(
-      { id: completingActivity.id, data: { callStatus: "Completed" } as any },
-      {
-        onSuccess: () => {
-          toast({ title: "Follow-up marked as Completed" });
-          refetch();
-          onActivityChange(queryClient);
-          setCompleteConfirmOpen(false);
-          setCompletingActivity(null);
-        },
-        onError: () => {
-          toast({ title: "Failed to update status", variant: "destructive" });
-        }
-      }
-    );
-  };
-
-  const handleCompleteAndSchedule = () => {
-    if (!completingActivity) return;
-    const actContactId = completingActivity.contactId || completingActivity.deal?.contactId || completingActivity.contact?.id || 0;
-    const actDealId = completingActivity.dealId;
-    updateActivity.mutate(
-      { id: completingActivity.id, data: { callStatus: "Completed" } as any },
-      {
-        onSuccess: () => {
-          toast({ title: "Follow-up marked as Completed" });
-          refetch();
-          onActivityChange(queryClient);
-          setCompleteConfirmOpen(false);
-          setCompletingActivity(null);
-          setSchedContactId(actContactId);
-          setSchedDealId(actDealId);
-          setSchedFuOpen(true);
-        },
-        onError: () => {
-          toast({ title: "Failed to update status", variant: "destructive" });
-        }
-      }
-    );
+  const handleOpenActivityModal = (activity: FollowUpActivity) => {
+    setModalActivity(activity);
   };
 
   // Filters, search, sort
@@ -512,7 +466,7 @@ export default function FollowUps() {
                       <TableRow
                         key={activity.id}
                         className={`${isTerminal ? "opacity-60" : ""} cursor-pointer hover:bg-muted/50`}
-                        onClick={() => setDrawerActivity(activity)}
+                        onClick={() => handleOpenActivityModal(activity)}
                       >
                         <TableCell>
                           <div className="flex flex-col">
@@ -551,7 +505,7 @@ export default function FollowUps() {
                         <TableCell className="hidden xl:table-cell text-sm">{salesPerson}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-0.5 justify-end" onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setDrawerActivity(activity)} title="Preview Activity">
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => handleOpenActivityModal(activity)} title="Activity">
                               <Eye className="h-3.5 w-3.5" />
                             </Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => openEditDialog(activity)} title="Edit Follow-up">
@@ -598,29 +552,6 @@ export default function FollowUps() {
           </div>
         </div>
       )}
-
-      {/* Complete Follow-up Confirmation Dialog */}
-      <Dialog open={completeConfirmOpen} onOpenChange={(open) => { if (!open) { setCompleteConfirmOpen(false); setCompletingActivity(null); }}}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Complete Follow-up</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground py-2">
-            This follow-up will be marked as completed. Do you want to schedule the next follow-up?
-          </p>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => { setCompleteConfirmOpen(false); setCompletingActivity(null); }}>
-              Cancel
-            </Button>
-            <Button variant="outline" onClick={handleCompleteOnly} disabled={updateActivity.isPending}>
-              No, Complete Only
-            </Button>
-            <Button onClick={handleCompleteAndSchedule} disabled={updateActivity.isPending}>
-              Yes, Schedule Next
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Follow-up Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
@@ -679,17 +610,14 @@ export default function FollowUps() {
       </Dialog>
 
       <ActivityDetailDrawer
-        activity={drawerActivity as any}
-        open={drawerActivity !== null}
-        onClose={() => setDrawerActivity(null)}
-        onEdit={(act) => { setDrawerActivity(null); openEditDialog(act as FollowUpActivity); }}
-      />
-
-      <ScheduleFollowUpDialog
-        open={schedFuOpen}
-        onOpenChange={setSchedFuOpen}
-        contactId={schedContactId}
-        dealId={schedDealId}
+        open={modalActivity !== null}
+        onOpenChange={(open) => { if (!open) setModalActivity(null); }}
+        contactId={modalActivity?.contactId || modalActivity?.deal?.contactId || modalActivity?.contact?.id || 0}
+        dealId={modalActivity?.dealId}
+        contactName={modalActivity?.contact?.name || modalActivity?.deal?.contact?.name}
+        contactCompany={modalActivity?.contact?.companyName || modalActivity?.deal?.contact?.companyName}
+        contactMobile={modalActivity?.contact?.mobile || modalActivity?.deal?.contact?.mobile}
+        activity={modalActivity ? { id: modalActivity.id, type: modalActivity.type, notesDisplay: modalActivity.notesDisplay, notes: modalActivity.notes, callStatus: modalActivity.callStatus, followUpType: modalActivity.followUpType } : null}
       />
     </div>
   );

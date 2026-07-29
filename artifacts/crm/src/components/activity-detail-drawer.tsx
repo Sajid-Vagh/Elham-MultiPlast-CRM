@@ -1,96 +1,69 @@
 import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useUpdateActivity } from "@workspace/api-client-react";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { useCreateActivity, useUpdateActivity } from "@workspace/api-client-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { onActivityChange } from "@/lib/query-invalidation";
-import { STAGE_BADGE_COLORS } from "@/lib/deal-stages";
-import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
-import { X, Pencil, Phone, PhoneOff, Calendar, MessageSquare, ExternalLink, Clock, CheckCircle2 } from "lucide-react";
-import { Link } from "wouter";
-import { ScheduleFollowUpDialog } from "@/components/schedule-follow-up-dialog";
+import { Calendar, Clock, Phone, MessageSquare, Video, Users, MapPin, Mail, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
 
-const ACT_STYLE: Record<string, { bg: string; fg: string; icon: string }> = {
-  "Call":     { bg: "#dcfce7", fg: "#15803d", icon: "📞" },
-  "WhatsApp": { bg: "#ccfbf1", fg: "#0f766e", icon: "💬" },
-  "Email":    { bg: "#dbeafe", fg: "#1d4ed8", icon: "✉️" },
-  "Note":     { bg: "#fef9c3", fg: "#a16207", icon: "📝" },
-  "FollowUp": { bg: "#ffedd5", fg: "#c2410c", icon: "🔔" },
-  "Meeting":  { bg: "#ede9fe", fg: "#6d28d9", icon: "🤝" },
-};
-
-const TIMELINE_ICONS: Record<string, { bg: string; icon: string }> = {
-  "lead_created":    { bg: "#dbeafe", icon: "🆕" },
-  "follow_up":       { bg: "#ffedd5", icon: "🔔" },
-  "call":            { bg: "#dcfce7", icon: "📞" },
-  "whatsapp":        { bg: "#ccfbf1", icon: "💬" },
-  "email":           { bg: "#dbeafe", icon: "✉️" },
-  "note":            { bg: "#fef9c3", icon: "📝" },
-  "activity":        { bg: "#f3f4f6", icon: "•" },
-  "category_change": { bg: "#f3e8ff", icon: "🏷️" },
-  "comment_updated": { bg: "#e0f2fe", icon: "💬" },
-  "deal_created":    { bg: "#dcfce7", icon: "🤝" },
-  "deal_stage":      { bg: "#fef3c7", icon: "📊" },
-  "pi_created":      { bg: "#ede9fe", icon: "📄" },
-  "production":      { bg: "#fce7f3", icon: "🏭" },
-  "order":           { bg: "#d1fae5", icon: "📦" },
-  "unit_change":     { bg: "#e0e7ff", icon: "🏢" },
-};
-
-type ActivityData = {
-  id: number; type: string; notes?: string | null;
-  notesDisplay?: string | null;
-  followUpDate?: string | null; followUpTime?: string | null;
-  callStatus?: string | null; createdBy?: number | null;
-  followUpType?: string | null; priority?: string | null;
-  dealId: number; contactId?: number | null;
-  createdAt?: string;
-  user?: { id: number; name: string } | null;
-  deal?: { id: number; stage?: string; contactId?: number;
-    contact?: { id?: number; name?: string; mobile?: string; companyName?: string;
-      unit?: string; category?: string; email?: string; city?: string; state?: string;
-      salesOwnerId?: number | null; salesOwner?: { name: string } | null } | null;
-  } | null;
-  contact?: { id?: number; name?: string; mobile?: string; companyName?: string;
-    unit?: string; category?: string; email?: string; city?: string; state?: string;
-    salesOwnerId?: number | null; salesOwner?: { name: string } | null } | null;
-};
-
-interface ActivityDetailDrawerProps {
-  activity: ActivityData | null;
+interface ActivityModalProps {
   open: boolean;
-  onClose: () => void;
-  onEdit?: (activity: ActivityData) => void;
+  onOpenChange: (open: boolean) => void;
+  contactId: number;
+  dealId?: number | null;
+  contactName?: string;
+  contactCompany?: string;
+  contactMobile?: string;
+  activity?: {
+    id: number;
+    type: string;
+    notesDisplay?: string | null;
+    notes?: string | null;
+    callStatus?: string | null;
+    followUpType?: string | null;
+  } | null;
 }
 
-export default function ActivityDetailDrawer({ activity, open, onClose, onEdit }: ActivityDetailDrawerProps) {
+const ACTIVITY_TYPES = [
+  { value: "Call", label: "Call", icon: Phone },
+  { value: "WhatsApp", label: "WhatsApp", icon: MessageSquare },
+  { value: "Meeting", label: "Meeting", icon: Users },
+  { value: "Email", label: "Email", icon: Mail },
+  { value: "Video Call", label: "Video Call", icon: Video },
+  { value: "Site Visit", label: "Site Visit", icon: MapPin },
+  { value: "FollowUp", label: "Follow-up", icon: Calendar },
+];
+
+const PRIORITIES = [
+  { value: "High", label: "High", color: "text-red-600 bg-red-50" },
+  { value: "Medium", label: "Medium", color: "text-amber-600 bg-amber-50" },
+  { value: "Low", label: "Low", color: "text-green-600 bg-green-50" },
+];
+
+const NEXT_ACTIVITY_TYPES = [
+  { value: "Call", label: "Call", icon: Phone },
+  { value: "WhatsApp", label: "WhatsApp", icon: MessageSquare },
+  { value: "Meeting", label: "Meeting", icon: Users },
+  { value: "Email", label: "Email", icon: Mail },
+  { value: "Video Call", label: "Video Call", icon: Video },
+  { value: "Site Visit", label: "Site Visit", icon: MapPin },
+  { value: "FollowUp", label: "Follow-up", icon: Calendar },
+];
+
+export default function ActivityDetailDrawer({ open, onOpenChange, contactId, dealId, contactName, contactCompany, contactMobile, activity }: ActivityModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const contactId = activity?.contact?.id || activity?.deal?.contact?.id;
-  const dealStage = activity?.deal?.stage;
-
-  const { data: timeline } = useQuery({
-    queryKey: ["contact-timeline", contactId],
-    queryFn: async () => {
-      if (!contactId) return [];
-      const token = localStorage.getItem("crm_token");
-      const res = await fetch(`/api/contacts/${contactId}/timeline`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!contactId && open,
-    staleTime: 30_000,
-  });
+  const today = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
 
   const { data: contactActivities } = useQuery({
     queryKey: ["contact-activities-summary", contactId],
@@ -110,406 +83,350 @@ export default function ActivityDetailDrawer({ activity, open, onClose, onEdit }
   const lastCallActivity = useMemo(() => {
     if (!contactActivities) return null;
     return (contactActivities as any[]).find(
-      (a: any) => a.callStatus === "Completed" && a.notesDisplay
+      (a: any) => a.callStatus === "Completed" && (a.notesDisplay || a.notes)
     );
   }, [contactActivities]);
 
   const nextFollowUpActivity = useMemo(() => {
     if (!contactActivities) return null;
     return (contactActivities as any[]).find(
-      (a: any) => a.callStatus === "Pending" && a.type === "FollowUp" && a.notesDisplay
+      (a: any) => a.callStatus === "Pending" && a.type === "FollowUp" && (a.notesDisplay || a.notes)
     );
   }, [contactActivities]);
 
+  const createActivity = useCreateActivity();
   const updateActivity = useUpdateActivity();
 
-  const [rescheduleOpen, setRescheduleOpen] = useState(false);
-  const [rescheduleDate, setRescheduleDate] = useState("");
-  const [rescheduleTime, setRescheduleTime] = useState("");
+  const [actType, setActType] = useState("Call");
+  const [discussionNotes, setDiscussionNotes] = useState("");
+  const [scheduleNext, setScheduleNext] = useState(false);
+  const [nextDate, setNextDate] = useState("");
+  const [nextTime, setNextTime] = useState("");
+  const [nextPriority, setNextPriority] = useState("Medium");
+  const [nextType, setNextType] = useState("Call");
+  const [nextNotes, setNextNotes] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [prevNotesExpanded, setPrevNotesExpanded] = useState(false);
+  const [currentNotesExpanded, setCurrentNotesExpanded] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const [editOpen, setEditOpen] = useState(false);
-  const [editNotes, setEditNotes] = useState("");
-  const [editDate, setEditDate] = useState("");
-  const [editTime, setEditTime] = useState("");
-  const [editStatus, setEditStatus] = useState("Pending");
+  const isPendingActivity = activity?.callStatus === "Pending";
 
-  const [confirmCompleteOpen, setConfirmCompleteOpen] = useState(false);
-  const [scheduleOpen, setScheduleOpen] = useState(false);
-
-  const handleMarkCompleteClick = () => {
-    setConfirmCompleteOpen(true);
+  const resetForm = () => {
+    setActType("Call");
+    setDiscussionNotes("");
+    setScheduleNext(false);
+    setNextDate("");
+    setNextTime("");
+    setNextPriority("Medium");
+    setNextType("Call");
+    setNextNotes("");
+    setErrors({});
+    setPrevNotesExpanded(false);
+    setCurrentNotesExpanded(false);
   };
 
-  const handleJustComplete = () => {
-    if (!activity) return;
-    updateActivity.mutate(
-      { id: activity.id, data: { callStatus: "Completed" } as any },
-      {
-        onSuccess: () => {
-          toast({ title: "Activity marked as completed" });
-          onActivityChange(queryClient);
-          setConfirmCompleteOpen(false);
-          onClose();
-        },
-        onError: () => toast({ title: "Failed to update", variant: "destructive" }),
-      },
-    );
+  const handleOpenChange = (open: boolean) => {
+    if (!open) resetForm();
+    onOpenChange(open);
   };
 
-  const handleCompleteAndSchedule = () => {
-    if (!activity) return;
-    updateActivity.mutate(
-      { id: activity.id, data: { callStatus: "Completed" } as any },
-      {
-        onSuccess: () => {
-          toast({ title: "Activity marked as completed" });
-          onActivityChange(queryClient);
-          setConfirmCompleteOpen(false);
-          setScheduleOpen(true);
-        },
-        onError: () => toast({ title: "Failed to update", variant: "destructive" }),
-      },
-    );
+  const validate = (): boolean => {
+    const errs: Record<string, string> = {};
+    if (scheduleNext) {
+      if (!nextDate) errs.nextDate = "Next activity date is required";
+      if (!nextTime) errs.nextTime = "Next activity time is required";
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
   };
 
-  const handleReschedule = () => {
-    if (!activity || !rescheduleDate) return;
-    updateActivity.mutate(
-      { id: activity.id, data: { followUpDate: rescheduleDate, followUpTime: rescheduleTime || null, callStatus: "Pending" } as any },
-      {
-        onSuccess: () => {
-          toast({ title: "Activity rescheduled" });
-          onActivityChange(queryClient);
-          setRescheduleOpen(false);
-          onClose();
-        },
-        onError: () => toast({ title: "Failed to reschedule", variant: "destructive" }),
-      },
-    );
+  const handleSave = async () => {
+    if (!validate()) return;
+    if (!dealId) {
+      toast({ title: "Create a deal first", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+
+    try {
+      // Step 1: Complete current activity if it's pending
+      if (isPendingActivity && activity) {
+        await updateActivity.mutateAsync({
+          id: activity.id,
+          data: {
+            callStatus: "Completed",
+            notes: discussionNotes || activity.notes || null,
+          } as any,
+        });
+      }
+
+      // Step 2: Create today's activity log (unless we already updated the current one)
+      if (!isPendingActivity) {
+        await createActivity.mutateAsync({
+          data: {
+            dealId: Number(dealId),
+            contactId,
+            type: actType as any,
+            notes: discussionNotes || null,
+            callStatus: "Completed",
+          },
+        });
+      }
+
+      // Step 3: Schedule next activity if checked
+      if (scheduleNext) {
+        await createActivity.mutateAsync({
+          data: {
+            dealId: Number(dealId),
+            contactId,
+            type: "FollowUp",
+            notes: nextNotes || null,
+            followUpDate: nextDate || null,
+            followUpTime: nextTime || null,
+            followUpType: nextType,
+            callStatus: "Pending",
+            priority: nextPriority,
+          } as any,
+        });
+      }
+
+      onActivityChange(queryClient, Number(dealId), contactId);
+      toast({ title: "Activity saved successfully" });
+      resetForm();
+      onOpenChange(false);
+    } catch {
+      toast({ title: "Error saving activity", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleEditSave = () => {
-    if (!activity) return;
-    const data: Record<string, any> = {};
-    if (editNotes.trim()) data.notes = editNotes.trim();
-    if (editDate !== activity.followUpDate) data.followUpDate = editDate || null;
-    if (editTime !== activity.followUpTime) data.followUpTime = editTime || null;
-    if (editStatus !== (activity.callStatus || "Pending")) data.callStatus = editStatus;
-    if (Object.keys(data).length === 0) { setEditOpen(false); return; }
-
-    updateActivity.mutate(
-      { id: activity.id, data: data as any },
-      {
-        onSuccess: () => {
-          toast({ title: "Activity updated" });
-          onActivityChange(queryClient);
-          setEditOpen(false);
-          onClose();
-        },
-        onError: () => toast({ title: "Failed to update", variant: "destructive" }),
-      },
-    );
-  };
-
-  const openReschedule = () => {
-    setRescheduleDate(activity?.followUpDate || "");
-    setRescheduleTime(activity?.followUpTime || "");
-    setRescheduleOpen(true);
-  };
-
-  const openEdit = () => {
-    setEditNotes("");
-    setEditDate(activity?.followUpDate || "");
-    setEditTime(activity?.followUpTime || "");
-    setEditStatus(activity?.callStatus || "Pending");
-    setEditOpen(true);
-  };
-
-  if (!open || !activity) return null;
-
-  const contact = activity.contact || activity.deal?.contact;
-  const salesPerson = activity.user?.name || contact?.salesOwner?.name || "-";
-  const isCompleted = activity.callStatus === "Completed";
-  const mobile = contact?.mobile || "";
+  const currentNotes = activity?.notesDisplay || activity?.notes;
+  const prevNotes = lastCallActivity?.notesDisplay || lastCallActivity?.notes;
 
   return (
-    <>
-      <Sheet open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-        <SheetContent className="sm:max-w-xl w-full p-0 overflow-y-auto">
-          <div className="flex flex-col h-full">
-            {/* Header */}
-            <div className="sticky top-0 z-10 bg-background border-b px-6 py-4 flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <h2 className="text-lg font-semibold truncate">{contact?.name || "Activity"}</h2>
-                {contact?.companyName && <p className="text-sm text-muted-foreground truncate">{contact.companyName}</p>}
-              </div>
-              <button onClick={onClose} className="ml-4 h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center shrink-0">
-                <X className="h-4 w-4" />
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader className="pb-0">
+          <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+            <Phone className="h-5 w-5 text-primary" />
+            Activity
+          </DialogTitle>
+          {(contactName || contactCompany) && (
+            <p className="text-sm text-muted-foreground mt-1">
+              {contactName}{contactName && contactCompany ? " — " : ""}{contactCompany}
+              {contactMobile && <span className="ml-2 font-mono">{contactMobile}</span>}
+            </p>
+          )}
+        </DialogHeader>
+
+        <div className="space-y-5 py-4">
+          {/* Previous Call Notes */}
+          {prevNotes && (
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <button
+                type="button"
+                onClick={() => setPrevNotesExpanded(!prevNotesExpanded)}
+                className="flex items-center justify-between w-full text-left"
+              >
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Previous Call Notes</span>
+                {prevNotesExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
               </button>
+              {prevNotesExpanded && (
+                <p className="text-sm mt-2 whitespace-pre-wrap">{prevNotes}</p>
+              )}
+              {!prevNotesExpanded && (
+                <p className="text-sm mt-1 text-muted-foreground truncate">{prevNotes.substring(0, 100)}{prevNotes.length > 100 ? "..." : ""}</p>
+              )}
+            </div>
+          )}
+
+          {/* Current Follow-up Notes */}
+          {isPendingActivity && currentNotes && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3">
+              <button
+                type="button"
+                onClick={() => setCurrentNotesExpanded(!currentNotesExpanded)}
+                className="flex items-center justify-between w-full text-left"
+              >
+                <span className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Current Follow-up Notes</span>
+                {currentNotesExpanded ? <ChevronUp className="h-3.5 w-3.5 text-blue-500" /> : <ChevronDown className="h-3.5 w-3.5 text-blue-500" />}
+              </button>
+              {currentNotesExpanded && (
+                <p className="text-sm mt-2 text-blue-900 whitespace-pre-wrap">{currentNotes}</p>
+              )}
+              {!currentNotesExpanded && (
+                <p className="text-sm mt-1 text-blue-700 truncate">{currentNotes.substring(0, 100)}{currentNotes.length > 100 ? "..." : ""}</p>
+              )}
+            </div>
+          )}
+
+          {/* Log Today's Activity */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <Phone className="h-3.5 w-3.5" />
+              Log Today's Activity
+            </h3>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Activity Type</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {ACTIVITY_TYPES.map(at => {
+                  const Icon = at.icon;
+                  const isSelected = actType === at.value;
+                  return (
+                    <button
+                      key={at.value}
+                      type="button"
+                      onClick={() => setActType(at.value)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
+                        isSelected
+                          ? "border-primary bg-primary/5 text-primary font-medium ring-1 ring-primary/20"
+                          : "border-border hover:border-muted-foreground/30 hover:bg-muted/30"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      <span>{at.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-              {/* Activity Type + Status Badge */}
-              <div className="flex items-center gap-3 flex-wrap">
-                {(() => {
-                  const style = ACT_STYLE[activity.type] || { bg: "#f3f4f6", fg: "#374151", icon: "•" };
-                  return (
-                    <span className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ backgroundColor: style.bg, color: style.fg }}>
-                      {style.icon} {activity.type}
-                    </span>
-                  );
-                })()}
-                <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-                  isCompleted ? "bg-green-100 text-green-700" :
-                  activity.callStatus === "Cancelled" ? "bg-red-100 text-red-700" :
-                  activity.callStatus === "No Response" ? "bg-gray-100 text-gray-600" :
-                  "bg-blue-100 text-blue-700"
-                }`}>
-                  {activity.callStatus || "Pending"}
-                </span>
-                {activity.priority && activity.priority !== "Medium" && (
-                  <span className={`text-xs font-medium ${
-                    activity.priority === "High" ? "text-red-600" : "text-green-600"
-                  }`}>{activity.priority} Priority</span>
-                )}
-              </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Discussion Notes</Label>
+              <Textarea
+                value={discussionNotes}
+                onChange={e => setDiscussionNotes(e.target.value)}
+                placeholder="Enter notes from today's discussion..."
+                rows={3}
+                className="resize-none"
+              />
+            </div>
+          </div>
 
-              {/* Quick Actions */}
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => onEdit ? onEdit(activity) : openEdit()}>
-                  <Pencil className="h-3.5 w-3.5 mr-1" /> Edit Activity
-                </Button>
-                {!isCompleted && (
-                  <Button size="sm" variant="outline" onClick={openReschedule}>
-                    <Calendar className="h-3.5 w-3.5 mr-1" /> Reschedule
-                  </Button>
-                )}
-                {!isCompleted && (
-                  <Button size="sm" variant="outline" className="text-green-700 border-green-300 hover:bg-green-50" onClick={handleMarkCompleteClick} disabled={updateActivity.isPending}>
-                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Mark Complete
-                  </Button>
-                )}
-                {mobile && (
-                  <Button size="sm" variant="outline" onClick={() => window.open(`tel:${mobile}`, "_self")}>
-                    <Phone className="h-3.5 w-3.5 mr-1" /> Call
-                  </Button>
-                )}
-                {mobile && (
-                  <Button size="sm" variant="outline" onClick={() => window.open(`https://wa.me/${mobile.replace(/\D/g, "")}`, "_blank")}>
-                    <MessageSquare className="h-3.5 w-3.5 mr-1" /> WhatsApp
-                  </Button>
-                )}
-                {contact?.id && (
-                  <Link href={`/leads/${contact.id}`}>
-                    <Button size="sm" variant="outline">
-                      <ExternalLink className="h-3.5 w-3.5 mr-1" /> View Lead
-                    </Button>
-                  </Link>
-                )}
-              </div>
+          {/* Schedule Next Activity */}
+          <div className="space-y-3 pt-2 border-t">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="schedule-next"
+                checked={scheduleNext}
+                onCheckedChange={(checked) => setScheduleNext(checked === true)}
+              />
+              <Label htmlFor="schedule-next" className="text-sm font-medium cursor-pointer">
+                Schedule Next Activity
+              </Label>
+            </div>
 
-              {/* Customer Info */}
-              <div>
-                <h3 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wider">Customer</h3>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                  {contact?.name && <div><span className="text-muted-foreground">Name</span><p className="font-medium">{contact.name}</p></div>}
-                  {contact?.companyName && <div><span className="text-muted-foreground">Company</span><p className="font-medium">{contact.companyName}</p></div>}
-                  {contact?.mobile && <div><span className="text-muted-foreground">Mobile</span><p className="font-medium">{contact.mobile}</p></div>}
-                  {contact?.email && <div><span className="text-muted-foreground">Email</span><p className="font-medium truncate">{contact.email}</p></div>}
-                  {contact?.city && <div><span className="text-muted-foreground">City</span><p className="font-medium">{contact.city}</p></div>}
-                  {contact?.state && <div><span className="text-muted-foreground">State</span><p className="font-medium">{contact.state}</p></div>}
-                </div>
-              </div>
-
-              {/* Activity Details */}
-              <div>
-                <h3 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wider">Activity Details</h3>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                  <div><span className="text-muted-foreground">Type</span><p className="font-medium">{activity.followUpType || activity.type}</p></div>
-                  {activity.contact?.category && <div><span className="text-muted-foreground">Category</span><p className="font-medium">{activity.contact.category}</p></div>}
-                  <div><span className="text-muted-foreground">Status</span><p className="font-medium">{activity.callStatus || "Pending"}</p></div>
-                  {activity.priority && <div><span className="text-muted-foreground">Priority</span><p className="font-medium">{activity.priority}</p></div>}
-                  {activity.followUpDate && <div><span className="text-muted-foreground">Date</span><p className="font-medium">{new Date(activity.followUpDate + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</p></div>}
-                  {activity.followUpTime && <div><span className="text-muted-foreground">Time</span><p className="font-medium">{activity.followUpTime}</p></div>}
-                  <div><span className="text-muted-foreground">Sales Person</span><p className="font-medium">{salesPerson}</p></div>
-                  <div><span className="text-muted-foreground">Assigned Unit</span><p className="font-medium">{contact?.unit || PENDING_UNIT_ASSIGNMENT}</p></div>
-                </div>
-              </div>
-
-              {/* Notes */}
-              {(activity.notes || activity.notesDisplay) && (
-                <div>
-                  <h3 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wider">Notes</h3>
-                  <div className="text-sm bg-muted/30 p-3 rounded-lg whitespace-pre-wrap max-h-48 overflow-y-auto">
-                    {activity.notesDisplay || activity.notes}
-                  </div>
-                </div>
-              )}
-
-              {/* Follow-up */}
-              {activity.followUpDate && (
-                <div>
-                  <h3 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wider">Follow-up</h3>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                    <div><span className="text-muted-foreground">Next Follow-up Date</span><p className="font-medium">{new Date(activity.followUpDate + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</p></div>
-                    {activity.followUpTime && <div><span className="text-muted-foreground">Next Follow-up Time</span><p className="font-medium">{activity.followUpTime}</p></div>}
-                  </div>
-                </div>
-              )}
-
-              {/* Lead Information */}
-              <div>
-                <h3 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wider">Lead Information</h3>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                  {activity.contact?.category && <div><span className="text-muted-foreground">Current Category</span><p className="font-medium">{activity.contact.category}</p></div>}
-                  {dealStage && (
-                    <div>
-                      <span className="text-muted-foreground">Current Deal Stage</span>
-                      <p><span className={`text-xs px-2 py-1 rounded-full font-medium ${STAGE_BADGE_COLORS[dealStage] || "bg-gray-100"}`}>{dealStage}</span></p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Call Notes Summary */}
-              {(lastCallActivity?.notesDisplay || nextFollowUpActivity?.notesDisplay) && (
-                <div>
-                  <h3 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wider">Call Notes Summary</h3>
+            {scheduleNext && (
+              <div className="space-y-4 pl-6 border-l-2 border-primary/20">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    {lastCallActivity?.notesDisplay && (
-                      <div className="text-sm bg-muted/30 p-3 rounded-lg">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-muted-foreground">Last Call Notes</span>
-                          {lastCallActivity.followUpDate && (
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(lastCallActivity.followUpDate + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs whitespace-pre-wrap max-h-20 overflow-y-auto">{lastCallActivity.notesDisplay}</p>
-                      </div>
-                    )}
-                    {nextFollowUpActivity?.notesDisplay && (
-                      <div className="text-sm bg-blue-50/50 p-3 rounded-lg border border-blue-100">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-blue-700">Next Follow-up Notes</span>
-                          {nextFollowUpActivity.followUpDate && (
-                            <span className="text-xs text-blue-600">
-                              {new Date(nextFollowUpActivity.followUpDate + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs whitespace-pre-wrap max-h-20 overflow-y-auto text-blue-900">{nextFollowUpActivity.notesDisplay}</p>
-                      </div>
-                    )}
+                    <Label className="text-sm font-medium flex items-center gap-1.5">
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      Next Activity Date <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      type="date"
+                      value={nextDate}
+                      onChange={e => { setNextDate(e.target.value); setErrors(prev => ({ ...prev, nextDate: "" })); }}
+                      className={errors.nextDate ? "border-destructive" : ""}
+                      min={today}
+                    />
+                    {errors.nextDate && <p className="text-xs text-destructive flex items-center gap-1 mt-1"><AlertTriangle className="h-3 w-3" />{errors.nextDate}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium flex items-center gap-1.5">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      Time <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      type="time"
+                      value={nextTime}
+                      onChange={e => { setNextTime(e.target.value); setErrors(prev => ({ ...prev, nextTime: "" })); }}
+                      className={errors.nextTime ? "border-destructive" : ""}
+                    />
+                    {errors.nextTime && <p className="text-xs text-destructive flex items-center gap-1 mt-1"><AlertTriangle className="h-3 w-3" />{errors.nextTime}</p>}
                   </div>
                 </div>
-              )}
 
-              {/* Recent Timeline */}
-              {timeline && timeline.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wider">Recent Timeline</h3>
-                  <div className="space-y-2 max-h-80 overflow-y-auto">
-                    {timeline.slice(0, 15).map((event: any, idx: number) => {
-                      const icon = TIMELINE_ICONS[event.type] || TIMELINE_ICONS["activity"];
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Activity Type</Label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {NEXT_ACTIVITY_TYPES.map(at => {
+                      const Icon = at.icon;
+                      const isSelected = nextType === at.value;
                       return (
-                        <div key={idx} className="flex gap-2 p-2 rounded-lg bg-card border text-sm">
-                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs shrink-0" style={{ backgroundColor: icon.bg }}>
-                            {icon.icon}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-medium">{event.description}</p>
-                            {event.user && <p className="text-xs text-muted-foreground">by {event.user.name}</p>}
-                            {event.createdAt && (
-                              <p className="text-xs text-muted-foreground mt-0.5">
-                                {new Date(event.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                              </p>
-                            )}
-                          </div>
-                        </div>
+                        <button
+                          key={at.value}
+                          type="button"
+                          onClick={() => setNextType(at.value)}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
+                            isSelected
+                              ? "border-primary bg-primary/5 text-primary font-medium ring-1 ring-primary/20"
+                              : "border-border hover:border-muted-foreground/30 hover:bg-muted/30"
+                          }`}
+                        >
+                          <Icon className="h-4 w-4 shrink-0" />
+                          <span>{at.label}</span>
+                        </button>
                       );
                     })}
                   </div>
                 </div>
-              )}
-            </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Priority</Label>
+                  <div className="flex gap-1.5">
+                    {PRIORITIES.map(p => (
+                      <button
+                        key={p.value}
+                        type="button"
+                        onClick={() => setNextPriority(p.value)}
+                        className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium border transition-all ${
+                          nextPriority === p.value
+                            ? `${p.color} border-current ring-1 ring-current`
+                            : "text-muted-foreground border-border hover:bg-muted/30"
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Next Follow-up Notes</Label>
+                  <Textarea
+                    value={nextNotes}
+                    onChange={e => setNextNotes(e.target.value)}
+                    placeholder="Enter notes for the next activity..."
+                    rows={3}
+                    className="resize-none"
+                  />
+                </div>
+              </div>
+            )}
           </div>
-        </SheetContent>
-      </Sheet>
+        </div>
 
-      {/* Reschedule Dialog */}
-      <Dialog open={rescheduleOpen} onOpenChange={setRescheduleOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Reschedule Activity</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <div><Label>New Date <span className="text-destructive">*</span></Label><Input type="date" value={rescheduleDate} onChange={e => setRescheduleDate(e.target.value)} /></div>
-            <div><Label>Time</Label><Input type="time" value={rescheduleTime} onChange={e => setRescheduleTime(e.target.value)} /></div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRescheduleOpen(false)}>Cancel</Button>
-            <Button onClick={handleReschedule} disabled={!rescheduleDate || updateActivity.isPending}>Reschedule</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Activity Dialog */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Edit Activity</DialogTitle></DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div>
-              <Label>Status</Label>
-              <Select value={editStatus} onValueChange={setEditStatus}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Pending">Pending</SelectItem>
-                  <SelectItem value="Completed">Completed</SelectItem>
-                  <SelectItem value="Cancelled">Cancelled</SelectItem>
-                  <SelectItem value="No Response">No Response</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div><Label>New Notes (appended to history)</Label><Textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} placeholder="Add notes..." rows={4} /></div>
-            <div><Label>Follow-up Date</Label><Input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} /></div>
-            {editDate && <div><Label>Follow-up Time</Label><Input type="time" value={editTime} onChange={e => setEditTime(e.target.value)} /></div>}
-          </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button onClick={handleEditSave} disabled={updateActivity.isPending}>Save</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Mark Complete Confirmation Dialog */}
-      <Dialog open={confirmCompleteOpen} onOpenChange={setConfirmCompleteOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Mark as Complete?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground py-2">
-            Do you want to schedule the next follow-up?
-          </p>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={handleJustComplete} disabled={updateActivity.isPending}>
-              No, Just Complete
-            </Button>
-            <Button onClick={handleCompleteAndSchedule} disabled={updateActivity.isPending}>
-              Yes, Schedule Next
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Schedule Next Follow-up */}
-      {contactId && (
-        <ScheduleFollowUpDialog
-          open={scheduleOpen}
-          onOpenChange={setScheduleOpen}
-          contactId={contactId}
-          dealId={activity?.dealId}
-        />
-      )}
-    </>
+        <DialogFooter className="gap-2 pt-2 border-t">
+          <Button variant="outline" onClick={() => handleOpenChange(false)} className="h-10 px-5">
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={saving} className="h-10 px-5 gap-2">
+            {saving ? (
+              <>
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
+                Saving...
+              </>
+            ) : (
+              "Save Activity"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
