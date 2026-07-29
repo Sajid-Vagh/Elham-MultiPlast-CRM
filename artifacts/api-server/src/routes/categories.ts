@@ -51,9 +51,10 @@ router.get("/categories/counts", async (req, res) => {
     });
 
     // "Existing Client" count: ALL "My Client" contacts across all owners (bypass owner filter), only unit/date filtered
+    // Unit filter uses requestedUnit from dropdown (not user's restricted unit) so badge matches list
     const ecConditions: SQL[] = [];
-    if (unit) {
-      ecConditions.push(eq(contactsTable.unit, unit));
+    if (requestedUnit) {
+      ecConditions.push(eq(contactsTable.unit, requestedUnit));
     }
     if (startDate) ecConditions.push(gte(contactsTable.createdAt, new Date(startDate)));
     if (endDate) ecConditions.push(lte(contactsTable.createdAt, parseEndDate(endDate)));

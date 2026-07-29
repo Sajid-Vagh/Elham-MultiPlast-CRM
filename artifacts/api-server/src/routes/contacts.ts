@@ -57,8 +57,9 @@ router.get("/contacts", async (req, res) => {
       conditions.push(eq(contactsTable.salesOwnerId, user.id));
     }
 
+    // Skip unit restriction for Existing Client — filter comes from dropdown only
     const accessibleUnits = getAccessibleUnits(user);
-    if (accessibleUnits) {
+    if (accessibleUnits && !isExistingClient) {
       conditions.push(inArray(contactsTable.unit, accessibleUnits));
     }
 
