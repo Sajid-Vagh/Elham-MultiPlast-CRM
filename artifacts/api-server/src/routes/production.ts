@@ -815,7 +815,7 @@ router.get("/production/sheet", async (req, res) => {
       .leftJoin(proformaInvoiceItemsTable, eq(proformaInvoiceItemsTable.invoiceId, proformaInvoicesTable.id))
       .leftJoin(contactsTable, eq(contactsTable.id, proformaInvoicesTable.contactId))
       .leftJoin(productsTable, sql`LOWER(${productsTable.name}) = LOWER(${proformaInvoiceItemsTable.productName})`)
-      .leftJoin(productionOrderItemsTable, eq(productionOrderItemsTable.productionOrderId, productionOrdersTable.id))
+      .leftJoin(productionOrderItemsTable, eq(productionOrderItemsTable.piItemId, proformaInvoiceItemsTable.id))
       .where(inArray(productionOrdersTable.id, matchedOrderIds))
       .orderBy(productionOrdersTable.id, proformaInvoiceItemsTable.id);
 
