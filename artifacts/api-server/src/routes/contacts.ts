@@ -49,8 +49,11 @@ router.get("/contacts", async (req, res) => {
 
     const params = ListContactsQueryParams.safeParse(req.query);
     const conditions: SQL[] = [];
+    const isAdmin = user.role === "admin";
+    const categoryParam = req.query.category as string | undefined;
+    const isExistingClient = categoryParam === "Existing Client";
 
-    if (user.role === "sales") {
+    if (user.role !== "admin" && !isExistingClient) {
       conditions.push(eq(contactsTable.salesOwnerId, user.id));
     }
 
@@ -58,9 +61,6 @@ router.get("/contacts", async (req, res) => {
     if (accessibleUnits) {
       conditions.push(inArray(contactsTable.unit, accessibleUnits));
     }
-
-    const isAdmin = user.role === "admin";
-    const categoryParam = req.query.category as string | undefined;
 
     if (params.success) {
       if (params.data.salesOwnerId && isAdmin) conditions.push(eq(contactsTable.salesOwnerId, params.data.salesOwnerId));
@@ -74,7 +74,7 @@ router.get("/contacts", async (req, res) => {
         }
       }
       if (params.data.industry) conditions.push(eq(contactsTable.industry, params.data.industry));
-      if (categoryParam && categoryParam !== "Regular Follow up") {
+      if (categoryParam && categoryParam !== "Regular Follow up" && !isExistingClient) {
         conditions.push(eq(contactsTable.category, categoryParam));
       } else if (categoryParam === "Regular Follow up") {
         // Virtual RFU: My Client contacts with active deals are shown alongside physical RFU
@@ -120,6 +120,10 @@ router.get("/contacts", async (req, res) => {
       );
       const virtualContacts = myClientContacts.filter(c => activeDealContactIds.has(c.id));
       contacts = [...rfuContacts, ...virtualContacts];
+    } else if (isExistingClient) {
+      // Existing Client: fetch ALL contacts with category "My Client" (bypass owner filter)
+      conditions.push(eq(contactsTable.category, "My Client"));
+      contacts = await db.select().from(contactsTable).where(and(...conditions)).orderBy(desc(contactsTable.createdAt));
     } else if (categoryParam) {
       conditions.push(eq(contactsTable.category, categoryParam));
       contacts = await db.select().from(contactsTable).where(and(...conditions)).orderBy(desc(contactsTable.createdAt));

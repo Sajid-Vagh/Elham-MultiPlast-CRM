@@ -40,7 +40,7 @@ router.get("/categories/counts", async (req, res) => {
       }
     }
 
-    const counts = CATEGORIES.map(category => {
+    const counts: { category: string; count: number }[] = CATEGORIES.map(category => {
       if (category === "Regular Follow up") {
         // Physical RFU contacts + My Client contacts with active deals
         const physicalCount = allContacts.filter(c => c.category === category).length;
@@ -49,6 +49,19 @@ router.get("/categories/counts", async (req, res) => {
       }
       return { category, count: allContacts.filter(c => c.category === category).length };
     });
+
+    // "Existing Client" count: ALL "My Client" contacts across all owners (bypass owner filter), only unit/date filtered
+    const ecConditions: SQL[] = [];
+    if (unit) {
+      ecConditions.push(eq(contactsTable.unit, unit));
+    }
+    if (startDate) ecConditions.push(gte(contactsTable.createdAt, new Date(startDate)));
+    if (endDate) ecConditions.push(lte(contactsTable.createdAt, parseEndDate(endDate)));
+    const [ecResult] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(contactsTable)
+      .where(and(eq(contactsTable.category, "My Client"), ...ecConditions));
+    counts.push({ category: "Existing Client", count: ecResult?.count ?? 0 });
 
     res.json(counts);
   } catch (err) {
