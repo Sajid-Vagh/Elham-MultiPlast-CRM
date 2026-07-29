@@ -1198,6 +1198,11 @@ async function requireSupportOrAdmin(user: PermissionUser): Promise<string | nul
   return "Only support or admin users can perform dispatch actions";
 }
 
+async function requireDispatchReadAccess(user: PermissionUser): Promise<string | null> {
+  if (user.role === "admin" || user.role === "production_and_support" || user.role === "production") return null;
+  return "Only production, support, or admin users can view dispatch data";
+}
+
 export async function loadVehicle(
   user: PermissionUser,
   orderId: number,
@@ -1448,7 +1453,7 @@ export async function markDelivered(
 }
 
 export async function getDispatchDashboard(user: PermissionUser, unitFilter?: string) {
-  const supportError = await requireSupportOrAdmin(user);
+  const supportError = await requireDispatchReadAccess(user);
   if (supportError) return { error: supportError, status: 403 };
 
   const conditions: SQL[] = [eq(productionOrdersTable.status, "Ready To Dispatch")];
@@ -1489,7 +1494,7 @@ export async function listDispatchOrders(
     dispatchDateTo?: string;
   }
 ) {
-  const supportError = await requireSupportOrAdmin(user);
+  const supportError = await requireDispatchReadAccess(user);
   if (supportError) return { error: supportError, status: 403 };
 
   const conditions: SQL[] = [eq(productionOrdersTable.status, "Ready To Dispatch")];

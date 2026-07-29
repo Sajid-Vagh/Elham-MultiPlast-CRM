@@ -29,13 +29,11 @@ async function getUser(req: any) {
   const requestedUnit = req.query.unit as string | undefined;
   const unitFilter = (user.unit === "All" || user.role === "admin") ? requestedUnit : user.unit;
 
-  // Admin with specific owner filter
+  // Admin sees global data (or specific owner if ?ownerId= set); everyone else sees only their own
   let effectiveOwnerId: number | undefined;
-  if (user.role === "admin" && ownerId) {
+  if (user.role === "admin") {
     effectiveOwnerId = ownerId;
-  } else if (user.role === "sales") {
-    effectiveOwnerId = user.id;
-  } else if (user.role === "production_and_support") {
+  } else {
     effectiveOwnerId = user.id;
   }
 

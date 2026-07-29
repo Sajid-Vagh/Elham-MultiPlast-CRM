@@ -75,7 +75,7 @@ export default function DispatchPage() {
     enabled: !!user,
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ["dispatch-orders", search, statusFilter, priorityFilter, transportFilter, selectedUnit, dispatchDateFrom, dispatchDateTo, page],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -306,12 +306,17 @@ export default function DispatchPage() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium">
-            {data ? `${data.total} order${data.total !== 1 ? "s" : ""} found` : "Loading..."}
+            {isLoading ? "Loading..." : isError ? "Error loading orders" : data ? `${data.total} order${data.total !== 1 ? "s" : ""} found` : ""}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
             <div className="p-6 space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
+          ) : isError ? (
+            <div className="py-12 text-center text-red-500">
+              <p>Failed to load dispatch orders</p>
+              <p className="text-sm text-muted-foreground mt-1">{(error as any)?.message || "An unexpected error occurred"}</p>
+            </div>
           ) : !data?.data?.length ? (
             <div className="py-12 text-center text-muted-foreground">No dispatch orders found</div>
           ) : (
