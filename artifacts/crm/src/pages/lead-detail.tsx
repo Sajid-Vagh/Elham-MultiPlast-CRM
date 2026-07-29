@@ -122,6 +122,7 @@ export default function LeadDetail() {
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
 
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteActId, setDeleteActId] = useState<number | null>(null);
   const [showMoveCategory, setShowMoveCategory] = useState(false);
   const [uploadDocOpen, setUploadDocOpen] = useState(false);
 
@@ -324,6 +325,19 @@ export default function LeadDetail() {
     else { setActFromDate(""); setActToDate(""); }
   };
 
+  const parseNote = (notes: string | null | undefined): string | null => {
+    if (!notes) return null;
+    try {
+      const parsed = JSON.parse(notes);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item: any) => item.text ?? item).filter(Boolean).join("\n");
+      }
+      return notes;
+    } catch {
+      return notes;
+    }
+  };
+
   const mergedTimeline = useMemo(() => {
     const items: Array<{
       key: string; type: string; icon: string; bg: string; description: string;
@@ -339,7 +353,7 @@ export default function LeadDetail() {
           key: `act-${act.id}`, type: act.type, icon: st.icon, bg: st.bg,
           description: act.type === "FollowUp" ? "Follow-up Scheduled" : `${act.type} Logged`,
           createdAt: act.createdAt, userName: act.user?.name || null,
-          notes: act.notes || (act as any).notesDisplay || null,
+          notes: parseNote(act.notes) || parseNote((act as any).notesDisplay) || null,
           activityId: act.id, callStatus: act.callStatus, followUpDate: act.followUpDate, isEdited: act.isEdited,
           dealId: act.dealId || null,
         });
@@ -358,7 +372,7 @@ export default function LeadDetail() {
         items.push({
           key: `tl-${items.length}`, type: ev.type, icon: ts.icon, bg: ts.bg,
           description: ev.description, createdAt: ev.createdAt, userName: ev.user?.name || null,
-          notes: ev.notes || null, dealStage: ev.dealStage, dealId: eventDealId,
+          notes: parseNote(ev.notes) || null, dealStage: ev.dealStage, dealId: eventDealId,
         });
       }
     }
@@ -368,6 +382,14 @@ export default function LeadDetail() {
     if (actToDate) filtered = filtered.filter(i => i.createdAt.slice(0, 10) <= actToDate);
     // Sort newest first
     filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // Deduplicate identical events (same type + description + timestamp)
+    const seen = new Set<string>();
+    filtered = filtered.filter(item => {
+      const key = `${item.type}|${item.description}|${item.createdAt}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
     return filtered;
   }, [activities, timeline, actFromDate, actToDate, deals]);
 
@@ -454,6 +476,26 @@ export default function LeadDetail() {
 
   const owner = contact.salesOwner;
   const deal = deals && deals.length > 0 ? deals[0] : null;
+
+  const handleDeleteActivity = () => {
+    if (!deleteActId) return;
+    const token = localStorage.getItem("crm_token");
+    fetch(`/api/activities/${deleteActId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(async (res) => {
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Error", description: err.error || "Failed to delete activity", variant: "destructive" });
+        return;
+      }
+      onActivityChange(queryClient, undefined, contactId);
+      toast({ title: "Activity deleted" });
+      setDeleteActId(null);
+    }).catch(() => {
+      toast({ title: "Failed to delete activity", variant: "destructive" });
+    });
+  };
 
   const handleCreateDeal = () => {
     if (!newDealStage) return;
@@ -973,6 +1015,15 @@ export default function LeadDetail() {
                               </div>
                             )}
                           </div>
+                          {event.activityId && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setDeleteActId(event.activityId!); }}
+                              className="h-5 w-5 rounded hover:bg-red-50 flex items-center justify-center text-muted-foreground hover:text-red-600 opacity-0 group-hover/event:opacity-100 transition-opacity shrink-0 mt-0.5"
+                              title="Delete activity"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
                         </div>
                       );
                     };
@@ -1555,6 +1606,20 @@ export default function LeadDetail() {
           onContactChange(queryClient, contactId);
         }}
       />
+
+      {/* Delete Activity Confirmation */}
+      <AlertDialog open={deleteActId !== null} onOpenChange={(open) => { if (!open) setDeleteActId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this activity?</AlertDialogTitle>
+            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteActId(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteActivity} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
