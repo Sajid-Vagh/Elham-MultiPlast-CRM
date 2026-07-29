@@ -5,8 +5,9 @@ import {
   db, productionOrdersTable, productionMessagesTable,
   proformaInvoicesTable, proformaInvoiceItemsTable,
   contactsTable, usersTable, productsTable,
+  productionOrderItemsTable,
 } from "@workspace/db";
-import { eq, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, or, desc, sql, gte, lte, inArray } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { storage } from "../lib/storage";
@@ -736,16 +737,36 @@ router.get("/production/sheet", async (req, res) => {
       });
       matchedOrderIds = listResult.data.map((o: any) => o.id);
 
-      // For "reprint" mode, filter client-side since listOrders doesn't support needsReprint
+      // For "reprint" mode, query orders that changed today
       if (mode === "reprint") {
-        const allOrders = await db.select({
-          id: productionOrdersTable.id,
-          needsReprint: productionOrdersTable.needsReprint,
-        }).from(productionOrdersTable)
-          .where(inArray(productionOrdersTable.id, matchedOrderIds));
-        matchedOrderIds = allOrders
-          .filter(o => o.needsReprint)
-          .map(o => o.id);
+        const today = new Date().toISOString().split("T")[0];
+        const todayStart = new Date(today);
+        const todayEnd = new Date(today + "T23:59:59.999Z");
+        const reprintConditions: any[] = [
+          or(
+            and(
+              gte(productionOrdersTable.createdAt, todayStart),
+              lte(productionOrdersTable.createdAt, todayEnd)
+            ),
+            and(
+              gte(productionOrdersTable.updatedAt, todayStart),
+              lte(productionOrdersTable.updatedAt, todayEnd)
+            )
+          ),
+        ];
+        if (unitFilter && unitFilter !== "All" && unitFilter !== "all") {
+          reprintConditions.push(eq(productionOrdersTable.productionUnit, unitFilter));
+        } else if (user.role !== "admin") {
+          const u = (user as any).unit || "All";
+          if (u !== "All") reprintConditions.push(or(
+            eq(productionOrdersTable.productionUnit, u),
+            sql`${productionOrdersTable.productionUnit} IS NULL`
+          )!);
+        }
+        const todayOrders = await db.select({ id: productionOrdersTable.id })
+          .from(productionOrdersTable)
+          .where(and(...reprintConditions));
+        matchedOrderIds = todayOrders.map((o: any) => o.id);
       }
 
       // For "new" mode, filter for orders with no sheet generated yet
@@ -771,44 +792,30 @@ router.get("/production/sheet", async (req, res) => {
       return;
     }
 
-    // ── 2. Fetch matched orders with PI items, contacts, products (only the needed joins) ──
+    // ── 2. Fetch matched orders with PI items, contacts, products ──
     const results = await db
       .select({
         poId: productionOrdersTable.id,
-        poStatus: productionOrdersTable.status,
-        priority: productionOrdersTable.priority,
-        productionUnit: productionOrdersTable.productionUnit,
         productionRemarks: productionOrdersTable.productionRemarks,
-        plannedMachine: productionOrdersTable.plannedMachine,
         createdAt: productionOrdersTable.createdAt,
-        needsReprint: productionOrdersTable.needsReprint,
         sheetVersion: productionOrdersTable.productionSheetVersion,
         piNumber: proformaInvoicesTable.invoiceNumber,
-        piDate: proformaInvoicesTable.createdAt,
         customerCode: contactsTable.customerCode,
-        companyName: contactsTable.companyName,
-        customerMobile: contactsTable.mobile,
-        customerCity: contactsTable.city,
         itemId: proformaInvoiceItemsTable.id,
         productName: proformaInvoiceItemsTable.productName,
-        hsnCode: proformaInvoiceItemsTable.hsnCode,
-        bottleType: proformaInvoiceItemsTable.bottleType,
-        capacity: proformaInvoiceItemsTable.capacity,
-        weight: proformaInvoiceItemsTable.weight,
         quantity: proformaInvoiceItemsTable.quantity,
-        unit: proformaInvoiceItemsTable.unit,
-        productCode: productsTable.productCode,
         bottleColour: productsTable.bottleColour,
         bottleWeight: productsTable.bottleWeight,
         capColour: productsTable.capColour,
+        capWeight: productionOrderItemsTable.capWeight,
         materialType: productsTable.materialType,
-        machineType: productsTable.machineType,
       })
       .from(productionOrdersTable)
       .leftJoin(proformaInvoicesTable, eq(proformaInvoicesTable.id, productionOrdersTable.proformaInvoiceId))
       .leftJoin(proformaInvoiceItemsTable, eq(proformaInvoiceItemsTable.invoiceId, proformaInvoicesTable.id))
       .leftJoin(contactsTable, eq(contactsTable.id, proformaInvoicesTable.contactId))
       .leftJoin(productsTable, sql`LOWER(${productsTable.name}) = LOWER(${proformaInvoiceItemsTable.productName})`)
+      .leftJoin(productionOrderItemsTable, eq(productionOrderItemsTable.productionOrderId, productionOrdersTable.id))
       .where(inArray(productionOrdersTable.id, matchedOrderIds))
       .orderBy(productionOrdersTable.id, proformaInvoiceItemsTable.id);
 
@@ -818,21 +825,11 @@ router.get("/production/sheet", async (req, res) => {
     const poIds = [...new Set(rows.map((r: any) => Number(r.poId)))];
 
     // ── 5. Build Excel rows: one row per product per order ──
-    const sheetNumber = `PS-${new Date().getFullYear()}-${String(Math.floor(Date.now() / 1000) % 100000).padStart(5, "0")}`;
 
     const headers = [
-      // Order Information
-      "Sheet #", "Order #", "PI #", "Customer Code", "Order Date", "Priority", "Unit",
-      // Product Information
-      "Product Name", "Product Code", "Bottle Color", "Bottle Weight (gm)",
-      "Cap Color", "Cap Weight (gm)", "Neck Size", "HSN Code",
-      "Qty", "Unit", "Manufacturing Machine", "Product Remarks",
-      // Operator Section (blank)
-      "Production Qty", "Reject Qty", "Balance Qty", "Operator Name",
-      "Start Time", "End Time", "QC Checked", "Packing Completed", "Operator Remarks",
-      // Special Instructions
-      "Special Instructions", "Bottle Finish", "Material Type",
-      "Label Requirement", "Packing Requirement",
+      "PI Number", "Customer Code", "Order Date", "Product Name",
+      "Bottle Color", "Bottle Weight (gm)", "Cap Color", "Cap Weight (gm)",
+      "Qty", "Product Remarks", "Material Type",
     ];
 
     const dataRows: any[][] = [];
@@ -853,30 +850,17 @@ router.get("/production/sheet", async (req, res) => {
         if (!row.itemId) continue;
 
         dataRows.push([
-          sheetNumber,
-          `PO-${poId}`,
           first.piNumber || `PI-${first.poId}`,
           row.customerCode || "",
           orderDate,
-          first.priority || "",
-          first.productionUnit || "",
           row.productName || "",
-          row.productCode || "",
           row.bottleColour || "",
           row.bottleWeight || "",
           row.capColour || "",
-          "",
-          "",
-          row.hsnCode || "",
+          row.capWeight || "",
           Number(row.quantity) || "",
-          row.unit || "",
-          row.machineType || row.plannedMachine || "",
           first.productionRemarks || "",
-          "", "", "", "", "", "", "", "", "",
-          "",
-          row.bottleType || "",
           row.materialType || "",
-          "", "",
         ]);
       }
     }
@@ -885,7 +869,7 @@ router.get("/production/sheet", async (req, res) => {
       name: "Production Sheet",
       headers,
       rows: dataRows,
-    }], `Production Sheet — ${sheetNumber} — ${todayStr()}`);
+    }], `Production Sheet — ${todayStr()}`);
 
     // ── 6. Update tracking fields for all included orders ──
     const now = new Date();

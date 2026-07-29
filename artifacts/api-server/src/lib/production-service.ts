@@ -1591,6 +1591,8 @@ export async function handlePiModification(
   if (order.status === "Ready To Dispatch") {
     await db.update(productionOrdersTable).set({
       needsReprint: true,
+      updatedAt: new Date(),
+      updatedBy: user.id,
     }).where(eq(productionOrdersTable.id, productionOrderId));
     await addTimelineEntry(db, productionOrderId, order.status, `PI modified to Version ${newPiVersion}. Dispatch stage — review required.`, user.id);
     await notifyProductionUsers({
