@@ -258,7 +258,7 @@ export default function ProductionOrders() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/30">
-                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">ID</th>
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Order No</th>
                     <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Customer</th>
                     <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Product</th>
                     <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Origin</th>
