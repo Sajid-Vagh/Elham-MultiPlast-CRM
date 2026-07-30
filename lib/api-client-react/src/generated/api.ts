@@ -1379,20 +1379,18 @@ export function useListContactProformaInvoices<TData = Awaited<ReturnType<typeof
 
 
 
-export const getListProductsUrl = () => {
-
-
-
-
-  return `https://elham-multiplast-crm.onrender.com/api/products`
+export const getListProductsUrl = (search?: string) => {
+  const url = new URL(`https://elham-multiplast-crm.onrender.com/api/products`);
+  if (search) url.searchParams.set("search", search);
+  return url.toString();
 }
 
 /**
  * @summary List all products
  */
-export const listProducts = async ( options?: RequestInit): Promise<Product[]> => {
+export const listProducts = async ( params?: { search?: string }, options?: RequestInit): Promise<Product[]> => {
 
-  return customFetch<Product[]>(getListProductsUrl(),
+  return customFetch<Product[]>(getListProductsUrl(params?.search),
   {
     ...options,
     method: 'GET'
@@ -1405,23 +1403,24 @@ export const listProducts = async ( options?: RequestInit): Promise<Product[]> =
 
 
 
-export const getListProductsQueryKey = () => {
+export const getListProductsQueryKey = (params?: { search?: string }) => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/products`
+    `https://elham-multiplast-crm.onrender.com/api/products`,
+    params?.search || "all"
     ] as const;
     }
 
 
-export const getListProductsQueryOptions = <TData = Awaited<ReturnType<typeof listProducts>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListProductsQueryOptions = <TData = Awaited<ReturnType<typeof listProducts>>, TError = ErrorType<unknown>>( params?: { search?: string }, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListProductsQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getListProductsQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listProducts>>> = ({ signal }) => listProducts({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listProducts>>> = ({ signal }) => listProducts(params, { signal, ...requestOptions });
 
 
 
@@ -1439,11 +1438,12 @@ export type ListProductsQueryError = ErrorType<unknown>
  */
 
 export function useListProducts<TData = Awaited<ReturnType<typeof listProducts>>, TError = ErrorType<unknown>>(
+  params?: { search?: string },
   options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListProductsQueryOptions(options)
+  const queryOptions = getListProductsQueryOptions(params, options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

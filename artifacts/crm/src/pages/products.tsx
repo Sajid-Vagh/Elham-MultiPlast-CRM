@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { onProductChange } from "@/lib/query-invalidation";
 
@@ -357,8 +357,19 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
   );
 }
 
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+  return debounced;
+}
+
 export default function Products() {
-  const { data: products, isLoading } = useListProducts();
+  const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearch = useDebounce(searchTerm, 300);
+  const { data: products, isLoading } = useListProducts({ search: debouncedSearch || undefined });
   const { data: currentUser } = useGetMe();
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
@@ -417,6 +428,16 @@ export default function Products() {
             </DialogContent>
           </Dialog>
         )}
+      </div>
+
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+        <Input
+          placeholder="Search products..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="pl-9 max-w-sm"
+        />
       </div>
 
       <div className="bg-card border rounded-md shadow-sm overflow-x-auto">

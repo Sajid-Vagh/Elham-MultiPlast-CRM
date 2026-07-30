@@ -42,7 +42,21 @@ router.get("/products", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const products = await db.select().from(productsTable).orderBy(productsTable.name);
+    const search = (req.query.search as string || "").trim();
+    let products;
+    if (search) {
+      const q = `%${search.toLowerCase()}%`;
+      products = await db.select().from(productsTable).where(
+        or(
+          sql`LOWER(${productsTable.name}) LIKE ${q}`,
+          sql`LOWER(${productsTable.productCode}) LIKE ${q}`,
+          sql`LOWER(${productsTable.hsnCode}) LIKE ${q}`,
+          sql`LOWER(${productsTable.bottleWeight}) LIKE ${q}`,
+        )
+      ).orderBy(productsTable.name);
+    } else {
+      products = await db.select().from(productsTable).orderBy(productsTable.name);
+    }
     res.json(products);
   } catch (err) {
     req.log.error({ err }, "List products error");
