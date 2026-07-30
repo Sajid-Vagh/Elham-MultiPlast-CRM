@@ -1351,12 +1351,8 @@ const selectProduct = (idx: number, product: any) => {
       <div class="party-left">
         <div class="party-label">Party Details :</div>
         ${(() => {
-          const firstLine = inv.tradeName || inv.companyName;
-          const secondLine = inv.customerName;
-          if (firstLine && firstLine !== secondLine) {
-            return `<div class="party-name">${firstLine}</div><div class="party-name">${secondLine}</div>`;
-          }
-          return `<div class="party-name">${secondLine}</div>`;
+          const displayName = inv.tradeName || inv.customerName;
+          return `<div class="party-name">${displayName}</div>`;
         })()}
         <div class="party-address">
           ${partyAddr.length > 0 ? partyAddr.join("<br>") + "<br>" : ""}

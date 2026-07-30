@@ -112,12 +112,8 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
       <div class="party-left">
         <div class="party-label">Party Details :</div>
         ${(() => {
-          const firstLine = invoice.tradeName || invoice.companyName;
-          const secondLine = invoice.customerName;
-          if (firstLine && firstLine !== secondLine) {
-            return `<div class="party-name">${firstLine}</div><div class="party-name">${secondLine}</div>`;
-          }
-          return `<div class="party-name">${secondLine}</div>`;
+          const displayName = invoice.tradeName || invoice.customerName;
+          return `<div class="party-name">${displayName}</div>`;
         })()}
         <div class="party-address">
           ${partyAddressLines.length > 0 ? partyAddressLines.join("<br>") + "<br>" : ""}
