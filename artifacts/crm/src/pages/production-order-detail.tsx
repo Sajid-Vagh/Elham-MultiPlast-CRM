@@ -313,7 +313,6 @@ export default function ProductionOrderDetail() {
 
   const handleLoadVehicle = () => {
     if (!transportName.trim()) { toast({ title: "Transport name is required", variant: "destructive" }); return; }
-    if (!lrNumber.trim()) { toast({ title: "LR / Builty number is required", variant: "destructive" }); return; }
     loadVehicleMutation.mutate({ transportName: transportName.trim(), lrNumber: lrNumber.trim(), dispatchRemarks: dispatchRemarks.trim() || undefined });
   };
 
@@ -1040,7 +1039,7 @@ export default function ProductionOrderDetail() {
               <Input value={transportName} onChange={e => setTransportName(e.target.value)} placeholder="Enter transport company name" className="mt-1" />
             </div>
             <div>
-              <Label>LR / Builty Number *</Label>
+              <Label>LR / Builty Number (Optional)</Label>
               <Input value={lrNumber} onChange={e => setLrNumber(e.target.value)} placeholder="Enter LR or Builty number" className="mt-1" />
             </div>
             <div>
@@ -1054,7 +1053,7 @@ export default function ProductionOrderDetail() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setLoadVehicleDialog(false)}>Cancel</Button>
-            <Button className="bg-blue-600 hover:bg-blue-700" disabled={!transportName.trim() || !lrNumber.trim() || loadVehicleMutation.isPending}
+            <Button className="bg-blue-600 hover:bg-blue-700" disabled={!transportName.trim() || loadVehicleMutation.isPending}
               onClick={handleLoadVehicle}>
               {loadVehicleMutation.isPending ? "Loading..." : "Load Vehicle"}
             </Button>

@@ -139,10 +139,6 @@ export default function DispatchPage() {
       toast({ title: "Transport name is required", variant: "destructive" });
       return;
     }
-    if (!loadForm.lrNumber.trim()) {
-      toast({ title: "LR / Builty number is required", variant: "destructive" });
-      return;
-    }
     loadVehicleMutation.mutate({ orderId: loadDialog.id, data: loadForm });
   };
 
