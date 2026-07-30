@@ -20,7 +20,7 @@ interface ReportData {
     materialType: string;
     machines: { machineType: string; productCount: number; orderCount: number; totalBottles: number; pendingQty: number; inProductionQty: number; completedQty: number }[];
   }[];
-  orders: { orderId: number; status: string; productionUnit: string; createdAt: string; productName: string; machineType: string | null; materialType: string | null; quantity: number; bottleColour: string | null; bottleWeight: string | null; productCode: string | null }[];
+  orders: { orderId: number; orderNumber: string | null; status: string; productionUnit: string; createdAt: string; productName: string; machineType: string | null; materialType: string | null; quantity: number; bottleColour: string | null; bottleWeight: string | null; productCode: string | null }[];
 }
 
 export default function MachineReport() {
@@ -184,7 +184,7 @@ export default function MachineReport() {
                 ) : (
                   orders.map((o, idx) => (
                     <TableRow key={`${o.orderId}-${idx}`}>
-                      <TableCell className="font-mono text-sm">#{o.orderId}</TableCell>
+                      <TableCell className="font-mono text-sm">{o.orderNumber || `#${o.orderId}`}</TableCell>
                       <TableCell className="font-medium">{o.productName}</TableCell>
                       <TableCell>{o.materialType || <span className="text-muted-foreground">-</span>}</TableCell>
                       <TableCell>{o.machineType || <span className="text-muted-foreground">Unassigned</span>}</TableCell>

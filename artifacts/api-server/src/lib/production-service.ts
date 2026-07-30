@@ -2283,6 +2283,7 @@ export async function getMachineReport(
       productionUnit: productionOrdersTable.productionUnit,
       createdAt: productionOrdersTable.createdAt,
       proformaInvoiceId: productionOrdersTable.proformaInvoiceId,
+      orderNumber: productionOrdersTable.formattedOrderId,
     })
     .from(productionOrdersTable)
     .where(whereClause);
@@ -2302,7 +2303,7 @@ export async function getMachineReport(
   const invoiceToOrder = new Map(orders.map(o => [o.proformaInvoiceId, o]));
 
   const productRows: {
-    orderId: number; status: string; productionUnit: string | null; createdAt: Date | null;
+    orderId: number; orderNumber: string | null; status: string; productionUnit: string | null; createdAt: Date | null;
     productName: string; machineType: string | null; materialType: string | null;
     bottleColour: string | null; bottleWeight: string | null; productCode: string | null;
     quantity: number; readyQuantity: number; productionStatus: string;
@@ -2314,6 +2315,7 @@ export async function getMachineReport(
 
     productRows.push({
       orderId: order.id,
+      orderNumber: order.orderNumber,
       status: order.status,
       productionUnit: order.productionUnit,
       createdAt: order.createdAt,
@@ -2335,7 +2337,7 @@ export async function getMachineReport(
       const order = invoiceToOrder.get(item.invoiceId);
       if (!order) continue;
       productRows.push({
-        orderId: order.id, status: order.status, productionUnit: order.productionUnit,
+        orderId: order.id, orderNumber: order.orderNumber, status: order.status, productionUnit: order.productionUnit,
         createdAt: order.createdAt, productName: item.productName, machineType: null,
         materialType: null, bottleColour: null, bottleWeight: null, productCode: null,
         quantity: Number(item.quantity), readyQuantity: 0, productionStatus: order.status === "Completed" ? "Ready" : "Pending",
@@ -2351,17 +2353,22 @@ export async function getMachineReport(
     filteredRows = filteredRows.filter(r => r.productName === filters.product);
   }
 
-  const isPending = (s: string) => s === "Pending";
-  const isInProduction = (s: string) => s === "In Production";
-  const isCompleted = (s: string) => s === "Ready";
+  const PENDING_ST = ["Pending", "Pending Verification", "Confirmed", "Production Pending"];
+  const IN_PROD_ST = ["In Production", "Production On Going", "Production Started", "Production Running"];
+  const READY_ST = ["Ready", "Completed"];
 
-  const summary = {
-    totalProducts: filteredRows.length,
-    totalBottles: filteredRows.reduce((s, r) => s + r.quantity, 0),
-    pending: filteredRows.filter(r => isPending(r.productionStatus)).length,
-    inProduction: filteredRows.filter(r => isInProduction(r.productionStatus)).length,
-    completed: filteredRows.filter(r => isCompleted(r.productionStatus)).length,
+  const statusBucket = (row: typeof filteredRows[0]): "pending" | "inProduction" | "completed" => {
+    const ps = row.productionStatus;
+    if (PENDING_ST.includes(ps)) return "pending";
+    if (IN_PROD_ST.includes(ps)) return "inProduction";
+    if (READY_ST.includes(ps)) return "completed";
+    const os = row.status;
+    if (PENDING_ST.includes(os)) return "pending";
+    if (IN_PROD_ST.includes(os)) return "inProduction";
+    return "pending";
   };
+
+  let pendingCount = 0, inProductionCount = 0, completedCount = 0;
 
   const machineMap = new Map<string, {
     productCount: number; orderIds: Set<number>; totalBottles: number;
@@ -2374,11 +2381,20 @@ export async function getMachineReport(
     existing.orderIds.add(row.orderId);
     existing.totalBottles += row.quantity;
     const remaining = row.quantity - row.readyQuantity;
-    if (isPending(row.productionStatus)) existing.pendingQty += remaining > 0 ? remaining : row.quantity;
-    if (isInProduction(row.productionStatus)) existing.inProductionQty += remaining > 0 ? remaining : row.quantity;
-    if (isCompleted(row.productionStatus)) existing.completedQty += row.readyQuantity;
+    const bucket = statusBucket(row);
+    if (bucket === "pending") { pendingCount++; existing.pendingQty += remaining > 0 ? remaining : row.quantity; }
+    else if (bucket === "inProduction") { inProductionCount++; existing.inProductionQty += remaining > 0 ? remaining : row.quantity; }
+    else { completedCount++; existing.completedQty += row.readyQuantity; }
     machineMap.set(key, existing);
   }
+
+  const summary = {
+    totalProducts: filteredRows.length,
+    totalBottles: filteredRows.reduce((s, r) => s + r.quantity, 0),
+    pending: pendingCount,
+    inProduction: inProductionCount,
+    completed: completedCount,
+  };
 
   const materialMachineMap = new Map<string, Map<string, {
     productCount: number; orderIds: Set<number>; totalBottles: number;
@@ -2394,9 +2410,10 @@ export async function getMachineReport(
     existing.orderIds.add(row.orderId);
     existing.totalBottles += row.quantity;
     const remaining = row.quantity - row.readyQuantity;
-    if (isPending(row.productionStatus)) existing.pendingQty += remaining > 0 ? remaining : row.quantity;
-    if (isInProduction(row.productionStatus)) existing.inProductionQty += remaining > 0 ? remaining : row.quantity;
-    if (isCompleted(row.productionStatus)) existing.completedQty += row.readyQuantity;
+    const bucket = statusBucket(row);
+    if (bucket === "pending") existing.pendingQty += remaining > 0 ? remaining : row.quantity;
+    else if (bucket === "inProduction") existing.inProductionQty += remaining > 0 ? remaining : row.quantity;
+    else existing.completedQty += row.readyQuantity;
     innerMap.set(machine, existing);
   }
 
