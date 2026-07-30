@@ -788,6 +788,10 @@ export async function enrichProductionOrder(order: any, user?: { role: string })
     validNextStatuses: getValidNextStatuses(order.status),
     validNextDispatchStatuses: getValidNextDispatchStatuses(order.dispatchStatus),
     displayOrderId: order.formattedOrderId || (order.createdAt ? `EML_${getFinancialYear(new Date(order.createdAt))}_${order.id}` : `#${order.id}`),
+    customerCode: contact?.customerCode || null,
+    companyName: contact?.companyName || contact?.name || invoice?.companyName || null,
+    customerName: contact?.name || invoice?.customerName || null,
+    orderNumber: order.formattedOrderId || (order.createdAt ? `EML_${getFinancialYear(new Date(order.createdAt))}_${order.id}` : `#${order.id}`),
   };
   // Mask customer identity for production-only users
   if (user && isProductionOnlyRole(user.role)) {
