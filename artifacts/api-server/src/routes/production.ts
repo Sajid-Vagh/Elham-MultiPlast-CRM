@@ -814,7 +814,7 @@ router.get("/production/sheet", async (req, res) => {
       .leftJoin(proformaInvoicesTable, eq(proformaInvoicesTable.id, productionOrdersTable.proformaInvoiceId))
       .leftJoin(proformaInvoiceItemsTable, eq(proformaInvoiceItemsTable.invoiceId, proformaInvoicesTable.id))
       .leftJoin(contactsTable, eq(contactsTable.id, proformaInvoicesTable.contactId))
-      .leftJoin(productsTable, eq(productsTable.id, proformaInvoiceItemsTable.productId))
+      .leftJoin(productsTable, sql`${productsTable.id} = COALESCE(${proformaInvoiceItemsTable.productId}, (SELECT p2.id FROM products p2 WHERE LOWER(p2.name) = LOWER(${proformaInvoiceItemsTable.productName}) LIMIT 1))`)
       .leftJoin(productionOrderItemsTable, eq(productionOrderItemsTable.piItemId, proformaInvoiceItemsTable.id))
       .where(inArray(productionOrdersTable.id, matchedOrderIds))
       .orderBy(productionOrdersTable.id, proformaInvoiceItemsTable.id);

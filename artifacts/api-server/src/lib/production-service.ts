@@ -2844,7 +2844,9 @@ export async function getManufacturingSummary(user: PermissionUser, unitFilter?:
       JOIN production_order_items poi ON poi.production_order_id = ao.po_id
       LEFT JOIN proforma_invoices pi ON pi.id = ao.resolved_invoice_id
       LEFT JOIN proforma_invoice_items pii ON pii.id = poi.pi_item_id
-      LEFT JOIN products p ON p.id = pii.product_id
+      LEFT JOIN products p ON p.id = COALESCE(pii.product_id, (
+        SELECT p2.id FROM products p2 WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(pii.product_name)) LIMIT 1
+      ))
       WHERE COALESCE(poi.production_status, 'Pending') = 'Pending'
         AND (poi.ordered_quantity::numeric - poi.ready_quantity::numeric) > 0
         ${materialCondition}
@@ -2935,7 +2937,9 @@ export async function getManufacturingSummaryDetail(
       JOIN production_orders po ON po.id = ao.po_id
       JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
       JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
-      LEFT JOIN products p ON p.id = pii.product_id
+      LEFT JOIN products p ON p.id = COALESCE(pii.product_id, (
+        SELECT p2.id FROM products p2 WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(pii.product_name)) LIMIT 1
+      ))
       WHERE TRIM(LOWER(pii.product_name)) = TRIM(LOWER(${filter.productName}))
         AND ${weightFilter}
         AND ${colourFilter}
@@ -2963,7 +2967,9 @@ export async function getManufacturingSummaryDetail(
       FROM production_orders po
       JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
       JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
-      LEFT JOIN products p ON p.id = pii.product_id
+      LEFT JOIN products p ON p.id = COALESCE(pii.product_id, (
+        SELECT p2.id FROM products p2 WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(pii.product_name)) LIMIT 1
+      ))
       WHERE po.id = ANY(${filter.orderIds}::int[])
         AND pi.is_deleted = false
       ORDER BY po.created_at DESC
