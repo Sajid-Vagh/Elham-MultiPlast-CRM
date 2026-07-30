@@ -2533,6 +2533,11 @@ export async function getPendingSummary(user: PermissionUser, unitFilter?: strin
   const results = await db.execute(sql`
     SELECT
       oi.product_name AS "productName",
+      COALESCE(NULLIF(oi.bottle_colour, ''), 'N/A') AS "bottleColour",
+      COALESCE(NULLIF(oi.bottle_weight, ''), '-') AS "bottleWeight",
+      COALESCE(NULLIF(oi.cap_colour, ''), 'N/A') AS "capColour",
+      COALESCE(NULLIF(oi.cap_weight, ''), '-') AS "capWeight",
+      COALESCE(NULLIF(oi.material_type, ''), 'N/A') AS "materialType",
       SUM(oi.ordered_quantity::numeric - oi.ready_quantity::numeric) AS "totalPendingQuantity",
       COUNT(DISTINCT oi.production_order_id) AS "orderCount",
       array_agg(DISTINCT oi.production_order_id) AS "orderIds"
@@ -2544,13 +2549,18 @@ export async function getPendingSummary(user: PermissionUser, unitFilter?: strin
       AND COALESCE(oi.production_status, 'Pending') = 'Pending'
       AND (oi.ordered_quantity::numeric - oi.ready_quantity::numeric) > 0
       ${unitCondition}
-    GROUP BY oi.product_name
+    GROUP BY oi.product_name, oi.bottle_colour, oi.bottle_weight, oi.cap_colour, oi.cap_weight, oi.material_type
     HAVING SUM(oi.ordered_quantity::numeric - oi.ready_quantity::numeric) > 0
     ORDER BY SUM(oi.ordered_quantity::numeric - oi.ready_quantity::numeric) DESC
   `);
 
   const summary = (results.rows || []).map((r: any) => ({
     productName: r.productName,
+    bottleColour: r.bottleColour,
+    bottleWeight: r.bottleWeight,
+    capColour: r.capColour,
+    capWeight: r.capWeight,
+    materialType: r.materialType,
     totalPendingQuantity: Number(r.totalPendingQuantity),
     orderCount: Number(r.orderCount),
     orderIds: r.orderIds,
@@ -2834,7 +2844,7 @@ export async function getManufacturingSummary(user: PermissionUser, unitFilter?:
       JOIN production_order_items poi ON poi.production_order_id = ao.po_id
       LEFT JOIN proforma_invoices pi ON pi.id = ao.resolved_invoice_id
       LEFT JOIN proforma_invoice_items pii ON pii.id = poi.pi_item_id
-      LEFT JOIN products p ON TRIM(LOWER(p.name)) = TRIM(LOWER(poi.product_name))
+      LEFT JOIN products p ON p.id = pii.product_id
       WHERE COALESCE(poi.production_status, 'Pending') = 'Pending'
         AND (poi.ordered_quantity::numeric - poi.ready_quantity::numeric) > 0
         ${materialCondition}
@@ -2925,7 +2935,7 @@ export async function getManufacturingSummaryDetail(
       JOIN production_orders po ON po.id = ao.po_id
       JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
       JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
-      LEFT JOIN products p ON TRIM(LOWER(p.name)) = TRIM(LOWER(pii.product_name))
+      LEFT JOIN products p ON p.id = pii.product_id
       WHERE TRIM(LOWER(pii.product_name)) = TRIM(LOWER(${filter.productName}))
         AND ${weightFilter}
         AND ${colourFilter}
@@ -2953,7 +2963,7 @@ export async function getManufacturingSummaryDetail(
       FROM production_orders po
       JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
       JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
-      LEFT JOIN products p ON TRIM(LOWER(p.name)) = TRIM(LOWER(pii.product_name))
+      LEFT JOIN products p ON p.id = pii.product_id
       WHERE po.id = ANY(${filter.orderIds}::int[])
         AND pi.is_deleted = false
       ORDER BY po.created_at DESC
