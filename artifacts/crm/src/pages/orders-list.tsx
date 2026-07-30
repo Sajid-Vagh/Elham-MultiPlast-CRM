@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Package, Search, Calendar, ChevronDown, ChevronRight, Filter, X } from "lucide-react";
+import { Package, Search, Calendar, ChevronDown, ChevronRight, Filter, X, RefreshCw } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useActiveUnits } from "@/lib/use-active-units";
 
@@ -88,7 +88,7 @@ export default function OrdersList() {
   params.set("page", String(page));
   params.set("limit", "30");
 
-  const { data, isLoading, refetch } = useQuery<{ data: OrderRow[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>({
+  const { data, isLoading, isRefetching, refetch } = useQuery<{ data: OrderRow[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>({
     queryKey: ["orders-global", search, datePreset, customStartDate, customEndDate, dispatchStatusFilter, productionUnitFilter, page],
     queryFn: () => customFetch(`/orders/global?${params.toString()}`),
     refetchInterval: 30_000,
@@ -108,7 +108,10 @@ export default function OrdersList() {
           <h1 className="text-2xl font-bold tracking-tight">Orders</h1>
           <p className="text-sm text-muted-foreground">Track and manage all orders across the organization</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>Refresh</Button>
+        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isRefetching}>
+          <RefreshCw className={`h-4 w-4 mr-1.5 ${isRefetching ? "animate-spin" : ""}`} />
+          {isRefetching ? "Refreshing..." : "Refresh"}
+        </Button>
       </div>
 
       {/* Filters */}
