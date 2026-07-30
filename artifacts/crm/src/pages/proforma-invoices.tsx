@@ -90,6 +90,7 @@ interface InvoiceItem {
   amount: number;
   weight?: string;
   bottleType?: string;
+  bottleColour?: string;
   capacity?: string;
 }
 
@@ -544,6 +545,7 @@ export default function ProformaInvoicesPage() {
                 amount: Number(it.amount),
                 weight: it.weight || undefined,
                 bottleType: it.bottleType || undefined,
+                bottleColour: it.bottleColour || undefined,
                 capacity: it.capacity || undefined,
               })));
             }
@@ -573,6 +575,7 @@ const selectProduct = (idx: number, product: any) => {
     if (product.pricePerUnit) next.rate = Number(product.pricePerUnit);
     if (product.bottleWeight) next.weight = product.bottleWeight;
     if (product.materialType) next.bottleType = product.materialType;
+    if (product.bottleColour) next.bottleColour = product.bottleColour;
     return recalcItem(next);
   }));
     setShowProductSearch(false);
@@ -1034,6 +1037,7 @@ const selectProduct = (idx: number, product: any) => {
           hsnCode: i.hsnCode || null,
           weight: i.weight || null,
           bottleType: i.bottleType || null,
+          bottleColour: i.bottleColour || null,
           capacity: i.capacity || null,
           quantity: i.quantity,
           unit: i.unit,
@@ -1641,6 +1645,7 @@ ${pagesHtml}
                             amount: Number(it.amount),
                             weight: it.weight || undefined,
                             bottleType: it.bottleType || undefined,
+                            bottleColour: it.bottleColour || undefined,
                             capacity: it.capacity || undefined,
                           })));
                         }
@@ -2145,6 +2150,7 @@ ${pagesHtml}
                 <colgroup>
                   <col className="w-8" />
                   <col />
+                  <col className="w-[120px]" />
                   <col className="w-[88px]" />
                   <col className="w-[72px]" />
                   <col className="w-[72px]" />
@@ -2156,6 +2162,7 @@ ${pagesHtml}
                   <TableRow>
                     <TableHead className="w-8">#</TableHead>
                     <TableHead>Product Name</TableHead>
+                    <TableHead className="w-[120px]">Bottle Colour</TableHead>
                     <TableHead className="w-[88px]">HSN</TableHead>
                     <TableHead className="w-[72px]">Qty</TableHead>
                     <TableHead className="w-[72px]">Unit</TableHead>
@@ -2178,6 +2185,20 @@ ${pagesHtml}
                             onBlur={() => setTimeout(() => setShowProductSearch(false), 200)}
                           />
                         </TableCell>
+                      <TableCell>
+                        <Select value={item.bottleColour || ""} onValueChange={(v) => updateItem(idx, "bottleColour", v || undefined)}>
+                          <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="Color" /></SelectTrigger>
+                          <SelectContent>
+                            {(() => {
+                              const resultColors = productSearchResults.filter(r => r.name?.toLowerCase() === item.productName?.toLowerCase()).map((r: any) => r.bottleColour).filter(Boolean);
+                              const allColors = [...new Set([...(item.bottleColour ? [item.bottleColour] : []), ...resultColors, "Dark Blue", "White", "Purple", "Green", "Red", "Yellow", "Orange", "Pink", "Black", "Clear", "Transparent", "Blue", "Silver", "Gold"])];
+                              return allColors.map((c: string) => (
+                                <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
+                              ));
+                            })()}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
                       <TableCell>
                         <Input value={item.hsnCode} onChange={(e) => updateItem(idx, "hsnCode", e.target.value)} placeholder="HSN" className="h-8 w-full" />
                       </TableCell>
@@ -2423,21 +2444,23 @@ ${pagesHtml}
           <CardContent>
             <Table>
               <TableHeader>
-                  <TableRow>
-                    <TableHead>#</TableHead>
-                    <TableHead>Product</TableHead>
-                    <TableHead>HSN</TableHead>
-                    <TableHead>Qty</TableHead>
-                    <TableHead>Unit</TableHead>
-                    <TableHead>Rate</TableHead>
-                    <TableHead>Amount</TableHead>
-                  </TableRow>
+                    <TableRow>
+                      <TableHead>#</TableHead>
+                      <TableHead>Product</TableHead>
+                      <TableHead>Bottle Colour</TableHead>
+                      <TableHead>HSN</TableHead>
+                      <TableHead>Qty</TableHead>
+                      <TableHead>Unit</TableHead>
+                      <TableHead>Rate</TableHead>
+                      <TableHead>Amount</TableHead>
+                    </TableRow>
                 </TableHeader>
                 <TableBody>
                   {inv.items?.map((item: any, idx: number) => (
                     <TableRow key={item.id || idx}>
                       <TableCell>{idx + 1}</TableCell>
                       <TableCell>{item.productName}</TableCell>
+                      <TableCell>{item.bottleColour || "-"}</TableCell>
                       <TableCell>{item.hsnCode || "-"}</TableCell>
                       <TableCell>{item.quantity}</TableCell>
                       <TableCell>{item.unit}</TableCell>

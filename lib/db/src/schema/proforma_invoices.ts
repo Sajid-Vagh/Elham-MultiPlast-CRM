@@ -64,6 +64,7 @@ export const proformaInvoiceItemsTable = pgTable("proforma_invoice_items", {
   productName: text("product_name").notNull(),
   hsnCode: text("hsn_code"),
   bottleType: text("bottle_type"),
+  bottleColour: text("bottle_colour"),
   capacity: text("capacity"),
   weight: text("weight"),
   quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull(),

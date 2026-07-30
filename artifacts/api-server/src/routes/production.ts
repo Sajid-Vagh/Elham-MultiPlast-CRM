@@ -801,7 +801,7 @@ router.get("/production/sheet", async (req, res) => {
         itemId: proformaInvoiceItemsTable.id,
         productName: proformaInvoiceItemsTable.productName,
         quantity: proformaInvoiceItemsTable.quantity,
-        bottleColour: productsTable.bottleColour,
+        bottleColour: proformaInvoiceItemsTable.bottleColour,
         bottleWeight: productsTable.bottleWeight,
         capColour: productsTable.capColour,
         capWeight: productionOrderItemsTable.capWeight,

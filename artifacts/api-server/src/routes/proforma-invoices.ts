@@ -857,6 +857,7 @@ router.post("/proforma-invoices", async (req, res) => {
         productId: item.productId || null,
         hsnCode: item.hsnCode || null,
         bottleType: item.bottleType || null,
+        bottleColour: item.bottleColour || null,
         capacity: item.capacity || null,
         weight: item.weight || null,
         quantity: String(item.quantity),
@@ -1304,7 +1305,7 @@ async function updateInvoiceHandler(req: any, res: any) {
 
       const newItems = items || oldItems.map((it: any) => ({
         productName: it.productName, productId: it.productId || null, hsnCode: it.hsnCode, bottleType: it.bottleType,
-        capacity: it.capacity, weight: it.weight, quantity: Number(it.quantity),
+        bottleColour: it.bottleColour || null, capacity: it.capacity, weight: it.weight, quantity: Number(it.quantity),
         unit: it.unit, rate: Number(it.rate), discountPercent: Number(it.discountPercent || 0),
         discount: Number(it.discount || 0), gstPercent: Number(it.gstPercent || 0), amount: Number(it.amount),
       }));
@@ -1326,6 +1327,7 @@ async function updateInvoiceHandler(req: any, res: any) {
               productId: item.productId || null,
               hsnCode: item.hsnCode || null,
               bottleType: item.bottleType || null,
+              bottleColour: item.bottleColour || null,
               capacity: item.capacity || null,
               weight: item.weight || null,
               quantity: String(item.quantity),
