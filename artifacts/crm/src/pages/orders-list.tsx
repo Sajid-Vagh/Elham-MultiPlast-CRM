@@ -13,22 +13,6 @@ import { Package, Search, Calendar, ChevronDown, ChevronRight, Filter, X } from 
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useActiveUnits } from "@/lib/use-active-units";
 
-const ORDER_STATUS_COLORS: Record<string, string> = {
-  "Draft": "bg-gray-100 text-gray-600",
-  "Pending Verification": "bg-yellow-100 text-yellow-700",
-  "Confirmed": "bg-blue-100 text-blue-700",
-  "Production Pending": "bg-orange-100 text-orange-700",
-  "Production Started": "bg-purple-100 text-purple-700",
-  "Production Running": "bg-purple-100 text-purple-700",
-  "Quality Check": "bg-indigo-100 text-indigo-700",
-  "Ready for Dispatch": "bg-cyan-100 text-cyan-700",
-  "Partially Dispatched": "bg-teal-100 text-teal-700",
-  "Dispatched": "bg-blue-100 text-blue-700",
-  "Delivered": "bg-green-100 text-green-700",
-  "Completed": "bg-emerald-100 text-emerald-700",
-  "Cancelled": "bg-red-100 text-red-600",
-};
-
 const PROD_STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-600",
   "Accepted": "bg-blue-100 text-blue-700",
@@ -63,7 +47,6 @@ interface OrderRow {
   customerName: string;
   companyName: string;
   mobile: string;
-  status: string;
   grandTotal: number;
   createdAt: string;
   productionUnit: string;
@@ -88,7 +71,6 @@ export default function OrdersList() {
   const [datePreset, setDatePreset] = useState("all");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All");
   const [dispatchStatusFilter, setDispatchStatusFilter] = useState("All");
   const [productionUnitFilter, setProductionUnitFilter] = useState("All");
   const [page, setPage] = useState(1);
@@ -101,14 +83,13 @@ export default function OrdersList() {
   if (datePreset !== "all") params.set("datePreset", datePreset);
   if (datePreset === "custom" && customStartDate) params.set("startDate", customStartDate);
   if (datePreset === "custom" && customEndDate) params.set("endDate", customEndDate);
-  if (statusFilter !== "All") params.set("status", statusFilter);
   if (dispatchStatusFilter !== "All") params.set("dispatchStatus", dispatchStatusFilter);
   if (productionUnitFilter !== "All") params.set("productionUnit", productionUnitFilter);
   params.set("page", String(page));
   params.set("limit", "30");
 
   const { data, isLoading, refetch } = useQuery<{ data: OrderRow[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>({
-    queryKey: ["orders-global", search, datePreset, customStartDate, customEndDate, statusFilter, dispatchStatusFilter, productionUnitFilter, page],
+    queryKey: ["orders-global", search, datePreset, customStartDate, customEndDate, dispatchStatusFilter, productionUnitFilter, page],
     queryFn: () => customFetch(`/orders/global?${params.toString()}`),
     refetchInterval: 30_000,
   });
@@ -161,16 +142,6 @@ export default function OrdersList() {
               </>
             )}
 
-            <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(1); }}>
-              <SelectTrigger className="w-44"><SelectValue placeholder="Status" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="All">All Status</SelectItem>
-                {["Draft", "Pending Verification", "Confirmed", "Production Pending", "Production Started", "Production Running", "Ready for Dispatch", "Dispatched", "Delivered", "Completed", "Cancelled"].map(s => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
             <Select value={dispatchStatusFilter} onValueChange={v => { setDispatchStatusFilter(v); setPage(1); }}>
               <SelectTrigger className="w-40"><SelectValue placeholder="Dispatch" /></SelectTrigger>
               <SelectContent>
@@ -192,8 +163,8 @@ export default function OrdersList() {
               </Select>
             )}
 
-            {(search || datePreset !== "all" || statusFilter !== "All" || dispatchStatusFilter !== "All" || productionUnitFilter !== "All") && (
-              <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setDatePreset("all"); setStatusFilter("All"); setDispatchStatusFilter("All"); setProductionUnitFilter("All"); setPage(1); }}>
+            {(search || datePreset !== "all" || dispatchStatusFilter !== "All" || productionUnitFilter !== "All") && (
+              <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setDatePreset("all"); setDispatchStatusFilter("All"); setProductionUnitFilter("All"); setPage(1); }}>
                 <X className="h-3.5 w-3.5 mr-1" />Clear
               </Button>
             )}
@@ -230,7 +201,6 @@ export default function OrdersList() {
                     <TableHead className="text-center">Products</TableHead>
                     <TableHead className="text-right">Qty</TableHead>
                     <TableHead>Unit</TableHead>
-                    <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -272,13 +242,10 @@ export default function OrdersList() {
                         <TableCell className="text-center text-sm">{order.itemsCount}</TableCell>
                         <TableCell className="text-right text-sm">{order.totalQuantity.toLocaleString()}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{order.productionUnit || "-"}</TableCell>
-                        <TableCell>
-                          <Badge className={`text-[10px] ${ORDER_STATUS_COLORS[order.status] || "bg-gray-100"}`}>{order.status}</Badge>
-                        </TableCell>
                       </TableRow>
                       {expandedRow === order.id && (
                         <TableRow key={`${order.id}-expanded`}>
-                          <TableCell colSpan={12} className="bg-muted/20 p-4">
+                          <TableCell colSpan={11} className="bg-muted/20 p-4">
                             <div className="space-y-3">
                               <div className="flex items-center gap-3 flex-wrap">
                                 <p className="text-xs font-semibold uppercase text-muted-foreground">Products ({order.products?.length || 0})</p>
