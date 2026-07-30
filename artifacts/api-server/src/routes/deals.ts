@@ -77,8 +77,8 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
       )
       .orderBy(desc(dealsTable.createdAt));
 
-    // Role-based deal isolation: sales users only see their own deals
-    if (user.role === "sales") {
+    // Role-based deal isolation: non-admin users only see their own deals
+    if (user.role !== "admin") {
       allDeals = allDeals.filter(d => d.salesOwnerId === user.id);
     }
 
@@ -141,7 +141,7 @@ router.get("/deals", async (req, res) => {
     const params = ListDealsQueryParams.safeParse(req.query);
     const conditions: SQL[] = [];
 
-    if (user.role === "sales") {
+    if (user.role !== "admin") {
       conditions.push(eq(dealsTable.salesOwnerId, user.id));
     }
 
@@ -336,7 +336,7 @@ router.get("/deals/:id", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
     const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, parsed.data.id));
     if (!deal) { res.status(404).json({ error: "Not found" }); return; }
-    if (user.role === "sales" && deal.salesOwnerId !== user.id) {
+    if (user.role !== "admin" && deal.salesOwnerId !== user.id) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
@@ -368,7 +368,7 @@ router.get("/deals/:id/validate-won", async (req, res) => {
     const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, parsed.data.id));
     if (!deal) { res.status(404).json({ error: "Deal not found" }); return; }
 
-    if (user.role === "sales" && deal.salesOwnerId !== user.id) {
+    if (user.role !== "admin" && deal.salesOwnerId !== user.id) {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 
@@ -434,11 +434,11 @@ router.patch("/deals/:id", async (req, res) => {
       res.status(404).json({ error: "Not found" }); return;
     }
     console.log("[DEAL-PATCH-DEBUG] oldDeal.stage:", oldDeal.stage, "oldDeal.id:", oldDeal.id);
-    if (user.role === "sales" && oldDeal.salesOwnerId !== user.id) {
+    if (user.role !== "admin" && oldDeal.salesOwnerId !== user.id) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
-    if (user.role === "sales") {
+    if (user.role !== "admin") {
       delete updateData.salesOwnerId;
     }
 
@@ -728,7 +728,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
     const effectiveProductionUnit = productionUnit || deal.productionUnit;
 
     // Permission check
-    if (user.role === "sales" && deal.salesOwnerId !== user.id) {
+    if (user.role !== "admin" && deal.salesOwnerId !== user.id) {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 
@@ -1003,7 +1003,7 @@ router.delete("/deals/:id", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (user.role === "sales") {
+    if (user.role !== "admin") {
       const [deal] = await db.select({ salesOwnerId: dealsTable.salesOwnerId }).from(dealsTable).where(eq(dealsTable.id, params.data.id));
       if (!deal || deal.salesOwnerId !== user.id) {
         res.status(403).json({ error: "Forbidden" });
@@ -1042,7 +1042,7 @@ router.post("/deals/:id/change-production-unit", async (req, res) => {
     const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, dealId));
     if (!deal) { res.status(404).json({ error: "Deal not found" }); return; }
 
-    if (user.role === "sales" && deal.salesOwnerId !== user.id) {
+    if (user.role !== "admin" && deal.salesOwnerId !== user.id) {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 
@@ -1113,7 +1113,7 @@ router.get("/deals/:id/products", async (req, res) => {
     if (!deal) { res.status(404).json({ error: "Deal not found" }); return; }
     const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
     if (contact) {
-      if (user.role === "sales" && deal.salesOwnerId !== user.id) { res.status(403).json({ error: "Forbidden" }); return; }
+      if (user.role !== "admin" && deal.salesOwnerId !== user.id) { res.status(403).json({ error: "Forbidden" }); return; }
       const units = getAccessibleUnits(user);
       if (units && (!contact.unit || !units.includes(contact.unit))) { res.status(403).json({ error: "Forbidden" }); return; }
     }
@@ -1139,7 +1139,7 @@ router.post("/deals/:id/products", async (req, res) => {
     if (!deal) { res.status(404).json({ error: "Deal not found" }); return; }
     const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
     if (contact) {
-      if (user.role === "sales" && deal.salesOwnerId !== user.id) { res.status(403).json({ error: "Forbidden" }); return; }
+      if (user.role !== "admin" && deal.salesOwnerId !== user.id) { res.status(403).json({ error: "Forbidden" }); return; }
       const units = getAccessibleUnits(user);
       if (units && (!contact.unit || !units.includes(contact.unit))) { res.status(403).json({ error: "Forbidden" }); return; }
     }
@@ -1162,7 +1162,7 @@ router.delete("/deals/:id/products/:productId", async (req, res) => {
     if (!deal) { res.status(404).json({ error: "Deal not found" }); return; }
     const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
     if (contact) {
-      if (user.role === "sales" && deal.salesOwnerId !== user.id) { res.status(403).json({ error: "Forbidden" }); return; }
+      if (user.role !== "admin" && deal.salesOwnerId !== user.id) { res.status(403).json({ error: "Forbidden" }); return; }
       const units = getAccessibleUnits(user);
       if (units && (!contact.unit || !units.includes(contact.unit))) { res.status(403).json({ error: "Forbidden" }); return; }
     }
