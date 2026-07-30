@@ -191,74 +191,95 @@ export default function Deals() {
       toast({ title: "Validation Error", description: "Please select a Production Unit", variant: "destructive" });
       return;
     }
+    // Fire voice note upload in background — don't block the mark-won response
+    let backgroundUploadPromise: Promise<number | null> = Promise.resolve(null);
+    if (voiceNoteBlob && !voiceNoteId) {
+      setVoiceNoteUploading(true);
+      const formData = new FormData();
+      formData.append("file", voiceNoteBlob, `voice-note-${Date.now()}.webm`);
+      formData.append("dealId", String(markWonDeal.deal.id));
+      if (voiceNoteTranscript) formData.append("transcript", voiceNoteTranscript);
+      if (voiceNoteDurationMs) formData.append("durationMs", String(voiceNoteDurationMs));
+
+      const token = localStorage.getItem("crm_token");
+      backgroundUploadPromise = fetch("/api/voice-notes", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      }).then(async res => {
+        if (!res.ok) throw new Error("Voice note upload failed");
+        const data = await res.json();
+        setVoiceNoteId(data.id);
+        return data.id;
+      }).catch(err => {
+        console.error("[Background voice note upload]", err);
+        return null;
+      });
+    }
+
+    // Call mark-won immediately — no need to wait for voice note
     setWonSubmitting(true);
     try {
-      // Upload voice note first if recorded
-      let finalVoiceNoteId = voiceNoteId;
-      if (voiceNoteBlob && !voiceNoteId) {
-        setVoiceNoteUploading(true);
-        const formData = new FormData();
-        formData.append("file", voiceNoteBlob, `voice-note-${Date.now()}.webm`);
-        formData.append("dealId", String(markWonDeal.deal.id));
-        if (voiceNoteTranscript) formData.append("transcript", voiceNoteTranscript);
-        if (voiceNoteDurationMs) formData.append("durationMs", String(voiceNoteDurationMs));
+    const result = await customFetch<any>(`/deals/${markWonDeal.deal.id}/mark-won`, {
+      method: "POST",
+      body: JSON.stringify({
+        wonAmount: amount,
+        productionUnit: wonProductionUnit || markWonDeal.deal.productionUnit,
+        productionNotes: wonProductionNotes || null,
+        salesNotes: wonSalesNotes || null,
+        unitChangeReason: wonUnitReason || null,
+        voiceNoteId: null, // voice note linked in background after upload
+      }),
+    });
+    setWonSubmitting(false);
+    setMarkWonDeal(null);
+    setWonAmount("");
+    setWonProductionUnit("");
+    setWonProductionNotes("");
+    setWonSalesNotes("");
+    setWonUnitReason("");
+    setShowVoiceRecorder(false);
+    setVoiceNoteBlob(null);
+    setVoiceNoteTranscript("");
+    setVoiceNoteDurationMs(0);
+    setVoiceNoteId(null);
+    setOptimisticStages(prev => { const n = { ...prev }; delete n[markWonDeal.deal.id]; return n; });
+    onDealChange(queryClient, markWonDeal.deal.id, markWonDeal.deal.contactId);
+    onProductionChange(queryClient);
+    toast({
+      title: "Deal Won!",
+      description: `Order ${result.orderNumber} created automatically. Production team notified.`,
+    });
 
-        const token = localStorage.getItem("crm_token");
-        const uploadRes = await fetch("/api/voice-notes", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-        });
-        if (!uploadRes.ok) throw new Error("Voice note upload failed");
-        const uploadData = await uploadRes.json();
-        finalVoiceNoteId = uploadData.id;
-        setVoiceNoteId(uploadData.id);
-        setVoiceNoteUploading(false);
-      }
-
-      const result = await customFetch<any>(`/deals/${markWonDeal.deal.id}/mark-won`, {
-        method: "POST",
-        body: JSON.stringify({
-          wonAmount: amount,
-          productionUnit: wonProductionUnit || markWonDeal.deal.productionUnit,
-          productionNotes: wonProductionNotes || null,
-          salesNotes: wonSalesNotes || null,
-          unitChangeReason: wonUnitReason || null,
-          voiceNoteId: finalVoiceNoteId || null,
-        }),
-      });
-      setWonSubmitting(false);
-      setMarkWonDeal(null);
-      setWonAmount("");
-      setWonProductionUnit("");
-      setWonProductionNotes("");
-      setWonSalesNotes("");
-      setWonUnitReason("");
-      setShowVoiceRecorder(false);
-      setVoiceNoteBlob(null);
-      setVoiceNoteTranscript("");
-      setVoiceNoteDurationMs(0);
-      setVoiceNoteId(null);
-      setOptimisticStages(prev => { const n = { ...prev }; delete n[markWonDeal.deal.id]; return n; });
-      onDealChange(queryClient, markWonDeal.deal.id, markWonDeal.deal.contactId);
-      onProductionChange(queryClient);
-      toast({
-        title: "Deal Won!",
-        description: `Order ${result.orderNumber} created automatically. Production team notified.`,
-      });
-
-      // Trigger celebration
-      const celebKey = `deal_won_celebrated_${markWonDeal.deal.id}`;
-      if (!sessionStorage.getItem(celebKey) && localStorage.getItem("crm_dealWonCelebration") !== "off") {
-        sessionStorage.setItem(celebKey, "true");
-        setWonTodayCount(result.todayWonCount ?? 1);
-        setWonDealForCelebration(markWonDeal.deal);
-      }
-    } catch (err: any) {
-      setWonSubmitting(false);
+    // After mark-won succeeds, link voice note to production order in background
+    backgroundUploadPromise.then(async (uploadedId) => {
       setVoiceNoteUploading(false);
-      toast({ title: "Error", description: err?.message || "Failed to mark deal as Won", variant: "destructive" });
+      if (uploadedId && result.productionOrderId) {
+        try {
+          const token = localStorage.getItem("crm_token");
+          await fetch(`/api/voice-notes/${uploadedId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ productionOrderId: result.productionOrderId }),
+          });
+        } catch (linkErr) {
+          console.error("[Background voice note linking]", linkErr);
+        }
+      }
+    });
+
+    // Trigger celebration
+    const celebKey = `deal_won_celebrated_${markWonDeal.deal.id}`;
+    if (!sessionStorage.getItem(celebKey) && localStorage.getItem("crm_dealWonCelebration") !== "off") {
+      sessionStorage.setItem(celebKey, "true");
+      setWonTodayCount(result.todayWonCount ?? 1);
+      setWonDealForCelebration(markWonDeal.deal);
     }
+  } catch (err: any) {
+    setWonSubmitting(false);
+    setVoiceNoteUploading(false);
+    toast({ title: "Error", description: err?.message || "Failed to mark deal as Won", variant: "destructive" });
+  }
   };
 
   const handleLostCancel = () => {

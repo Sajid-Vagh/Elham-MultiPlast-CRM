@@ -12,6 +12,7 @@ import { useActiveUnits } from "@/lib/use-active-units";
 import { UserAvatar } from "@/components/user-avatar";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { DuplicateWarningDialog, type DuplicateLeadInfo } from "@/components/duplicate-warning-dialog";
+import { AlertTriangle, ExternalLink } from "lucide-react";
 
 const schema = z.object({
   name: z.string().min(1, "Required"),
@@ -60,6 +61,8 @@ export default function LeadForm({
 
   const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [duplicateData, setDuplicateData] = useState<DuplicateLeadInfo | null>(null);
+  const [duplicateFound, setDuplicateFound] = useState(false);
+  const [duplicateInfo, setDuplicateInfo] = useState<{ ownerName: string; leadId: number; viewUrl: string } | null>(null);
   const [checkingDuplicate, setCheckingDuplicate] = useState(false);
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCheckedRef = useRef("");
@@ -82,6 +85,15 @@ export default function LeadForm({
         if (data.duplicate) {
           setDuplicateData(data);
           setDuplicateOpen(true);
+          setDuplicateFound(true);
+          setDuplicateInfo({
+            ownerName: data.ownerName,
+            leadId: data.leadId,
+            viewUrl: data.viewUrl || `/leads/${data.leadId}`,
+          });
+        } else {
+          setDuplicateFound(false);
+          setDuplicateInfo(null);
         }
       }
     } catch {
@@ -94,11 +106,20 @@ export default function LeadForm({
   const handleMobileBlur = useCallback((val: string) => {
     if (!enableDuplicateDetection) return;
     const trimmed = val.trim();
-    if (trimmed.length >= 6) {
+    if (trimmed.length >= 10) {
       if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
       blurTimerRef.current = setTimeout(() => checkDuplicate(trimmed, undefined), 300);
     }
   }, [enableDuplicateDetection, checkDuplicate]);
+
+  const handleMobileChange = useCallback((val: string, onChange: (...event: any[]) => void) => {
+    onChange(val);
+    // Clear duplicate state when mobile number changes
+    if (duplicateFound) {
+      setDuplicateFound(false);
+      setDuplicateInfo(null);
+    }
+  }, [duplicateFound]);
 
   const handleEmailBlur = useCallback((val: string) => {
     if (!enableDuplicateDetection) return;
@@ -178,13 +199,20 @@ export default function LeadForm({
                 </FormItem>
               )} />
               <FormField control={form.control} name="mobile" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Mobile <span className="text-destructive">*</span></FormLabel>
+                <FormItem className={enableDuplicateDetection ? "md:col-span-2 border-2 border-primary/20 rounded-lg p-4 bg-primary/5 -m-4" : ""}>
+                  <FormLabel className={enableDuplicateDetection ? "text-base font-semibold" : ""}>
+                    Mobile <span className="text-destructive">*</span>
+                    {enableDuplicateDetection && <span className="text-xs text-muted-foreground font-normal ml-2">(enter 10-digit mobile to check for existing contact)</span>}
+                  </FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="Mobile number"
+                      placeholder="10-digit mobile number"
                       {...field}
                       data-no-cap="1"
+                      className={enableDuplicateDetection ? "border-primary/40 focus-visible:ring-primary" : ""}
+                      onChange={(e) => {
+                        handleMobileChange(e.target.value, field.onChange);
+                      }}
                       onBlur={(e) => {
                         field.onBlur();
                         handleMobileBlur(e.target.value);
@@ -192,7 +220,32 @@ export default function LeadForm({
                     />
                   </FormControl>
                   {checkingDuplicate && (
-                    <p className="text-xs text-muted-foreground">Checking for duplicates...</p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                      <span className="inline-block w-3 h-3 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
+                      Checking for duplicates...
+                    </p>
+                  )}
+                  {duplicateFound && duplicateInfo && (
+                    <div className="flex items-start gap-2 p-3 mt-2 bg-amber-50 border border-amber-300 rounded-lg text-sm">
+                      <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                      <div className="flex-1">
+                        <p className="font-medium text-amber-800">This contact already exists</p>
+                        <p className="text-amber-700 text-xs mt-0.5">
+                          Assigned to: <span className="font-semibold">{duplicateInfo.ownerName}</span>
+                        </p>
+                        <div className="flex gap-2 mt-1.5">
+                          <a
+                            href={duplicateInfo.viewUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-amber-700 underline hover:text-amber-900 font-medium inline-flex items-center gap-1"
+                          >
+                            View existing lead <ExternalLink className="h-3 w-3" />
+                          </a>
+                        </div>
+                        <p className="text-xs text-amber-600 mt-1">Change the mobile number to continue creating a new lead.</p>
+                      </div>
+                    </div>
                   )}
                   <FormMessage />
                 </FormItem>
@@ -337,7 +390,7 @@ export default function LeadForm({
           </Card>
 
           <div className="flex gap-3">
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting || (enableDuplicateDetection && duplicateFound)}>
               {isSubmitting ? "Saving..." : submitLabel}
             </Button>
             {onCancel && (

@@ -307,6 +307,48 @@ router.patch("/voice-notes/:id/transcript", async (req: Request, res: Response) 
 });
 
 // ────────────────────────────────────────────────
+// PATCH /voice-notes/:id — Update voice note (link to production order, transcript, etc.)
+// ────────────────────────────────────────────────
+router.patch("/voice-notes/:id", async (req: Request, res: Response) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid voice note id" }); return; }
+
+    const [existing] = await db.select().from(voiceNotesTable).where(eq(voiceNotesTable.id, id));
+    if (!existing) { res.status(404).json({ error: "Voice note not found" }); return; }
+    if (existing.deletedAt) { res.status(404).json({ error: "Voice note has been deleted" }); return; }
+
+    const { productionOrderId, proformaInvoiceId, transcript } = req.body as Record<string, any>;
+    const updateFields: Record<string, any> = {};
+
+    if (productionOrderId !== undefined) updateFields.productionOrderId = Number(productionOrderId);
+    if (proformaInvoiceId !== undefined) updateFields.proformaInvoiceId = Number(proformaInvoiceId);
+    if (transcript !== undefined) {
+      updateFields.transcript = transcript;
+      updateFields.transcriptStatus = transcript ? "completed" : "pending";
+    }
+
+    if (Object.keys(updateFields).length === 0) {
+      res.status(400).json({ error: "No fields to update" }); return;
+    }
+
+    const [updated] = await db
+      .update(voiceNotesTable)
+      .set(updateFields)
+      .where(eq(voiceNotesTable.id, id))
+      .returning();
+
+    res.json(updated);
+  } catch (err) {
+    console.error("Update voice note error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ────────────────────────────────────────────────
 // DELETE /voice-notes/:id — Hard delete (removes DB record + audio bytes)
 // ────────────────────────────────────────────────
 router.delete("/voice-notes/:id", async (req: Request, res: Response) => {

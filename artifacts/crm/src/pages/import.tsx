@@ -637,7 +637,18 @@ export default function ImportPage() {
 
   // ── Unit state (persisted per user) ──
   const unitStorageKey = `crm_import_unit_${me?.id ?? "anon"}`;
-  const [unit, setUnit] = useState(() => localStorage.getItem(unitStorageKey) || PENDING_UNIT_ASSIGNMENT);
+  const [unit, setUnit] = useState(() => {
+    const saved = localStorage.getItem(unitStorageKey);
+    if (saved) return saved;
+    return PENDING_UNIT_ASSIGNMENT;
+  });
+  useEffect(() => {
+    // Auto-set to first active unit when units load and no saved preference
+    if (activeUnits.length > 0 && unit === PENDING_UNIT_ASSIGNMENT && !localStorage.getItem(unitStorageKey)) {
+      const first = activeUnits.find(u => u !== PENDING_UNIT_ASSIGNMENT);
+      if (first) setUnit(first);
+    }
+  }, [activeUnits, unit, unitStorageKey]);
   useEffect(() => {
     if (unit) localStorage.setItem(unitStorageKey, unit);
     else localStorage.removeItem(unitStorageKey);
