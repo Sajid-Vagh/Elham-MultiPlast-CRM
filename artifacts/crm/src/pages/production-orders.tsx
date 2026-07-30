@@ -258,16 +258,16 @@ export default function ProductionOrders() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/30">
-                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Order No</th>
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">Order No</th>
                     <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Customer</th>
                     <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Product</th>
-                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Origin</th>
-                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Unit</th>
-                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Created By</th>
-                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Priority</th>
-                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Status</th>
-                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Dispatch</th>
-                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Date</th>
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">Origin</th>
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">Unit</th>
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">Created By</th>
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">Priority</th>
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">Status</th>
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">Dispatch</th>
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">Date</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -277,28 +277,28 @@ export default function ProductionOrders() {
                       className="border-b last:border-0 hover:bg-muted/30 cursor-pointer transition-colors"
                       onClick={() => setLocation(`/production/orders/${order.id}`)}
                     >
-                      <td className="py-3 px-4 font-medium font-mono">{order.displayOrderId || order.orderNumber}</td>
-                      <td className="py-3 px-4 max-w-[180px] truncate">
-                        <p className="font-medium text-sm">{(() => { const n = order.companyName || order.customerName || "-"; const cc = order.customerCode; return cc && !n.includes(cc) ? `${n} (${cc})` : n; })()}</p>
+                      <td className="py-3 px-4 font-medium font-mono whitespace-nowrap">{order.displayOrderId || order.orderNumber}</td>
+                      <td className="py-3 px-4 min-w-[200px]">
+                        <p className="font-medium text-sm whitespace-normal break-words">{(() => { const n = order.companyName || order.customerName || "-"; const cc = order.customerCode; return cc && !n.includes(cc) ? `${n} (${cc})` : n; })()}</p>
                       </td>
-                      <td className="py-3 px-4 max-w-[150px] truncate">
+                      <td className="py-3 px-4 min-w-[160px] whitespace-normal break-words">
                         {order.items?.[0]?.productName || "-"}
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 whitespace-nowrap">
                         {order.createdByRole ? (
                           <Badge variant="outline" className={`text-[10px] ${order.createdByRole === "production_and_support" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-blue-50 text-blue-700 border-blue-200"}`}>
                             {order.createdByRole === "production_and_support" ? "SUPPORT" : "SALES"}
                           </Badge>
                         ) : "-"}
                       </td>
-                      <td className="py-3 px-4">{order.productionUnit || "-"}</td>
-                      <td className="py-3 px-4">{order.createdByName || "-"}</td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 whitespace-nowrap">{order.productionUnit || "-"}</td>
+                      <td className="py-3 px-4 whitespace-nowrap">{order.createdByName || "-"}</td>
+                      <td className="py-3 px-4 whitespace-nowrap">
                         <Badge variant="outline" className={`text-xs ${PRIORITY_COLORS[order.priority] || "bg-gray-100"} border-0`}>
                           {order.priority}
                         </Badge>
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <Badge variant="outline" className={`text-xs ${STATUS_COLORS[order.status] || "bg-gray-100"} border`}>
                             {order.status}
@@ -310,7 +310,7 @@ export default function ProductionOrders() {
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 whitespace-nowrap">
                         {order.dispatchStatus ? (
                           <Badge variant="outline" className={`text-xs ${DISPATCH_STATUS_COLORS[order.dispatchStatus] || "bg-gray-100"} border`}>
                             {order.dispatchStatus}
@@ -319,7 +319,7 @@ export default function ProductionOrders() {
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-muted-foreground text-xs">
+                      <td className="py-3 px-4 text-muted-foreground text-xs whitespace-nowrap">
                         {order.createdAt ? new Date(order.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "-"}
                       </td>
                     </tr>
