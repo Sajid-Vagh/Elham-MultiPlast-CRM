@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Phone, Mail, MapPin, Building, Calendar, Package, ShoppingCart, Repeat, MessageSquare, StickyNote, Clock, Truck, AlertTriangle, ClipboardList, User, Mic, TrendingUp, BarChart3, Star, History } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, Building, Calendar, Package, ShoppingCart, Repeat, MessageSquare, StickyNote, Clock, Truck, ClipboardList, User, Mic, TrendingUp, BarChart3, Star, History } from "lucide-react";
 import { VoiceNoteSection } from "@/components/voice-note-player";
 import { VoiceNoteUploader } from "@/components/voice-note-uploader";
 import { useToast } from "@/hooks/use-toast";
@@ -22,7 +22,6 @@ const STATUS_COLORS: Record<string, string> = {
   "Production Running": "bg-purple-100 text-purple-700",
   "Dispatch Pending": "bg-cyan-100 text-cyan-700",
   "Repeat Order Due": "bg-amber-100 text-amber-700",
-  "Complaint Open": "bg-red-100 text-red-700",
   "Inactive": "bg-gray-100 text-gray-500",
 };
 
@@ -124,18 +123,6 @@ export default function ExistingCustomerDetail() {
     queryKey: ["existing-customer-notes", id],
     queryFn: async () => {
       const res = await fetch(`/api/existing-customers/${id}/notes`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
-      });
-      if (!res.ok) throw new Error("Failed to fetch");
-      return res.json();
-    },
-    enabled: !!id,
-  });
-
-  const { data: complaints = [] } = useQuery({
-    queryKey: ["existing-customer-complaints", id],
-    queryFn: async () => {
-      const res = await fetch(`/api/existing-customers/${id}/complaints`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
       });
       if (!res.ok) throw new Error("Failed to fetch");
@@ -564,15 +551,6 @@ export default function ExistingCustomerDetail() {
             </div>
           </Card>
         )}
-        {c.activeComplaintNumber && (
-          <Card className="p-3 border-l-4 border-l-red-500">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-red-600" />
-              <span className="text-sm font-medium">Complaint</span>
-              <Badge className="bg-red-100 text-red-700 ml-auto">{c.activeComplaintNumber}</Badge>
-            </div>
-          </Card>
-        )}
       </div>
 
       {/* Assigned Team */}
@@ -631,7 +609,6 @@ export default function ExistingCustomerDetail() {
         <TabsList className="flex-wrap">
           <TabsTrigger value="orders">Orders ({orders.length})</TabsTrigger>
           <TabsTrigger value="repeat-orders">Repeat ({repeatOrders.length})</TabsTrigger>
-          <TabsTrigger value="complaints">Complaints ({complaints.length})</TabsTrigger>
           <TabsTrigger value="communications">Communications ({communications.length})</TabsTrigger>
           <TabsTrigger value="timeline">Timeline ({timeline.length})</TabsTrigger>
           <TabsTrigger value="notes">Notes ({notes.length})</TabsTrigger>
@@ -710,41 +687,6 @@ export default function ExistingCustomerDetail() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="complaints">
-          <Card>
-            <CardContent className="p-0">
-              {complaints.length === 0 ? (
-                <p className="text-center py-8 text-muted-foreground">No complaints</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Complaint #</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Priority</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Assigned To</TableHead>
-                      <TableHead>Date</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {complaints.map((comp: any) => (
-                      <TableRow key={comp.id} className="cursor-pointer hover:bg-muted/30" onClick={() => setLocation(`/complaints/${comp.id}`)}>
-                        <TableCell className="font-medium">{comp.complaintNumber}</TableCell>
-                        <TableCell>{comp.complaintType || "-"}</TableCell>
-                        <TableCell><Badge variant={comp.priority === "High" || comp.priority === "Critical" ? "destructive" : "outline"}>{comp.priority}</Badge></TableCell>
-                        <TableCell><Badge variant="outline">{comp.status}</Badge></TableCell>
-                        <TableCell className="text-sm">{comp.assignedTo || "Unassigned"}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{new Date(comp.createdAt).toLocaleDateString("en-IN")}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
         <TabsContent value="communications">
           <Card>
             <CardContent className="space-y-3 py-4">
@@ -789,7 +731,6 @@ export default function ExistingCustomerDetail() {
                       customer_promoted: "bg-green-500",
                       order_created: "bg-purple-500",
                       order_event: "bg-indigo-400",
-                      complaint_created: "bg-red-500",
                       communication: "bg-amber-500",
                       follow_up: "bg-cyan-500",
                     };
@@ -799,7 +740,6 @@ export default function ExistingCustomerDetail() {
                       customer_promoted: <ShoppingCart className="h-3 w-3" />,
                       order_created: <Package className="h-3 w-3" />,
                       order_event: <Clock className="h-3 w-3" />,
-                      complaint_created: <AlertTriangle className="h-3 w-3" />,
                       communication: <MessageSquare className="h-3 w-3" />,
                       follow_up: <Clock className="h-3 w-3" />,
                     };
@@ -950,7 +890,7 @@ export default function ExistingCustomerDetail() {
               <Select value={editForm.status} onValueChange={v => setEditForm(f => ({ ...f, status: v }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {["Active", "Production Running", "Dispatch Pending", "Repeat Order Due", "Complaint Open", "Inactive"].map(s => (
+                  {["Active", "Production Running", "Dispatch Pending", "Repeat Order Due", "Inactive"].map(s => (
                     <SelectItem key={s} value={s}>{s}</SelectItem>
                   ))}
                 </SelectContent>
@@ -990,7 +930,7 @@ export default function ExistingCustomerDetail() {
                 <SelectContent>
                   <SelectItem value="General Customer Follow-up">General Customer Follow-up</SelectItem>
                   <SelectItem value="Order Follow-up">Order Follow-up</SelectItem>
-                  <SelectItem value="Complaint Follow-up">Complaint Follow-up</SelectItem>
+                  <SelectItem value="General Customer Follow-up">General Customer Follow-up</SelectItem>
                   <SelectItem value="Payment Follow-up">Payment Follow-up</SelectItem>
                   <SelectItem value="Delivery Follow-up">Delivery Follow-up</SelectItem>
                 </SelectContent>

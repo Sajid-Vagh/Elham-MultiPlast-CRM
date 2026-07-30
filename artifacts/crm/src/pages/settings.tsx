@@ -45,7 +45,6 @@ const SUPPORT_PERMISSION_CATEGORIES: PermissionCategory[] = [
     id: "production", label: "Production",
     icon: <Settings2 className="h-4 w-4" />,
     permissions: [
-      { key: "viewProductionStatus", label: "View Production Status", desc: "View production batch status and progress" },
       { key: "coordinateProduction", label: "Coordinate Production", desc: "Communicate with production team on order requirements" },
       { key: "viewProductAvailability", label: "View Product Availability", desc: "Check current product stock and availability" },
     ],
@@ -56,13 +55,6 @@ const SUPPORT_PERMISSION_CATEGORIES: PermissionCategory[] = [
     permissions: [
       { key: "manageDispatch", label: "Manage Dispatch", desc: "Create and manage dispatch entries" },
       { key: "editDispatchDetails", label: "Edit Dispatch Details", desc: "Modify dispatch information and status" },
-    ],
-  },
-  {
-    id: "complaints", label: "Complaints",
-    icon: <AlertTriangle className="h-4 w-4" />,
-    permissions: [
-      { key: "handleCustomerComplaints", label: "Handle Customer Complaints", desc: "Create, update, and resolve customer complaints" },
     ],
   },
   {
@@ -77,7 +69,7 @@ const SUPPORT_PERMISSION_CATEGORIES: PermissionCategory[] = [
     icon: <Shield className="h-4 w-4" />,
     permissions: [
       { key: "viewSalesOrders", label: "View Sales Orders", desc: "View all sales orders in the system" },
-      { key: "receiveNotifications", label: "Receive Notifications", desc: "Get notified about order and complaint updates" },
+      { key: "receiveNotifications", label: "Receive Notifications", desc: "Get notified about order updates" },
       { key: "createQuickNotes", label: "Create Quick Notes", desc: "Add internal notes to customer records" },
     ],
   },
@@ -88,8 +80,6 @@ const PRODUCTION_PERMISSION_CATEGORIES: PermissionCategory[] = [
     id: "production", label: "Production",
     icon: <Settings2 className="h-4 w-4" />,
     permissions: [
-      { key: "updateBatchStatus", label: "Update Batch Status", desc: "Update production batch status and progress" },
-      { key: "submitQcReports", label: "Submit QC Reports", desc: "Submit quality control reports for batches" },
       { key: "viewProductAvailability", label: "View Product Availability", desc: "Check current product stock and availability" },
     ],
   },
@@ -111,8 +101,8 @@ const SALES_PERMISSIONS: PermissionDef[] = [
 const ROLE_SUMMARIES: Record<string, { label: string; color: string; icon: React.ReactNode; bullets: string[] }> = {
   admin: { label: "Admin (CEO)", color: "bg-primary/10 text-primary border-primary/20", icon: <Shield className="h-4 w-4" />, bullets: ["Full system access", "Manage team & settings", "All reports & analytics"] },
   sales: { label: "Sales", color: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800", icon: <Users className="h-4 w-4" />, bullets: ["Existing Customers", "Activities & Deals", "Reports & Pipeline"] },
-  production_and_support: { label: "Production & Support", color: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800", icon: <Users className="h-4 w-4" />, bullets: ["Existing Customers", "Repeat Orders", "Dispatch & Complaints", "Production Coordination"] },
-  production: { label: "Production", color: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800", icon: <Settings2 className="h-4 w-4" />, bullets: ["Batch Management", "Quality Control", "Production Scheduling"] },
+  production_and_support: { label: "Production & Support", color: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800", icon: <Users className="h-4 w-4" />, bullets: ["Existing Customers", "Repeat Orders", "Dispatch", "Production Coordination"] },
+  production: { label: "Production", color: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800", icon: <Settings2 className="h-4 w-4" />, bullets: ["Production Orders", "Quality Control", "Production Scheduling"] },
   inventory: { label: "Inventory", color: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950 dark:text-sky-300 dark:border-sky-800", icon: <Package className="h-4 w-4" />, bullets: ["Stock Management", "Inventory Adjustments", "Stock Reports"] },
 };
 

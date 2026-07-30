@@ -2,7 +2,7 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
-import { Users, DollarSign, RefreshCw, AlertTriangle, Truck, Package, CheckCircle2, ClipboardList } from "lucide-react";
+import { Users, DollarSign, RefreshCw, Truck, Package, CheckCircle2, ClipboardList } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useDateFilter } from "@/lib/use-date-filter";
 import { DateRangeFilter } from "@/components/date-range-filter";
@@ -87,16 +87,6 @@ export default function SupportDashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="h-full rounded-xl border bg-card text-card-foreground shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Complaints</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-red-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{d.activeComplaints ?? 0}</div>
-            <p className="text-xs text-muted-foreground">Requires attention</p>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Dispatch Workflow KPIs */}
@@ -211,22 +201,6 @@ export default function SupportDashboardPage() {
         </Card>
       )}
 
-      {/* Open Complaints */}
-      {d.collections?.complaints?.length > 0 && (
-        <Card>
-          <CardHeader className="py-3">
-            <CardTitle className="text-sm">Open Complaints ({d.collections.complaints.length})</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {d.collections.complaints.map((c: any, i: number) => (
-              <div key={i} className="text-sm text-muted-foreground">
-                {c.complaintNumber || c.id} — {c.complaintType} ({c.status})
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
       {/* Quick Actions */}
       <div>
         <h2 className="text-sm font-semibold mb-3">Quick Actions</h2>
@@ -248,16 +222,6 @@ export default function SupportDashboardPage() {
                 <Users className="h-4 w-4 text-blue-500" />
               </CardHeader>
               <CardContent><p className="text-xs text-muted-foreground">View existing customers</p></CardContent>
-            </Card>
-          </a>
-
-          <a href="/complaints" className="block hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out">
-            <Card className="h-full border-red-200 rounded-xl border bg-card text-card-foreground shadow hover:bg-red-50/40">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-xs font-medium text-red-700">Complaints</CardTitle>
-                <AlertTriangle className="h-4 w-4 text-red-500" />
-              </CardHeader>
-              <CardContent><p className="text-xs text-muted-foreground">Manage complaints</p></CardContent>
             </Card>
           </a>
 

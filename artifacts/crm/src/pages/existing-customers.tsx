@@ -13,14 +13,13 @@ import { Search, Users, Factory, Truck, AlertTriangle, Clock, CheckCircle2, XCir
 import { useDateFilter } from "@/lib/use-date-filter";
 import { DateRangeFilter } from "@/components/date-range-filter";
 
-const EXISTING_CUSTOMER_STATUSES = ["All", "Active", "Production Running", "Dispatch Pending", "Repeat Order Due", "Complaint Open", "Inactive"];
+const EXISTING_CUSTOMER_STATUSES = ["All", "Active", "Production Running", "Dispatch Pending", "Repeat Order Due", "Inactive"];
 
 const STATUS_COLORS: Record<string, string> = {
   "Active": "bg-green-100 text-green-700",
   "Production Running": "bg-purple-100 text-purple-700",
   "Dispatch Pending": "bg-cyan-100 text-cyan-700",
   "Repeat Order Due": "bg-amber-100 text-amber-700",
-  "Complaint Open": "bg-red-100 text-red-700",
   "Inactive": "bg-gray-100 text-gray-500",
 };
 
@@ -29,7 +28,6 @@ const KPI_CARDS = [
   { key: "activeCustomers", label: "Active", icon: CheckCircle2, color: "bg-green-100 text-green-700 border-green-300" },
   { key: "productionRunning", label: "Production Running", icon: Factory, color: "bg-purple-100 text-purple-700 border-purple-300" },
   { key: "dispatchPending", label: "Dispatch Pending", icon: Truck, color: "bg-cyan-100 text-cyan-700 border-cyan-300" },
-  { key: "complaintPending", label: "Complaints Open", icon: AlertTriangle, color: "bg-red-100 text-red-700 border-red-300" },
   { key: "repeatOrderDue", label: "Repeat Order Due", icon: Clock, color: "bg-amber-100 text-amber-700 border-amber-300" },
   { key: "inactiveCustomers", label: "Inactive", icon: XCircle, color: "bg-gray-100 text-gray-600 border-gray-300" },
   { key: "customersToCallToday", label: "To Call Today", icon: Phone, color: "bg-blue-100 text-blue-700 border-blue-300" },

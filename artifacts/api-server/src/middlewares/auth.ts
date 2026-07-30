@@ -61,7 +61,6 @@ export function requirePermission(permission: "view" | "edit" | "approve") {
       orders: { view: ["admin", "sales", "production_and_support"], edit: ["admin", "sales", "production_and_support"], approve: ["admin", "sales"] },
       production: { view: ["admin", "production", "production_and_support"], edit: ["admin", "production", "production_and_support"], approve: ["admin", "production"] },
       dispatch: { view: ["admin", "production_and_support"], edit: ["admin", "production_and_support"], approve: ["admin"] },
-      complaints: { view: ["admin", "production_and_support"], edit: ["admin", "production_and_support"], approve: ["admin"] },
       quotations: { view: ["admin", "sales"], edit: ["admin", "sales"], approve: ["admin", "sales"] },
     };
 

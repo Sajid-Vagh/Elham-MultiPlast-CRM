@@ -7,9 +7,7 @@ export const ID_PREFIXES = {
   lead: "LEAD",
   quotation: "QT",
   order: "ORD",
-  batch: "BAT",
   dispatch: "DSP",
-  complaint: "CMP",
   revision: "REV",
 } as const;
 export type IdPrefix = keyof typeof ID_PREFIXES;

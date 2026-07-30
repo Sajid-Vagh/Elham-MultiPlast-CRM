@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import {
   db, existingCustomersTable, contactsTable, ordersTable, orderItemsTable,
-  usersTable, complaintsTable, orderTimelineTable, customerCommunicationsTable,
+  usersTable, orderTimelineTable, customerCommunicationsTable,
   internalNotesTable, activitiesTable, dealProductsTable, dealsTable,
   voiceNotesTable,
 } from "@workspace/db";
@@ -122,15 +122,6 @@ async function refreshExistingCustomerStats(contactId: number) {
   const lastItems = lastOrder ? await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, lastOrder.id)) : [];
   const lastProductName = lastItems.length > 0 ? lastItems[0].productName : ec.lastProductName;
 
-  // Check for active complaints
-  const [activeComplaint] = await db.select().from(complaintsTable)
-    .where(and(eq(complaintsTable.contactId, contactId), eq(complaintsTable.isDeleted, false), or(
-      eq(complaintsTable.status, "Open"), eq(complaintsTable.status, "Assigned"),
-      eq(complaintsTable.status, "Investigation"), eq(complaintsTable.status, "Production Review"),
-      eq(complaintsTable.status, "Replacement Approved"), eq(complaintsTable.status, "Replacement Running"),
-    )))
-    .orderBy(desc(complaintsTable.createdAt)).limit(1);
-
   // Check current production/dispatch status from latest order
   let currentProductionStatus: string | null = null;
   let currentDispatchStatus: string | null = null;
@@ -143,8 +134,7 @@ async function refreshExistingCustomerStats(contactId: number) {
 
   // Determine composite status
   let status = "Active";
-  if (activeComplaint) status = "Complaint Open";
-  else if (currentProductionStatus) status = "Production Running";
+  if (currentProductionStatus) status = "Production Running";
   else if (currentDispatchStatus) status = "Dispatch Pending";
   else if (totalOrders > 1 && lastOrder) {
     const daysSinceLast = Math.floor((Date.now() - new Date(lastOrder.createdAt).getTime()) / (1000 * 60 * 60 * 24));
@@ -160,8 +150,6 @@ async function refreshExistingCustomerStats(contactId: number) {
     lastProductName,
     totalRevenue: String(totalRevenue),
     lastOrderAt: lastOrder?.createdAt || null,
-    activeComplaintId: activeComplaint?.id || null,
-    activeComplaintNumber: activeComplaint?.complaintNumber || null,
     currentProductionStatus,
     currentDispatchStatus,
     status,
@@ -212,7 +200,6 @@ router.get("/existing-customers/dashboard", async (req, res) => {
     const activeCustomers = all.filter(c => c.status !== "Inactive").length;
     const productionRunning = all.filter(c => c.status === "Production Running").length;
     const dispatchPending = all.filter(c => c.status === "Dispatch Pending").length;
-    const complaintPending = all.filter(c => c.status === "Complaint Open").length;
     const repeatOrderDue = all.filter(c => c.status === "Repeat Order Due" || (c.repeatOrderDueDate && c.repeatOrderDueDate <= today)).length;
     const inactiveCustomers = all.filter(c => c.status === "Inactive").length;
 
@@ -236,7 +223,6 @@ router.get("/existing-customers/dashboard", async (req, res) => {
       activeCustomers,
       productionRunning,
       dispatchPending,
-      complaintPending,
       repeatOrderDue,
       inactiveCustomers,
       customersToCallToday,
@@ -253,7 +239,7 @@ router.get("/existing-customers", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { search, status, salesOwner, city, productionStatus, dispatchStatus, complaintStatus, lastOrderBefore, lastOrderAfter, repeatOrderDue, page = "1", limit = "50" } = req.query as Record<string, string>;
+    const { search, status, salesOwner, city, productionStatus, dispatchStatus, lastOrderBefore, lastOrderAfter, repeatOrderDue, page = "1", limit = "50" } = req.query as Record<string, string>;
     const conditions: any[] = [];
 
     if (user.role === "sales") conditions.push(eq(existingCustomersTable.salesOwnerId, user.id));
@@ -262,7 +248,6 @@ router.get("/existing-customers", async (req, res) => {
     if (salesOwner && (user.role === "admin" || user.role === "production_and_support")) conditions.push(eq(existingCustomersTable.salesOwnerId, Number(salesOwner)));
     if (productionStatus) conditions.push(eq(existingCustomersTable.currentProductionStatus, productionStatus));
     if (dispatchStatus) conditions.push(eq(existingCustomersTable.currentDispatchStatus, dispatchStatus));
-    if (complaintStatus === "Open") conditions.push(eq(existingCustomersTable.status, "Complaint Open"));
     if (repeatOrderDue === "true") {
       const today = new Date().toISOString().split("T")[0];
       conditions.push(or(
@@ -517,38 +502,6 @@ router.patch("/existing-customers/:id", async (req, res) => {
   }
 });
 
-// ── Get complaint history for existing customer ──
-router.get("/existing-customers/:id/complaints", async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    const access = await enforceExistingCustomerAccess(req, res, id);
-    if (!access) return;
-    const { ec } = access;
-
-    const complaints = await db.select({
-      id: complaintsTable.id,
-      complaintNumber: complaintsTable.complaintNumber,
-      customerName: complaintsTable.customerName,
-      productName: complaintsTable.productName,
-      complaintType: complaintsTable.complaintType,
-      description: complaintsTable.description,
-      priority: complaintsTable.priority,
-      status: complaintsTable.status,
-      assignedTo: usersTable.name,
-      createdAt: complaintsTable.createdAt,
-      updatedAt: complaintsTable.updatedAt,
-    }).from(complaintsTable)
-      .leftJoin(usersTable, eq(usersTable.id, complaintsTable.assignedTo))
-      .where(and(eq(complaintsTable.contactId, ec.contactId), eq(complaintsTable.isDeleted, false)))
-      .orderBy(desc(complaintsTable.createdAt));
-
-    res.json(complaints);
-  } catch (err) {
-    console.error("Get existing customer complaints error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
 // ── Get repeat orders for existing customer ──
 router.get("/existing-customers/:id/repeat-orders", async (req, res) => {
   try {
@@ -633,27 +586,6 @@ router.get("/existing-customers/:id/timeline", async (req, res) => {
           createdAt: entry.createdAt,
         });
       }
-    }
-
-    // Complaint events
-    const complaints = await db.select({
-      id: complaintsTable.id,
-      complaintNumber: complaintsTable.complaintNumber,
-      complaintType: complaintsTable.complaintType,
-      status: complaintsTable.status,
-      createdAt: complaintsTable.createdAt,
-      updatedAt: complaintsTable.updatedAt,
-    }).from(complaintsTable)
-      .where(and(eq(complaintsTable.contactId, contactId), eq(complaintsTable.isDeleted, false)))
-      .orderBy(asc(complaintsTable.createdAt));
-    for (const comp of complaints) {
-      events.push({
-        id: `complaint-${comp.id}`,
-        type: "complaint_created",
-        description: `Complaint ${comp.complaintNumber} logged - ${comp.complaintType} (${comp.status})`,
-        user: "System",
-        createdAt: comp.createdAt,
-      });
     }
 
     // Communication events

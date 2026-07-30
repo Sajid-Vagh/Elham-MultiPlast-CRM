@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, dealsTable, usersTable, activitiesTable, ordersTable, complaintsTable, productionOrdersTable, CATEGORIES, DEAL_STAGES } from "@workspace/db";
+import { db, contactsTable, dealsTable, usersTable, activitiesTable, ordersTable, productionOrdersTable, CATEGORIES, DEAL_STAGES } from "@workspace/db";
 import { eq, inArray, and, desc, gte, lte } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
@@ -402,23 +402,15 @@ router.get("/dashboard/support-kpi", async (req, res) => {
     const endDate = req.query.endDate as string | undefined;
 
     const orderDateConds: any[] = [eq(ordersTable.isDeleted, false)];
-    const complaintDateConds: any[] = [];
     const prodDateConds: any[] = [];
-    if (startDate) { orderDateConds.push(gte(ordersTable.createdAt, new Date(startDate))); complaintDateConds.push(gte(complaintsTable.createdAt, new Date(startDate))); prodDateConds.push(gte(productionOrdersTable.createdAt, new Date(startDate))); }
-    if (endDate) { const end = new Date(endDate); end.setHours(23, 59, 59, 999); orderDateConds.push(lte(ordersTable.createdAt, end)); complaintDateConds.push(lte(complaintsTable.createdAt, end)); prodDateConds.push(lte(productionOrdersTable.createdAt, end)); }
+    if (startDate) { orderDateConds.push(gte(ordersTable.createdAt, new Date(startDate))); prodDateConds.push(gte(productionOrdersTable.createdAt, new Date(startDate))); }
+    if (endDate) { const end = new Date(endDate); end.setHours(23, 59, 59, 999); orderDateConds.push(lte(ordersTable.createdAt, end)); prodDateConds.push(lte(productionOrdersTable.createdAt, end)); }
 
     // Unit isolation for support-kpi
     const accessibleUnits = getAccessibleUnits(user);
     if (accessibleUnits) {
       orderDateConds.push(inArray(ordersTable.productionUnit, accessibleUnits));
       prodDateConds.push(inArray(productionOrdersTable.productionUnit, accessibleUnits));
-      // Complaints filtered by contact unit (subquery)
-      const unitContactIds = await db.select({ id: contactsTable.id }).from(contactsTable).where(inArray(contactsTable.unit, accessibleUnits));
-      if (unitContactIds.length > 0) {
-        complaintDateConds.push(inArray(complaintsTable.contactId, unitContactIds.map(c => c.id)));
-      } else {
-        complaintDateConds.push(eq(complaintsTable.contactId, -1)); // no results
-      }
     }
 
     // Repeat orders
@@ -428,12 +420,6 @@ router.get("/dashboard/support-kpi", async (req, res) => {
 
     // Repeat customers (unique contacts with REPEAT orders)
     const repeatCustomerIds = new Set(repeatOrders.map(o => o.contactId).filter(Boolean));
-
-    // Active complaints
-    const complaints = complaintDateConds.length > 0
-      ? await db.select().from(complaintsTable).where(and(...complaintDateConds))
-      : await db.select().from(complaintsTable);
-    const activeComplaints = complaints.filter(c => c.status !== "Resolved" && c.status !== "Closed").length;
 
     // Production orders with dispatch workflow
     const allProductionOrders = prodDateConds.length > 0
@@ -452,16 +438,12 @@ router.get("/dashboard/support-kpi", async (req, res) => {
       o.status === "Production On Going" || o.status === "Packaging"
     ).length;
 
-    // Active complaints list for the dashboard
-    const activeComplaintList = complaints.filter(c => c.status !== "Resolved" && c.status !== "Closed").slice(0, 10);
-
     res.json({
       totalRepeatOrders: repeatOrders.length,
       repeatOrdersThisMonth: repeatOrders.length,
       totalRepeatRevenue,
       repeatRevenueThisMonth: totalRepeatRevenue,
       repeatCustomers: repeatCustomerIds.size,
-      activeComplaints,
       pendingDispatch,
       inProduction,
       readyForDispatch: pendingDispatch,
@@ -472,7 +454,6 @@ router.get("/dashboard/support-kpi", async (req, res) => {
       collections: {
         repeatOrders: repeatOrders.slice(0, 10),
         pendingDispatch: rtdOrders.filter(o => o.dispatchStatus === "Pending Dispatch" || !o.dispatchStatus).slice(0, 10),
-        complaints: activeComplaintList,
         productionOrders: allProductionOrders.filter(o => o.status === "Production On Going").slice(0, 10),
         customers: [],
       },

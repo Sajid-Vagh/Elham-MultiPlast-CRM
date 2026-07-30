@@ -217,7 +217,6 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   const supportNavItems = [
     { icon: LayoutDashboard, label: "Support Dashboard", href: "/support-dashboard", color: "#6366f1" },
     { icon: Truck, label: "Dispatch", href: "/dispatch", color: "#f43f5e" },
-    { icon: AlertTriangle, label: "Complaints", href: "/complaints", color: "#ef4444" },
     { icon: Bell, label: "Activity", href: "/follow-ups", color: "#f59e0b" },
     { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" },
     { icon: ShoppingCart, label: "Orders", href: "/orders", color: "#0ea5e9" },
@@ -231,7 +230,6 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: Factory, label: "Production Dashboard", href: "/production/dashboard", color: "#7c3aed" },
     { icon: ClipboardList, label: "Production Orders", href: "/production/orders", color: "#7c3aed" },
     { icon: ShoppingCart, label: "Orders", href: "/orders", color: "#0ea5e9" },
-    { icon: Layers, label: "Batches", href: "/production/batches", color: "#7c3aed" },
     { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
     { icon: Truck, label: "Dispatch", href: "/dispatch", color: "#f43f5e" },
     { icon: BarChart, label: "Machine Report", href: "/production/machine-report", color: "#7c3aed" },

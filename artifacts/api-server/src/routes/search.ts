@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, ordersTable, productsTable, complaintsTable, dispatchTable, proformaInvoicesTable, dealsTable, productionOrdersTable, activitiesTable } from "@workspace/db";
-import { or, ilike, eq, and, desc, inArray, type SQL } from "drizzle-orm";
+import { db, contactsTable, ordersTable, productsTable, dispatchTable, proformaInvoicesTable, dealsTable, productionOrdersTable, activitiesTable } from "@workspace/db";
+import { or, ilike, eq, and, desc, inArray, sql, type SQL } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import { isProductionOnlyRole } from "../lib/customer-mask";
@@ -14,7 +14,7 @@ router.get("/search", async (req, res) => {
 
     const { q } = req.query as { q?: string };
     if (!q || q.length < 2) {
-      res.json({ contacts: [], orders: [], products: [], complaints: [], deals: [], productionOrders: [], proformaInvoices: [], activities: [] });
+      res.json({ contacts: [], orders: [], products: [], deals: [], productionOrders: [], proformaInvoices: [], activities: [] });
       return;
     }
 
@@ -28,7 +28,7 @@ router.get("/search", async (req, res) => {
     const salesOwnCond = user.role === "sales" ? eq(contactsTable.salesOwnerId, user.id) : undefined;
     const orderSalesOwnCond = user.role === "sales" ? eq(ordersTable.salesOwnerId, user.id) : undefined;
 
-    const [contacts, orders, products, complaints, deals, productionOrders, proformaInvoices, activities] = await Promise.all([
+    const [contacts, orders, products, deals, productionOrders, proformaInvoices, activities] = await Promise.all([
       // Contacts — search by name, company, primary mobile, secondary mobile, email
       db.select({ id: contactsTable.id, name: contactsTable.name, companyName: contactsTable.companyName, mobile: contactsTable.mobile, type: contactsTable.category })
         .from(contactsTable)
@@ -66,28 +66,6 @@ router.get("/search", async (req, res) => {
         .from(productsTable)
         .where(or(ilike(productsTable.name, s), ilike(productsTable.productCode, s)))
         .limit(10),
-
-      // Complaints — search by complaint number, customer name, product name (unit-filtered via contacts)
-      (async () => {
-        const compConditions: (SQL | undefined)[] = [eq(complaintsTable.isDeleted, false),
-          or(
-            ilike(complaintsTable.complaintNumber, s),
-            ilike(complaintsTable.customerName, s),
-            ilike(complaintsTable.productName, s),
-          ),
-        ];
-        if (user.role === "sales") {
-          // Sales users only see complaints linked to contacts they own
-          compConditions.push(sql`${complaintsTable.contactId} IN (SELECT c.id FROM contacts c WHERE c.sales_owner_id = ${user.id})`);
-        }
-        if (accessibleUnits) {
-          compConditions.push(sql`${complaintsTable.contactId} IN (SELECT c2.id FROM contacts c2 WHERE c2.unit IN (${sql.join(accessibleUnits.map(u => sql`${u}`), sql`, `)}))`);
-        }
-        return db.select({ id: complaintsTable.id, complaintNumber: complaintsTable.complaintNumber, customerName: complaintsTable.customerName, status: complaintsTable.status })
-          .from(complaintsTable)
-          .where(and(...compConditions))
-          .limit(10);
-      })(),
 
       // Deals — search by title, include active PI status
       (async () => {
@@ -244,7 +222,7 @@ router.get("/search", async (req, res) => {
       }
     }
 
-    res.json({ contacts, orders, products, complaints, deals, productionOrders, proformaInvoices, activities });
+    res.json({ contacts, orders, products, deals, productionOrders, proformaInvoices, activities });
   } catch (err) {
     console.error("Search error:", err);
     res.status(500).json({ error: "Internal server error" });

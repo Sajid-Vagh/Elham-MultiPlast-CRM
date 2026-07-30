@@ -26,11 +26,8 @@ import ProductionDashboard from "@/pages/production-dashboard";
 import ProductionOrders from "@/pages/production-orders";
 import ProductionOrderDetail from "@/pages/production-order-detail";
 
-import Batches from "@/pages/batches";
-import BatchDetail from "@/pages/batch-detail";
 import MachineReport from "@/pages/machine-report";
 import DispatchPage from "@/pages/dispatch";
-import ComplaintsPage from "@/pages/complaints";
 import ExistingCustomers from "@/pages/existing-customers";
 import ExistingCustomerDetail from "@/pages/existing-customer-detail";
 import GlobalSearch from "@/pages/global-search";
@@ -196,13 +193,6 @@ function Router() {
         </ProtectedLayout>
       </Route>
 
-      {/* Complaint routes (Support, Admin) */}
-      <Route path="/complaints">
-        <ProtectedLayout>
-          <RoleGuard allowedRoles={SUPPORT_ROLES}><ComplaintsPage /></RoleGuard>
-        </ProtectedLayout>
-      </Route>
-
       {/* Orders Module (all roles) */}
       <Route path="/orders/:id">
         {(params) => <ProtectedLayout>
@@ -271,17 +261,6 @@ function Router() {
           <RoleGuard allowedRoles={PRODUCTION_ROLES}><ProductionOrders /></RoleGuard>
         </ProtectedLayout>
       </Route>
-      <Route path="/production/batches/:id">
-        {(params) => <ProtectedLayout>
-          <RoleGuard allowedRoles={PRODUCTION_ROLES}><BatchDetail /></RoleGuard>
-        </ProtectedLayout>}
-      </Route>
-      <Route path="/production/batches">
-        <ProtectedLayout>
-          <RoleGuard allowedRoles={PRODUCTION_ROLES}><Batches /></RoleGuard>
-        </ProtectedLayout>
-      </Route>
-
       <Route path="/production/machine-report">
         <ProtectedLayout>
           <RoleGuard allowedRoles={["admin", "production_and_support", "production"]}><MachineReport /></RoleGuard>

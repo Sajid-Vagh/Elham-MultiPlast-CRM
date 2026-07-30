@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Search, Users, Package, AlertTriangle, TrendingUp } from "lucide-react";
+import { Search, Users, Package, TrendingUp } from "lucide-react";
 
 export default function GlobalSearch() {
   const [, setLocation] = useLocation();
@@ -27,7 +27,7 @@ export default function GlobalSearch() {
           <div className="divide-y">
             {items.map((item: any) => (
               <div key={item.id} className="px-4 py-3 hover:bg-muted/30 cursor-pointer" onClick={() => onNavigate(item)}>
-                <p className="text-sm font-medium">{item.name || item.orderNumber || item.complaintNumber || item.productName}</p>
+                <p className="text-sm font-medium">{item.name || item.orderNumber || item.productName}</p>
                 <p className="text-xs text-muted-foreground">
                   {item.stage ? (
                     <>
@@ -51,7 +51,7 @@ export default function GlobalSearch() {
       <h1 className="text-2xl font-bold">Global Search</h1>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-        <Input placeholder="Search customers, deals, products, complaints..." value={query} onChange={e => setQuery(e.target.value)} className="pl-10 text-lg h-12" autoFocus />
+        <Input placeholder="Search customers, deals, products..." value={query} onChange={e => setQuery(e.target.value)} className="pl-10 text-lg h-12" autoFocus />
       </div>
 
       {isLoading && <p className="text-center text-muted-foreground py-8">Searching...</p>}
@@ -61,7 +61,6 @@ export default function GlobalSearch() {
           <Section icon={Users} title="Customers" items={data.contacts || []} onNavigate={item => setLocation(`/leads/${item.id}`)} />
           <Section icon={TrendingUp} title="Deals" items={data.deals || []} onNavigate={item => setLocation(`/deals/${item.id}`)} />
           <Section icon={Package} title="Products" items={data.products || []} onNavigate={item => setLocation("/products")} />
-          <Section icon={AlertTriangle} title="Complaints" items={data.complaints || []} onNavigate={item => setLocation("/complaints")} />
         </div>
       )}
 
@@ -69,7 +68,7 @@ export default function GlobalSearch() {
         <Card><CardContent className="py-12 text-center text-muted-foreground">
           <Search className="h-12 w-12 mx-auto mb-4 opacity-30" />
           <p className="text-lg">Type at least 2 characters to search</p>
-          <p className="text-sm mt-1">Search across all customers, deals, products, and complaints</p>
+          <p className="text-sm mt-1">Search across all customers, deals, and products</p>
         </CardContent></Card>
       )}
     </div>

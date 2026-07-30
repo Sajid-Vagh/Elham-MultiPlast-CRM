@@ -126,14 +126,6 @@ export function canCancelOrder(user: PermissionUser): boolean {
 }
 
 /**
- * Check if a user can create or update complaints.
- * Inventory users are read-only.
- */
-export function canManageComplaints(user: PermissionUser): boolean {
-  return user.role !== "inventory";
-}
-
-/**
  * Check if user's unit matches the resource's unit.
  * Used for unit-level data isolation enforcement on the backend.
  * Returns true if access is allowed (admin/All always allowed).

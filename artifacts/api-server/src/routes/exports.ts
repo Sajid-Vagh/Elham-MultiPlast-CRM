@@ -8,13 +8,9 @@ import {
   ordersTable,
   orderItemsTable,
   customerCommunicationsTable,
-  complaintsTable,
-  complaintUpdatesTable,
   productionOrdersTable,
   productionTimelineTable,
   productionNotesTable,
-  productionBatchesTable,
-  productionBatchItemsTable,
   dispatchTable,
   dispatchItemsTable,
   existingCustomersTable,
@@ -347,17 +343,11 @@ router.get("/contacts", async (req, res) => {
     }).from(ordersTable).where(inArray(ordersTable.contactId, contactIds)).groupBy(ordersTable.contactId) : [];
     const orderMap = new Map(orderCounts.map(o => [o.contactId, o]));
 
-    const complaintCounts = contactIds.length ? await db.select({
-      contactId: complaintsTable.contactId,
-      count: sql<number>`count(*)`
-    }).from(complaintsTable).where(inArray(complaintsTable.contactId, contactIds)).groupBy(complaintsTable.contactId) : [];
-    const complaintMap = new Map(complaintCounts.map(c => [c.contactId, c.count]));
-
     const detailHeaders = [
       "ID", "Customer Name", "Company", "Contact Person", "Phone", "Alternate Phone", "Email",
       "Address", "City", "State",
       "Industry", "Sales Owner",
-      "Status", "Customer Since", "Last Order", "Total Orders", "Repeat Orders", "Complaint Count", "Notes", "Created",
+      "Status", "Customer Since", "Last Order", "Total Orders", "Repeat Orders", "Notes", "Created",
     ];
     const detailRows = filtered.map(c => {
       const owner = userMap.get(c.salesOwnerId);
@@ -379,7 +369,6 @@ router.get("/contacts", async (req, res) => {
         safeStr(orderMap.get(c.id)?.lastDate || ""),
         safeNum(orderMap.get(c.id)?.count || 0),
         0,
-        safeNum(complaintMap.get(c.id) || 0),
         safeStr(c.customerComments),
         safeDate(c.createdAt),
       ];
@@ -903,7 +892,7 @@ router.get("/existing-customers", async (req, res) => {
       "ID", "Name", "Company", "Mobile", "Email", "City",
       "Status", "Total Orders", "Total Revenue", "Repeat Orders",
       "First Order Date", "Last Order Date", "Last Product",
-      "Production Status", "Dispatch Status", "Active Complaint",
+      "Production Status", "Dispatch Status",
       "Sales Owner", "Support Owner", "Created",
     ];
     const profileRows = filtered.map(ec => {
@@ -926,7 +915,6 @@ router.get("/existing-customers", async (req, res) => {
         safeStr(ec.lastProductName),
         safeStr(ec.currentProductionStatus),
         safeStr(ec.currentDispatchStatus),
-        safeStr(ec.activeComplaintNumber),
         safeStr(salesOwner?.name),
         safeStr(supportOwner?.name),
         safeDate(ec.createdAt),
@@ -962,25 +950,6 @@ router.get("/existing-customers", async (req, res) => {
       safeDate(o.createdAt),
     ]);
 
-    const complaints = validContactIds.length
-      ? await db.select().from(complaintsTable).where(inArray(complaintsTable.contactId, validContactIds))
-      : [];
-    const compHeaders = [
-      "Complaint #", "Customer", "Product", "Type", "Priority", "Status",
-      "Description", "Resolution", "Created",
-    ];
-    const compRows = complaints.map(cm => [
-      safeStr(cm.complaintNumber),
-      safeStr(cm.customerName),
-      safeStr(cm.productName),
-      safeStr(cm.complaintType),
-      safeStr(cm.priority),
-      safeStr(cm.status),
-      safeStr(cm.description),
-      safeStr(cm.resolution),
-      safeDate(cm.createdAt),
-    ]);
-
     const comms = validContactIds.length
       ? await db.select().from(customerCommunicationsTable).where(inArray(customerCommunicationsTable.contactId, validContactIds))
       : [];
@@ -1007,7 +976,6 @@ router.get("/existing-customers", async (req, res) => {
       { name: "Customer Profile", headers: profileHeaders, rows: profileRows },
       { name: "Order History", headers: orderHeaders, rows: orderRows },
       { name: "Repeat Orders", headers: repeatHeaders, rows: repeatRows },
-      { name: "Complaint History", headers: compHeaders, rows: compRows },
       { name: "Communication History", headers: commHeaders, rows: commRows },
     ];
     const wb = buildWorkbook(sheets, `Existing Customers (Detailed) — ${todayStr()}`);
@@ -1104,37 +1072,6 @@ router.get("/production", async (req, res) => {
       ];
     });
 
-    let batchHeaders: string[] = ["Info"];
-    let batchRows: any[][] = [["Batch data loading..."]];
-    try {
-      const batches = await db.select().from(productionBatchesTable);
-      batchHeaders = [
-        "Batch #", "Product", "Total Qty", "Completed Qty", "Rejected Qty",
-        "Status", "Priority", "Machine", "Operator", "Progress %",
-        "Expected Completion", "Actual Completion", "Notes", "Created",
-      ];
-      batchRows = batches.map(b => [
-        safeStr(b.batchNumber),
-        safeStr(b.productName),
-        safeNum(b.totalQuantity),
-        safeNum(b.completedQuantity),
-        safeNum(b.rejectedQuantity),
-        safeStr(b.status),
-        safeStr(b.priority),
-        safeStr(b.machine),
-        safeStr(b.operator),
-        safeNum(b.progress),
-        safeStr(b.expectedCompletionDate),
-        safeStr(b.actualCompletionDate),
-        safeStr(b.notes),
-        safeDate(b.createdAt),
-      ]);
-    } catch {
-      // production_batches table may not exist yet
-      batchHeaders = ["Info"];
-      batchRows = [["Batch data not available"]];
-    }
-
     const prodIds = nonNullIds(filtered.map(po => po.id));
     const timeline = prodIds.length
       ? await db.select().from(productionTimelineTable).where(inArray(productionTimelineTable.productionOrderId, prodIds))
@@ -1154,7 +1091,6 @@ router.get("/production", async (req, res) => {
 
     const sheets: SheetDef[] = [
       { name: "Production Orders", headers: detailHeaders, rows: detailRows },
-      { name: "Batch Details", headers: batchHeaders, rows: batchRows },
       { name: "Timeline", headers: timelineHeaders, rows: timelineRows },
     ];
     const wb = buildWorkbook(sheets, `Production (Detailed) — ${todayStr()}`);
@@ -1303,144 +1239,7 @@ router.get("/dispatch", async (req, res) => {
   }
 });
 
-// ─── 8. GET /exports/complaints ──────────────────────────────────────────────
-router.get("/complaints", async (req, res) => {
-  try {
-    const user = await getUserFromRequest(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
-    const { format, mode, dateFrom, dateTo, ownerId, status, search } = parseQueryParams(req);
-
-    const accessibleUnits = getAccessibleUnits(user);
-
-    const compConditions: SQL[] = [];
-    if (user.role === "sales") compConditions.push(eq(complaintsTable.createdBy, user.id));
-    if (user.role === "production") compConditions.push(eq(complaintsTable.assignedTo, user.id));
-
-    const complaintsList = compConditions.length
-      ? await db.select().from(complaintsTable).where(and(...compConditions))
-      : await db.select().from(complaintsTable);
-
-    let filtered = complaintsList.filter(c => matchesDateRange(c.createdAt, dateFrom, dateTo));
-    if (ownerId) filtered = filtered.filter(c => c.assignedTo === ownerId);
-    if (status) filtered = filtered.filter(c => c.status === status);
-
-    if (accessibleUnits) {
-      const complaintContactIds = nonNullIds(filtered.map(c => c.contactId));
-      if (complaintContactIds.length) {
-        const compContacts = await db.select({ id: contactsTable.id }).from(contactsTable).where(
-          and(inArray(contactsTable.id, complaintContactIds), inArray(contactsTable.unit, accessibleUnits))
-        );
-        const allowedContactIds = new Set(compContacts.map(c => c.id));
-        filtered = filtered.filter(c => c.contactId && allowedContactIds.has(c.contactId));
-      } else {
-        filtered = [];
-      }
-    }
-
-    const users = await db.select().from(usersTable);
-    const userMap = new Map(users.map(u => [u.id, u]));
-
-    if (search) {
-      filtered = filtered.filter(c =>
-        matchesSearch(c.complaintNumber, search) ||
-        matchesSearch(c.customerName, search) ||
-        matchesSearch(c.productName, search) ||
-        matchesSearch(c.description, search) ||
-        matchesSearch(c.resolution, search)
-      );
-    }
-
-    // ── Quick ───────────────────────────────────────────────────────────
-    if (mode === "quick") {
-      const headers = [
-        "ID", "Complaint #", "Customer", "Order", "Product", "Priority",
-        "Status", "Assigned User", "Resolution", "Created",
-      ];
-      const rows = filtered.map(c => {
-        const assignee = c.assignedTo ? userMap.get(c.assignedTo) : null;
-        return [
-          `CMP-${c.id}`,
-          safeStr(c.complaintNumber),
-          safeStr(c.customerName),
-          c.orderId ? `ORD-${c.orderId}` : "",
-          safeStr(c.productName),
-          safeStr(c.priority),
-          safeStr(c.status),
-          safeStr(assignee?.name),
-          safeStr(c.resolution),
-          safeDate(c.createdAt),
-        ];
-      });
-
-      const sheets: SheetDef[] = [{ name: "Complaints", headers, rows }];
-      const wb = buildWorkbook(sheets, `Complaints — ${todayStr()}`);
-      await sendWorkbook(res, wb, csvFilename("complaints"), format);
-      return;
-    }
-
-    // ── Detailed: 2 sheets ──────────────────────────────────────────────
-    const detailHeaders = [
-      "ID", "Complaint #", "Customer", "Order #", "Product",
-      "Quantity", "Type", "Priority", "Status", "Department",
-      "Description", "Assigned To", "Resolution", "Replacement Order",
-      "Closed At", "Created By", "Created", "Updated",
-    ];
-    const detailRows = filtered.map(c => {
-      const assignee = c.assignedTo ? userMap.get(c.assignedTo) : null;
-      const creator = c.createdBy ? userMap.get(c.createdBy) : null;
-      return [
-        `CMP-${c.id}`,
-        safeStr(c.complaintNumber),
-        safeStr(c.customerName),
-        c.orderId ? `ORD-${c.orderId}` : "",
-        safeStr(c.productName),
-        safeNum(c.quantity),
-        safeStr(c.complaintType),
-        safeStr(c.priority),
-        safeStr(c.status),
-        safeStr(c.assignedDepartment),
-        safeStr(c.description),
-        safeStr(assignee?.name),
-        safeStr(c.resolution),
-        safeStr(c.replacementOrderId ? `ORD-${c.replacementOrderId}` : ""),
-        safeDate(c.closedAt),
-        safeStr(creator?.name),
-        safeDate(c.createdAt),
-        safeDate(c.updatedAt),
-      ];
-    });
-
-    const complaintIds = nonNullIds(filtered.map(c => c.id));
-    const updates = complaintIds.length
-      ? await db.select().from(complaintUpdatesTable).where(inArray(complaintUpdatesTable.complaintId, complaintIds))
-      : [];
-    const timelineHeaders = ["Complaint #", "Status From", "Status To", "Notes", "Changed By", "Date"];
-    const timelineRows = updates.map(u => {
-      const changer = userMap.get(u.changedBy);
-      return [
-        `CMP-${u.complaintId}`,
-        safeStr(u.statusFrom),
-        safeStr(u.statusTo),
-        safeStr(u.notes),
-        safeStr(changer?.name),
-        safeDate(u.createdAt),
-      ];
-    });
-
-    const sheets: SheetDef[] = [
-      { name: "Complaint Details", headers: detailHeaders, rows: detailRows },
-      { name: "Timeline", headers: timelineHeaders, rows: timelineRows },
-    ];
-    const wb = buildWorkbook(sheets, `Complaints (Detailed) — ${todayStr()}`);
-    await sendWorkbook(res, wb, csvFilename("complaints-detailed"), format);
-  } catch (err: any) {
-    console.error("[exports/complaints]", err);
-    res.status(500).json({ error: err.message || "Export failed" });
-  }
-});
-
-// ─── 9. GET /exports/orders ──────────────────────────────────────────────────
+// ─── 8. GET /exports/orders ──────────────────────────────────────────────────
 router.get("/orders", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
