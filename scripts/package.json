@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "seed": "tsx --env-file ../.env ./src/seed.ts",
+    "backfill": "tsx --env-file ../.env ./src/backfill-existing-data.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",
-    "bcryptjs": "^3.0.3"
+    "bcryptjs": "^3.0.3",
+    "drizzle-orm": "catalog:"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",

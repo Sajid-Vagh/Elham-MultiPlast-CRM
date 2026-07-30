@@ -624,6 +624,9 @@ importers:
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.45.2(@types/pg@8.20.0)(pg@8.21.0)
     devDependencies:
       '@types/bcryptjs':
         specifier: ^3.0.0
