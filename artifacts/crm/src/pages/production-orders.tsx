@@ -92,15 +92,17 @@ export default function ProductionOrders() {
     enabled: !!user,
   });
 
-  const downloadSheet = async (mode: string, extraParams?: Record<string, string>) => {
+  const downloadSheet = async (mode: string) => {
     setSheetDownloading(true);
     try {
       const token = localStorage.getItem("crm_token");
       const p = new URLSearchParams({ mode });
       if (status !== "all") p.set("status", status);
+      if (dispatchStatus !== "all") p.set("dispatchStatus", dispatchStatus);
+      if (priority !== "all") p.set("priority", priority);
       if (origin !== "all") p.set("origin", origin);
       if (selectedUnit && selectedUnit !== "All") p.set("unit", selectedUnit);
-      if (extraParams) Object.entries(extraParams).forEach(([k, v]) => { if (v) p.set(k, v); });
+      if (search) p.set("search", search);
 
       const res = await fetch(`/api/production/sheet?${p.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -165,7 +167,7 @@ export default function ProductionOrders() {
               <DropdownMenuItem onClick={() => downloadSheet("reprint")}>
                 <AlertTriangle className="h-4 w-4 mr-2" /> Updated Orders (Reprint)
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => downloadSheet("selected", { status })}>
+              <DropdownMenuItem onClick={() => downloadSheet("all")}>
                 <FileSpreadsheet className="h-4 w-4 mr-2" /> Current Filter ({status === "all" ? "All" : status})
               </DropdownMenuItem>
             </DropdownMenuContent>

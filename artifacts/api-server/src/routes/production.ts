@@ -684,28 +684,20 @@ router.get("/production/sheet", async (req, res) => {
     const dateFrom = (req.query.dateFrom as string) || undefined;
     const dateTo = (req.query.dateTo as string) || undefined;
     const unitFilter = (req.query.unit as string) || undefined;
+    const searchFilter = (req.query.search as string) || undefined;
+    const priorityFilter = (req.query.priority as string) || undefined;
+    const dispatchStatusFilter = (req.query.dispatchStatus as string) || undefined;
+    const originFilter = (req.query.origin as string) || undefined;
+    const statusFilter = (req.query.status as string) || undefined;
 
     // ── 1. Use listOrders to get matching order IDs (same logic as Production Orders page) ──
-    let listStatusFilter: string | undefined;
+    let effectiveStatus: string | undefined;
     let effectiveDateFrom = dateFrom;
     let effectiveDateTo = dateTo;
     let explicitOrderIds: number[] | undefined;
 
-    if (mode === "new") {
-      listStatusFilter = "all";
-    } else if (mode === "pending") {
-      listStatusFilter = "Pending";
-    } else if (mode === "selected" && orderIdsRaw) {
-      explicitOrderIds = orderIdsRaw.split(",").map(Number).filter(n => !isNaN(n));
-      if (explicitOrderIds.length === 0) {
-        const emptyWb = buildWorkbook([{
-          name: "Production Sheet",
-          headers: ["No orders selected"],
-          rows: [[""]],
-        }], `Production Sheet — ${todayStr()}`);
-        await sendWorkbook(res, emptyWb, `production-sheet-${todayStr()}`);
-        return;
-      }
+    if (mode === "pending") {
+      effectiveStatus = "Pending";
     } else if (mode === "today") {
       const today = new Date().toISOString().split("T")[0];
       effectiveDateFrom = today;
@@ -721,7 +713,7 @@ router.get("/production/sheet", async (req, res) => {
       effectiveDateFrom = d.toISOString().split("T")[0];
       effectiveDateTo = new Date().toISOString().split("T")[0];
     }
-    // mode = "all" / "reprint" / "date-range" → listStatusFilter stays undefined, dates as-is
+    // mode = "all" / "new" / "reprint" / "date-range" → use query params as-is
 
     let matchedOrderIds: number[];
 
@@ -729,8 +721,12 @@ router.get("/production/sheet", async (req, res) => {
       matchedOrderIds = explicitOrderIds;
     } else {
       const listResult = await listOrders(user, {
-        status: listStatusFilter || "all",
+        status: effectiveStatus || statusFilter || "all",
         unit: unitFilter || "all",
+        search: searchFilter,
+        priority: priorityFilter,
+        dispatchStatus: dispatchStatusFilter,
+        origin: originFilter,
         dateFrom: effectiveDateFrom,
         dateTo: effectiveDateTo,
         limit: "10000",
