@@ -220,11 +220,8 @@ export async function syncProductionOrderItems(productionOrderId: number, invoic
 
   if (invoiceItems.length === 0) return;
 
-  const allProducts = await db.select().from(productsTable);
-  const productMap = new Map(allProducts.map(p => [p.name?.toLowerCase()?.trim(), p]));
-
   for (const item of invoiceItems) {
-    const product = productMap.get(item.productName?.toLowerCase()?.trim());
+    const product = await resolveProductForPiItem(item);
     await db.insert(productionOrderItemsTable).values({
       productionOrderId,
       piItemId: item.id,
@@ -242,6 +239,16 @@ export async function syncProductionOrderItems(productionOrderId: number, invoic
   }
 }
 
+async function resolveProductForPiItem(piItem: typeof proformaInvoiceItemsTable.$inferSelect): Promise<typeof productsTable.$inferSelect | undefined> {
+  if (piItem.productId) {
+    const [found] = await db.select().from(productsTable).where(eq(productsTable.id, piItem.productId)).limit(1);
+    if (found) return found;
+  }
+  const [found] = await db.select().from(productsTable)
+    .where(eq(productsTable.name, piItem.productName!)).limit(1);
+  return found;
+}
+
 export async function resyncProductionOrderItems(
   productionOrderId: number,
   invoiceId: number | null,
@@ -257,9 +264,6 @@ export async function resyncProductionOrderItems(
   const existingItems = await d.select().from(productionOrderItemsTable)
     .where(eq(productionOrderItemsTable.productionOrderId, productionOrderId));
 
-  const allProducts = await d.select().from(productsTable);
-  const productMap = new Map(allProducts.map(p => [p.name?.toLowerCase()?.trim(), p]));
-
   const matchedIds = new Set<number>();
   let added = 0;
   let updated = 0;
@@ -271,7 +275,7 @@ export async function resyncProductionOrderItems(
     ) : null;
     const existing = byPiItemId || byName;
 
-    const product = productMap.get(piItem.productName?.toLowerCase()?.trim());
+    const product = await resolveProductForPiItem(piItem);
 
     if (existing) {
       matchedIds.add(existing.id);

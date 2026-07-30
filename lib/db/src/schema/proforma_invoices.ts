@@ -5,6 +5,7 @@ import { usersTable } from "./users";
 import { contactsTable } from "./contacts";
 import { dealsTable } from "./deals";
 import { customerMasterTable } from "./customer_master";
+import { productsTable } from "./products";
 
 export const INVOICE_STATUSES = ["Draft", "Sent", "Viewed", "Approved", "Rejected", "Expired", "Converted to Order", "Converted to Production"] as const;
 export type InvoiceStatus = typeof INVOICE_STATUSES[number];
@@ -59,6 +60,7 @@ export const proformaInvoicesTable = pgTable("proforma_invoices", {
 export const proformaInvoiceItemsTable = pgTable("proforma_invoice_items", {
   id: serial("id").primaryKey(),
   invoiceId: integer("invoice_id").notNull().references(() => proformaInvoicesTable.id, { onDelete: "cascade" }),
+  productId: integer("product_id").references(() => productsTable.id, { onDelete: "set null" }),
   productName: text("product_name").notNull(),
   hsnCode: text("hsn_code"),
   bottleType: text("bottle_type"),

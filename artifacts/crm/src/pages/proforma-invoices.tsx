@@ -81,6 +81,7 @@ function numberToWords(num: number): string {
 
 interface InvoiceItem {
   productName: string;
+  productId?: number;
   hsnCode: string;
   quantity: number;
   unit: string;
@@ -534,6 +535,7 @@ export default function ProformaInvoicesPage() {
             if (latest.items && latest.items.length > 0) {
               setItems(latest.items.map((it: any) => ({
                 productName: it.productName,
+                productId: it.productId || undefined,
                 hsnCode: it.hsnCode || "",
                 quantity: Number(it.quantity),
                 unit: it.unit || "Pcs",
@@ -563,7 +565,7 @@ export default function ProformaInvoicesPage() {
 const selectProduct = (idx: number, product: any) => {
   setItems(prev => prev.map((item, i) => {
     if (i !== idx) return item;
-    const next = { ...item, productName: product.name };
+    const next = { ...item, productName: product.name, productId: product.id };
     const hsn = product.hsnCode || (product.materialType ? MATERIAL_HSN[product.materialType] : "") || "";
     if (hsn) next.hsnCode = hsn;
     if (product.defaultUnit) next.unit = product.defaultUnit;
@@ -1028,6 +1030,7 @@ const selectProduct = (idx: number, product: any) => {
         notes: notes || null,
         items: items.map((i) => ({
           productName: i.productName,
+          productId: i.productId || null,
           hsnCode: i.hsnCode || null,
           weight: i.weight || null,
           bottleType: i.bottleType || null,
@@ -1629,6 +1632,7 @@ ${pagesHtml}
                         if (latest.items && latest.items.length > 0) {
                           setItems(latest.items.map((it: any) => ({
                             productName: it.productName,
+                            productId: it.productId || undefined,
                             hsnCode: it.hsnCode || "",
                             quantity: Number(it.quantity),
                             unit: it.unit || "Pcs",
@@ -2213,10 +2217,7 @@ ${pagesHtml}
           {showProductSearch && productSearchResults.length > 0 && activeProductIdx >= 0 && productSearchPos.width > 0 && (
   <div style={{ position: 'fixed', top: productSearchPos.top, left: productSearchPos.left, width: productSearchPos.width }} className="z-[9999] bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
     {productSearchResults.map((p: any) => {
-      const parts = [p.name];
-      if (p.bottleWeight) parts.push(p.bottleWeight);
-      if (p.bottleColour) parts.push(p.bottleColour);
-      if (p.materialType) parts.push(p.materialType);
+      const variantParts = [p.bottleWeight ? `${p.bottleWeight}g` : "", p.bottleColour || "", p.materialType || ""].filter(Boolean);
       return (
         <div key={p.id} className="px-3 py-2 hover:bg-muted cursor-pointer text-sm" onMouseDown={(e) => { e.preventDefault(); selectProduct(activeProductIdx, p); }}>
           <div className="font-medium flex items-center gap-1.5">
@@ -2226,7 +2227,10 @@ ${pagesHtml}
                 style={{ backgroundColor: p.bottleColourCode === "#FFFFFF" ? "#f3f4f6" : p.bottleColourCode, borderColor: p.bottleColourCode === "#FFFFFF" ? "#d1d5db" : p.bottleColourCode }}
               />
             )}
-            {parts.join(" • ")}
+            <span>{p.name}</span>
+            {variantParts.length > 0 && (
+              <span className="text-muted-foreground font-normal">— {variantParts.join(", ")}</span>
+            )}
           </div>
           <div className="text-xs text-muted-foreground">{[p.productCode, p.pricePerUnit ? `₹${Number(p.pricePerUnit).toFixed(2)}` : ""].filter(Boolean).join(" · ")}</div>
         </div>
@@ -2338,6 +2342,7 @@ ${pagesHtml}
             setNotes(inv.notes || "");
             setItems((inv.items || []).map((i: any) => ({
               productName: i.productName,
+              productId: i.productId || undefined,
               hsnCode: i.hsnCode || "",
               quantity: Number(i.quantity),
               unit: i.unit || "Pcs",

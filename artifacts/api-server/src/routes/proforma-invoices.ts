@@ -435,6 +435,7 @@ async function enrichInvoice(invoice: typeof proformaInvoicesTable.$inferSelect)
     grandTotal: Number(invoice.grandTotal),
     items: items.map((i) => ({
       ...i,
+      productId: i.productId || undefined,
       quantity: Number(i.quantity),
       rate: Number(i.rate),
       discount: Number(i.discount || 0),
@@ -853,6 +854,7 @@ router.post("/proforma-invoices", async (req, res) => {
       await db.insert(proformaInvoiceItemsTable).values({
         invoiceId: invoice!.id,
         productName: item.productName,
+        productId: item.productId || null,
         hsnCode: item.hsnCode || null,
         bottleType: item.bottleType || null,
         capacity: item.capacity || null,
@@ -1301,7 +1303,7 @@ async function updateInvoiceHandler(req: any, res: any) {
       };
 
       const newItems = items || oldItems.map((it: any) => ({
-        productName: it.productName, hsnCode: it.hsnCode, bottleType: it.bottleType,
+        productName: it.productName, productId: it.productId || null, hsnCode: it.hsnCode, bottleType: it.bottleType,
         capacity: it.capacity, weight: it.weight, quantity: Number(it.quantity),
         unit: it.unit, rate: Number(it.rate), discountPercent: Number(it.discountPercent || 0),
         discount: Number(it.discount || 0), gstPercent: Number(it.gstPercent || 0), amount: Number(it.amount),
@@ -1321,6 +1323,7 @@ async function updateInvoiceHandler(req: any, res: any) {
             await tx.insert(proformaInvoiceItemsTable).values({
               invoiceId: newInvoice!.id,
               productName: item.productName,
+              productId: item.productId || null,
               hsnCode: item.hsnCode || null,
               bottleType: item.bottleType || null,
               capacity: item.capacity || null,
@@ -1595,6 +1598,7 @@ async function updateInvoiceHandler(req: any, res: any) {
             await tx.insert(proformaInvoiceItemsTable).values({
               invoiceId: id,
               productName: item.productName,
+              productId: item.productId || null,
               hsnCode: item.hsnCode || null,
               bottleType: item.bottleType || null,
               capacity: item.capacity || null,
@@ -1765,6 +1769,7 @@ router.get("/proforma-invoices/previous-by-contact/:contactId", async (req, res)
         grandTotal: Number(inv.grandTotal),
         items: items.map(i => ({
           productName: i.productName,
+          productId: i.productId || undefined,
           hsnCode: i.hsnCode || "",
           bottleType: i.bottleType || "",
           capacity: i.capacity || "",
