@@ -825,9 +825,9 @@ router.get("/production/sheet", async (req, res) => {
     // ── 5. Build Excel rows: one row per product per order ──
 
     const headers = [
-      "Order ID", "Customer", "Order Date", "Product Name",
-      "Bottle Weight", "Bottle Color", "Cap Color", "Cap Weight",
-      "Qty", "Material Type",
+      "Order ID", "Company Name", "Customer Code", "Order Date",
+      "Product Name", "Bottle Weight", "Bottle Color", "Cap Color",
+      "Cap Weight", "Qty", "Material Type",
     ];
 
     const dataRows: any[][] = [];
@@ -844,18 +844,16 @@ router.get("/production/sheet", async (req, res) => {
       const first = orderRows[0];
       const orderDate = first.createdAt ? new Date(first.createdAt).toLocaleDateString("en-IN") : "";
       const orderId = first.formattedOrderId || `#${first.poId}`;
-      const customerDisplay = (() => {
-        const name = first.companyName || first.customerName || "";
-        const code = first.customerCode || "";
-        return code ? `${name} (${code})` : name || "-";
-      })();
+      const companyName = first.companyName || first.customerName || "-";
+      const customerCode = first.customerCode || "";
 
       for (const row of orderRows) {
         if (!row.itemId) continue;
 
         dataRows.push([
           orderId,
-          customerDisplay,
+          companyName,
+          customerCode,
           orderDate,
           row.productName || "",
           row.bottleWeight || "",
