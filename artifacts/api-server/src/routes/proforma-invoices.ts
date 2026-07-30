@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable, productionNotesTable, usersTable, contactsTable, dealsTable, customerMasterTable, activitiesTable, ordersTable, INVOICE_STATUSES } from "@workspace/db";
+import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable, productionNotesTable, usersTable, contactsTable, dealsTable, customerMasterTable, activitiesTable, ordersTable, orderItemsTable, INVOICE_STATUSES } from "@workspace/db";
 import { eq, desc, and, or, SQL, sql, like, gte, lte, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -1875,9 +1875,120 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
       }
     }
 
-    // Auto-create Production Order when status changes to "Converted to Order" or "Converted to Production"
+    // ── Auto-create Contact + Deal (Won) + Sales Order for orphaned PIs ──
+    // When a PI with no contact/deal is converted to Order, create a full sales record
+    // so the order is visible on Sales dashboards, revenue reports, and Won Value KPIs.
     const isConversion = (status === "Converted to Order" || status === "Converted to Production")
       && prevStatus !== "Converted to Order" && prevStatus !== "Converted to Production";
+    if (isConversion && !invoice.contactId) {
+      let autoContactId: number | null = null;
+
+      // 1. Find or create Contact from PI data
+      if (invoice.mobile) {
+        const [existingContact] = await db
+          .select()
+          .from(contactsTable)
+          .where(eq(contactsTable.mobile, invoice.mobile))
+          .limit(1);
+        if (existingContact) {
+          autoContactId = existingContact.id;
+        } else {
+          const addressStr = [invoice.addressLine1, invoice.addressLine2, invoice.addressLine3].filter(Boolean).join(", ") || null;
+          const [newContact] = await db.insert(contactsTable).values({
+            name: invoice.customerName,
+            mobile: invoice.mobile,
+            companyName: invoice.companyName || null,
+            city: invoice.city || null,
+            state: invoice.state || null,
+            address: addressStr,
+            salesOwnerId: user.id,
+            category: "New",
+            unit: productionUnit || null,
+            leadSource: "Proforma Invoice",
+          }).returning();
+          autoContactId = newContact.id;
+        }
+      }
+
+      // 2. Create Deal (Won) + Sales Order + Order Items
+      if (autoContactId) {
+        const piItems = await db
+          .select()
+          .from(proformaInvoiceItemsTable)
+          .where(eq(proformaInvoiceItemsTable.invoiceId, id));
+
+        const orderNumber = await generateOrderNumber();
+        const dealTitle = `${invoice.customerName} - ${invoice.invoiceNumber}`;
+
+        const [deal] = await db.insert(dealsTable).values({
+          contactId: autoContactId,
+          title: dealTitle,
+          stage: "Won",
+          totalValue: String(invoice.grandTotal || 0),
+          wonAmount: String(invoice.grandTotal || 0),
+          salesOwnerId: user.id,
+          productionUnit: productionUnit || null,
+        }).returning();
+
+        const [order] = await db.insert(ordersTable).values({
+          contactId: autoContactId,
+          dealId: deal.id,
+          customerName: invoice.customerName,
+          companyName: invoice.companyName || null,
+          mobile: invoice.mobile || null,
+          gstNumber: invoice.gstNumber || null,
+          address: [invoice.addressLine1, invoice.addressLine2, invoice.addressLine3].filter(Boolean).join(", ") || null,
+          city: invoice.city || null,
+          state: invoice.state || null,
+          orderNumber,
+          formattedOrderId: orderNumber,
+          grandTotal: String(invoice.grandTotal || 0),
+          freight: String(invoice.freight || 0),
+          status: "Confirmed",
+          salesOwnerId: user.id,
+          createdBy: user.id,
+          createdByRole: user.role,
+          orderType: "NEW",
+          productionUnit: productionUnit || null,
+          customerType: "New Customer",
+          source: "Proforma Invoice",
+        }).returning();
+
+        for (const piItem of piItems) {
+          await db.insert(orderItemsTable).values({
+            orderId: order.id,
+            productId: piItem.productId,
+            productName: piItem.productName,
+            hsnCode: piItem.hsnCode || null,
+            quantity: String(piItem.quantity),
+            unit: piItem.unit || "Pcs",
+            rate: String(piItem.rate),
+            gstPercent: String(piItem.gstPercent || 0),
+            amount: String(piItem.amount),
+            colour: piItem.bottleColour || null,
+            bottleWeight: piItem.weight || null,
+            status: "Pending",
+          });
+        }
+
+        // 3. Update PI to link contact and deal
+        await db.update(proformaInvoicesTable)
+          .set({
+            contactId: autoContactId,
+            dealId: deal.id,
+            salesOwnerId: user.id,
+            updatedAt: new Date(),
+          })
+          .where(eq(proformaInvoicesTable.id, id));
+
+        // Refresh invoice object for downstream code
+        invoice.contactId = autoContactId;
+        invoice.dealId = deal.id;
+        invoice.salesOwnerId = user.id;
+      }
+    }
+
+    // Auto-create Production Order when status changes to "Converted to Order" or "Converted to Production"
     if (isConversion) {
       const [existing] = await db
         .select()

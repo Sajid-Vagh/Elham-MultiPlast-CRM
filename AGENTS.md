@@ -601,3 +601,36 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `artifacts/api-server/src/lib/exporter.ts`: `buildWorkbook`, `sendWorkbook` — Excel generation utilities
 - `artifacts/crm/src/pages/production-orders.tsx`: Production Sheet dropdown + needsReprint badge
 - `artifacts/crm/src/pages/production-dashboard.tsx`: Updated Production Sheet Required widget
+
+---
+
+# Bottle Colour, Builty Optional, Machine Report, Orphan PI Auto-creation
+
+## Goal
+- Fix the production pipeline so that bottle colour selected on the Proforma Invoice is stored explicitly and propagated through to the Production Dashboard, preventing random/invalid colours from appearing.
+- Make Builty Number optional in Load Vehicle forms (only Transport Name mandatory).
+- Refactor Machine-wise Production Report to show only active pipeline items (exclude completed/cancelled).
+- Auto-create Contact + Deal (Won) + Sales Order when an orphan PI (no contact/deal) is converted to Order.
+
+## Progress
+### Done
+- **Bottle Colour field:** Added `bottleColour` column to `proforma_invoice_items` schema + migration `064_add_bottle_colour_to_pi_items.sql`. Frontend PI form updated with Bottle Colour dropdown (populated from product search results + common colours), stored in submit payload and repeat-order copies. Backend POST/PATCH handlers store `bottleColour`. Sync functions `syncProductionOrderItems`/`resyncProductionOrderItems` prefer PI item's `bottleColour` over product fallback. Production sheet query reads from `proformaInvoiceItemsTable.bottleColour` directly.
+- **Builty Number optional:** Removed validation from `dispatch.tsx:142-145` and `production-order-detail.tsx:316`. Label changed to "LR / Builty Number (Optional)". Button disabled only checks `transportName`.
+- **Machine Report refactor:** Backend adds `notInArray` for Completed/Delivered/Cancelled, expanded status buckets (Pending+Accepted+Planning), dormant bucket items excluded from all calculations. Frontend — 4 summary cards (no "Completed"), updated STATUS_OPTIONS and statusColor map.
+- **Orphan PI auto-creation:** When a PI with no `contactId` is converted to Order, the status handler now auto-creates: Contact (find-or-create by mobile), Won Deal (with `wonAmount`), Sales Order (Confirmed, linked to contact+deal, items copied with colour), and updates the PI's `contactId`/`dealId`. Downstream production order creation picks up the deal automatically.
+- **Build verified:** 0 new TypeScript errors in API server (35 pre-existing), CRM clean.
+
+### In Progress
+- (none)
+
+### Blocked
+- (none)
+
+## Relevant Files
+- `artifacts/api-server/src/routes/proforma-invoices.ts`: Status change handler (orphan PI auto-creation + production order creation)
+- `artifacts/api-server/src/lib/production-service.ts`: Machine report refactor, sync functions with bottle colour priority
+- `artifacts/api-server/src/routes/production.ts:804`: Sheet query (uses PI item bottle colour)
+- `artifacts/crm/src/pages/proforma-invoices.tsx`: Bottle Colour dropdown in PI form
+- `artifacts/crm/src/pages/dispatch.tsx`: Builty optional in Load Vehicle dialog
+- `artifacts/crm/src/pages/production-order-detail.tsx`: Builty optional in Load Vehicle dialog
+- `artifacts/crm/src/pages/machine-report.tsx`: 4 summary cards, updated status colors
