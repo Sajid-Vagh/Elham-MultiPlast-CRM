@@ -9,7 +9,7 @@ import { eq, and, or, ilike, desc, sql, inArray, isNull, asc, gte, lte } from "d
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { parseEndDate } from "../lib/parse-end-date";
-import { generateId } from "../lib/id-generator";
+import { generateOrderNumber } from "../lib/order-id-generator";
 import { getAccessibleUnits } from "../lib/unit-filter";
 
 const router: IRouter = Router();
@@ -750,12 +750,13 @@ router.post("/existing-customers/:id/repeat-order", async (req, res) => {
     const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, ec.contactId));
 
     // Generate new order number
-    const orderNumber = await generateId("order");
+    const orderNumber = await generateOrderNumber();
 
     // Create new order copying from source
     const overrides = req.body || {};
     const [newOrder] = await db.insert(ordersTable).values({
       orderNumber,
+      formattedOrderId: orderNumber,
       contactId: ec.contactId,
       customerName: contact?.name || sourceOrder.customerName,
       companyName: contact?.companyName || sourceOrder.companyName,

@@ -53,21 +53,21 @@ async function backfillCustomerCodes(): Promise<number> {
   return contacts.length;
 }
 
-async function backfillFormattedOrderIds(): Promise<number> {
-  console.log("\n=== Backfilling formatted_order_id for orders ===");
+async function backfillOrderNumbers(): Promise<number> {
+  console.log("\n=== Replacing orderNumber (ORD- format → EML_FY_N format) for orders ===");
 
   const orders = await db
     .select({ id: ordersTable.id, createdAt: ordersTable.createdAt })
     .from(ordersTable)
-    .where(isNull(ordersTable.formattedOrderId))
+    .where(sql`${ordersTable.orderNumber} NOT LIKE 'EML\\_%'`)
     .orderBy(asc(ordersTable.createdAt));
 
   if (orders.length === 0) {
-    console.log("  No orders need backfilling (all have formatted_order_id already).");
+    console.log("  All orders already use the new EML_ format.");
     return 0;
   }
 
-  console.log(`  Found ${orders.length} orders without formatted_order_id.`);
+  console.log(`  Found ${orders.length} orders with legacy orderNumber format.`);
 
   const counters: Record<string, number> = {};
   for (let i = 0; i < orders.length; i += CHUNK_SIZE) {
@@ -82,7 +82,7 @@ async function backfillFormattedOrderIds(): Promise<number> {
         const orderId = `EML_${fy}_${seq}`;
         return db
           .update(ordersTable)
-          .set({ formattedOrderId: orderId })
+          .set({ orderNumber: orderId, formattedOrderId: orderId })
           .where(sql`${ordersTable.id} = ${order.id}`);
       })
     );
@@ -90,7 +90,7 @@ async function backfillFormattedOrderIds(): Promise<number> {
     console.log(`  ✓ Updated orders ${i + 1}–${last} of ${orders.length}`);
   }
 
-  console.log(`  ✅ Successfully backfilled ${orders.length} orders with formatted_order_id.`);
+  console.log(`  ✅ Successfully replaced orderNumber for ${orders.length} orders with EML_ format.`);
   return orders.length;
 }
 
@@ -139,7 +139,7 @@ async function main() {
   console.log("Starting backfill script...\n");
 
   const contactCount = await backfillCustomerCodes();
-  const orderCount = await backfillFormattedOrderIds();
+  const orderCount = await backfillOrderNumbers();
   const prodOrderCount = await backfillProductionOrderIds();
 
   const total = contactCount + orderCount + prodOrderCount;

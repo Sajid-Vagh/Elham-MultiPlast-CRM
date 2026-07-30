@@ -11,7 +11,7 @@ import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { promoteDealToExistingCustomer } from "./existing-customers";
 import { generateId } from "../lib/id-generator";
-import { generateOrderId } from "../lib/order-id-generator";
+import { generateOrderNumber } from "../lib/order-id-generator";
 import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
 import { getActivePiForDeal, getActivePiSummary, validateActivePiForPiSent, deactivateActivePis } from "../lib/proforma-service";
 import { convertContactToMyClient, checkNoExistingOrder, getTodayWonCount, validateWonPrerequisites, validateProductionUnit } from "../lib/won-service";
@@ -813,11 +813,10 @@ router.post("/deals/:id/mark-won", async (req, res) => {
       }
 
       // 3. Create Order
-      const orderNumber = await generateId("order");
-      const formattedOrderId = await generateOrderId();
+      const orderNumber = await generateOrderNumber();
       const [order] = await tx.insert(ordersTable).values({
         orderNumber,
-        formattedOrderId,
+        formattedOrderId: orderNumber,
         contactId: deal.contactId,
         customerName: contact?.name || "Unknown",
         companyName: contact?.companyName || null,
@@ -880,7 +879,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
         ? await tx.select().from(productionOrdersTable).where(eq(productionOrdersTable.proformaInvoiceId, latestPI.id)).limit(1)
         : [];
       if (!existingPO) {
-        const poFormattedOrderId = await generateOrderId();
+        const poFormattedOrderId = await generateOrderNumber();
         const [po] = await tx.insert(productionOrdersTable).values({
           formattedOrderId: poFormattedOrderId,
           proformaInvoiceId: latestPI?.id || null,

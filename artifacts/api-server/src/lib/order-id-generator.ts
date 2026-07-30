@@ -1,10 +1,9 @@
 import { db, idCountersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
-export function getCurrentFinancialYear(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
+export function getFinancialYear(date: Date): string {
+  const year = date.getFullYear();
+  const month = date.getMonth();
   // Indian FY: Apr 1 to Mar 31
   if (month >= 3) {
     const y1 = year % 100;
@@ -17,8 +16,8 @@ export function getCurrentFinancialYear(): string {
   }
 }
 
-export async function generateOrderId(): Promise<string> {
-  const fy = getCurrentFinancialYear();
+export async function generateOrderNumber(forDate?: Date): Promise<string> {
+  const fy = getFinancialYear(forDate ?? new Date());
   const prefix = `order_${fy}`;
 
   const [counter] = await db

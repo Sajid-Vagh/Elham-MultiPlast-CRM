@@ -3,7 +3,7 @@ import { db, quotationsTable, quotationItemsTable, ordersTable, orderItemsTable,
 import { eq, desc, sql, and, or, ilike } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
-import { generateId } from "../lib/id-generator";
+import { generateOrderNumber } from "../lib/order-id-generator";
 import { promoteToExistingCustomer } from "./existing-customers";
 
 const router: IRouter = Router();
@@ -163,10 +163,11 @@ router.post("/quotations/:id/convert", async (req, res) => {
     if (!quotation) { res.status(404).json({ error: "Not found" }); return; }
     if (quotation.status === "Converted to Order") { res.status(400).json({ error: "Already converted" }); return; }
 
-    const orderNumber = await generateId("order");
+    const orderNumber = await generateOrderNumber();
 
     const [order] = await db.insert(ordersTable).values({
       orderNumber,
+      formattedOrderId: orderNumber,
       contactId: quotation.contactId,
       customerName: quotation.customerName,
       companyName: quotation.companyName,
