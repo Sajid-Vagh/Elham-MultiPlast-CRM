@@ -350,6 +350,7 @@ export default function Leads() {
                       <Link href={`/leads/${contact.id}`} className="hover:underline text-primary">
                         {contact.name}
                       </Link>
+                      {contact.customerCode && <span className="ml-1.5 text-[10px] text-muted-foreground font-mono">({contact.customerCode})</span>}
                     </TableCell>
                     <TableCell>{contact.companyName || "-"}</TableCell>
                     <TableCell>{contact.mobile}</TableCell>

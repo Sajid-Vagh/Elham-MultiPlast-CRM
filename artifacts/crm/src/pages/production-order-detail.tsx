@@ -354,8 +354,8 @@ export default function ProductionOrderDetail() {
             <CardHeader><CardTitle>Order Details</CardTitle></CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                <div><span className="text-muted-foreground">Company</span><p className="font-medium mt-1">{order.contact?.customerCode || order.invoice?.companyName || order.invoice?.customerName || "-"}</p></div>
-                <div><span className="text-muted-foreground">Customer</span><p className="font-medium mt-1">{order.contact?.customerCode || order.invoice?.customerName || "-"}</p></div>
+                <div><span className="text-muted-foreground">Company</span><p className="font-medium mt-1">{(() => { const c = order.contact; const n = c?.companyName || c?.name || order.invoice?.companyName || "-"; return c?.customerCode ? `${n} (${c.customerCode})` : n; })()}</p></div>
+                <div><span className="text-muted-foreground">Customer</span><p className="font-medium mt-1">{(() => { const c = order.contact; const n = c?.name || order.invoice?.customerName || "-"; return c?.customerCode ? `${n} (${c.customerCode})` : n; })()}</p></div>
                 <div>
                   <span className="text-muted-foreground">Mobile</span>
                   {(() => {

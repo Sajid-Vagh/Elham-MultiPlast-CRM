@@ -81,6 +81,7 @@ export type CustomerType = typeof CUSTOMER_TYPES[number];
 export const ordersTable = pgTable("orders", {
   id: serial("id").primaryKey(),
   orderNumber: text("order_number").notNull().unique(),
+  formattedOrderId: text("formatted_order_id"),
   contactId: integer("contact_id").notNull().references(() => contactsTable.id, { onDelete: "restrict" }),
   customerName: text("customer_name").notNull(),
   companyName: text("company_name"),

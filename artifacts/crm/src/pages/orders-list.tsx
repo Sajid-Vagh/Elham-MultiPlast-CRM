@@ -74,6 +74,8 @@ interface OrderRow {
   dispatchStatus: string | null;
   itemsCount: number;
   totalQuantity: number;
+  formattedOrderId: string | null;
+  customerCode: string | null;
   products: { productName: string; bottleWeight: string | null; bottleColour: string | null; machineType: string | null; quantity: number }[];
 }
 
@@ -242,10 +244,15 @@ export default function OrdersList() {
                         <TableCell className="w-8">
                           {expandedRow === order.id ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                         </TableCell>
-                        <TableCell className="font-medium">{order.orderNumber}</TableCell>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-1.5">
+                            <span>{order.orderNumber}</span>
+                            {order.formattedOrderId && <Badge variant="outline" className="text-[10px] font-mono bg-muted/50">{order.formattedOrderId}</Badge>}
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <div>
-                            <p className="font-medium text-sm">{order.customerName}</p>
+                            <p className="font-medium text-sm">{order.customerName}{order.customerCode ? <span className="text-muted-foreground ml-1 text-[10px]">({order.customerCode})</span> : null}</p>
                             {order.companyName && <p className="text-xs text-muted-foreground">{order.companyName}</p>}
                           </div>
                         </TableCell>

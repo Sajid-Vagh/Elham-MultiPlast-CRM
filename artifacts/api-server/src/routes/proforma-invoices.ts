@@ -8,6 +8,7 @@ import { getGstProvider } from "../lib/gst-provider";
 import axios from "axios";
 import * as XLSX from "xlsx";
 import { getActivePiForDeal, deactivateActivePis, getNextPiVersion } from "../lib/proforma-service";
+import { generateOrderId } from "../lib/order-id-generator";
 import { notifyProductionUsers } from "../lib/notification-service";
 import { logPiActivity, logActivity, formatTimestamp } from "../lib/activity-logger";
 import { canModifyInvoice } from "../lib/permission-service";
@@ -1893,7 +1894,9 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
           }
         }
 
+        const poFormattedOrderId = await generateOrderId();
         await db.insert(productionOrdersTable).values({
+          formattedOrderId: poFormattedOrderId,
           proformaInvoiceId: id,
           dealId: invoice.dealId || null,
           status: "Pending",

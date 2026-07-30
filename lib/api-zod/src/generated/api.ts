@@ -235,7 +235,8 @@ export const CreateContactBody = zod.object({
   "tags": zod.string().nullish(),
   "inquiryDate": zod.string().nullish(),
   "lastCallDate": zod.string().nullish(),
-  "nextCallDate": zod.string().nullish()
+  "nextCallDate": zod.string().nullish(),
+  "customerCode": zod.string().nullish()
 })
 
 export const CreateContactResponse = zod.object({

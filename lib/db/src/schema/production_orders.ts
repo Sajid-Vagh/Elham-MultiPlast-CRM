@@ -63,6 +63,7 @@ export type PackingType = typeof PACKING_TYPES[number];
 
 export const productionOrdersTable = pgTable("production_orders", {
   id: serial("id").primaryKey(),
+  formattedOrderId: text("formatted_order_id"),
   proformaInvoiceId: integer("proforma_invoice_id")
     .references(() => proformaInvoicesTable.id, { onDelete: "cascade" }),
   dealId: integer("deal_id").references(() => dealsTable.id, { onDelete: "set null" }),

@@ -4,6 +4,7 @@ import { eq, and, or, ilike, desc, sql, inArray, gte, lte } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { generateId } from "../lib/id-generator";
+import { generateOrderId } from "../lib/order-id-generator";
 import { logAudit } from "../middlewares/auth";
 import { promoteToExistingCustomer } from "./existing-customers";
 import { getAccessibleUnits } from "../lib/unit-filter";
@@ -328,6 +329,7 @@ router.post("/orders", async (req, res) => {
     const { items, transportSnapshot, ...orderData } = req.body;
 
     const orderNumber = await generateId("order");
+    const formattedOrderId = await generateOrderId();
 
     // Determine order type and revenue ownership
     const orderType = orderData.orderType || (orderData.source === "Repeat Order" ? "REPEAT" : "NEW");
@@ -356,6 +358,7 @@ router.post("/orders", async (req, res) => {
       ...orderData,
       ...transportSnapshotData,
       orderNumber,
+      formattedOrderId,
       orderType,
       createdByRole,
       revenueOwnerId: revenueOwnerId || null,

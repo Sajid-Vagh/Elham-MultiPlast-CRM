@@ -7,6 +7,7 @@ import { createNotification } from "./notifications";
 import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
+import { generateCustomerCode } from "../lib/customer-code-generator";
 import { parseEndDate } from "../lib/parse-end-date";
 
 const router: IRouter = Router();
@@ -173,6 +174,9 @@ router.post("/contacts", async (req, res) => {
       values.unit = ownerUser.unit;
     }
   }
+  // Auto-assign customer code
+  const customerCode = await generateCustomerCode();
+  values.customerCode = customerCode;
   try {
     const [contact] = await db.insert(contactsTable).values(values).returning();
     if (contact && values.salesOwnerId && values.salesOwnerId !== user.id) {

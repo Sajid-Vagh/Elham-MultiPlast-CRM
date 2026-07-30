@@ -279,7 +279,11 @@ export default function ProductionOrders() {
                     >
                       <td className="py-3 px-4 font-medium">#{order.id}</td>
                       <td className="py-3 px-4 max-w-[180px] truncate">
-                        {order.contact?.customerCode || order.invoice?.companyName || order.invoice?.customerName || "-"}
+                        {(() => {
+                          const c = order.contact;
+                          const n = c?.companyName || c?.name || order.invoice?.companyName || order.invoice?.customerName || "-";
+                          return c?.customerCode ? `${n} (${c.customerCode})` : n;
+                        })()}
                       </td>
                       <td className="py-3 px-4 max-w-[150px] truncate">
                         {order.items?.[0]?.productName || "-"}

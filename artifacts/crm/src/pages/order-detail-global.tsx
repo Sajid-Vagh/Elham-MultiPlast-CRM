@@ -110,10 +110,11 @@ export default function OrderDetailGlobal() {
         <div className="flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-2xl font-bold">{order.orderNumber}</h1>
+            {order.formattedOrderId && <Badge variant="outline" className="text-xs font-mono bg-muted/50">{order.formattedOrderId}</Badge>}
             <Badge className={`${ORDER_STATUS_COLORS[order.status] || "bg-gray-100"}`}>{order.status}</Badge>
             {order.isRepeatOrder && <Badge className="bg-amber-100 text-amber-700">Repeat Order</Badge>}
           </div>
-          <p className="text-sm text-muted-foreground">{order.customerName}{order.companyName ? ` — ${order.companyName}` : ""}</p>
+          <p className="text-sm text-muted-foreground">{(() => { const n = order.customerName; const cn = order.companyName; const cc = order.customerCode; return `${n}${cn ? ` — ${cn}` : ""}${cc ? ` (${cc})` : ""}`; })()}</p>
         </div>
         {canEditStatus && (
           <Select value={order.status} onValueChange={(v) => statusMutation.mutate(v)} disabled={statusMutation.isPending}>

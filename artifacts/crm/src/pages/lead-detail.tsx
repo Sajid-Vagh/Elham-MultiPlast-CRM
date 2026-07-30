@@ -601,6 +601,7 @@ export default function LeadDetail() {
               <div className="flex items-center gap-2 flex-wrap">
                 {owner && <UserAvatar profilePhoto={owner.profilePhoto} name={owner.name} className="w-3 h-3 shrink-0" />}
                 <h1 className="text-xl font-bold truncate">{contact.name}</h1>
+                {(contact as any).customerCode && <Badge variant="secondary" className="text-[11px] font-mono">{(contact as any).customerCode}</Badge>}
                 <CategoryBadge category={(contact as any).category} />
                 {contact.tags && <Badge variant="outline" className="text-[10px]">{contact.tags}</Badge>}
               </div>

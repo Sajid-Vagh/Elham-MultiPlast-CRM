@@ -172,9 +172,12 @@ export default function DispatchPage() {
     return { text: `${unique[0]} +${unique.length - 1} more`, totalQty };
   };
 
-  // Get customer code from contact or invoice
-  const getCustomerCode = (order: any) => {
-    return order.contact?.customerCode || order.invoice?.customerCode || null;
+  // Get customer display name with code
+  const getCustomerDisplay = (order: any) => {
+    const contact = order.contact || order.invoice;
+    const name = contact?.companyName || contact?.name || order.customerName || "-";
+    const code = contact?.customerCode;
+    return code ? `${name} (${code})` : name;
   };
 
   // Summary cards
@@ -337,18 +340,14 @@ export default function DispatchPage() {
                 <TableBody>
                   {data.data.map((order: any) => {
                     const prodSummary = getProductSummary(order);
-                    const customerCode = getCustomerCode(order);
+                    const customerDisplay = getCustomerDisplay(order);
                     return (
                       <TableRow key={order.id} className="hover:bg-muted/30">
                         <TableCell className="font-medium cursor-pointer" onClick={() => setLocation(`/production/orders/${order.id}`)}>
                           #{order.id}
                         </TableCell>
                         <TableCell>
-                          {customerCode ? (
-                            <Badge variant="outline" className="text-xs font-mono">{customerCode}</Badge>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">—</span>
-                          )}
+                          <span className="text-xs">{customerDisplay}</span>
                         </TableCell>
                         <TableCell>
                           <div className="max-w-[200px]">
@@ -447,7 +446,7 @@ export default function DispatchPage() {
             {loadDialog && (
               <div className="text-sm bg-muted p-3 rounded-lg">
                 <div className="flex items-center gap-2">
-                  <p className="font-mono text-xs">{getCustomerCode(loadDialog) || "No Code"}</p>
+                  <p className="font-mono text-xs">{getCustomerDisplay(loadDialog) || "No Code"}</p>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Product: {getProductSummary(loadDialog).text} ({getProductSummary(loadDialog).totalQty.toLocaleString()} pcs)
