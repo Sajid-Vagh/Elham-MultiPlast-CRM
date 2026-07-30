@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useRoute, useLocation } from "wouter";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,8 +30,6 @@ const ORDER_STATUS_COLORS: Record<string, string> = {
   "Completed": "bg-emerald-100 text-emerald-700",
   "Cancelled": "bg-red-100 text-red-600",
 };
-
-const ORDER_STATUSES = ["Draft", "Confirmed", "Production Pending", "Production Started", "Production Running", "Ready for Dispatch", "Dispatched", "Delivered", "Completed", "Cancelled"];
 
 const TIMELINE_ICONS: Record<string, string> = {
   created: "bg-blue-500",
@@ -69,20 +67,6 @@ export default function OrderDetailGlobal() {
     enabled: !!id,
   });
 
-  const statusMutation = useMutation({
-    mutationFn: async (newStatus: string) => {
-      return customFetch(`/orders/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["order", id] });
-      queryClient.invalidateQueries({ queryKey: ["order-timeline", id] });
-    },
-  });
-
   if (!id || isNaN(id)) {
     return (
       <div className="p-6 text-center">
@@ -96,7 +80,6 @@ export default function OrderDetailGlobal() {
   if (!order) return <div className="p-6 text-center">Order not found</div>;
 
   const role = user?.role;
-  const canEditStatus = role === "admin" || role === "production_and_support" || role === "sales";
   const canViewProduction = role === "admin" || role === "production_and_support" || role === "production" || role === "sales";
   const canUpdateProduction = role === "admin" || role === "production" || role === "production_and_support";
 
@@ -116,14 +99,6 @@ export default function OrderDetailGlobal() {
           </div>
           <p className="text-sm text-muted-foreground">{(() => { const n = order.customerName; const cn = order.companyName; const cc = order.customerCode; return `${n}${cn ? ` — ${cn}` : ""}${cc ? ` (${cc})` : ""}`; })()}</p>
         </div>
-        {canEditStatus && (
-          <Select value={order.status} onValueChange={(v) => statusMutation.mutate(v)} disabled={statusMutation.isPending}>
-            <SelectTrigger className="w-52"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {ORDER_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        )}
       </div>
 
       {/* Order Info Grid */}
@@ -284,8 +259,21 @@ export default function OrderDetailGlobal() {
             <Button
               variant="destructive"
               disabled={!cancelReason || (cancelReason === "Other" && !cancelOther)}
-              onClick={() => {
-                statusMutation.mutate("Cancelled");
+              onClick={async () => {
+                try {
+                  await customFetch(`/orders/${id}/cancel`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      cancellationReason: cancelReason === "Other" ? "Other" : cancelReason,
+                      cancellationOtherReason: cancelReason === "Other" ? cancelOther : undefined,
+                    }),
+                  });
+                  queryClient.invalidateQueries({ queryKey: ["order", id] });
+                  queryClient.invalidateQueries({ queryKey: ["order-timeline", id] });
+                } catch (e) {
+                  console.error("Cancel failed", e);
+                }
                 setCancelDialog(false);
                 setCancelReason("");
                 setCancelOther("");

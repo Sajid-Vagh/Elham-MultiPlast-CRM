@@ -6,6 +6,7 @@
   "scripts": {
     "seed": "tsx --env-file ../.env ./src/seed.ts",
     "backfill": "tsx --env-file ../.env ./src/backfill-existing-data.ts",
+    "fix-existing": "tsx --env-file ../.env ./src/fix-existing-data.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
