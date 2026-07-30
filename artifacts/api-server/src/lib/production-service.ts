@@ -221,10 +221,10 @@ export async function syncProductionOrderItems(productionOrderId: number, invoic
   if (invoiceItems.length === 0) return;
 
   const allProducts = await db.select().from(productsTable);
-  const productMap = new Map(allProducts.map(p => [p.name?.toLowerCase(), p]));
+  const productMap = new Map(allProducts.map(p => [p.name?.toLowerCase()?.trim(), p]));
 
   for (const item of invoiceItems) {
-    const product = productMap.get(item.productName?.toLowerCase());
+    const product = productMap.get(item.productName?.toLowerCase()?.trim());
     await db.insert(productionOrderItemsTable).values({
       productionOrderId,
       piItemId: item.id,
@@ -258,7 +258,7 @@ export async function resyncProductionOrderItems(
     .where(eq(productionOrderItemsTable.productionOrderId, productionOrderId));
 
   const allProducts = await d.select().from(productsTable);
-  const productMap = new Map(allProducts.map(p => [p.name?.toLowerCase(), p]));
+  const productMap = new Map(allProducts.map(p => [p.name?.toLowerCase()?.trim(), p]));
 
   const matchedIds = new Set<number>();
   let added = 0;
@@ -267,11 +267,11 @@ export async function resyncProductionOrderItems(
   for (const piItem of piItems) {
     const byPiItemId = existingItems.find(e => e.piItemId === piItem.id && !matchedIds.has(e.id));
     const byName = !byPiItemId ? existingItems.find(e =>
-      e.productName?.toLowerCase() === piItem.productName?.toLowerCase() && !matchedIds.has(e.id)
+      e.productName?.toLowerCase()?.trim() === piItem.productName?.toLowerCase()?.trim() && !matchedIds.has(e.id)
     ) : null;
     const existing = byPiItemId || byName;
 
-    const product = productMap.get(piItem.productName?.toLowerCase());
+    const product = productMap.get(piItem.productName?.toLowerCase()?.trim());
 
     if (existing) {
       matchedIds.add(existing.id);
@@ -609,10 +609,10 @@ export async function enrichProductionOrder(order: any, user?: { role: string })
     : [];
 
   const allProducts = await db.select().from(productsTable);
-  const productMap = new Map(allProducts.map(p => [p.name?.toLowerCase(), p]));
+  const productMap = new Map(allProducts.map(p => [p.name?.toLowerCase()?.trim(), p]));
 
   const enrichedItems = items.map((i: any) => {
-    const product = productMap.get(i.productName?.toLowerCase());
+    const product = productMap.get(i.productName?.toLowerCase()?.trim());
     return {
       ...i,
       quantity: Number(i.quantity),
@@ -2169,10 +2169,12 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
         continue;
       }
 
-      // Non-RTD active orders: sum remaining as pending
+      // Non-RTD active orders: separate Pending vs In Production counts
       if (remaining > 0) {
-        pendingPieces += remaining;
-        if (item.lineStatus === "In Production") {
+        const effectiveStatus = item.lineStatus || "Pending";
+        if (effectiveStatus === "Pending") {
+          pendingPieces += remaining;
+        } else if (effectiveStatus === "In Production") {
           inProductionPieces += remaining;
         }
       }
@@ -2503,7 +2505,10 @@ export async function getPendingSummary(user: PermissionUser, unitFilter?: strin
   // ordered_quantity, ready_quantity, and remaining values).
   // Pending = SUM(ordered - ready) across all non-terminal orders that are NOT
   // yet fully ready (exclude RTD / In Transport / Completed / Cancelled).
+  // Only count items with production_status = 'Pending' — In Production items
+  // are NOT pending; they are actively being manufactured.
   // Exclude soft-deleted invoices and items whose remaining has reached zero.
+  // Use COALESCE to treat NULL statuses as 'Pending' and TRIM to handle whitespace.
   const results = await db.execute(sql`
     SELECT
       oi.product_name AS "productName",
@@ -2515,7 +2520,7 @@ export async function getPendingSummary(user: PermissionUser, unitFilter?: strin
     LEFT JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
     WHERE po.status NOT IN ('Completed', 'Cancelled', 'Ready To Dispatch', 'Ready For Dispatch', 'In Transport')
       AND (pi.id IS NULL OR pi.is_deleted = false)
-      AND oi.production_status IN ('Pending', 'In Production')
+      AND COALESCE(oi.production_status, 'Pending') = 'Pending'
       AND (oi.ordered_quantity::numeric - oi.ready_quantity::numeric) > 0
       ${unitCondition}
     GROUP BY oi.product_name
@@ -2808,8 +2813,8 @@ export async function getManufacturingSummary(user: PermissionUser, unitFilter?:
       JOIN production_order_items poi ON poi.production_order_id = ao.po_id
       LEFT JOIN proforma_invoices pi ON pi.id = ao.resolved_invoice_id
       LEFT JOIN proforma_invoice_items pii ON pii.id = poi.pi_item_id
-      LEFT JOIN products p ON lower(p.name) = lower(poi.product_name)
-      WHERE poi.production_status IN ('Pending', 'In Production')
+      LEFT JOIN products p ON TRIM(LOWER(p.name)) = TRIM(LOWER(poi.product_name))
+      WHERE COALESCE(poi.production_status, 'Pending') = 'Pending'
         AND (poi.ordered_quantity::numeric - poi.ready_quantity::numeric) > 0
         ${materialCondition}
     )
@@ -2899,8 +2904,8 @@ export async function getManufacturingSummaryDetail(
       JOIN production_orders po ON po.id = ao.po_id
       JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
       JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
-      LEFT JOIN products p ON lower(p.name) = lower(pii.product_name)
-      WHERE lower(pii.product_name) = lower(${filter.productName})
+      LEFT JOIN products p ON TRIM(LOWER(p.name)) = TRIM(LOWER(pii.product_name))
+      WHERE TRIM(LOWER(pii.product_name)) = TRIM(LOWER(${filter.productName}))
         AND ${weightFilter}
         AND ${colourFilter}
         AND pi.is_deleted = false
@@ -2927,7 +2932,7 @@ export async function getManufacturingSummaryDetail(
       FROM production_orders po
       JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
       JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
-      LEFT JOIN products p ON lower(p.name) = lower(pii.product_name)
+      LEFT JOIN products p ON TRIM(LOWER(p.name)) = TRIM(LOWER(pii.product_name))
       WHERE po.id = ANY(${filter.orderIds}::int[])
         AND pi.is_deleted = false
       ORDER BY po.created_at DESC
