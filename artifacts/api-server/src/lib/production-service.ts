@@ -8,7 +8,7 @@ import {
   VALID_DISPATCH_TRANSITIONS, PRODUCT_LINE_STATUSES,
   type ProductionStatus, type NoteType, type ProductLineStatus,
 } from "@workspace/db";
-import { eq, and, desc, sql, gte, lte, or, ne, inArray, type SQL } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte, or, inArray, type SQL } from "drizzle-orm";
 import { getActivePiForDeal } from "./proforma-service";
 import { notifyProductionUsers, notifyDealEvent } from "./notification-service";
 import { createNotification } from "../routes/notifications";
@@ -2086,111 +2086,125 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
   if (startDate) conditions.push(gte(productionOrdersTable.createdAt, new Date(startDate)));
   if (endDate) conditions.push(lte(productionOrdersTable.createdAt, new Date(endDate + "T23:59:59")));
 
-  const activeConditions = [...conditions, and(
-    ne(productionOrdersTable.status, "Completed"),
-    ne(productionOrdersTable.status, "Cancelled"),
-    or(
-      eq(productionOrdersTable.status, "Pending"),
-      // V2 statuses
-      eq(productionOrdersTable.status, "Accepted"),
-      eq(productionOrdersTable.status, "Planning"),
-      eq(productionOrdersTable.status, "In Production"),
-      eq(productionOrdersTable.status, "Packing"),
-      eq(productionOrdersTable.status, "Ready For Dispatch"),
-      eq(productionOrdersTable.status, "In Transport"),
-      // V1 legacy statuses (migration 048 not yet applied)
-      eq(productionOrdersTable.status, "Production On Going"),
-      eq(productionOrdersTable.status, "Packaging"),
-      eq(productionOrdersTable.status, "Ready To Dispatch"),
-    )!,
-  )!];
+  // Active (non-terminal) order statuses — excludes Completed / Cancelled / Delivered
+  const activeStatuses = [
+    "Pending", "Accepted", "Planning",
+    "Production On Going", "In Production",
+    "Packaging", "Packing",
+    "Ready To Dispatch", "Ready For Dispatch", "In Transport",
+  ];
 
-  const activeOrders = await db.select().from(productionOrdersTable)
-    .where(activeConditions.length > 0 ? and(...activeConditions) : undefined);
+  // Single query: fetch all active orders + their product line items in one pass,
+  // joined with proforma_invoices to skip soft-deleted invoices.
+  const allRows = await db
+    .select({
+      orderId: productionOrdersTable.id,
+      orderStatus: productionOrdersTable.status,
+      piIsDeleted: proformaInvoicesTable.isDeleted,
+      orderIsDelayed: productionOrdersTable.isDelayed,
+      lineId: productionOrderItemsTable.id,
+      lineStatus: productionOrderItemsTable.productionStatus,
+      orderedQty: productionOrderItemsTable.orderedQuantity,
+      readyQty: productionOrderItemsTable.readyQuantity,
+    })
+    .from(productionOrdersTable)
+    .leftJoin(proformaInvoicesTable, eq(proformaInvoicesTable.id, productionOrdersTable.proformaInvoiceId))
+    .leftJoin(productionOrderItemsTable, eq(productionOrderItemsTable.productionOrderId, productionOrdersTable.id))
+    .where(and(...conditions, inArray(productionOrdersTable.status, activeStatuses)));
 
-  const allOrders = await db.select().from(productionOrdersTable)
-    .where(conditions.length > 0 ? and(...conditions) : undefined);
+  // Group rows by order
+  const orderMap = new Map<number, {
+    status: string; piIsDeleted: boolean | null; isDelayed: boolean;
+    items: { lineStatus: string; orderedQty: string; readyQty: string }[];
+  }>();
+  for (const row of allRows) {
+    if (!orderMap.has(row.orderId)) {
+      orderMap.set(row.orderId, {
+        status: row.orderStatus,
+        piIsDeleted: row.piIsDeleted,
+        isDelayed: row.orderIsDelayed ?? false,
+        items: [],
+      });
+    }
+    if (row.lineId) {
+      orderMap.get(row.orderId)!.items.push({
+        lineStatus: row.lineStatus,
+        orderedQty: row.orderedQty,
+        readyQty: row.readyQty,
+      });
+    }
+  }
 
   const today = new Date();
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-  const activeOrderIds = activeOrders.map(o => o.id);
-  let productLines: { productionOrderId: number; productionStatus: string; orderedQuantity: string; readyQuantity: string }[] = [];
-  if (activeOrderIds.length > 0) {
-    productLines = await db.select({
-      productionOrderId: productionOrderItemsTable.productionOrderId,
-      productionStatus: productionOrderItemsTable.productionStatus,
-      orderedQuantity: productionOrderItemsTable.orderedQuantity,
-      readyQuantity: productionOrderItemsTable.readyQuantity,
-    }).from(productionOrderItemsTable)
-      .where(inArray(productionOrderItemsTable.productionOrderId, activeOrderIds));
-  }
-
-  const linesWithNoItems = activeOrders.filter(o =>
-    !productLines.some(pl => pl.productionOrderId === o.id)
-  );
-
   let pendingPieces = 0;
   let inProductionPieces = 0;
   let readyPieces = 0;
-  let readyToDispatchPieces = 0;
+  let dispatchPendingCount = 0;
+  let delayedOrders = 0;
+  let activeOrders = 0;
 
-  // Build a lookup for order status by orderId
-  const orderStatusMap = new Map(activeOrders.map(o => [o.id, o.status]));
+  for (const [, order] of orderMap) {
+    // Exclude orders linked to soft-deleted proforma invoices
+    if (order.piIsDeleted) continue;
+    activeOrders++;
+    if (order.isDelayed) delayedOrders++;
 
-  for (const line of productLines) {
-    const ordered = Number(line.orderedQuantity);
-    const ready = Number(line.readyQuantity);
-    const remaining = ordered - ready;
-    if (line.productionStatus === "Pending") pendingPieces += remaining > 0 ? remaining : ordered;
-    else if (line.productionStatus === "In Production") inProductionPieces += remaining > 0 ? remaining : ordered;
-    else if (line.productionStatus === "Ready") {
-      readyPieces += ready;
-      // Only count as "Ready To Dispatch" if the parent order is actually in "Ready To Dispatch" status
-      const parentStatus = orderStatusMap.get(line.productionOrderId);
-      if (parentStatus === "Ready To Dispatch") {
-        readyToDispatchPieces += ready;
+    const isRtd = order.status === "Ready To Dispatch" || order.status === "Ready For Dispatch";
+    if (isRtd) dispatchPendingCount++;
+
+    // In Transport — en route, not pending or in-production
+    if (order.status === "In Transport") continue;
+
+    if (order.items.length === 0) continue;
+
+    for (const item of order.items) {
+      const ordered = Number(item.orderedQty) || 0;
+      const ready = Number(item.readyQty) || 0;
+      const remaining = ordered - ready;
+
+      if (isRtd) {
+        // Ready To Dispatch orders: all item quantities are counted as ready
+        readyPieces += ready;
+        continue;
+      }
+
+      // Non-RTD active orders: sum remaining as pending
+      if (remaining > 0) {
+        pendingPieces += remaining;
+        if (item.lineStatus === "In Production") {
+          inProductionPieces += remaining;
+        }
+      }
+
+      // Items fully marked ready contribute to ready count
+      if (item.lineStatus === "Ready" && ready > 0) {
+        readyPieces += ready;
       }
     }
   }
 
-  // Fallback: for orders missing product_line_items, sum quantities from PI items
-  if (linesWithNoItems.length > 0) {
-    const noItemOrderIds = linesWithNoItems.map(o => o.id);
-    const noItemInvoiceIds = linesWithNoItems.map(o => o.proformaInvoiceId).filter(Boolean) as number[];
-    if (noItemInvoiceIds.length > 0) {
-      const piItems = await db.select({
-        invoiceId: proformaInvoiceItemsTable.invoiceId,
-        quantity: proformaInvoiceItemsTable.quantity,
-      }).from(proformaInvoiceItemsTable)
-        .where(inArray(proformaInvoiceItemsTable.invoiceId, noItemInvoiceIds));
-      const invoiceToOrder = new Map(linesWithNoItems.map(o => [o.proformaInvoiceId, o]));
-      for (const pi of piItems) {
-        const order = invoiceToOrder.get(pi.invoiceId);
-        if (!order) continue;
-        const qty = Number(pi.quantity);
-        if (order.status === "Pending") pendingPieces += qty;
-        else if (order.status === "Production On Going" || order.status === "Packaging") inProductionPieces += qty;
-      }
-    }
-  }
-
-  // Count orders waiting in dispatch queue (Ready To Dispatch status)
-  const dispatchPendingCount = allOrders.filter(o => o.status === "Ready To Dispatch").length;
+  // Completed today — query separately using exact timestamp
+  const [{ completedTodayCount }] = await db
+    .select({ completedTodayCount: sql<number>`count(*)::int` })
+    .from(productionOrdersTable)
+    .leftJoin(proformaInvoicesTable, eq(proformaInvoicesTable.id, productionOrdersTable.proformaInvoiceId))
+    .where(and(
+      ...conditions,
+      eq(productionOrdersTable.status, "Completed"),
+      gte(productionOrdersTable.updatedAt, todayStart),
+      or(sql`${proformaInvoicesTable.isDeleted} IS NULL`, eq(proformaInvoicesTable.isDeleted, false)),
+    ));
 
   return {
     pendingCount: pendingPieces,
     productionOnGoingCount: inProductionPieces,
     packagingCount: 0,
-    readyToDispatchCount: readyToDispatchPieces,
-    completedToday: allOrders.filter(o => {
-      if (o.status !== "Completed") return false;
-      const t = o.updatedAt ? new Date(o.updatedAt) : null;
-      return t && t >= todayStart;
-    }).length,
-    delayedOrders: activeOrders.filter(o => o.isDelayed).length,
-    activeOrders: activeOrders.length,
-    totalOrders: allOrders.length,
+    readyToDispatchCount: readyPieces,
+    completedToday: completedTodayCount || 0,
+    delayedOrders,
+    activeOrders,
+    totalOrders: activeOrders,
     dispatchPendingCount,
     productLineStats: {
       pendingPieces,
@@ -2485,30 +2499,33 @@ export async function getPendingSummary(user: PermissionUser, unitFilter?: strin
     ? sql`AND po.production_unit = ${effectiveUnit}`
     : sql``;
 
-  // Read from production_order_items (synced via resyncProductionOrderItems on PI update)
-  // instead of proforma_invoice_items, to avoid Cartesian products and cross-version double-counting.
-  // Only count items from pre-production orders (Pending/Accepted/Planning).
-  // Exclude soft-deleted invoices via LEFT JOIN on proforma_invoices.is_deleted.
+  // Source of truth: production_order_items (the dynamic line-items table holding
+  // ordered_quantity, ready_quantity, and remaining values).
+  // Pending = SUM(ordered - ready) across all non-terminal orders that are NOT
+  // yet fully ready (exclude RTD / In Transport / Completed / Cancelled).
+  // Exclude soft-deleted invoices and items whose remaining has reached zero.
   const results = await db.execute(sql`
     SELECT
       oi.product_name AS "productName",
-      SUM(oi.ordered_quantity::numeric) AS "totalQuantity",
+      SUM(oi.ordered_quantity::numeric - oi.ready_quantity::numeric) AS "totalPendingQuantity",
       COUNT(DISTINCT oi.production_order_id) AS "orderCount",
       array_agg(DISTINCT oi.production_order_id) AS "orderIds"
     FROM production_order_items oi
     JOIN production_orders po ON po.id = oi.production_order_id
     LEFT JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
-    WHERE po.status IN ('Pending', 'Accepted', 'Planning', 'Production On Going')
+    WHERE po.status NOT IN ('Completed', 'Cancelled', 'Ready To Dispatch', 'Ready For Dispatch', 'In Transport')
       AND (pi.id IS NULL OR pi.is_deleted = false)
+      AND oi.production_status IN ('Pending', 'In Production')
+      AND (oi.ordered_quantity::numeric - oi.ready_quantity::numeric) > 0
       ${unitCondition}
     GROUP BY oi.product_name
-    HAVING SUM(oi.ordered_quantity::numeric) > 0
-    ORDER BY SUM(oi.ordered_quantity::numeric) DESC
+    HAVING SUM(oi.ordered_quantity::numeric - oi.ready_quantity::numeric) > 0
+    ORDER BY SUM(oi.ordered_quantity::numeric - oi.ready_quantity::numeric) DESC
   `);
 
   const summary = (results.rows || []).map((r: any) => ({
     productName: r.productName,
-    totalPendingQuantity: Number(r.totalQuantity),
+    totalPendingQuantity: Number(r.totalPendingQuantity),
     orderCount: Number(r.orderCount),
     orderIds: r.orderIds,
   }));
@@ -2753,8 +2770,10 @@ export async function getManufacturingSummary(user: PermissionUser, unitFilter?:
       SELECT po.id AS po_id, po.status, po.production_unit, po.created_by_role,
              po.proforma_invoice_id AS resolved_invoice_id
       FROM production_orders po
-      WHERE po.status NOT IN ('Completed', 'Cancelled', 'Ready To Dispatch')
+      LEFT JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
+      WHERE po.status NOT IN ('Completed', 'Cancelled', 'Ready To Dispatch', 'Ready For Dispatch', 'In Transport')
         AND po.proforma_invoice_id IS NOT NULL
+        AND (pi.id IS NULL OR pi.is_deleted = false)
         ${effectiveUnit && effectiveUnit !== "all" ? sql`AND po.production_unit = ${effectiveUnit}` : sql``}
         ${originFilter && originFilter !== "all" ? sql`AND po.created_by_role = ${originFilter}` : sql``}
     ),
@@ -2790,7 +2809,8 @@ export async function getManufacturingSummary(user: PermissionUser, unitFilter?:
       LEFT JOIN proforma_invoices pi ON pi.id = ao.resolved_invoice_id
       LEFT JOIN proforma_invoice_items pii ON pii.id = poi.pi_item_id
       LEFT JOIN products p ON lower(p.name) = lower(poi.product_name)
-      WHERE poi.production_status != 'Ready'
+      WHERE poi.production_status IN ('Pending', 'In Production')
+        AND (poi.ordered_quantity::numeric - poi.ready_quantity::numeric) > 0
         ${materialCondition}
     )
     SELECT
