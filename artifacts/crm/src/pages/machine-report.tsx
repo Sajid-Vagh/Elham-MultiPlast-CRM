@@ -7,12 +7,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
-import { BarChart3, Package, Clock, Settings2, CheckCircle2, Factory } from "lucide-react";
+import { BarChart3, Package, Clock, Settings2, Factory } from "lucide-react";
 import { useUserUnits } from "@/lib/use-user-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 
 const MACHINE_TYPES = ["All", "250ml Machine", "1L Machine", "5L Machine"];
-const STATUS_OPTIONS = ["All", "Pending", "Production On Going", "Packaging", "Ready To Dispatch", "Completed", "Cancelled"];
+const STATUS_OPTIONS = ["All", "Pending", "Accepted", "Planning", "In Production", "Packing"];
 
 interface ReportData {
   summary: { totalProducts: number; totalBottles: number; pending: number; inProduction: number; completed: number };
@@ -53,17 +53,16 @@ export default function MachineReport() {
     { label: "Total Bottles", value: (summary?.totalBottles ?? 0).toLocaleString(), icon: BarChart3, color: "text-purple-600" },
     { label: "Pending", value: summary?.pending ?? 0, icon: Clock, color: "text-gray-600" },
     { label: "In Production", value: summary?.inProduction ?? 0, icon: Settings2, color: "text-orange-600" },
-    { label: "Completed", value: summary?.completed ?? 0, icon: CheckCircle2, color: "text-green-600" },
   ];
 
   const statusColor = (s: string) => {
     const map: Record<string, string> = {
-      "Completed": "bg-green-100 text-green-700 border-green-300",
-      "Production On Going": "bg-orange-100 text-orange-700 border-orange-300",
-      "Packaging": "bg-yellow-100 text-yellow-700 border-yellow-300",
-      "Ready To Dispatch": "bg-blue-100 text-blue-700 border-blue-300",
       "Pending": "bg-gray-100 text-gray-700 border-gray-300",
-      "Cancelled": "bg-red-100 text-red-700 border-red-300",
+      "Accepted": "bg-indigo-100 text-indigo-700 border-indigo-300",
+      "Planning": "bg-cyan-100 text-cyan-700 border-cyan-300",
+      "In Production": "bg-orange-100 text-orange-700 border-orange-300",
+      "Production On Going": "bg-orange-100 text-orange-700 border-orange-300",
+      "Packing": "bg-yellow-100 text-yellow-700 border-yellow-300",
     };
     return map[s] || "bg-gray-100 text-gray-700 border-gray-300";
   };
@@ -102,11 +101,11 @@ export default function MachineReport() {
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-24" />)}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => <Skeleton key={i} className="h-24" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {SUMMARY_CARDS.map(card => (
             <Card key={card.label}>
               <CardContent className="p-4 flex items-center gap-3">
@@ -144,7 +143,6 @@ export default function MachineReport() {
                           <p className="text-xs text-muted-foreground">Total Qty: <span className="font-medium text-foreground">{m.totalBottles.toLocaleString()} PCS</span></p>
                           <p className="text-xs text-muted-foreground">Pending: <span className="font-medium text-gray-700">{m.pendingQty.toLocaleString()} PCS</span></p>
                           <p className="text-xs text-muted-foreground">In Production: <span className="font-medium text-orange-700">{m.inProductionQty.toLocaleString()} PCS</span></p>
-                          <p className="text-xs text-muted-foreground">Completed: <span className="font-medium text-green-700">{m.completedQty.toLocaleString()} PCS</span></p>
                         </div>
                       </div>
                     ))}

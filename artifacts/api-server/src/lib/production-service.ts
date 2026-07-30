@@ -8,7 +8,7 @@ import {
   VALID_DISPATCH_TRANSITIONS, PRODUCT_LINE_STATUSES,
   type ProductionStatus, type NoteType, type ProductLineStatus,
 } from "@workspace/db";
-import { eq, and, desc, sql, gte, lte, or, inArray, type SQL } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte, or, inArray, notInArray, type SQL } from "drizzle-orm";
 import { getActivePiForDeal } from "./proforma-service";
 import { notifyProductionUsers, notifyDealEvent } from "./notification-service";
 import { createNotification } from "../routes/notifications";
@@ -2283,6 +2283,13 @@ export async function getMachineReport(
     dateTo: filters.dateTo,
   });
 
+  // Default: exclude completed/cancelled/delivered orders unless explicit status filter is set
+  if (!filters.status || filters.status === "All") {
+    conditions.push(
+      notInArray(productionOrdersTable.status, ["Completed", "Delivered", "Cancelled"])
+    );
+  }
+
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
   const orders = await db
@@ -2299,8 +2306,8 @@ export async function getMachineReport(
 
   if (orders.length === 0) {
     return {
-      summary: { totalOrders: 0, totalBottles: 0, pending: 0, inProduction: 0, completed: 0 },
-      machineBreakdown: [],
+      summary: { totalProducts: 0, totalBottles: 0, pending: 0, inProduction: 0, completed: 0 },
+      materialBreakdown: [],
       orders: [],
     };
   }
@@ -2348,7 +2355,7 @@ export async function getMachineReport(
       productRows.push({
         orderId: order.id, orderNumber: order.orderNumber, status: order.status, productionUnit: order.productionUnit,
         createdAt: order.createdAt, productName: item.productName, machineType: null,
-        materialType: null, bottleColour: null, bottleWeight: null, productCode: null,
+        materialType: null, bottleColour: item.bottleColour || null, bottleWeight: null, productCode: null,
         quantity: Number(item.quantity), readyQuantity: 0, productionStatus: order.status === "Completed" ? "Ready" : "Pending",
       });
     }
@@ -2362,30 +2369,35 @@ export async function getMachineReport(
     filteredRows = filteredRows.filter(r => r.productName === filters.product);
   }
 
-  const PENDING_ST = ["Pending", "Pending Verification", "Confirmed", "Production Pending"];
+  // Production statuses that require active machine work
+  const PENDING_ST = ["Pending", "Pending Verification", "Confirmed", "Production Pending", "Accepted", "Planning"];
   const IN_PROD_ST = ["In Production", "Production On Going", "Production Started", "Production Running"];
-  const READY_ST = ["Ready", "Completed"];
+  // Any status not in PENDING or IN_PROD is considered dormant (Ready, Completed, etc.) and excluded
+  const DORMANT_ST = ["Ready", "Completed", "Ready For Dispatch", "In Transport", "Delivered", "Cancelled"];
 
-  const statusBucket = (row: typeof filteredRows[0]): "pending" | "inProduction" | "completed" => {
+  const statusBucket = (row: typeof filteredRows[0]): "pending" | "inProduction" | "dormant" => {
     const ps = row.productionStatus;
     if (PENDING_ST.includes(ps)) return "pending";
     if (IN_PROD_ST.includes(ps)) return "inProduction";
-    if (READY_ST.includes(ps)) return "completed";
+    if (DORMANT_ST.includes(ps)) return "dormant";
     const os = row.status;
     if (PENDING_ST.includes(os)) return "pending";
     if (IN_PROD_ST.includes(os)) return "inProduction";
-    return "pending";
+    return "dormant";
   };
 
-  let pendingCount = 0, inProductionCount = 0, completedCount = 0;
+  // Also filter out items whose bucket is "dormant" — they should not appear on a live machine report
+  filteredRows = filteredRows.filter(r => statusBucket(r) !== "dormant");
+
+  let pendingCount = 0, inProductionCount = 0;
 
   const machineMap = new Map<string, {
     productCount: number; orderIds: Set<number>; totalBottles: number;
-    pendingQty: number; inProductionQty: number; completedQty: number;
+    pendingQty: number; inProductionQty: number;
   }>();
   for (const row of filteredRows) {
     const key = row.machineType || "Unassigned";
-    const existing = machineMap.get(key) || { productCount: 0, orderIds: new Set<number>(), totalBottles: 0, pendingQty: 0, inProductionQty: 0, completedQty: 0 };
+    const existing = machineMap.get(key) || { productCount: 0, orderIds: new Set<number>(), totalBottles: 0, pendingQty: 0, inProductionQty: 0 };
     existing.productCount++;
     existing.orderIds.add(row.orderId);
     existing.totalBottles += row.quantity;
@@ -2393,7 +2405,6 @@ export async function getMachineReport(
     const bucket = statusBucket(row);
     if (bucket === "pending") { pendingCount++; existing.pendingQty += remaining > 0 ? remaining : row.quantity; }
     else if (bucket === "inProduction") { inProductionCount++; existing.inProductionQty += remaining > 0 ? remaining : row.quantity; }
-    else { completedCount++; existing.completedQty += row.readyQuantity; }
     machineMap.set(key, existing);
   }
 
@@ -2402,19 +2413,19 @@ export async function getMachineReport(
     totalBottles: filteredRows.reduce((s, r) => s + r.quantity, 0),
     pending: pendingCount,
     inProduction: inProductionCount,
-    completed: completedCount,
+    completed: 0,
   };
 
   const materialMachineMap = new Map<string, Map<string, {
     productCount: number; orderIds: Set<number>; totalBottles: number;
-    pendingQty: number; inProductionQty: number; completedQty: number;
+    pendingQty: number; inProductionQty: number;
   }>>();
   for (const row of filteredRows) {
     const material = row.materialType || "Unknown";
     const machine = row.machineType || "Unassigned";
     if (!materialMachineMap.has(material)) materialMachineMap.set(material, new Map());
     const innerMap = materialMachineMap.get(material)!;
-    const existing = innerMap.get(machine) || { productCount: 0, orderIds: new Set<number>(), totalBottles: 0, pendingQty: 0, inProductionQty: 0, completedQty: 0 };
+    const existing = innerMap.get(machine) || { productCount: 0, orderIds: new Set<number>(), totalBottles: 0, pendingQty: 0, inProductionQty: 0 };
     existing.productCount++;
     existing.orderIds.add(row.orderId);
     existing.totalBottles += row.quantity;
@@ -2422,7 +2433,6 @@ export async function getMachineReport(
     const bucket = statusBucket(row);
     if (bucket === "pending") existing.pendingQty += remaining > 0 ? remaining : row.quantity;
     else if (bucket === "inProduction") existing.inProductionQty += remaining > 0 ? remaining : row.quantity;
-    else existing.completedQty += row.readyQuantity;
     innerMap.set(machine, existing);
   }
 
@@ -2444,7 +2454,6 @@ export async function getMachineReport(
         totalBottles: data.totalBottles,
         pendingQty: data.pendingQty,
         inProductionQty: data.inProductionQty,
-        completedQty: data.completedQty,
       })),
     }));
 
