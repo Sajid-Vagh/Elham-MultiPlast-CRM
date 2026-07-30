@@ -177,7 +177,7 @@ export default function DispatchPage() {
     const contact = order.contact || order.invoice;
     const name = contact?.companyName || contact?.name || order.customerName || "-";
     const code = contact?.customerCode;
-    return code ? `${name} (${code})` : name;
+    return code && !name.includes(code) ? `${name} (${code})` : name;
   };
 
   // Summary cards
@@ -344,7 +344,7 @@ export default function DispatchPage() {
                     return (
                       <TableRow key={order.id} className="hover:bg-muted/30">
                         <TableCell className="font-medium cursor-pointer" onClick={() => setLocation(`/production/orders/${order.id}`)}>
-                          {order.formattedOrderId || `#${order.id}`}
+                          {order.displayOrderId}
                         </TableCell>
                         <TableCell>
                           <span className="text-xs">{customerDisplay}</span>
@@ -440,7 +440,7 @@ export default function DispatchPage() {
       <Dialog open={!!loadDialog} onOpenChange={() => setLoadDialog(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Load Vehicle — Order {loadDialog?.formattedOrderId || `#${loadDialog?.id}`}</DialogTitle>
+            <DialogTitle>Load Vehicle — Order {loadDialog?.displayOrderId || `#${loadDialog?.id}`}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {loadDialog && (
@@ -491,7 +491,7 @@ export default function DispatchPage() {
             <DialogTitle>Confirm Dispatch</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Mark order <strong>{dispatchDialog?.formattedOrderId || `#${dispatchDialog?.id}`}</strong> as dispatched? This will update the status to <strong>Dispatch</strong>.
+            Mark order <strong>{dispatchDialog?.displayOrderId || `#${dispatchDialog?.id}`}</strong> as dispatched? This will update the status to <strong>Dispatch</strong>.
           </p>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setDispatchDialog(null)}>Cancel</Button>

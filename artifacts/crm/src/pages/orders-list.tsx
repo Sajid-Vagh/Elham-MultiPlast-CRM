@@ -218,10 +218,7 @@ export default function OrdersList() {
                           <span className="font-mono">{order.orderNumber}</span>
                         </TableCell>
                         <TableCell>
-                          <div>
-                            <p className="font-medium text-sm">{order.customerName}{order.customerCode ? <span className="text-muted-foreground ml-1 text-[10px]">({order.customerCode})</span> : null}</p>
-                            {order.companyName && <p className="text-xs text-muted-foreground">{order.companyName}</p>}
-                          </div>
+                          <p className="font-medium text-sm">{(() => { const n = order.companyName || order.customerName || "-"; const cc = order.customerCode; return cc && !n.includes(cc) ? `${n} (${cc})` : n; })()}</p>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">{new Date(order.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</TableCell>
                         <TableCell className="text-sm">{order.salesOwner?.name || "-"}</TableCell>

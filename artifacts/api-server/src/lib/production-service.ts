@@ -15,6 +15,7 @@ import { createNotification } from "../routes/notifications";
 import { logActivity, formatTimestamp } from "./activity-logger";
 import { canAccessProduction, type PermissionUser } from "./permission-service";
 import { maskContactForProduction, maskInvoiceForProduction, isProductionOnlyRole } from "./customer-mask";
+import { getFinancialYear } from "./order-id-generator";
 
 export function isValidTransition(from: string, to: string): boolean {
   if (from === to) return false;
@@ -786,8 +787,8 @@ export async function enrichProductionOrder(order: any, user?: { role: string })
     notes: notesWithUsers,
     validNextStatuses: getValidNextStatuses(order.status),
     validNextDispatchStatuses: getValidNextDispatchStatuses(order.dispatchStatus),
+    displayOrderId: order.formattedOrderId || (order.createdAt ? `EML_${getFinancialYear(new Date(order.createdAt))}_${order.id}` : `#${order.id}`),
   };
-
   // Mask customer identity for production-only users
   if (user && isProductionOnlyRole(user.role)) {
     result.contact = maskContactForProduction(result.contact);

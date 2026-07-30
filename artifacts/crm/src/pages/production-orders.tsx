@@ -277,12 +277,13 @@ export default function ProductionOrders() {
                       className="border-b last:border-0 hover:bg-muted/30 cursor-pointer transition-colors"
                       onClick={() => setLocation(`/production/orders/${order.id}`)}
                     >
-                      <td className="py-3 px-4 font-medium font-mono">{order.formattedOrderId || `#${order.id}`}</td>
+                      <td className="py-3 px-4 font-medium font-mono">{order.displayOrderId}</td>
                       <td className="py-3 px-4 max-w-[180px] truncate">
                         {(() => {
                           const c = order.contact;
                           const n = c?.companyName || c?.name || order.invoice?.companyName || order.invoice?.customerName || "-";
-                          return c?.customerCode ? `${n} (${c.customerCode})` : n;
+                          const cc = c?.customerCode;
+                          return cc && !n.includes(cc) ? `${n} (${cc})` : n;
                         })()}
                       </td>
                       <td className="py-3 px-4 max-w-[150px] truncate">

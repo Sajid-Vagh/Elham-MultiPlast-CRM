@@ -874,7 +874,7 @@ router.get("/production/sheet", async (req, res) => {
 
     // ── 6. Update tracking fields for all included orders ──
     const now = new Date();
-    for (const poId of poIds) {
+    for (const poId of matchedOrderIds) {
       const row = rows.find((r: any) => Number(r.poId) === poId);
       const newVersion = (Number(row?.sheetVersion) || 0) + 1;
       await db.update(productionOrdersTable).set({

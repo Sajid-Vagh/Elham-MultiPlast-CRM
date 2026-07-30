@@ -21,11 +21,17 @@ async function enrichOrder(order: any) {
   const supportOwner = order.supportOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, order.supportOwnerId)).then(r => r[0]) : null;
   const productionOwner = order.productionOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, order.productionOwnerId)).then(r => r[0]) : null;
   const creator = order.createdBy ? await db.select().from(usersTable).where(eq(usersTable.id, order.createdBy)).then(r => r[0]) : null;
+  let contactCustomerCode = null;
+  if (order.contactId) {
+    const [c] = await db.select({ customerCode: contactsTable.customerCode }).from(contactsTable).where(eq(contactsTable.id, order.contactId));
+    if (c) contactCustomerCode = c.customerCode;
+  }
 
   const safe = (u: any) => u ? (({ passwordHash: _, ...rest }) => rest)(u) : null;
 
   return {
     ...order,
+    customerCode: contactCustomerCode,
     items: items.map(i => ({ ...i, quantity: Number(i.quantity), rate: Number(i.rate), amount: Number(i.amount), gstPercent: Number(i.gstPercent || 0), readyQuantity: Number(i.readyQuantity), dispatchedQuantity: Number(i.dispatchedQuantity) })),
     salesOwner: safe(salesOwner),
     supportOwner: safe(supportOwner),
@@ -241,6 +247,11 @@ router.get("/orders/global", async (req, res) => {
       const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
       const salesOwner = order.salesOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, order.salesOwnerId)).then(r => r[0]) : null;
       const supportOwner = order.supportOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, order.supportOwnerId)).then(r => r[0]) : null;
+      let contactCustomerCode = null;
+      if (order.contactId) {
+        const [c] = await db.select({ customerCode: contactsTable.customerCode }).from(contactsTable).where(eq(contactsTable.id, order.contactId));
+        if (c) contactCustomerCode = c.customerCode;
+      }
 
       const safe = (u: any) => u ? (({ passwordHash: _, ...rest }) => rest)(u) : null;
 
@@ -266,6 +277,7 @@ router.get("/orders/global", async (req, res) => {
         orderNumber: order.orderNumber,
         customerName: order.customerName,
         companyName: order.companyName,
+        customerCode: contactCustomerCode,
         mobile: order.mobile,
         status: order.status,
         grandTotal: order.grandTotal,

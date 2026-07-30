@@ -96,7 +96,7 @@ export default function OrderDetailGlobal() {
             <Badge className={`${ORDER_STATUS_COLORS[order.status] || "bg-gray-100"}`}>{order.status}</Badge>
             {order.isRepeatOrder && <Badge className="bg-amber-100 text-amber-700">Repeat Order</Badge>}
           </div>
-          <p className="text-sm text-muted-foreground">{(() => { const n = order.customerName; const cn = order.companyName; const cc = order.customerCode; return `${n}${cn ? ` — ${cn}` : ""}${cc ? ` (${cc})` : ""}`; })()}</p>
+          <p className="text-sm text-muted-foreground">{(() => { const n = order.companyName || order.customerName || "-"; const cc = order.customerCode; return cc && !n.includes(cc) ? `${n} (${cc})` : n; })()}</p>
         </div>
       </div>
 

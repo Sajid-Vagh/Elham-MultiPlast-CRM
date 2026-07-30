@@ -326,7 +326,7 @@ export default function ProductionOrderDetail() {
             <ArrowLeft className="h-4 w-4 mr-2" /> Back
           </Button>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Production Order {order.formattedOrderId || `#${order.id}`}</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Production Order {order.displayOrderId}</h1>
             <p className="text-sm text-muted-foreground">Invoice: {order.invoice?.invoiceNumber || "N/A"}</p>
           </div>
         </div>
@@ -354,8 +354,8 @@ export default function ProductionOrderDetail() {
             <CardHeader><CardTitle>Order Details</CardTitle></CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                <div><span className="text-muted-foreground">Company</span><p className="font-medium mt-1">{(() => { const c = order.contact; const n = c?.companyName || c?.name || order.invoice?.companyName || "-"; return c?.customerCode ? `${n} (${c.customerCode})` : n; })()}</p></div>
-                <div><span className="text-muted-foreground">Customer</span><p className="font-medium mt-1">{(() => { const c = order.contact; const n = c?.name || order.invoice?.customerName || "-"; return c?.customerCode ? `${n} (${c.customerCode})` : n; })()}</p></div>
+                <div><span className="text-muted-foreground">Company</span><p className="font-medium mt-1">{(() => { const c = order.contact; const n = c?.companyName || c?.name || order.invoice?.companyName || "-"; const cc = c?.customerCode; return cc && !n.includes(cc) ? `${n} (${cc})` : n; })()}</p></div>
+                <div><span className="text-muted-foreground">Customer</span><p className="font-medium mt-1">{(() => { const c = order.contact; const n = c?.name || order.invoice?.customerName || "-"; const cc = c?.customerCode; return cc && !n.includes(cc) ? `${n} (${cc})` : n; })()}</p></div>
                 <div>
                   <span className="text-muted-foreground">Mobile</span>
                   {(() => {
@@ -1033,7 +1033,7 @@ export default function ProductionOrderDetail() {
       {/* Load Vehicle Dialog */}
       <Dialog open={loadVehicleDialog} onOpenChange={setLoadVehicleDialog}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Load Vehicle — Order {order.formattedOrderId || `#${order.id}`}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Load Vehicle — Order {order.displayOrderId}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div>
               <Label>Transport Name *</Label>
@@ -1118,7 +1118,7 @@ export default function ProductionOrderDetail() {
       <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Transfer Unit — Order {order.formattedOrderId || `#${order.id}`}</DialogTitle>
+            <DialogTitle>Transfer Unit — Order {order.displayOrderId}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="text-sm bg-muted p-3 rounded-lg">
