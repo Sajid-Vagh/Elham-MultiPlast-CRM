@@ -215,10 +215,7 @@ export default function OrdersList() {
                           {expandedRow === order.id ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                         </TableCell>
                         <TableCell className="font-medium">
-                          <div className="flex items-center gap-1.5">
-                            <span>{order.orderNumber}</span>
-                            {order.formattedOrderId && <Badge variant="outline" className="text-[10px] font-mono bg-muted/50">{order.formattedOrderId}</Badge>}
-                          </div>
+                          <span className="font-mono">{order.orderNumber}</span>
                         </TableCell>
                         <TableCell>
                           <div>

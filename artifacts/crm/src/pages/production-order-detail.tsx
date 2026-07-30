@@ -326,7 +326,7 @@ export default function ProductionOrderDetail() {
             <ArrowLeft className="h-4 w-4 mr-2" /> Back
           </Button>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Production Order #{order.id}</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Production Order {order.formattedOrderId || `#${order.id}`}</h1>
             <p className="text-sm text-muted-foreground">Invoice: {order.invoice?.invoiceNumber || "N/A"}</p>
           </div>
         </div>
@@ -1033,7 +1033,7 @@ export default function ProductionOrderDetail() {
       {/* Load Vehicle Dialog */}
       <Dialog open={loadVehicleDialog} onOpenChange={setLoadVehicleDialog}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Load Vehicle — Order #{order.id}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Load Vehicle — Order {order.formattedOrderId || `#${order.id}`}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div>
               <Label>Transport Name *</Label>
@@ -1118,7 +1118,7 @@ export default function ProductionOrderDetail() {
       <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Transfer Unit — Order #{order.id}</DialogTitle>
+            <DialogTitle>Transfer Unit — Order {order.formattedOrderId || `#${order.id}`}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="text-sm bg-muted p-3 rounded-lg">

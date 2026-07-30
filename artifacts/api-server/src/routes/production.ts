@@ -796,10 +796,11 @@ router.get("/production/sheet", async (req, res) => {
     const results = await db
       .select({
         poId: productionOrdersTable.id,
-        productionRemarks: productionOrdersTable.productionRemarks,
+        formattedOrderId: productionOrdersTable.formattedOrderId,
         createdAt: productionOrdersTable.createdAt,
         sheetVersion: productionOrdersTable.productionSheetVersion,
-        piNumber: proformaInvoicesTable.invoiceNumber,
+        customerName: proformaInvoicesTable.customerName,
+        companyName: proformaInvoicesTable.companyName,
         customerCode: contactsTable.customerCode,
         itemId: proformaInvoiceItemsTable.id,
         productName: proformaInvoiceItemsTable.productName,
@@ -821,15 +822,12 @@ router.get("/production/sheet", async (req, res) => {
 
     const rows: any[] = results as any[];
 
-    // ── 4. Determine next version for each order ──
-    const poIds = [...new Set(rows.map((r: any) => Number(r.poId)))];
-
     // ── 5. Build Excel rows: one row per product per order ──
 
     const headers = [
-      "PI Number", "Customer Code", "Order Date", "Product Name",
-      "Bottle Color", "Bottle Weight (gm)", "Cap Color", "Cap Weight (gm)",
-      "Qty", "Product Remarks", "Material Type",
+      "Order ID", "Customer", "Order Date", "Product Name",
+      "Bottle Weight", "Bottle Color", "Cap Color", "Cap Weight",
+      "Qty", "Material Type",
     ];
 
     const dataRows: any[][] = [];
@@ -842,24 +840,29 @@ router.get("/production/sheet", async (req, res) => {
       grouped.get(poId)!.push(row);
     }
 
-    for (const [poId, orderRows] of grouped) {
+    for (const [, orderRows] of grouped) {
       const first = orderRows[0];
       const orderDate = first.createdAt ? new Date(first.createdAt).toLocaleDateString("en-IN") : "";
+      const orderId = first.formattedOrderId || `#${first.poId}`;
+      const customerDisplay = (() => {
+        const name = first.companyName || first.customerName || "";
+        const code = first.customerCode || "";
+        return code ? `${name} (${code})` : name || "-";
+      })();
 
       for (const row of orderRows) {
         if (!row.itemId) continue;
 
         dataRows.push([
-          first.piNumber || `PI-${first.poId}`,
-          row.customerCode || "",
+          orderId,
+          customerDisplay,
           orderDate,
           row.productName || "",
-          row.bottleColour || "",
           row.bottleWeight || "",
+          row.bottleColour || "",
           row.capColour || "",
           row.capWeight || "",
           Number(row.quantity) || "",
-          first.productionRemarks || "",
           row.materialType || "",
         ]);
       }

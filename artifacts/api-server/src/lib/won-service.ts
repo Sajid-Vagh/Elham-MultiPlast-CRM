@@ -4,7 +4,7 @@ import {
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { getActivePiForDeal } from "./proforma-service";
-import { generateCustomerCode } from "./customer-code";
+import { generateCustomerCode } from "./customer-code-generator";
 import { unitsTable } from "@workspace/db";
 import { PENDING_UNIT_ASSIGNMENT, isPendingUnit } from "./unit-constants";
 
