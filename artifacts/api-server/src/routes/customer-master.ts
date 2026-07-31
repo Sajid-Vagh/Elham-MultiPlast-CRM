@@ -270,6 +270,41 @@ router.get("/customer-master", async (req, res) => {
   }
 });
 
+// GET /customer-master/lookup?mobile=... — return ALL GST profiles for a mobile number
+// (canonical mobile lookup; returns an ARRAY like search-by-mobile).
+// Must be registered before "/customer-master/:id" so it isn't swallowed by the param route.
+router.get("/customer-master/lookup", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const mobile = String(req.query.mobile || "").replace(/\s/g, "");
+    if (!mobile || mobile.length < 10) {
+      res.status(400).json({ error: "Valid mobile number required (min 10 digits)" });
+      return;
+    }
+
+    // Search by direct mobile match AND by linked contact's mobile/otherPhone
+    const profiles = await db
+      .select()
+      .from(customerMasterTable)
+      .where(
+        or(
+          eq(customerMasterTable.mobile, mobile),
+          sql`${customerMasterTable.linkedContactId} IN (
+            SELECT id FROM contacts WHERE mobile = ${mobile} OR other_phone = ${mobile}
+          )`
+        )
+      )
+      .orderBy(desc(customerMasterTable.createdAt));
+
+    res.json(profiles);
+  } catch (err) {
+    req.log.error({ err }, "Customer master mobile lookup error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // Get single customer master
 router.get("/customer-master/:id", async (req, res) => {
   try {

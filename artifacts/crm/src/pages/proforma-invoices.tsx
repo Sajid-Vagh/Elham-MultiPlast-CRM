@@ -202,6 +202,7 @@ export default function ProformaInvoicesPage() {
 
   const [gstProfiles, setGstProfiles] = useState<any[]>([]);
   const [selectedProfileIndex, setSelectedProfileIndex] = useState(0);
+  const [addingNewProfile, setAddingNewProfile] = useState(false);
   const [previousInvoices, setPreviousInvoices] = useState<any[]>([]);
 
   const [statusFilter, setStatusFilter] = useState("all");
@@ -359,6 +360,7 @@ export default function ProformaInvoicesPage() {
     setCustomerHistory(null);
     setGstProfiles([]);
     setSelectedProfileIndex(0);
+    setAddingNewProfile(false);
     setPreviousInvoices([]);
   };
 
@@ -431,12 +433,14 @@ export default function ProformaInvoicesPage() {
       setMobileFetchError("");
       setGstProfiles([]);
       setSelectedProfileIndex(0);
+      setAddingNewProfile(false);
       setPreviousInvoices([]);
       return;
     }
     const timer = setTimeout(async () => {
       setMobileFetchLoading(true);
       setMobileFetchError("");
+      setAddingNewProfile(false);
       try {
         // Step 1: Search deals by mobile
         const dealsRes = await fetch(`/api/deals/by-mobile/${encodeURIComponent(m)}`, {
@@ -469,7 +473,7 @@ export default function ProformaInvoicesPage() {
 
           // Step 2: Load GST profiles by mobile (NOT from contact data)
           try {
-            const gstRes = await fetch(`/api/customer-master/search-by-mobile/${encodeURIComponent(m)}`, {
+            const gstRes = await fetch(`/api/customer-master/lookup?mobile=${encodeURIComponent(m)}`, {
               headers: { Authorization: `Bearer ${token}` },
             });
             if (gstRes.ok) {
@@ -745,6 +749,31 @@ const selectProduct = (idx: number, product: any) => {
     if (customer.customerType) setCustomerType(customer.customerType === "Unregistered" ? "Unregistered" : "GST");
     if (customer.gstStatus) setGstStatus(customer.gstStatus);
     setCustomerMasterId(customer.id);
+  };
+
+  const handleAddNewProfile = () => {
+    setAddingNewProfile(true);
+    setCustomerMasterId(null);
+    setExistingCustomer(null);
+    setGstinNotFound(false);
+    setGstError("");
+    setCustomerName("");
+    setCompanyName("");
+    setTradeName("");
+    setAddressLine1("");
+    setAddressLine2("");
+    setAddressLine3("");
+    setCity("");
+    setDistrict("");
+    setState("");
+    setPincode("");
+    setGstNumber("");
+    setGstStatus("");
+    setCustomerType("GST");
+    setGstVerified(false);
+    setGstVerificationResult(null);
+    setShowBusinessDetails(false);
+    toast({ title: "New GST Profile", description: `Billing fields cleared — enter new GST details for ${mobile}` });
   };
 
   const verifyGst = async (gstin: string) => {
@@ -1046,7 +1075,53 @@ const selectProduct = (idx: number, product: any) => {
           amount: i.quantity * i.rate,
         })),
       };
-      if (customerMasterId) body.customerMasterId = customerMasterId;
+      // Auto-save customer to Customer Master BEFORE the invoice so the PI links to the
+      // profile (GST or non-GST). Multiple profiles with the same mobile are allowed as long
+      // as the GSTIN differs — a 409 means the exact profile already exists, so adopt it.
+      let resolvedCustomerMasterId = customerMasterId;
+      if (!editMode && !resolvedCustomerMasterId && !existingCustomer && companyName) {
+        const gstin = gstNumber.toUpperCase().trim();
+        const hasGstin = gstin.length === 15;
+        const hasMobileAndName = mobile && mobile.length >= 10 && companyName;
+        if (hasGstin || hasMobileAndName) {
+          try {
+            const cmRes = await fetch("/api/customer-master", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+              body: JSON.stringify({
+                companyName: customerName,
+                tradeName: tradeName || null,
+                gstin: hasGstin ? gstin : null,
+                addressLine1: addressLine1 || null,
+                addressLine2: addressLine2 || null,
+                addressLine3: addressLine3 || null,
+                city: city || null,
+                district: district || null,
+                state: state || null,
+                pincode: pincode || null,
+                mobile: mobile || null,
+                customerType: hasGstin ? "GST" : "Unregistered",
+                gstStatus: hasGstin ? (gstStatus || "Active") : null,
+                linkedContactId: selectedLead?.id || urlContactId,
+              }),
+            });
+            if (cmRes.status === 409) {
+              const cmErr = await cmRes.json().catch(() => ({}));
+              if (cmErr?.existing) {
+                resolvedCustomerMasterId = cmErr.existing.id;
+                setExistingCustomer(cmErr.existing);
+                setCustomerMasterId(cmErr.existing.id);
+                applyExistingCustomer(cmErr.existing);
+              }
+            } else if (cmRes.ok) {
+              const customer = await cmRes.json();
+              resolvedCustomerMasterId = customer.id;
+              setCustomerMasterId(customer.id);
+            }
+          } catch { /* best-effort auto-save */ }
+        }
+      }
+      if (resolvedCustomerMasterId) body.customerMasterId = resolvedCustomerMasterId;
       if (selectedLead?.id) body.contactId = selectedLead.id;
       else if (urlContactId) body.contactId = urlContactId;
       if (selectedDeal?.id) body.dealId = selectedDeal.id;
@@ -1078,35 +1153,6 @@ const selectProduct = (idx: number, product: any) => {
 
       const invoice = await res.json();
       toast({ title: editMode ? "Invoice Updated" : "Invoice Created", description: `${invoice.invoiceNumber} saved as ${status}` });
-
-      // Auto-save customer to Customer Master (GST or non-GST)
-      const gstin = gstNumber.toUpperCase().trim();
-      const hasGstin = gstin.length === 15;
-      const hasMobileAndName = mobile && mobile.length >= 10 && companyName;
-      if (!editMode && !customerMasterId && !existingCustomer && (hasGstin || hasMobileAndName) && companyName) {
-        try {
-          await fetch("/api/customer-master", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-            body: JSON.stringify({
-              companyName: customerName,
-              tradeName: tradeName || null,
-              gstin: hasGstin ? gstin : null,
-              addressLine1: addressLine1 || null,
-              addressLine2: addressLine2 || null,
-              addressLine3: addressLine3 || null,
-              city: city || null,
-              district: district || null,
-              state: state || null,
-              pincode: pincode || null,
-              mobile: mobile || null,
-              customerType: hasGstin ? "GST" : "Unregistered",
-              gstStatus: hasGstin ? (gstStatus || "Active") : null,
-              linkedContactId: selectedLead?.id || urlContactId,
-            }),
-          });
-        } catch { /* silent fail - auto-save is best-effort */ }
-      }
 
       resetForm();
       setSelectedInvoice(invoice);
@@ -1668,42 +1714,58 @@ ${pagesHtml}
               <div>
                 <p className="text-xs font-medium text-green-700 uppercase tracking-wide mb-2">GST Profile {gstProfiles.length > 1 ? `(${gstProfiles.length} found)` : "Found"}</p>
                 <div className="bg-white border border-green-200 rounded-lg p-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <span className="text-muted-foreground text-xs">Company:</span>
-                      <p className="font-medium">{gstProfiles[selectedProfileIndex]?.companyName || "—"}</p>
+                  {addingNewProfile ? (
+                    <div className="text-sm">
+                      <p className="font-medium text-green-800 flex items-center gap-1.5">
+                        <Plus className="h-3.5 w-3.5" /> Creating a new GST profile for {mobile}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">Billing fields below have been cleared. Enter the new company's GST details.</p>
                     </div>
-                    <div>
-                      <span className="text-muted-foreground text-xs">GSTIN:</span>
-                      <p className="font-mono text-xs">{gstProfiles[selectedProfileIndex]?.gstin || "—"}</p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground text-xs">Billing Address:</span>
-                      <p className="text-xs">{[gstProfiles[selectedProfileIndex]?.addressLine1, gstProfiles[selectedProfileIndex]?.addressLine2, gstProfiles[selectedProfileIndex]?.addressLine3].filter(Boolean).join(", ") || "—"}</p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground text-xs">State / City:</span>
-                      <p className="text-xs">{[gstProfiles[selectedProfileIndex]?.state, gstProfiles[selectedProfileIndex]?.city].filter(Boolean).join(", ") || "—"}</p>
-                    </div>
-                  </div>
-                  {gstProfiles.length > 1 && (
-                    <div className="mt-3">
-                      <Label className="text-xs text-muted-foreground">Select Profile</Label>
-                      <Select value={String(selectedProfileIndex)} onValueChange={(v) => {
-                        const idx = Number(v);
-                        setSelectedProfileIndex(idx);
-                        applyExistingCustomer(gstProfiles[idx]);
-                      }}>
-                        <SelectTrigger className="mt-1 bg-white"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {gstProfiles.map((p: any, i: number) => (
-                            <SelectItem key={p.id} value={String(i)}>
-                              {p.companyName} — {p.gstin}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <span className="text-muted-foreground text-xs">Company:</span>
+                          <p className="font-medium">{gstProfiles[selectedProfileIndex]?.companyName || "—"}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground text-xs">GSTIN:</span>
+                          <p className="font-mono text-xs">{gstProfiles[selectedProfileIndex]?.gstin || "—"}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground text-xs">Billing Address:</span>
+                          <p className="text-xs">{[gstProfiles[selectedProfileIndex]?.addressLine1, gstProfiles[selectedProfileIndex]?.addressLine2, gstProfiles[selectedProfileIndex]?.addressLine3].filter(Boolean).join(", ") || "—"}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground text-xs">State / City:</span>
+                          <p className="text-xs">{[gstProfiles[selectedProfileIndex]?.state, gstProfiles[selectedProfileIndex]?.city].filter(Boolean).join(", ") || "—"}</p>
+                        </div>
+                      </div>
+                      {gstProfiles.length > 1 && (
+                        <div className="mt-3">
+                          <Label className="text-xs text-muted-foreground">Select Profile</Label>
+                          <Select value={addingNewProfile ? "new" : String(selectedProfileIndex)} onValueChange={(v) => {
+                            if (v === "new") { handleAddNewProfile(); return; }
+                            const idx = Number(v);
+                            setAddingNewProfile(false);
+                            setSelectedProfileIndex(idx);
+                            applyExistingCustomer(gstProfiles[idx]);
+                          }}>
+                            <SelectTrigger className="mt-1 bg-white"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {gstProfiles.map((p: any, i: number) => (
+                                <SelectItem key={p.id} value={String(i)}>
+                                  {p.companyName} — {p.gstin}
+                                </SelectItem>
+                              ))}
+                              <SelectItem value="new">
+                                <span className="flex items-center gap-1"><Plus className="h-3 w-3" /> Add New Profile / GST for this number</span>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -1849,13 +1911,13 @@ ${pagesHtml}
               )}
 
               {/* GST Profile Selector */}
-              {gstProfiles.length > 1 && (
+              {gstProfiles.length >= 1 && (
                 <div className="sm:col-span-2">
                   <Label>Select GST Profile</Label>
-                  <p className="text-xs text-muted-foreground mt-0.5">Multiple GST profiles found for this mobile number. Select the billing profile.</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{gstProfiles.length > 1 ? `Multiple GST profiles found for this mobile number. Select the billing profile, or add a new one.` : `GST profile found for this mobile number. Use it, or add a new one.`}</p>
                   <div className="space-y-2 mt-1">
                     {gstProfiles.map((profile: any, idx: number) => (
-                      <div key={profile.id} className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${selectedProfileIndex === idx ? "border-green-500 bg-green-50" : "hover:bg-muted/50"}`} onClick={() => { setSelectedProfileIndex(idx); applyExistingCustomer(profile); }}>
+                      <div key={profile.id} className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${selectedProfileIndex === idx && !addingNewProfile ? "border-green-500 bg-green-50" : "hover:bg-muted/50"}`} onClick={() => { setAddingNewProfile(false); setSelectedProfileIndex(idx); applyExistingCustomer(profile); }}>
                         <div className="flex-1 min-w-0">
                           <span className="text-sm font-medium">{profile.companyName}</span>
                           {profile.tradeName && <span className="text-xs text-muted-foreground ml-2">({profile.tradeName})</span>}
@@ -1864,9 +1926,16 @@ ${pagesHtml}
                             <span className="text-xs text-muted-foreground">{profile.city || ""}</span>
                           </div>
                         </div>
-                        {selectedProfileIndex === idx && <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 ml-2" />}
+                        {selectedProfileIndex === idx && !addingNewProfile && <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 ml-2" />}
                       </div>
                     ))}
+                    <div className={`flex items-center justify-between p-3 border border-dashed rounded-md cursor-pointer transition-colors ${addingNewProfile ? "border-green-500 bg-green-50" : "hover:bg-muted/50"}`} onClick={handleAddNewProfile}>
+                      <div className="flex items-center gap-2">
+                        <Plus className="h-4 w-4 text-green-600" />
+                        <span className="text-sm font-medium">Add New Profile / GST for this number</span>
+                      </div>
+                      {addingNewProfile && <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 ml-2" />}
+                    </div>
                   </div>
                 </div>
               )}

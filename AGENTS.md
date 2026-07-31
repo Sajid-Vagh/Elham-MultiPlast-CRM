@@ -173,6 +173,7 @@ Deliver a working Proforma Invoice module with Customer Master, real GST auto-fi
 - Auto-save customer to Customer Master on invoice save.
 - Soft-delete for all users.
 - PDF layout reverted to original design.
+- **Multiple GST profiles per mobile number**: mobile lookup now goes through canonical `GET /customer-master/lookup?mobile=` (returns an ARRAY of all profiles; registered before the `/:id` param route). UI shows a "+ Add New Profile / GST for this number" option in both profile selectors; selecting it clears billing fields (except mobile), drops `customerMasterId`, and saves the new GST as a distinct Customer Master row tied to the same mobile (schema already allows duplicate `mobile` — only `gstin` is unique). `handleSave` now pre-creates/links the Customer Master record BEFORE the PI is saved (409 adopts the existing profile) instead of the old post-save best-effort block.
 
 ## Production Module
 
@@ -242,6 +243,8 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `normalize()` helper maps snake_case from APIs to camelCase expected by frontend.
 - `ApiGstProvider` kept for backward compat (GSTZen).
 - No mock provider exists anywhere.
+- `GET /customer-master/lookup?mobile=` is the canonical multi-profile mobile lookup (array). `search-by-mobile/:mobile` kept for backward compat.
+- Uniqueness for `customer_master` is `gstin` only — same mobile with different GSTIN/trade name is a distinct profile (no migration needed; `gstin` nullable since migration 051).
 
 ## Relevant Files
 - `artifacts/api-server/src/routes/proforma-invoices.ts`: gst-lookup (4-tier), renderInvoiceHtml, soft-delete DELETE, **production order auto-creation with requestedUnit + origin**
