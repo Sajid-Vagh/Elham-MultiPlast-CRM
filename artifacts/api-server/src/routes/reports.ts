@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, activitiesTable, DEAL_STAGES, STAGE_PROBS } from "@workspace/db";
+import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, activitiesTable, proformaInvoicesTable, proformaInvoiceItemsTable, DEAL_STAGES, STAGE_PROBS } from "@workspace/db";
 import { eq, and, gte, lte, sql, inArray, or, isNull, type SQL } from "drizzle-orm";
 import { GetPipelineReportQueryParams, GetReportByOwnerQueryParams, GetReportByProductQueryParams, GetReportByCityQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
@@ -272,24 +272,44 @@ router.get("/reports/by-product", async (req, res) => {
       }
     }
 
-    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const where = conditions.length > 0 ? and(...conditions) : sql`true`;
 
-    const result = await db
-      .select({
-        productId: productsTable.id,
-        productName: productsTable.name,
-        productCode: productsTable.productCode,
-        dealCount: sql<number>`count(distinct ${dealProductsTable.dealId})::int`,
-        totalQuantity: sql<number>`coalesce(sum(${dealProductsTable.quantity}), 0)::float`,
-        totalValue: sql<number>`coalesce(sum(${dealProductsTable.quantity} * coalesce(${dealProductsTable.unitPrice}, 0)), 0)::float`,
-      })
-      .from(dealProductsTable)
-      .innerJoin(dealsTable, eq(dealProductsTable.dealId, dealsTable.id))
-      .innerJoin(productsTable, eq(dealProductsTable.productId, productsTable.id))
-      .where(where)
-      .groupBy(productsTable.id, productsTable.name, productsTable.productCode);
+    // Aggregate products across both sources where deal products live:
+    //   - deal_products (manually attached products)
+    //   - proforma_invoice_items (products entered on the deal's proforma invoices)
+    const { rows } = await db.execute(sql`
+      WITH allowed_deals AS (
+        SELECT id FROM deals WHERE ${where}
+      )
+      SELECT
+        t.product_id AS "productId",
+        t.product_name AS "productName",
+        t.product_code AS "productCode",
+        count(DISTINCT t.deal_id)::int AS "dealCount",
+        coalesce(sum(t.quantity), 0)::float AS "totalQuantity",
+        coalesce(sum(t.value), 0)::float AS "totalValue"
+      FROM (
+        SELECT ad.id AS deal_id, dp.product_id AS product_id, p.name AS product_name,
+               p.product_code AS product_code,
+               dp.quantity AS quantity, dp.quantity * coalesce(dp.unit_price, 0) AS value
+        FROM deal_products dp
+        JOIN allowed_deals ad ON ad.id = dp.deal_id
+        LEFT JOIN products p ON p.id = dp.product_id
+        UNION ALL
+        SELECT ad.id AS deal_id, pii.product_id AS product_id, btrim(pii.product_name) AS product_name,
+               p.product_code AS product_code,
+               pii.quantity AS quantity,
+               coalesce(pii.amount, pii.quantity * coalesce(pii.rate, 0)) AS value
+        FROM proforma_invoice_items pii
+        JOIN proforma_invoices pi ON pi.id = pii.invoice_id AND pi.is_deleted = false
+        JOIN allowed_deals ad ON ad.id = pi.deal_id
+        LEFT JOIN products p ON p.id = pii.product_id
+      ) t
+      GROUP BY t.product_id, t.product_name, t.product_code
+      ORDER BY "totalValue" DESC
+    `);
 
-    res.json(result);
+    res.json(rows);
   } catch (err) {
     req.log.error({ err }, "By-product report error");
     res.status(500).json({ error: "Internal server error" });

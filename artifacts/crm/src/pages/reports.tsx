@@ -389,7 +389,7 @@ export default function Reports() {
                 </TableHeader>
                 <TableBody>
                   {byProduct?.sort((a, b) => b.totalValue - a.totalValue).map(row => (
-                    <TableRow key={row.productId}>
+                    <TableRow key={`${row.productId ?? "na"}-${row.productName}`}>
                       <TableCell className="font-medium">{row.productName}</TableCell>
                       <TableCell className="text-muted-foreground font-mono text-sm">{row.productCode}</TableCell>
                       <TableCell>{row.dealCount}</TableCell>
