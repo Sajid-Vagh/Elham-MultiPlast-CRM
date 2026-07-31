@@ -24,6 +24,56 @@ import { DateRangeFilter } from "@/components/date-range-filter";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
+const LEAD_FLAGS_KEY = "crm_lead_flags";
+
+function loadLeadFlags(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(localStorage.getItem(LEAD_FLAGS_KEY) || "{}") as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+function LeadFlagCell({ leadId, value, onSave }: { leadId: number; value: string; onSave: (id: number, value: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  const commit = () => {
+    setEditing(false);
+    if (draft !== value) onSave(leadId, draft);
+  };
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        className="text-xs text-muted-foreground hover:text-foreground block max-w-[120px] truncate cursor-text text-left"
+        title={value || "Click to add a note"}
+        onClick={() => { setDraft(value); setEditing(true); }}
+      >
+        {value || <span className="text-muted-foreground/60">—</span>}
+      </button>
+    );
+  }
+
+  return (
+    <Input
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") commit();
+        if (e.key === "Escape") { setDraft(value); setEditing(false); }
+      }}
+      className="h-7 w-[120px] text-xs"
+      data-no-cap="1"
+      placeholder="Flag / note"
+    />
+  );
+}
+
 export default function Leads() {
   const [search, setSearch] = useState("");
   const [salesOwnerId, setSalesOwnerId] = useState<number | undefined>();
@@ -50,6 +100,18 @@ export default function Leads() {
   const queryClient = useQueryClient();
   const deleteContact = useDeleteContact();
   const bulkDelete = useBulkDeleteContacts();
+
+  // Personal flag/note column — localStorage only, never sent to the backend
+  const [leadFlags, setLeadFlags] = useState<Record<string, string>>(loadLeadFlags);
+  const setLeadFlag = (id: number, value: string) => {
+    setLeadFlags(prev => {
+      const next = { ...prev };
+      if (value.trim() === "") delete next[String(id)];
+      else next[String(id)] = value.trim();
+      try { localStorage.setItem(LEAD_FLAGS_KEY, JSON.stringify(next)); } catch { /* storage full/unavailable */ }
+      return next;
+    });
+  };
 
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
@@ -315,6 +377,7 @@ export default function Leads() {
               </TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Company</TableHead>
+              <TableHead>My Note</TableHead>
               <TableHead>Mobile</TableHead>
               <TableHead>City</TableHead>
               <TableHead>State</TableHead>
@@ -328,9 +391,9 @@ export default function Leads() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={10} className="text-center py-8">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={13} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : contacts?.length === 0 ? (
-              <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No leads found.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={13} className="text-center py-8 text-muted-foreground">No leads found.</TableCell></TableRow>
             ) : (
               contacts?.map((contact) => {
                 const isSelected = selectedIds.has(contact.id);
@@ -353,6 +416,9 @@ export default function Leads() {
                       {contact.customerCode && <span className="ml-1.5 text-[10px] text-muted-foreground font-mono">({contact.customerCode})</span>}
                     </TableCell>
                     <TableCell>{contact.companyName || "-"}</TableCell>
+                    <TableCell>
+                      <LeadFlagCell leadId={contact.id} value={leadFlags[String(contact.id)] || ""} onSave={setLeadFlag} />
+                    </TableCell>
                     <TableCell>{contact.mobile}</TableCell>
                     <TableCell>{contact.city || "-"}</TableCell>
                     <TableCell>{contact.state || "-"}</TableCell>
