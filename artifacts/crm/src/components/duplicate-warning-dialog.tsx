@@ -94,7 +94,7 @@ export function DuplicateWarningDialog({
     try {
       const res = await fetch(`/api/contacts/${data.leadId}/repeat-enquiry`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
       });
       if (res.ok) {
         const result = await res.json().catch(() => ({}));
