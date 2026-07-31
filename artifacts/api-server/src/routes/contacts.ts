@@ -380,6 +380,52 @@ router.post("/contacts/:id/request-transfer", async (req, res) => {
   }
 });
 
+// POST /contacts/:id/repeat-enquiry — Mark an existing lead as a repeat enquiry
+// Updates category to "Regular Follow up" and notifies the current owner (unless it's the caller's own lead).
+router.post("/contacts/:id/repeat-enquiry", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const id = Number(req.params.id);
+    if (!id || isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, id));
+    if (!contact) { res.status(404).json({ error: "Not found" }); return; }
+
+    const isOwnLead = contact.salesOwnerId === user.id;
+
+    // Update category to "Regular Follow up" so the lead comes back into the follow-up pipeline
+    const [updated] = await db.update(contactsTable)
+      .set({ category: "Regular Follow up" })
+      .where(eq(contactsTable.id, id))
+      .returning();
+
+    // Notify the current owner unless it's the caller's own lead (My Client pass-through)
+    if (!isOwnLead && contact.salesOwnerId) {
+      const [currentOwner] = await db.select({ id: usersTable.id, name: usersTable.name })
+        .from(usersTable).where(eq(usersTable.id, contact.salesOwnerId)).limit(1);
+      if (currentOwner && currentOwner.id !== user.id) {
+        const enquiryTime = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+        await createNotification({
+          userId: currentOwner.id,
+          type: "repeat_enquiry",
+          title: "Repeat Enquiry",
+          message: `Lead "${contact.name}" (${contact.mobile})\nRepeat enquiry logged by: ${user.name}\nDate & Time: ${enquiryTime}\n\nCategory updated to Regular Follow up.`,
+          link: `/leads/${contact.id}`,
+          relatedId: contact.id,
+          relatedType: "contact",
+        });
+      }
+    }
+
+    res.json({ success: true, message: isOwnLead ? "Lead marked as repeat enquiry" : "Repeat enquiry logged and owner notified", contact: await withOwner(updated!) });
+  } catch (err) {
+    req.log.error({ err }, "Repeat enquiry error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.get("/contacts/duplicates", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);

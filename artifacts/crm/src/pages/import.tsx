@@ -718,8 +718,8 @@ export default function ImportPage() {
   }, []);
 
   const handleIndiaMart = () => {
-    if (!im.clientName || !im.clientMobile) {
-      toast({ title: "Name and mobile are required", variant: "destructive" });
+    if (!im.clientMobile) {
+      toast({ title: "Mobile number is required", variant: "destructive" });
       return;
     }
     importIndiaMart.mutate({
@@ -742,9 +742,10 @@ export default function ImportPage() {
         onContactChange(queryClient);
         setIm(emptyIm);
         setParsePreview(null);
-        toast({ title: `Lead "${im.clientName}" imported from IndiaMart` });
+        const leadLabel = im.clientName || im.clientMobile || "Lead";
+        toast({ title: `Lead "${leadLabel}" imported from IndiaMart` });
         playNotificationSound();
-        showBrowserNotification("New Enquiry Imported", `${im.clientName}${im.city ? ` from ${im.city}` : ""} — IndiaMart`, "crm-import");
+        showBrowserNotification("New Enquiry Imported", `${leadLabel}${im.city ? ` from ${im.city}` : ""} — IndiaMart`, "crm-import");
       },
       onError: (e: any) => {
         const isDup = e?.status === 409 && e?.data?.duplicate;
@@ -1001,7 +1002,7 @@ export default function ImportPage() {
               {/* Full editable form */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Client Name <span className="text-destructive">*</span></Label>
+                  <Label>Client Name</Label>
                   <Input value={im.clientName} onChange={imF("clientName")} placeholder="Full name" />
                 </div>
                 <div>
@@ -1119,6 +1120,7 @@ export default function ImportPage() {
           onOpenChange={setImDuplicateOpen}
           data={imDuplicateData}
           userRole={me?.role}
+          currentUserId={me?.id}
         />
 
         {/* ── EXCEL UPLOAD ── */}

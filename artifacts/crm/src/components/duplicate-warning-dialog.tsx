@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { AlertTriangle, ExternalLink, ArrowLeftRight, X, Phone, Mail, MapPin, Calendar, Tag, TrendingUp, Clock, Shield, CheckCircle } from "lucide-react";
+import { AlertTriangle, ExternalLink, Repeat, X, Phone, Mail, MapPin, Calendar, Tag, TrendingUp, Clock, Shield, CheckCircle } from "lucide-react";
 import { UserAvatar } from "@/components/user-avatar";
 import { useToast } from "@/hooks/use-toast";
 
@@ -32,6 +32,8 @@ interface DuplicateWarningDialogProps {
   onOpenChange: (open: boolean) => void;
   data: DuplicateLeadInfo | null;
   userRole?: string;
+  /** Id of the currently logged-in user — used to detect the user's own leads (My Client pass-through) */
+  currentUserId?: number;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -76,44 +78,52 @@ export function DuplicateWarningDialog({
   onOpenChange,
   data,
   userRole = "sales",
+  currentUserId,
 }: DuplicateWarningDialogProps) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [transferRequested, setTransferRequested] = useState(false);
-  const [transferLoading, setTransferLoading] = useState(false);
+  const [repeatLoading, setRepeatLoading] = useState(false);
+  const [repeatDone, setRepeatDone] = useState(false);
 
   if (!data) return null;
 
-  const handleRequestTransfer = async () => {
-    setTransferLoading(true);
+  const isOwnLead = data.ownerId !== 0 && currentUserId !== undefined && data.ownerId === currentUserId;
+
+  const handleRepeatEnquiry = async () => {
+    setRepeatLoading(true);
     try {
-      const res = await fetch(`/api/contacts/${data.leadId}/request-transfer`, {
+      const res = await fetch(`/api/contacts/${data.leadId}/repeat-enquiry`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
       if (res.ok) {
-        setTransferRequested(true);
+        const result = await res.json().catch(() => ({}));
+        setRepeatDone(true);
         toast({
-          title: "Transfer Requested",
-          description: `Notification sent to ${data.ownerName} and admins.`,
+          title: "Repeat Enquiry",
+          description: isOwnLead
+            ? (result.message || "Lead category updated to Regular Follow up.")
+            : (result.message || `Notification sent to ${data.ownerName} and lead marked as repeat enquiry.`),
         });
+        onOpenChange(false);
+        setLocation(data.viewUrl || `/leads/${data.leadId}`);
       } else {
         const err = await res.json().catch(() => ({}));
         toast({
           title: "Failed",
-          description: err.error || "Could not send transfer request",
+          description: err.error || "Could not log repeat enquiry",
           variant: "destructive",
         });
       }
     } catch {
       toast({ title: "Failed", description: "Network error", variant: "destructive" });
     } finally {
-      setTransferLoading(false);
+      setRepeatLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) { setTransferRequested(false); } onOpenChange(o); }}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { setRepeatDone(false); } onOpenChange(o); }}>
       <DialogContent className="sm:max-w-lg p-0 gap-0 overflow-hidden">
         {/* Header */}
         <div className="bg-amber-50 border-b border-amber-200 px-6 py-4">
@@ -125,7 +135,9 @@ export function DuplicateWarningDialog({
               Customer Already Exists
             </DialogTitle>
             <DialogDescription className="text-amber-700 text-sm">
-              This customer is already assigned to another sales team member.
+              {isOwnLead
+                ? "This customer already exists in your leads. Mark it as a repeat enquiry to bring it back into follow-up."
+                : "This customer is already assigned to another sales team member. Log a repeat enquiry so they follow up."}
             </DialogDescription>
           </DialogHeader>
         </div>
@@ -196,31 +208,31 @@ export function DuplicateWarningDialog({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => { setTransferRequested(false); onOpenChange(false); }}
+            onClick={() => { setRepeatDone(false); onOpenChange(false); }}
           >
             <X className="h-4 w-4 mr-1" />
             Cancel
           </Button>
-          {!transferRequested ? (
+          {!repeatDone ? (
             <Button
               variant="outline"
               size="sm"
-              disabled={transferLoading}
-              onClick={handleRequestTransfer}
+              disabled={repeatLoading}
+              onClick={handleRepeatEnquiry}
             >
-              <ArrowLeftRight className="h-4 w-4 mr-1" />
-              {transferLoading ? "Sending..." : "Request Transfer"}
+              <Repeat className="h-4 w-4 mr-1" />
+              {repeatLoading ? "Updating..." : "Repeat Enquiry"}
             </Button>
           ) : (
             <div className="flex items-center gap-1.5 text-sm text-green-700 px-2">
               <CheckCircle className="h-4 w-4" />
-              Transfer requested
+              {isOwnLead ? "Category updated" : "Repeat enquiry logged"}
             </div>
           )}
           <Button
             size="sm"
             onClick={() => {
-              setTransferRequested(false);
+              setRepeatDone(false);
               onOpenChange(false);
               setLocation(data.viewUrl || `/leads/${data.leadId}`);
             }}

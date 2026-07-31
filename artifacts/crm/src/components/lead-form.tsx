@@ -15,7 +15,7 @@ import { DuplicateWarningDialog, type DuplicateLeadInfo } from "@/components/dup
 import { AlertTriangle, ExternalLink } from "lucide-react";
 
 const schema = z.object({
-  name: z.string().min(1, "Required"),
+  name: z.string().optional(),
   mobile: z.string().min(10, "Enter valid mobile"),
   otherPhone: z.string().optional(),
   email: z.string().email().optional().or(z.literal("")),
@@ -193,13 +193,13 @@ export default function LeadForm({
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField control={form.control} name="name" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Name <span className="text-destructive">*</span></FormLabel>
-                  <FormControl><Input placeholder="Client name" {...field} /></FormControl>
+                  <FormLabel>Name</FormLabel>
+                  <FormControl><Input placeholder="Client name (optional)" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <FormField control={form.control} name="mobile" render={({ field }) => (
-                <FormItem className={enableDuplicateDetection ? "md:col-span-2 border-2 border-primary/20 rounded-lg p-4 bg-primary/5 -m-4" : ""}>
+                <FormItem className={enableDuplicateDetection ? "border-2 border-primary/20 rounded-lg p-4 bg-primary/5" : ""}>
                   <FormLabel className={enableDuplicateDetection ? "text-base font-semibold" : ""}>
                     Mobile <span className="text-destructive">*</span>
                     {enableDuplicateDetection && <span className="text-xs text-muted-foreground font-normal ml-2">(enter 10-digit mobile to check for existing contact)</span>}
@@ -407,6 +407,7 @@ export default function LeadForm({
         onOpenChange={setDuplicateOpen}
         data={duplicateData}
         userRole={me?.role}
+        currentUserId={me?.id}
       />
     </>
   );

@@ -25,7 +25,7 @@ export default function LeadsNew() {
 
   const onSubmit = (data: LeadFormData) => {
     const contactInput = {
-      name: data.name,
+      name: data.name || "",
       mobile: data.mobile,
       email: data.email || null,
       companyName: data.companyName || null,
@@ -105,6 +105,7 @@ export default function LeadsNew() {
         onOpenChange={setDuplicateOpen}
         data={duplicateData}
         userRole={me?.role}
+        currentUserId={me?.id}
       />
     </div>
   );
