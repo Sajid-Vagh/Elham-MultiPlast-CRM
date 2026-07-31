@@ -848,10 +848,10 @@ router.post("/deals/:id/mark-won", async (req, res) => {
         deliveryTerms: latestPI?.deliveryTerms || null,
       }).returning();
 
-      // 4. Copy Proforma Items → Order Items
+      // 4. Copy Proforma Items → Order Items (single bulk insert — avoids N round-trips)
       if (piItems.length > 0) {
-        for (const item of piItems) {
-          await tx.insert(orderItemsTable).values({
+        await tx.insert(orderItemsTable).values(
+          piItems.map(item => ({
             orderId: order.id,
             productName: item.productName,
             hsnCode: item.hsnCode || null,
@@ -864,13 +864,12 @@ router.post("/deals/:id/mark-won", async (req, res) => {
             gstPercent: String(item.gstPercent || 0),
             amount: String(item.amount || 0),
             status: "Pending",
-          });
-        }
+          }))
+        );
 
-        // Recalculate totals from order items
-        const allItems = await tx.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
-        const totalAmount = allItems.reduce((s, i) => s + Number(i.amount || 0), 0);
-        const totalGst = allItems.reduce((s, i) => s + Number(i.amount || 0) * Number(i.gstPercent || 0) / 100, 0);
+        // Recalculate totals in JS from the source items (identical to the copied values)
+        const totalAmount = piItems.reduce((s, i) => s + Number(i.amount || 0), 0);
+        const totalGst = piItems.reduce((s, i) => s + Number(i.amount || 0) * Number(i.gstPercent || 0) / 100, 0);
         const grandTotal = totalAmount + totalGst + Number(order.freight || 0);
 
         await tx.update(ordersTable).set({
@@ -930,7 +929,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
         }).where(eq(proformaInvoicesTable.id, latestPI.id));
       }
 
-      // 7. Activity Log entries (using centralized logger)
+      // 7. Activity Log entries (single bulk insert — avoids N round-trips)
       const ts = formatTimestamp(now);
       const activityEntries = [
         `Deal Won — ₹${effectiveWonAmount.toLocaleString("en-IN")}\n\nBy: ${user.name}\n${ts}`,
@@ -941,66 +940,82 @@ router.post("/deals/:id/mark-won", async (req, res) => {
         voiceNoteId ? `Voice Note Attached — sent by ${user.name} with Deal Won\n\nDuration: see attached audio\n${ts}` : null,
       ].filter(Boolean);
 
-      for (const notes of activityEntries) {
-        await logActivity(tx, {
-          dealId: deal.id, contactId: deal.contactId,
-          type: "Note", notes, createdBy: user.id,
-        });
+      if (activityEntries.length > 0) {
+        await tx.insert(activitiesTable).values(
+          activityEntries.map(notes => ({
+            dealId: deal.id,
+            contactId: deal.contactId,
+            type: "Note",
+            notes,
+            createdBy: user.id,
+          }))
+        );
       }
 
       // 7b. Auto-complete all pending activities for this deal
       await completePendingActivitiesForDeal(tx, deal.id, deal.contactId, "Won", user.id);
 
-      // 8. Notifications — using centralized helpers
-      // 8a+b. Notify sales owner + admins (single shared helper)
-      await notifyProductionUsers({
-        productionUnit: effectiveProductionUnit,
-        title: "New Production Order (Deal Won)",
-        message: [
-          `Created By: ${user.name} (${user.role === "production_and_support" ? "Production & Support" : "Sales"})`,
-          `Production Unit: ${effectiveProductionUnit}`,
-          ``,
-          `Customer: ${contact?.name || "Unknown"}`,
-          `Company: ${contact?.companyName || "N/A"}`,
-          `Product: ${piItems[0]?.productName || "Multiple Items"}`,
-          piItems.reduce((sum: number, i: any) => sum + Number(i.quantity || 0), 0) > 0
-            ? `Quantity: ${piItems.reduce((sum: number, i: any) => sum + Number(i.quantity || 0), 0).toLocaleString("en-IN")} ${piItems[0]?.unit || "pcs"}`
-            : null,
-          `Order No: ${orderNumber}`,
-          `Won Amount: ₹${effectiveWonAmount.toLocaleString("en-IN")}`,
-          productionNotes ? `\nProduction Notes: ${productionNotes}` : null,
-        ].filter(Boolean).join("\n"),
-        link: `/production/orders/${productionOrder?.id || ""}`,
-        relatedId: productionOrder?.id || order.id,
-        relatedType: "production_order",
-        type: "production_order_created",
-        excludeUserId: user.id,
-      });
-
-      // 9. Promote to Existing Customers
-      try {
-        const owner = deal.salesOwnerId || user.id;
-        await promoteDealToExistingCustomer(deal.contactId, owner);
-      } catch (promoErr) {
-        console.error("Failed to promote deal won contact to existing customer:", promoErr);
-      }
+      // 8/9. Notifications + Existing Customer promotion are moved OUT of the
+      // transaction and deferred until after the response (see below) so the
+      // transaction stays short and the client gets an answer ASAP. They use
+      // the global db handle (not tx), so they are independent of the commit.
 
       return { order, productionOrder, orderNumber };
     });
 
     // ── END TRANSACTION ──
 
-    // Count how many deals this user has won today
-    const todayWonCount = await getTodayWonCount(user.id);
+    // Run the two post-commit lookups in parallel so the response is not
+    // serialized behind them.
+    const [todayWonCount, enrichedDeal] = await Promise.all([
+      getTodayWonCount(user.id),
+      enrichDeal(deal),
+    ]);
 
+    // Return success to the client as quickly as possible.
     res.json({
       success: true,
       message: "Deal marked as Won successfully",
       orderNumber: result.orderNumber,
       orderId: result.order.id,
       productionOrderId: result.productionOrder?.id || null,
-      deal: await enrichDeal(deal),
+      deal: enrichedDeal,
       todayWonCount,
+    });
+
+    // ── Non-critical side effects, fired AFTER the response ──
+    // Independent of the transaction (use the global db handle) and failures
+    // here must never fail the deal-won operation — that was the cause of the
+    // "random 500s": a notification/promotion error used to roll back the whole
+    // transaction even though the deal was already validly won.
+    void notifyProductionUsers({
+      productionUnit: effectiveProductionUnit,
+      title: "New Production Order (Deal Won)",
+      message: [
+        `Created By: ${user.name} (${user.role === "production_and_support" ? "Production & Support" : "Sales"})`,
+        `Production Unit: ${effectiveProductionUnit}`,
+        ``,
+        `Customer: ${contact?.name || "Unknown"}`,
+        `Company: ${contact?.companyName || "N/A"}`,
+        `Product: ${piItems[0]?.productName || "Multiple Items"}`,
+        piItems.reduce((sum: number, i: any) => sum + Number(i.quantity || 0), 0) > 0
+          ? `Quantity: ${piItems.reduce((sum: number, i: any) => sum + Number(i.quantity || 0), 0).toLocaleString("en-IN")} ${piItems[0]?.unit || "pcs"}`
+          : null,
+        `Order No: ${result.orderNumber}`,
+        `Won Amount: ₹${effectiveWonAmount.toLocaleString("en-IN")}`,
+        productionNotes ? `\nProduction Notes: ${productionNotes}` : null,
+      ].filter(Boolean).join("\n"),
+      link: `/production/orders/${result.productionOrder?.id || ""}`,
+      relatedId: result.productionOrder?.id || result.order.id,
+      relatedType: "production_order",
+      type: "production_order_created",
+      excludeUserId: user.id,
+    }).catch((notifErr: any) => {
+      console.error("[mark-won] Notification dispatch failed:", notifErr);
+    });
+
+    void promoteDealToExistingCustomer(deal.contactId, deal.salesOwnerId || user.id).catch((promoErr: any) => {
+      console.error("[mark-won] Failed to promote deal won contact to existing customer:", promoErr);
     });
   } catch (err: any) {
     // Log the FULL stack trace + request context so the root cause is visible
