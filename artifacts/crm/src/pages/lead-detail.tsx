@@ -269,7 +269,7 @@ export default function LeadDetail() {
     const container = chatContainerRef.current;
     const isAtBottom = container ? container.scrollHeight - container.scrollTop - container.clientHeight < 80 : true;
     if (isAtBottom) {
-      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      container?.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
       setUnreadCount(0);
     } else if (productionMessages.length > prevMsgCountRef.current) {
       setUnreadCount(c => c + (productionMessages.length - prevMsgCountRef.current));
@@ -278,7 +278,7 @@ export default function LeadDetail() {
   }, [productionMessages]);
 
   const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    chatContainerRef.current?.scrollTo({ top: chatContainerRef.current.scrollHeight, behavior: "smooth" });
     setUnreadCount(0);
   };
 

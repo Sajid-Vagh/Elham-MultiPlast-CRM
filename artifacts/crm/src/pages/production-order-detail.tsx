@@ -256,7 +256,7 @@ export default function ProductionOrderDetail() {
     if (!productionMessages) return;
     const container = chatContainerRef.current;
     const isAtBottom = container ? container.scrollHeight - container.scrollTop - container.clientHeight < 80 : true;
-    if (isAtBottom) { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); setUnreadCount(0); }
+    if (isAtBottom) { container?.scrollTo({ top: container.scrollHeight, behavior: "smooth" }); setUnreadCount(0); }
     else if (productionMessages.length > prevMsgCountRef.current) { setUnreadCount(c => c + (productionMessages.length - prevMsgCountRef.current)); }
     prevMsgCountRef.current = productionMessages.length;
   }, [productionMessages]);
@@ -972,7 +972,7 @@ export default function ProductionOrderDetail() {
                   )}
                 </div>
                 {unreadCount > 0 && (
-                  <button onClick={() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); setUnreadCount(0); }}
+                  <button onClick={() => { chatContainerRef.current?.scrollTo({ top: chatContainerRef.current.scrollHeight, behavior: "smooth" }); setUnreadCount(0); }}
                     className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 bg-violet-600 text-white text-[11px] font-medium rounded-full px-3 py-1.5 shadow-lg hover:bg-violet-700 transition-colors cursor-pointer">
                     {unreadCount} new message{unreadCount !== 1 ? "s" : ""}
                   </button>

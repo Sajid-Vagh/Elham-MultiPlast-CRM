@@ -62,6 +62,7 @@ export function NotificationProvider({ userId, children }: { userId: number | un
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const mountedRef = useRef(true);
+  const lastKnownMaxIdRef = useRef<number | null>(null);
 
   const getHeaders = useCallback((): Record<string, string> => {
     const t = localStorage.getItem("crm_token");
@@ -70,14 +71,24 @@ export function NotificationProvider({ userId, children }: { userId: number | un
 
   const fetchAll = useCallback(async () => {
     if (!userId) return;
-    setLoading(true);
+    const isInitial = lastKnownMaxIdRef.current === null;
+    if (isInitial) setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/notifications/history?filter=all&limit=250&offset=0", { headers: getHeaders() });
       if (res.ok) {
         const data = await res.json();
-        setNotifications(data.notifications || []);
+        const fetched: Notification[] = data.notifications || [];
+        setNotifications(fetched);
         setTotal(data.total || 0);
+        const maxId = fetched.length ? Math.max(...fetched.map(n => n.id)) : null;
+        if (maxId !== null) {
+          if (!isInitial && maxId > (lastKnownMaxIdRef.current ?? 0)) {
+            const newest = fetched.find(n => n.id === maxId);
+            if (newest && !newest.readAt) setLatestNotification(newest);
+          }
+          lastKnownMaxIdRef.current = maxId;
+        }
       } else {
         const text = await res.text().catch(() => "Unknown error");
         setError(`API error ${res.status}: ${text}`);
@@ -85,7 +96,7 @@ export function NotificationProvider({ userId, children }: { userId: number | un
     } catch (err: any) {
       setError(err?.message || "Network error fetching notifications");
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
   }, [userId]);
 
@@ -122,6 +133,7 @@ export function NotificationProvider({ userId, children }: { userId: number | un
           });
           setTotal((prev) => prev + 1);
           setLatestNotification(n);
+          lastKnownMaxIdRef.current = Math.max(lastKnownMaxIdRef.current ?? 0, n.id);
 
           // Play sound with dedup via sessionStorage
           const playedSet = getSoundPlayedSet();
@@ -150,6 +162,13 @@ export function NotificationProvider({ userId, children }: { userId: number | un
       esRef.current?.close();
     };
   }, [userId]);
+
+  // Polling fallback — guarantees new notifications surface (popups + dropdown) even if SSE drops
+  useEffect(() => {
+    if (!userId) return;
+    const interval = setInterval(fetchAll, 60_000);
+    return () => clearInterval(interval);
+  }, [userId, fetchAll]);
 
   const unreadCount = notifications.filter(n => !n.readAt).length;
 

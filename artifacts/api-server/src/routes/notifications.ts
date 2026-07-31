@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, notificationsTable, usersTable } from "@workspace/db";
-import { eq, and, isNull, desc, sql } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, desc, sql } from "drizzle-orm";
 import { getUserFromRequest, getUserIdFromToken } from "./auth";
 import { notificationEmitter, NOTIFICATION_EVENT } from "../lib/notification-emitter";
 
@@ -392,6 +392,38 @@ export async function createNotification(params: {
   }
   return n;
 }
+
+// Delete notifications read more than 24 hours ago. Unread notifications are NEVER deleted.
+// Triggered by cron (CRON_SECRET query param) or manually by an admin.
+router.post("/notifications/cleanup-expired", async (req: Request, res: Response) => {
+  const cronSecret = process.env.CRON_SECRET;
+  const hasCronAuth = !!cronSecret && req.query.key === cronSecret;
+
+  if (!hasCronAuth) {
+    const user = await getUser(req, res);
+    if (!user) return;
+    if (user.role !== "admin") {
+      res.status(403).json({ error: "Admin only" });
+      return;
+    }
+  }
+
+  try {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const deleted = await db
+      .delete(notificationsTable)
+      .where(and(
+        isNotNull(notificationsTable.readAt),
+        sql`${notificationsTable.readAt} < ${cutoff}`
+      ))
+      .returning({ id: notificationsTable.id });
+
+    res.json({ success: true, deleted: deleted.length });
+  } catch (err) {
+    req.log.error({ err }, "Cleanup expired notifications error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 // Delete notification (admin only)
 router.delete("/notifications/:id", async (req: Request, res: Response) => {

@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/notifications/cleanup-expired?key=CRON_SECRET_PLACEHOLDER",
+      "schedule": "30 0 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
