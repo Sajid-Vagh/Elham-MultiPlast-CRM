@@ -480,6 +480,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - **Search role filtering**: Added `salesOwnerId` filter for sales users + `getAccessibleUnits()` unit filter to deals and activities search
 - **Notification dedup**: Extended `createNotification()` to deduplicate by `userId + type + title` when `relatedId`/`relatedType` not provided
 - **Dead code cleanup**: Removed unused `or` import from exports.ts
+- **By-Product report rewrite**: `GET /reports/by-product` now uses a single SQL query joining `deal_products` + `deals` + `products` with `COUNT(DISTINCT deal_id)`, `SUM(quantity)`, `SUM(quantity * COALESCE(unit_price,0))`, `COALESCE` guards, role-based `salesOwnerId` filtering, and unit isolation (previously empty table / in-memory scan). Frontend table added an explicit empty state; field names match generated contract (`productName`, `productCode`, `dealCount`, `totalQuantity`, `totalValue`).
 - **Build verification**: 0 new errors (28 pre-existing), CRM clean
 
 ### In Progress

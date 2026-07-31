@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, activitiesTable, DEAL_STAGES, STAGE_PROBS } from "@workspace/db";
-import { eq, and, gte, sql, inArray, or, isNull } from "drizzle-orm";
+import { eq, and, gte, lte, sql, inArray, or, isNull, type SQL } from "drizzle-orm";
 import { GetPipelineReportQueryParams, GetReportByOwnerQueryParams, GetReportByProductQueryParams, GetReportByCityQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
@@ -240,50 +240,55 @@ router.get("/reports/by-owner", async (req, res) => {
 router.get("/reports/by-product", async (req, res) => {
   try {
     const params = GetReportByProductQueryParams.safeParse(req.query);
-    const user = await restrictToOwnDeals(req, params.data ?? {});
+    const user = await getUserFromRequest(req);
     if (!user) { res.status(403).json({ error: "Unauthorized" }); return; }
-    let dealProducts = await db.select().from(dealProductsTable);
-    let deals = await db.select().from(dealsTable);
 
-    if (params.success) {
-      if (params.data.salesOwnerId) deals = deals.filter(d => d.salesOwnerId === params.data.salesOwnerId);
-      const { startDate, endDate } = getDateRange(req);
-      if (startDate || endDate) {
-        deals = deals.filter(d => {
-          const created = new Date(d.createdAt);
-          if (startDate && created < startDate) return false;
-          if (endDate && created > endDate) return false;
-          return true;
-        });
+    const conditions: SQL[] = [];
+
+    // Role-based filtering: admins/privileged users can pass a salesOwnerId,
+    // everyone else is strictly limited to their own deals.
+    const salesOwnerId = params.success && params.data.salesOwnerId
+      ? params.data.salesOwnerId
+      : undefined;
+    if (salesOwnerId) {
+      conditions.push(eq(dealsTable.salesOwnerId, salesOwnerId));
+    } else if ((user.role === "sales" || user.role === "production_and_support") && !user.canViewAllReports) {
+      conditions.push(eq(dealsTable.salesOwnerId, user.id));
+    }
+
+    const { startDate, endDate } = getDateRange(req);
+    if (startDate) conditions.push(gte(dealsTable.createdAt, startDate));
+    if (endDate) conditions.push(lte(dealsTable.createdAt, endDate));
+
+    // Unit isolation: admins/All-unit users may filter by query unit, others are pinned to their unit.
+    const requestedUnit = req.query.unit as string | undefined;
+    const unitFilter = (user.role === "admin" || user.unit === "All") ? requestedUnit : user.unit;
+    if (unitFilter) {
+      const unitContactIds = await getUnitContactIds(unitFilter);
+      if (unitContactIds.size > 0) {
+        conditions.push(inArray(dealsTable.contactId, [...unitContactIds]));
+      } else {
+        conditions.push(sql`1 = 0`);
       }
     }
 
-    const dealIds = new Set(deals.map(d => d.id));
-    dealProducts = dealProducts.filter(dp => dealIds.has(dp.dealId));
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const products = await db.select().from(productsTable);
-    const productMap = new Map(products.map(p => [p.id, p]));
+    const result = await db
+      .select({
+        productId: productsTable.id,
+        productName: productsTable.name,
+        productCode: productsTable.productCode,
+        dealCount: sql<number>`count(distinct ${dealProductsTable.dealId})::int`,
+        totalQuantity: sql<number>`coalesce(sum(${dealProductsTable.quantity}), 0)::float`,
+        totalValue: sql<number>`coalesce(sum(${dealProductsTable.quantity} * coalesce(${dealProductsTable.unitPrice}, 0)), 0)::float`,
+      })
+      .from(dealProductsTable)
+      .innerJoin(dealsTable, eq(dealProductsTable.dealId, dealsTable.id))
+      .innerJoin(productsTable, eq(dealProductsTable.productId, productsTable.id))
+      .where(where)
+      .groupBy(productsTable.id, productsTable.name, productsTable.productCode);
 
-    const statsMap = new Map<number, { totalQuantity: number; totalValue: number; dealCount: Set<number> }>();
-    for (const dp of dealProducts) {
-      if (!statsMap.has(dp.productId)) statsMap.set(dp.productId, { totalQuantity: 0, totalValue: 0, dealCount: new Set() });
-      const s = statsMap.get(dp.productId)!;
-      s.totalQuantity += Number(dp.quantity);
-      s.totalValue += Number(dp.quantity) * Number(dp.unitPrice ?? 0);
-      s.dealCount.add(dp.dealId);
-    }
-
-    const result = Array.from(statsMap.entries()).map(([productId, s]) => {
-      const p = productMap.get(productId);
-      return {
-        productId,
-        productName: p?.name ?? "Unknown",
-        productCode: p?.productCode ?? "",
-        totalQuantity: s.totalQuantity,
-        totalValue: s.totalValue,
-        dealCount: s.dealCount.size,
-      };
-    });
     res.json(result);
   } catch (err) {
     req.log.error({ err }, "By-product report error");

@@ -397,6 +397,13 @@ export default function Reports() {
                       <TableCell>₹{Number(row.totalValue).toLocaleString()}</TableCell>
                     </TableRow>
                   ))}
+                  {(!byProduct || byProduct.length === 0) && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                        No products found for the selected filters.
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
