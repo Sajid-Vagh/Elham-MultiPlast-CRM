@@ -26,6 +26,26 @@ function formatWeight(w: string | null | undefined): string {
   return `${w.trim()} Gram`;
 }
 
+function variantKey(productName: string, weight: string, colour: string): string {
+  return [productName, weight, colour].map(v => (v || "").trim().toLowerCase()).join("|");
+}
+
+function mergeVariantGroups(groups: SummaryGroup[]): SummaryGroup[] {
+  const map = new Map<string, SummaryGroup>();
+  for (const g of groups) {
+    const key = variantKey(g.productName, g.weight, g.colour);
+    const existing = map.get(key);
+    if (existing) {
+      existing.totalQuantity += g.totalQuantity;
+      existing.orderCount += g.orderCount;
+      existing.orderIds = Array.from(new Set([...existing.orderIds, ...(g.orderIds || [])]));
+    } else {
+      map.set(key, { ...g, orderIds: [...(g.orderIds || [])] });
+    }
+  }
+  return Array.from(map.values());
+}
+
 type SummaryGroup = {
   productFamily: string;
   productName: string;
@@ -91,10 +111,16 @@ export function ManufacturingSummary({ unitFilter, originFilter }: Manufacturing
     enabled: !!drawerGroup,
   });
 
-  const groups: SummaryGroup[] = summary?.groups || [];
-  const totalProducts = summary?.totalGroups ?? 0;
-  const totalPieces = summary?.totalPieces ?? 0;
-  const materialSummary: Record<string, { productCount: number; totalPending: number }> = summary?.materialSummary || {};
+  const groups = mergeVariantGroups(summary?.groups || []);
+  const totalProducts = groups.length;
+  const totalPieces = groups.reduce((s, g) => s + g.totalQuantity, 0);
+  const materialSummary: Record<string, { productCount: number; totalPending: number }> = {};
+  for (const g of groups) {
+    const mt = g.materialType || "HDPE";
+    if (!materialSummary[mt]) materialSummary[mt] = { productCount: 0, totalPending: 0 };
+    materialSummary[mt].productCount++;
+    materialSummary[mt].totalPending += g.totalQuantity;
+  }
 
   if (isLoading) {
     return (

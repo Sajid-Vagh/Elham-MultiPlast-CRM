@@ -2838,6 +2838,8 @@ export async function getManufacturingSummary(user: PermissionUser, unitFilter?:
         COALESCE(NULLIF(p.bottle_colour, ''), 'N/A') AS colour,
         COALESCE(NULLIF(p.bottle_colour_code, ''), '') AS colour_code,
         COALESCE(NULLIF(p.material_type, 'HDPE'), 'HDPE') AS material_type,
+        TRIM(LOWER(COALESCE(NULLIF(pii.weight, ''), '-'))) AS weight_norm,
+        TRIM(LOWER(COALESCE(NULLIF(p.bottle_colour, ''), 'N/A'))) AS colour_norm,
         INITCAP(TRIM(
           regexp_replace(
             regexp_replace(
@@ -2868,17 +2870,17 @@ export async function getManufacturingSummary(user: PermissionUser, unitFilter?:
     SELECT
       product_family AS "productFamily",
       product_name AS "productName",
-      weight,
-      colour,
-      colour_code AS "colourCode",
-      material_type AS "materialType",
+      MAX(weight) AS weight,
+      MAX(colour) AS colour,
+      MAX(colour_code) AS "colourCode",
+      MAX(material_type) AS "materialType",
       SUM((ordered_quantity - ready_quantity)::numeric) AS "totalQuantity",
       COUNT(DISTINCT po_id) AS "orderCount",
       array_agg(DISTINCT po_id) AS "orderIds"
     FROM product_lines
-    GROUP BY product_family, product_name, weight, colour, colour_code, material_type, capacity_sort
+    GROUP BY product_family, product_name, weight_norm, colour_norm, capacity_sort
     HAVING SUM((ordered_quantity - ready_quantity)::numeric) > 0
-    ORDER BY product_family, capacity_sort, material_type, colour, weight
+    ORDER BY product_family, capacity_sort, colour_norm, weight_norm
   `);
 
   const groups = (results.rows || []).map((r: any) => ({
@@ -2920,10 +2922,10 @@ export async function getManufacturingSummaryDetail(
   if ("productName" in filter) {
     const colourFilter = filter.colour === "N/A"
       ? sql`(p.bottle_colour IS NULL OR p.bottle_colour = '')`
-      : sql`lower(COALESCE(NULLIF(p.bottle_colour, ''), 'N/A')) = lower(${filter.colour})`;
+      : sql`lower(TRIM(COALESCE(NULLIF(p.bottle_colour, ''), 'N/A'))) = lower(TRIM(${filter.colour}))`;
     const weightFilter = filter.weight === "-"
       ? sql`(COALESCE(NULLIF(pii.weight, ''), p.bottle_weight) IS NULL OR COALESCE(NULLIF(pii.weight, ''), p.bottle_weight) = '')`
-      : sql`COALESCE(NULLIF(pii.weight, ''), p.bottle_weight, '') = ${filter.weight}`;
+      : sql`lower(TRIM(COALESCE(NULLIF(pii.weight, ''), p.bottle_weight, ''))) = lower(TRIM(${filter.weight}))`;
 
     results = await db.execute(sql`
       WITH active_orders AS (
