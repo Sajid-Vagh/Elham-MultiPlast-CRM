@@ -711,6 +711,13 @@ router.post("/deals/:id/mark-won", async (req, res) => {
 
     const { wonAmount, productionUnit, productionNotes, salesNotes, unitChangeReason, voiceNoteId } = req.body as Record<string, any>;
 
+    // Defensive parse of voiceNoteId (sent by the client AFTER background upload).
+    // Guard against non-numeric ids so we never send NaN to Postgres.
+    const voiceNoteIdNum = voiceNoteId != null && voiceNoteId !== "" ? Number(voiceNoteId) : null;
+    if (voiceNoteId != null && voiceNoteId !== "" && (voiceNoteIdNum === null || isNaN(voiceNoteIdNum))) {
+      res.status(400).json({ error: "Invalid voiceNoteId" }); return;
+    }
+
     // Unified validation — single source of truth for both PATCH and mark-won
     const validation = await validateWonPrerequisites({
       exec: db, dealId, wonAmount, productionUnit, isMarkWonEndpoint: true,
@@ -908,12 +915,12 @@ router.post("/deals/:id/mark-won", async (req, res) => {
       }
 
       // 5b. Link voice note to production order (if provided)
-      if (voiceNoteId && productionOrder) {
+      if (voiceNoteIdNum && productionOrder) {
         const { voiceNotesTable } = await import("@workspace/db");
         await tx.update(voiceNotesTable).set({
           productionOrderId: productionOrder.id,
           proformaInvoiceId: latestPI?.id || null,
-        }).where(eq(voiceNotesTable.id, Number(voiceNoteId)));
+        }).where(eq(voiceNotesTable.id, voiceNoteIdNum));
       }
 
       // 6. Update Proforma Invoice status → "Converted to Production"
@@ -995,9 +1002,15 @@ router.post("/deals/:id/mark-won", async (req, res) => {
       deal: await enrichDeal(deal),
       todayWonCount,
     });
-  } catch (err) {
-    req.log.error({ err }, "Mark deal as Won error");
-    res.status(500).json({ error: "Internal server error" });
+  } catch (err: any) {
+    // Log the FULL stack trace + request context so the root cause is visible
+    // in server logs (Vercel/Render/PM2 capture stdout from console.error).
+    console.error(`[mark-won] Failed dealId=${req.params?.id}:`, err);
+    if (err?.stack) console.error("[mark-won] Stack:", err.stack);
+    req.log.error({ err, dealId: req.params?.id }, "Mark deal as Won error");
+    // Surface the real message in non-production for easier debugging.
+    const detail = process.env.NODE_ENV !== "production" && err?.message ? String(err.message) : undefined;
+    res.status(500).json({ error: "Internal server error", ...(detail ? { detail } : {}) });
   }
 });
 
