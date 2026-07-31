@@ -21,7 +21,7 @@ router.post("/customer-master/lookup-by-gstin", async (req, res) => {
     const [customer] = await db
       .select()
       .from(customerMasterTable)
-      .where(eq(customerMasterTable.gstin, gstin.toUpperCase().trim()));
+      .where(and(eq(customerMasterTable.gstin, gstin.toUpperCase().trim()), eq(customerMasterTable.isDeleted, false)));
 
     if (!customer) {
       res.json({ found: false, error: "Customer not found" });
@@ -47,7 +47,7 @@ router.post("/customer-master/:id/refresh-gst", async (req, res) => {
     const [existing] = await db
       .select()
       .from(customerMasterTable)
-      .where(eq(customerMasterTable.id, id));
+      .where(and(eq(customerMasterTable.id, id), eq(customerMasterTable.isDeleted, false)));
 
     if (!existing) { res.status(404).json({ error: "Customer not found" }); return; }
 
@@ -126,19 +126,19 @@ router.post("/customer-master", async (req, res) => {
     const normalizedGstin = gstin ? gstin.toUpperCase().trim() : null;
     const normalizedMobile = mobile ? mobile.replace(/\s/g, "").trim() : null;
 
-    // Duplicate check: by GSTIN if provided, else by mobile
+    // Duplicate check: by GSTIN if provided, else by mobile (deleted profiles don't block re-creation)
     let existing = null;
     if (normalizedGstin) {
       const [found] = await db
         .select()
         .from(customerMasterTable)
-        .where(eq(customerMasterTable.gstin, normalizedGstin));
+        .where(and(eq(customerMasterTable.gstin, normalizedGstin), eq(customerMasterTable.isDeleted, false)));
       existing = found;
     } else if (normalizedMobile) {
       const [found] = await db
         .select()
         .from(customerMasterTable)
-        .where(eq(customerMasterTable.mobile, normalizedMobile));
+        .where(and(eq(customerMasterTable.mobile, normalizedMobile), eq(customerMasterTable.isDeleted, false)));
       existing = found;
     }
 
@@ -190,7 +190,7 @@ router.patch("/customer-master/:id", async (req, res) => {
     const [existing] = await db
       .select()
       .from(customerMasterTable)
-      .where(eq(customerMasterTable.id, id));
+      .where(and(eq(customerMasterTable.id, id), eq(customerMasterTable.isDeleted, false)));
 
     if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
@@ -246,12 +246,15 @@ router.get("/customer-master", async (req, res) => {
       customers = await db
         .select()
         .from(customerMasterTable)
-        .where(or(
-          sql`LOWER(${customerMasterTable.companyName}) LIKE ${s}`,
-          sql`LOWER(${customerMasterTable.gstin}) LIKE ${s}`,
-          sql`LOWER(${customerMasterTable.mobile}) LIKE ${s}`,
-          sql`LOWER(${customerMasterTable.city}) LIKE ${s}`,
-          sql`LOWER(${customerMasterTable.tradeName}) LIKE ${s}`,
+        .where(and(
+          eq(customerMasterTable.isDeleted, false),
+          or(
+            sql`LOWER(${customerMasterTable.companyName}) LIKE ${s}`,
+            sql`LOWER(${customerMasterTable.gstin}) LIKE ${s}`,
+            sql`LOWER(${customerMasterTable.mobile}) LIKE ${s}`,
+            sql`LOWER(${customerMasterTable.city}) LIKE ${s}`,
+            sql`LOWER(${customerMasterTable.tradeName}) LIKE ${s}`,
+          )
         ))
         .orderBy(desc(customerMasterTable.createdAt))
         .limit(50);
@@ -259,6 +262,7 @@ router.get("/customer-master", async (req, res) => {
       customers = await db
         .select()
         .from(customerMasterTable)
+        .where(eq(customerMasterTable.isDeleted, false))
         .orderBy(desc(customerMasterTable.createdAt))
         .limit(50);
     }
@@ -288,14 +292,15 @@ router.get("/customer-master/lookup", async (req, res) => {
     const profiles = await db
       .select()
       .from(customerMasterTable)
-      .where(
+      .where(and(
+        eq(customerMasterTable.isDeleted, false),
         or(
           eq(customerMasterTable.mobile, mobile),
           sql`${customerMasterTable.linkedContactId} IN (
             SELECT id FROM contacts WHERE mobile = ${mobile} OR other_phone = ${mobile}
           )`
         )
-      )
+      ))
       .orderBy(desc(customerMasterTable.createdAt));
 
     res.json(profiles);
@@ -317,7 +322,7 @@ router.get("/customer-master/:id", async (req, res) => {
     const [customer] = await db
       .select()
       .from(customerMasterTable)
-      .where(eq(customerMasterTable.id, id));
+      .where(and(eq(customerMasterTable.id, id), eq(customerMasterTable.isDeleted, false)));
 
     if (!customer) { res.status(404).json({ error: "Not found" }); return; }
 
@@ -340,7 +345,7 @@ router.get("/customer-master/:id/proforma-history", async (req, res) => {
     const [customer] = await db
       .select()
       .from(customerMasterTable)
-      .where(eq(customerMasterTable.id, id));
+      .where(and(eq(customerMasterTable.id, id), eq(customerMasterTable.isDeleted, false)));
 
     if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
 
@@ -380,7 +385,7 @@ router.get("/customer-master/by-contact/:contactId", async (req, res) => {
     const profiles = await db
       .select()
       .from(customerMasterTable)
-      .where(eq(customerMasterTable.linkedContactId, contactId))
+      .where(and(eq(customerMasterTable.linkedContactId, contactId), eq(customerMasterTable.isDeleted, false)))
       .orderBy(desc(customerMasterTable.createdAt));
 
     res.json(profiles);
@@ -407,14 +412,15 @@ router.get("/customer-master/search-by-mobile/:mobile", async (req, res) => {
     const profiles = await db
       .select()
       .from(customerMasterTable)
-      .where(
+      .where(and(
+        eq(customerMasterTable.isDeleted, false),
         or(
           eq(customerMasterTable.mobile, mobile),
           sql`${customerMasterTable.linkedContactId} IN (
             SELECT id FROM contacts WHERE mobile = ${mobile} OR other_phone = ${mobile}
           )`
         )
-      )
+      ))
       .orderBy(desc(customerMasterTable.createdAt));
 
     res.json(profiles);
@@ -440,9 +446,12 @@ router.get("/customer-master/search-by-name/:name", async (req, res) => {
     const profiles = await db
       .select()
       .from(customerMasterTable)
-      .where(or(
-        sql`LOWER(${customerMasterTable.companyName}) LIKE ${s}`,
-        sql`LOWER(${customerMasterTable.tradeName}) LIKE ${s}`,
+      .where(and(
+        eq(customerMasterTable.isDeleted, false),
+        or(
+          sql`LOWER(${customerMasterTable.companyName}) LIKE ${s}`,
+          sql`LOWER(${customerMasterTable.tradeName}) LIKE ${s}`,
+        )
       ))
       .orderBy(desc(customerMasterTable.createdAt))
       .limit(20);
@@ -454,7 +463,8 @@ router.get("/customer-master/search-by-name/:name", async (req, res) => {
   }
 });
 
-// Delete customer master
+// Soft-delete customer master profile (profiles are referenced by proforma_invoices
+// and voice_notes, so we never hard-delete — historical invoices keep their link).
 router.delete("/customer-master/:id", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
@@ -463,13 +473,19 @@ router.delete("/customer-master/:id", async (req, res) => {
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-    if (user.role !== "admin") {
-      res.status(403).json({ error: "Only admins can delete customers" });
-      return;
-    }
+    const [existing] = await db
+      .select()
+      .from(customerMasterTable)
+      .where(and(eq(customerMasterTable.id, id), eq(customerMasterTable.isDeleted, false)));
 
-    await db.delete(customerMasterTable).where(eq(customerMasterTable.id, id));
-    res.json({ success: true });
+    if (!existing) { res.status(404).json({ error: "Customer not found" }); return; }
+
+    await db
+      .update(customerMasterTable)
+      .set({ isDeleted: true, deletedAt: new Date(), deletedBy: user.id })
+      .where(eq(customerMasterTable.id, id));
+
+    res.json({ success: true, id });
   } catch (err) {
     req.log.error({ err }, "Delete customer master error");
     res.status(500).json({ error: "Internal server error" });

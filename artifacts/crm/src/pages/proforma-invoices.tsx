@@ -776,6 +776,42 @@ const selectProduct = (idx: number, product: any) => {
     toast({ title: "New GST Profile", description: `Billing fields cleared — enter new GST details for ${mobile}` });
   };
 
+  const handleDeleteProfile = async (profile: any) => {
+    if (!profile?.id) return;
+    if (!window.confirm(`Are you sure you want to delete this GST profile?\n\n${profile.companyName || "Unknown"}${profile.gstin ? ` — ${profile.gstin}` : ""}\n\nThis cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/customer-master/${profile.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to delete GST profile");
+      }
+
+      const deletedIdx = gstProfiles.findIndex((p: any) => p.id === profile.id);
+      const next = gstProfiles.filter((p: any) => p.id !== profile.id);
+      setGstProfiles(next);
+
+      if (customerMasterId === profile.id) {
+        setCustomerMasterId(null);
+        setExistingCustomer(null);
+      }
+
+      if (next.length > 0) {
+        const newIdx = Math.max(0, Math.min(deletedIdx === -1 ? 0 : deletedIdx, next.length - 1));
+        setSelectedProfileIndex(newIdx);
+        if (customerMasterId === profile.id) applyExistingCustomer(next[newIdx]);
+      } else {
+        setSelectedProfileIndex(0);
+      }
+
+      toast({ title: "GST Profile Deleted", description: `${profile.companyName || "Profile"} removed from list` });
+    } catch (err: any) {
+      toast({ title: "Delete Failed", description: err?.message || "Could not delete GST profile", variant: "destructive" });
+    }
+  };
+
   const verifyGst = async (gstin: string) => {
     const cleaned = gstin.toUpperCase().trim();
     if (cleaned.length !== 15) {
@@ -1917,7 +1953,15 @@ ${pagesHtml}
                   <p className="text-xs text-muted-foreground mt-0.5">{gstProfiles.length > 1 ? `Multiple GST profiles found for this mobile number. Select the billing profile, or add a new one.` : `GST profile found for this mobile number. Use it, or add a new one.`}</p>
                   <div className="space-y-2 mt-1">
                     {gstProfiles.map((profile: any, idx: number) => (
-                      <div key={profile.id} className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${selectedProfileIndex === idx && !addingNewProfile ? "border-green-500 bg-green-50" : "hover:bg-muted/50"}`} onClick={() => { setAddingNewProfile(false); setSelectedProfileIndex(idx); applyExistingCustomer(profile); }}>
+                      <div key={profile.id} className={`relative flex items-center justify-between p-3 pr-8 border rounded-md cursor-pointer transition-colors ${selectedProfileIndex === idx && !addingNewProfile ? "border-green-500 bg-green-50" : "hover:bg-muted/50"}`} onClick={() => { setAddingNewProfile(false); setSelectedProfileIndex(idx); applyExistingCustomer(profile); }}>
+                        <button
+                          type="button"
+                          title="Delete GST profile"
+                          className="absolute top-1.5 right-1.5 p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors"
+                          onClick={(e) => { e.stopPropagation(); handleDeleteProfile(profile); }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                         <div className="flex-1 min-w-0">
                           <span className="text-sm font-medium">{profile.companyName}</span>
                           {profile.tradeName && <span className="text-xs text-muted-foreground ml-2">({profile.tradeName})</span>}

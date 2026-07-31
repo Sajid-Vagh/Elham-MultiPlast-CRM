@@ -165,7 +165,7 @@ export async function lookupGstinFromProviders(gstin: string, req: any): Promise
     const [customer] = await db
       .select()
       .from(customerMasterTable)
-      .where(eq(customerMasterTable.gstin, cleanGstin))
+      .where(and(eq(customerMasterTable.gstin, cleanGstin), eq(customerMasterTable.isDeleted, false)))
       .limit(1);
     if (customer) {
       return normalize({

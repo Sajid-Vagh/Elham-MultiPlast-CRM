@@ -607,7 +607,7 @@ router.post("/proforma-invoices/gst-lookup", async (req, res) => {
     const [customer] = await db
       .select()
       .from(customerMasterTable)
-      .where(eq(customerMasterTable.gstin, cleanGstin))
+      .where(and(eq(customerMasterTable.gstin, cleanGstin), eq(customerMasterTable.isDeleted, false)))
       .limit(1);
     if (customer) {
       return res.json(normalize({

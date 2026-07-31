@@ -174,6 +174,7 @@ Deliver a working Proforma Invoice module with Customer Master, real GST auto-fi
 - Soft-delete for all users.
 - PDF layout reverted to original design.
 - **Multiple GST profiles per mobile number**: mobile lookup now goes through canonical `GET /customer-master/lookup?mobile=` (returns an ARRAY of all profiles; registered before the `/:id` param route). UI shows a "+ Add New Profile / GST for this number" option in both profile selectors; selecting it clears billing fields (except mobile), drops `customerMasterId`, and saves the new GST as a distinct Customer Master row tied to the same mobile (schema already allows duplicate `mobile` — only `gstin` is unique). `handleSave` now pre-creates/links the Customer Master record BEFORE the PI is saved (409 adopts the existing profile) instead of the old post-save best-effort block.
+- **Per-profile delete**: each GST profile card in the PI selection list has a subtle Trash button (top-right, `e.stopPropagation()`, `window.confirm` confirmation) calling `DELETE /api/customer-master/:id`. Deletion is a **soft delete** (`is_deleted`/`deleted_at`/`deleted_by` via migration 065) since profiles are referenced by `proforma_invoices.customer_master_id` and `voice_notes.customer_id` — historical invoices keep their link. All lookup endpoints (`lookup`, `lookup-by-gstin`, `search-by-mobile`, `search-by-name`, `by-contact`, list, single, proforma-history) and GST fallbacks (`gst.ts`, `proforma-invoices.ts` Tier 5) exclude deleted profiles; duplicate check ignores deleted rows so a GSTIN can be re-created. DELETE endpoint is now available to any authenticated user (was admin-only), matching the open POST.
 
 ## Production Module
 
@@ -245,6 +246,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - No mock provider exists anywhere.
 - `GET /customer-master/lookup?mobile=` is the canonical multi-profile mobile lookup (array). `search-by-mobile/:mobile` kept for backward compat.
 - Uniqueness for `customer_master` is `gstin` only — same mobile with different GSTIN/trade name is a distinct profile (no migration needed; `gstin` nullable since migration 051).
+- Profile deletion is soft (`is_deleted`/`deleted_at`/`deleted_by`, migration 065) not hard — hard delete would break FK references from `proforma_invoices.customer_master_id` and `voice_notes.customer_id`, losing historical invoice links. Deleted profiles are excluded from every lookup and from the GST duplicate check (so a GSTIN can be re-registered), but their historical invoices remain intact. `proforma_invoices.ts:733` contact filter subquery intentionally does NOT filter `is_deleted` so invoices of deleted profiles stay findable.
 
 ## Relevant Files
 - `artifacts/api-server/src/routes/proforma-invoices.ts`: gst-lookup (4-tier), renderInvoiceHtml, soft-delete DELETE, **production order auto-creation with requestedUnit + origin**
