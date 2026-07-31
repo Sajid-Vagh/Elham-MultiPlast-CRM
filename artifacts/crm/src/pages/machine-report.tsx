@@ -20,7 +20,7 @@ interface ReportData {
     materialType: string;
     machines: { machineType: string; productCount: number; orderCount: number; totalBottles: number; pendingQty: number; inProductionQty: number; completedQty: number }[];
   }[];
-  orders: { orderId: number; orderNumber: string | null; status: string; productionUnit: string; createdAt: string; productName: string; machineType: string | null; materialType: string | null; quantity: number; bottleColour: string | null; bottleWeight: string | null; productCode: string | null }[];
+  orders: { orderId: number; orderNumber: string | null; status: string; productionUnit: string; createdAt: string; productName: string; machineType: string | null; materialType: string | null; quantity: number; readyQuantity: number; bottleColour: string | null; bottleWeight: string | null; productCode: string | null }[];
 }
 
 export default function MachineReport() {
@@ -170,15 +170,17 @@ export default function MachineReport() {
                   <TableHead>Weight</TableHead>
                   <TableHead>Unit</TableHead>
                   <TableHead>Qty</TableHead>
+                  <TableHead>Ready</TableHead>
+                  <TableHead>Remaining</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Created</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={11}><Skeleton className="h-20" /></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={13}><Skeleton className="h-20" /></TableCell></TableRow>
                 ) : orders.length === 0 ? (
-                  <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">No product lines found.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={13} className="text-center py-8 text-muted-foreground">No product lines found.</TableCell></TableRow>
                 ) : (
                   orders.map((o, idx) => (
                     <TableRow key={`${o.orderId}-${idx}`}>
@@ -191,6 +193,8 @@ export default function MachineReport() {
                       <TableCell>{o.bottleWeight || "-"}</TableCell>
                       <TableCell>{o.productionUnit || "-"}</TableCell>
                       <TableCell>{o.quantity.toLocaleString()}</TableCell>
+                      <TableCell className="text-green-700">{o.readyQuantity?.toLocaleString() || "0"}</TableCell>
+                      <TableCell className="text-orange-700">{(o.quantity - (o.readyQuantity || 0)).toLocaleString()}</TableCell>
                       <TableCell><Badge variant="outline" className={`text-xs ${statusColor(o.status)}`}>{o.status}</Badge></TableCell>
                       <TableCell className="text-sm text-muted-foreground">{o.createdAt ? new Date(o.createdAt).toLocaleDateString("en-IN") : "-"}</TableCell>
                     </TableRow>

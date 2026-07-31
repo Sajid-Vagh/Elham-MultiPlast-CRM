@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CheckCircle2, Circle, Loader2, Clock, Truck, Package, ClipboardCheck, FileCheck, MapPin, ChevronDown } from "lucide-react";
+import { CheckCircle2, Circle, Loader2, Clock, Truck, ClipboardCheck, FileCheck, MapPin, ChevronDown } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 
@@ -16,7 +16,6 @@ const PRODUCTION_STEPS = [
 const DISPATCH_STEPS = [
   { key: "Pending Dispatch", label: "Pending Dispatch", short: "Pending", icon: ClipboardCheck },
   { key: "Load Vehicle", label: "Load Vehicle", short: "Load", icon: Truck },
-  { key: "Dispatch", label: "Dispatch", short: "Dispatch", icon: Package },
   { key: "Delivered", label: "Delivered", short: "Delivered", icon: MapPin },
 ];
 

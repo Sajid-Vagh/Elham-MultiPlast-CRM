@@ -28,7 +28,6 @@ export const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
 export const PRODUCTION_DISPATCH_STATUSES = [
   "Pending Dispatch",
   "Load Vehicle",
-  "Dispatch",
   "Delivered",
 ] as const;
 
@@ -36,7 +35,7 @@ export type ProductionDispatchStatus = typeof PRODUCTION_DISPATCH_STATUSES[numbe
 
 export const VALID_DISPATCH_TRANSITIONS: Record<string, string[]> = {
   "Pending Dispatch": ["Load Vehicle"],
-  "Load Vehicle": ["Dispatch"],
+  "Load Vehicle": ["Delivered"],
   "Dispatch": ["Delivered"],
   "Delivered": [],
 };

@@ -96,6 +96,7 @@ export function onProductionChange(queryClient: QueryClient, orderId?: string, d
   queryClient.invalidateQueries({ queryKey: ["production-dashboard"] });
   queryClient.invalidateQueries({ queryKey: ["production-orders"] });
   queryClient.invalidateQueries({ queryKey: ["production-pending-summary"] });
+  queryClient.invalidateQueries({ queryKey: ["machine-report"] });
   queryClient.invalidateQueries({ queryKey: ["production-progress-by-deal"] });
   queryClient.invalidateQueries({ queryKey: ["support-dashboard-kpi"] });
   queryClient.invalidateQueries({ queryKey: ["dispatch-dashboard"] });

@@ -14,6 +14,10 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { Search, ArrowLeft, ArrowRight, Download, FileSpreadsheet, AlertTriangle, Clock, CalendarDays } from "lucide-react";
 import { useUserUnits } from "@/lib/use-user-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
@@ -48,7 +52,7 @@ const STATUSES = [
 ];
 
 const DISPATCH_STATUSES = [
-  "all", "Pending Dispatch", "Load Vehicle", "Dispatch", "Delivered",
+  "all", "Pending Dispatch", "Load Vehicle", "Delivered",
 ];
 
 export default function ProductionOrders() {
@@ -66,6 +70,9 @@ export default function ProductionOrders() {
   const [search, setSearch] = useState(params.get("search") || "");
   const [page, setPage] = useState(Number(params.get("page")) || 1);
   const [sheetDownloading, setSheetDownloading] = useState(false);
+  const [sheetDateDialogOpen, setSheetDateDialogOpen] = useState(false);
+  const [sheetDateFrom, setSheetDateFrom] = useState("");
+  const [sheetDateTo, setSheetDateTo] = useState("");
 
   const buildUrl = () => {
     const p: Record<string, string> = {};
@@ -92,7 +99,7 @@ export default function ProductionOrders() {
     enabled: !!user,
   });
 
-  const downloadSheet = async (mode: string) => {
+  const downloadSheet = async (mode: string, dateFrom?: string, dateTo?: string) => {
     setSheetDownloading(true);
     try {
       const token = localStorage.getItem("crm_token");
@@ -103,6 +110,8 @@ export default function ProductionOrders() {
       if (origin !== "all") p.set("origin", origin);
       if (selectedUnit && selectedUnit !== "All") p.set("unit", selectedUnit);
       if (search) p.set("search", search);
+      if (dateFrom) p.set("dateFrom", dateFrom);
+      if (dateTo) p.set("dateTo", dateTo);
 
       const res = await fetch(`/api/production/sheet?${p.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -163,6 +172,12 @@ export default function ProductionOrders() {
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => downloadSheet("month")}>
                 <CalendarDays className="h-4 w-4 mr-2" /> This Month
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => downloadSheet("yesterday")}>
+                <Clock className="h-4 w-4 mr-2" /> Yesterday
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSheetDateDialogOpen(true)}>
+                <CalendarDays className="h-4 w-4 mr-2" /> Custom Range
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => downloadSheet("reprint")}>
                 <AlertTriangle className="h-4 w-4 mr-2" /> Updated Orders (Reprint)
@@ -359,6 +374,40 @@ export default function ProductionOrders() {
           </div>
         </div>
       )}
+
+      {/* Custom Range Dialog */}
+      <Dialog open={sheetDateDialogOpen} onOpenChange={setSheetDateDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Production Sheet — Custom Range</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Start Date</Label>
+              <Input type="date" value={sheetDateFrom} onChange={e => setSheetDateFrom(e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label>End Date</Label>
+              <Input type="date" value={sheetDateTo} onChange={e => setSheetDateTo(e.target.value)} className="mt-1" />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Downloads all production orders created between the selected dates.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setSheetDateDialogOpen(false)}>Cancel</Button>
+            <Button
+              disabled={!sheetDateFrom || !sheetDateTo || sheetDownloading}
+              onClick={() => {
+                setSheetDateDialogOpen(false);
+                downloadSheet("date-range", sheetDateFrom, sheetDateTo);
+              }}
+            >
+              {sheetDownloading ? "Downloading..." : "Download"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

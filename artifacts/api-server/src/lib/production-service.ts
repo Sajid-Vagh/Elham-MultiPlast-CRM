@@ -1217,7 +1217,7 @@ async function requireDispatchReadAccess(user: PermissionUser): Promise<string |
 export async function loadVehicle(
   user: PermissionUser,
   orderId: number,
-  data: { transportName: string; lrNumber: string; builtyUrl?: string; dispatchRemarks?: string }
+  data: { transportName: string; lrNumber?: string; builtyUrl?: string; dispatchRemarks?: string }
 ): Promise<any> {
   const supportError = await requireSupportOrAdmin(user);
   if (supportError) return { error: supportError, status: 403, code: "FORBIDDEN" };
@@ -1257,7 +1257,7 @@ export async function loadVehicle(
   const updateData: any = {
     dispatchStatus: "Load Vehicle",
     transportName: data.transportName,
-    lrNumber: data.lrNumber,
+    lrNumber: data.lrNumber || null,
     dispatchRemarks: data.dispatchRemarks || null,
     transportBookedById: user.id,
     transportBookedAt: now,
@@ -1271,7 +1271,7 @@ export async function loadVehicle(
   const timelineText = [
     `Dispatch: Load Vehicle`,
     `Transport: ${data.transportName}`,
-    `LR/Builty: ${data.lrNumber}`,
+    `LR/Builty: ${data.lrNumber || "N/A"}`,
   ];
   if (data.dispatchRemarks) timelineText.push(`Remarks: ${data.dispatchRemarks}`);
 
@@ -1279,7 +1279,7 @@ export async function loadVehicle(
 
   await logProductionActivity(db, {
     dealId: order.dealId, contactId: null, eventName: "Dispatch — Load Vehicle",
-    orderId, details: `Transport: ${data.transportName}\nLR: ${data.lrNumber}`,
+    orderId, details: `Transport: ${data.transportName}\nLR: ${data.lrNumber || "N/A"}`,
     userName: user.name || "", createdBy: user.id,
   });
 
@@ -1292,7 +1292,7 @@ export async function loadVehicle(
   await notifySalesOfProductionEvent({
     productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
     title: "Dispatch — Load Vehicle",
-    message: `Order #${orderId}: Vehicle loaded. Transport: ${data.transportName}, LR: ${data.lrNumber}`,
+    message: `Order #${orderId}: Vehicle loaded. Transport: ${data.transportName}, LR: ${data.lrNumber || "N/A"}`,
     excludeUserId: user.id, createdByRole: order.createdByRole,
   });
 

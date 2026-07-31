@@ -20,7 +20,7 @@ import { VoiceNotePlayer } from "@/components/voice-note-player";
 import { VoiceNoteUploader } from "@/components/voice-note-uploader";
 import { useVoiceNotes, type VoiceNoteData } from "@/lib/use-voice-notes";
 import { useActiveUnits } from "@/lib/use-active-units";
-import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Calendar, Factory, ClipboardList, CheckCircle2, AlertTriangle, Package, CircleDot, ChevronDown, Mic, ArrowRightLeft } from "lucide-react";
+import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Calendar, Factory, ClipboardList, CheckCircle2, AlertTriangle, CircleDot, ChevronDown, Mic, ArrowRightLeft } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
@@ -158,14 +158,6 @@ export default function ProductionOrderDetail() {
       return res.json();
     },
     onSuccess: () => { onProductionChange(queryClient, id); setLoadVehicleDialog(false); setTransportName(""); setLrNumber(""); setBuiltyFile(null); setDispatchRemarks(""); toast({ title: "Vehicle loaded" }); },
-    onError: (err: any) => toast({ title: err?.message || "Failed", variant: "destructive" }),
-  });
-
-  const dispatchMutation = useMutation({
-    mutationFn: () => customFetch<any>(`/production/orders/${id}/dispatch`, {
-      method: "POST", body: JSON.stringify({}), headers: { "Content-Type": "application/json" },
-    }),
-    onSuccess: () => { onProductionChange(queryClient, id); toast({ title: "Order dispatched" }); },
     onError: (err: any) => toast({ title: err?.message || "Failed", variant: "destructive" }),
   });
 
@@ -525,8 +517,8 @@ export default function ProductionOrderDetail() {
               <CardContent className="space-y-4">
                 {/* Dispatch Status Progress */}
                 <div className="flex items-center gap-1 text-xs">
-                  {["Pending Dispatch", "Load Vehicle", "Dispatch", "Delivered"].map((s, i) => {
-                    const dispatchStatuses = ["Pending Dispatch", "Load Vehicle", "Dispatch", "Delivered"];
+                  {["Pending Dispatch", "Load Vehicle", "Delivered"].map((s, i) => {
+                    const dispatchStatuses = ["Pending Dispatch", "Load Vehicle", "Delivered"];
                     const currentIdx = ds ? dispatchStatuses.indexOf(ds) : -1;
                     const isCurrent = ds === s;
                     const isPast = currentIdx > i;
@@ -536,7 +528,7 @@ export default function ProductionOrderDetail() {
                           {isPast ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1}
                         </div>
                         <span className={`truncate ${isCurrent ? "font-semibold text-indigo-700" : isPast ? "text-green-600" : "text-muted-foreground"}`}>{s}</span>
-                        {i < 3 && <div className={`h-0.5 flex-1 mx-1 ${isPast ? "bg-green-400" : "bg-gray-200"}`} />}
+                        {i < 2 && <div className={`h-0.5 flex-1 mx-1 ${isPast ? "bg-green-400" : "bg-gray-200"}`} />}
                       </div>
                     );
                   })}
@@ -550,13 +542,7 @@ export default function ProductionOrderDetail() {
                       <Truck className="h-4 w-4 mr-2" /> Load Vehicle
                     </Button>
                   )}
-                  {ds === "Load Vehicle" && (
-                    <Button className="bg-purple-600 hover:bg-purple-700 w-full" size="lg" disabled={dispatchMutation.isPending}
-                      onClick={() => dispatchMutation.mutate()}>
-                      <Package className="h-4 w-4 mr-2" /> Dispatch
-                    </Button>
-                  )}
-                  {ds === "Dispatch" && (
+                  {(ds === "Load Vehicle" || ds === "Dispatch") && (
                     <Button className="bg-emerald-600 hover:bg-emerald-700 w-full" size="lg" disabled={deliverMutation.isPending}
                       onClick={() => deliverMutation.mutate()}>
                       <CheckCircle2 className="h-4 w-4 mr-2" /> Mark Delivered

@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, ArrowLeft, Package, Truck, CheckCircle2, Upload, FileText, Filter, X } from "lucide-react";
+import { Search, ArrowLeft, Package, Truck, CheckCircle2, Filter, X } from "lucide-react";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { useToast } from "@/hooks/use-toast";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
@@ -26,7 +26,7 @@ const DISPATCH_STATUS_COLORS: Record<string, string> = {
   "Delivered": "bg-emerald-100 text-emerald-700 border-emerald-300",
 };
 
-const DISPATCH_STATUSES = ["Pending Dispatch", "Load Vehicle", "Dispatch", "Delivered"];
+const DISPATCH_STATUSES = ["Pending Dispatch", "Load Vehicle", "Delivered"];
 
 const PRIORITY_COLORS: Record<string, string> = {
   "Low": "bg-gray-100 text-gray-600",
@@ -61,8 +61,8 @@ export default function DispatchPage() {
   });
   const [lrFile, setLrFile] = useState<File | null>(null);
 
-  // Dispatch confirm dialog
-  const [dispatchDialog, setDispatchDialog] = useState<any>(null);
+  // Deliver confirm dialog
+  const [deliverDialog, setDeliverDialog] = useState<any>(null);
 
   // Fetch dashboard KPIs (with unit filter)
   const { data: dashboard } = useQuery({
@@ -114,9 +114,9 @@ export default function DispatchPage() {
     },
   });
 
-  const dispatchMutation = useMutation({
+  const deliverMutation = useMutation({
     mutationFn: async (orderId: number) => {
-      return customFetch<any>(`/production/orders/${orderId}/dispatch`, {
+      return customFetch<any>(`/production/orders/${orderId}/deliver`, {
         method: "POST",
         body: JSON.stringify({}),
       });
@@ -124,12 +124,12 @@ export default function DispatchPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dispatch-orders"] });
       queryClient.invalidateQueries({ queryKey: ["dispatch-dashboard"] });
-      toast({ title: "Order dispatched successfully" });
-      setDispatchDialog(null);
+      toast({ title: "Order marked as delivered" });
+      setDeliverDialog(null);
     },
     onError: (e: any) => {
-      const msg = e?.data?.message || e?.message || "Failed to dispatch";
-      toast({ title: "Dispatch Failed", description: msg, variant: "destructive" });
+      const msg = e?.data?.message || e?.message || "Failed to mark delivered";
+      toast({ title: "Delivery Failed", description: msg, variant: "destructive" });
     },
   });
 
@@ -195,12 +195,11 @@ export default function DispatchPage() {
       </div>
 
       {/* Status Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { key: "total", label: "Total", color: "text-slate-600 bg-slate-50 border-slate-200", icon: Package },
           { key: "pendingDispatch", label: "Pending Dispatch", color: "text-amber-600 bg-amber-50 border-amber-200", icon: Package },
           { key: "loadVehicle", label: "Load Vehicle", color: "text-blue-600 bg-blue-50 border-blue-200", icon: Truck },
-          { key: "dispatched", label: "Dispatched", color: "text-purple-600 bg-purple-50 border-purple-200", icon: FileText },
           { key: "delivered", label: "Delivered", color: "text-emerald-600 bg-emerald-50 border-emerald-200", icon: CheckCircle2 },
         ].map(({ key, label, color, icon: Icon }) => (
           <Card key={key} className={`border ${color.split(" ").slice(1).join(" ")} cursor-pointer hover:shadow-md transition-all`}
@@ -208,7 +207,6 @@ export default function DispatchPage() {
               if (key === "total") setStatusFilter("all");
               else if (key === "pendingDispatch") setStatusFilter("Pending Dispatch");
               else if (key === "loadVehicle") setStatusFilter("Load Vehicle");
-              else if (key === "dispatched") setStatusFilter("Dispatch");
               else if (key === "delivered") setStatusFilter("Delivered");
             }}>
             <CardContent className="p-4">
@@ -385,16 +383,10 @@ export default function DispatchPage() {
                                 <Truck className="h-3 w-3 mr-1" /> Load Vehicle
                               </Button>
                             )}
-                            {order.dispatchStatus === "Load Vehicle" && (
+                            {(order.dispatchStatus === "Load Vehicle" || order.dispatchStatus === "Dispatch") && (
                               <Button size="sm" variant="outline" className="h-7 text-xs"
-                                onClick={() => setDispatchDialog(order)}>
-                                <Package className="h-3 w-3 mr-1" /> Dispatch
-                              </Button>
-                            )}
-                            {order.dispatchStatus === "Dispatch" && (
-                              <Button size="sm" variant="outline" className="h-7 text-xs"
-                                onClick={() => setLocation(`/production/orders/${order.id}`)}>
-                                Mark Delivered
+                                onClick={() => setDeliverDialog(order)}>
+                                <CheckCircle2 className="h-3 w-3 mr-1" /> Mark Delivered
                               </Button>
                             )}
                             {order.dispatchStatus === "Delivered" && (
@@ -456,12 +448,12 @@ export default function DispatchPage() {
                 placeholder="e.g. ABC Transport" className="mt-1" />
             </div>
             <div>
-              <Label>LR / Builty Number</Label>
+              <Label>LR / Builty Number (Optional)</Label>
               <Input value={loadForm.lrNumber} onChange={e => setLoadForm({ ...loadForm, lrNumber: e.target.value })}
                 placeholder="e.g. LR-12345" className="mt-1" />
             </div>
             <div>
-              <Label>Upload LR / Builty</Label>
+              <Label>Upload LR / Builty (Optional)</Label>
               <Input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e => setLrFile(e.target.files?.[0] || null)} className="mt-1" />
               {lrFile && <p className="text-xs text-muted-foreground mt-1">{lrFile.name}</p>}
             </div>
@@ -480,19 +472,19 @@ export default function DispatchPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Dispatch Confirm Dialog */}
-      <Dialog open={!!dispatchDialog} onOpenChange={() => setDispatchDialog(null)}>
+      {/* Deliver Confirm Dialog */}
+      <Dialog open={!!deliverDialog} onOpenChange={() => setDeliverDialog(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Confirm Dispatch</DialogTitle>
+            <DialogTitle>Confirm Delivery</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Mark order <strong>{dispatchDialog?.displayOrderId || `#${dispatchDialog?.id}`}</strong> as dispatched? This will update the status to <strong>Dispatch</strong>.
+            Mark order <strong>{deliverDialog?.displayOrderId || `#${deliverDialog?.id}`}</strong> as delivered? This will complete the order.
           </p>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setDispatchDialog(null)}>Cancel</Button>
-            <Button onClick={() => dispatchDialog && dispatchMutation.mutate(dispatchDialog.id)} disabled={dispatchMutation.isPending}>
-              {dispatchMutation.isPending ? "Dispatching..." : "Confirm Dispatch"}
+            <Button variant="outline" onClick={() => setDeliverDialog(null)}>Cancel</Button>
+            <Button onClick={() => deliverDialog && deliverMutation.mutate(deliverDialog.id)} disabled={deliverMutation.isPending}>
+              {deliverMutation.isPending ? "Saving..." : "Confirm Delivery"}
             </Button>
           </div>
         </DialogContent>

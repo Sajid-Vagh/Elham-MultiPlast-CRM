@@ -576,12 +576,9 @@ router.post("/production/orders/:id/load-vehicle", async (req, res) => {
       res.status(400).json({ success: false, code: "VALIDATION_ERROR", message: "Transport name is required", field: "transportName" });
       return;
     }
-    if (!lrNumber || !String(lrNumber).trim()) {
-      res.status(400).json({ success: false, code: "VALIDATION_ERROR", message: "LR / Builty number is required", field: "lrNumber" });
-      return;
-    }
     const result = await loadVehicle(user, id, {
-      transportName: String(transportName).trim(), lrNumber: String(lrNumber).trim(),
+      transportName: String(transportName).trim(),
+      lrNumber: lrNumber ? String(lrNumber).trim() : undefined,
       builtyUrl, dispatchRemarks,
     });
     if (result.error || result.success === false) {
@@ -702,6 +699,12 @@ router.get("/production/sheet", async (req, res) => {
       const today = new Date().toISOString().split("T")[0];
       effectiveDateFrom = today;
       effectiveDateTo = today;
+    } else if (mode === "yesterday") {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      const yesterday = d.toISOString().split("T")[0];
+      effectiveDateFrom = yesterday;
+      effectiveDateTo = yesterday;
     } else if (mode === "week") {
       const d = new Date();
       d.setDate(d.getDate() - 7);

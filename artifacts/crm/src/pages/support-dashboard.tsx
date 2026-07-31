@@ -92,7 +92,7 @@ export default function SupportDashboardPage() {
       {/* Dispatch Workflow KPIs */}
       <div>
         <h2 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wider">Dispatch Workflow</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <Card
             className="h-full border-amber-200 rounded-xl bg-card shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out cursor-pointer"
             onClick={() => setLocation("/dispatch?status=Pending Dispatch")}
@@ -118,20 +118,6 @@ export default function SupportDashboardPage() {
             <CardContent>
               <div className="text-xl font-bold text-blue-600">{d.loadVehicle ?? 0}</div>
               <p className="text-[10px] text-muted-foreground mt-1">Vehicle assigned, loading</p>
-            </CardContent>
-          </Card>
-
-          <Card
-            className="h-full border-purple-200 rounded-xl bg-card shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out cursor-pointer"
-            onClick={() => setLocation("/dispatch?status=Dispatch")}
-          >
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-medium">Dispatched</CardTitle>
-              <Package className="h-4 w-4 text-purple-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold text-purple-600">{d.dispatched ?? 0}</div>
-              <p className="text-[10px] text-muted-foreground mt-1">In transit</p>
             </CardContent>
           </Card>
 
