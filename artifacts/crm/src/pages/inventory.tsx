@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback, useRef } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveUnits } from "@/lib/use-active-units";
-import { Package, Plus, Check, Trash2, RotateCcw, History, Upload, Bold, Highlighter, Eraser, Loader2 } from "lucide-react";
+import { Package, Plus, Check, Trash2, RotateCcw, History, Upload, Bold, Highlighter, Eraser, Loader2, Search } from "lucide-react";
 import * as XLSX from "xlsx";
 
 type ServerRow = {
@@ -159,6 +159,15 @@ function calcAdditionalQty(row: GridRow): number {
   return s - c;
 }
 
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+  return debounced;
+}
+
 export default function Inventory() {
   const { data: user } = useGetMe();
   const { toast } = useToast();
@@ -178,6 +187,7 @@ export default function Inventory() {
   }, [user, unitFilter, canEdit]);
 
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
   const [rows, setRows] = useState<GridRow[]>([]);
   const [initialized, setInitialized] = useState(false);
 
@@ -193,16 +203,17 @@ export default function Inventory() {
   const [clearAllOpen, setClearAllOpen] = useState(false);
 
   // Fetch server data (filtered by unit)
-  const { data: serverData, isLoading } = useQuery<ServerRow[]>({
-    queryKey: ["inventory", effectiveUnit, search],
+  const { data: serverData, isLoading, isFetching } = useQuery<ServerRow[]>({
+    queryKey: ["inventory", effectiveUnit, debouncedSearch],
     queryFn: () => {
       const params = new URLSearchParams();
       if (effectiveUnit) params.set("unit", effectiveUnit);
-      if (search) params.set("search", search);
+      if (debouncedSearch) params.set("search", debouncedSearch);
       const qs = params.toString();
       return customFetch<any>(`/inventory${qs ? `?${qs}` : ""}`);
     },
     enabled: !!user,
+    placeholderData: keepPreviousData,
   });
 
   // Sync server data into local grid rows
@@ -625,12 +636,18 @@ export default function Inventory() {
               </SelectContent>
             </Select>
           )}
-          <Input
-            placeholder="Search products..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-[200px] h-8 text-sm"
-          />
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Search products..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-[220px] h-8 text-sm pl-9 pr-8"
+            />
+            {isFetching && initialized && (
+              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-muted-foreground" />
+            )}
+          </div>
           {canEdit && (
             <>
               <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
