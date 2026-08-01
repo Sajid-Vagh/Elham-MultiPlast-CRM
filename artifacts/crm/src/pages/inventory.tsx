@@ -627,7 +627,7 @@ export default function Inventory() {
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-6 space-y-4 max-w-full min-w-0">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -814,9 +814,9 @@ export default function Inventory() {
       )}
 
       {/* Spreadsheet Grid */}
-      <div className="border rounded-lg">
-        <div className="overflow-x-auto max-w-full">
-          <table className="w-max text-sm border-collapse">
+      <div className="border rounded-lg w-full max-w-full overflow-hidden">
+        <div className="w-full overflow-x-auto">
+          <table className="w-full min-w-max text-sm border-collapse">
             <thead>
               <tr className="bg-muted/40 border-b">
                 <th className="w-10 text-center py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
