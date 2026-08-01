@@ -423,6 +423,15 @@ export default function Leads() {
                       />
                     </TableCell>
                     <TableCell className="font-medium">
+                      {!contact.isRead && (
+                        <span
+                          className={`mr-1.5 inline-block h-2.5 w-2.5 rounded-full ring-2 align-middle ${
+                            contact.isRepeatEnquiry ? "bg-yellow-500 ring-yellow-200" : "bg-blue-500 ring-blue-200"
+                          }`}
+                          title={contact.isRepeatEnquiry ? "Unread repeat enquiry" : "Newly assigned lead"}
+                          aria-label={contact.isRepeatEnquiry ? "Unread repeat enquiry" : "Newly assigned lead"}
+                        />
+                      )}
                       <Link
                         href={`/leads/${contact.id}`}
                         onClick={() => markLeadAsRead(contact.id)}
@@ -430,15 +439,6 @@ export default function Leads() {
                       >
                         {contact.name}
                       </Link>
-                      {contact.isRead === false && (
-                        <span
-                          className={`ml-1.5 inline-block h-2 w-2 rounded-full ring-2 ${
-                            contact.isRepeatEnquiry ? "bg-yellow-500 ring-yellow-200" : "bg-blue-500 ring-blue-200"
-                          }`}
-                          title={contact.isRepeatEnquiry ? "Repeat enquiry" : "Newly assigned lead"}
-                          aria-label={contact.isRepeatEnquiry ? "Repeat enquiry" : "Newly assigned lead"}
-                        />
-                      )}
                       {contact.customerCode && <span className="ml-1.5 text-[10px] text-muted-foreground font-mono">({contact.customerCode})</span>}
                     </TableCell>
                     <TableCell>{contact.companyName || "-"}</TableCell>
