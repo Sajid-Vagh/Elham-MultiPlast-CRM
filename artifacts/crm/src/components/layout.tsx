@@ -4,6 +4,7 @@ import { Link, useLocation } from "wouter";
 import { playFollowUpSound, showBrowserNotification } from "@/lib/notification-sound";
 import { NotificationProvider, useNotifications } from "@/lib/notification-context";
 import { NotificationPopup } from "./notification-popup";
+import { NotificationSidePanel } from "./notification-side-panel";
 import {
   LayoutDashboard, Users, Briefcase,
   Package, BarChart, Download, Settings, LogOut, Bell, X, Clock, Phone, FolderTree, FileText, CheckCheck,
@@ -93,6 +94,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <NotificationProvider userId={user.id}>
       <LayoutMain user={user}>{children}</LayoutMain>
+      <NotificationSidePanel />
     </NotificationProvider>
   );
 }
@@ -108,7 +110,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   const bellRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const { unreadCount: sseUnreadCount, notifications: sseNotifications, latestNotification, markAsRead, markAllAsRead, markAsSeen, markAsSeenByRelated } = useNotifications();
+  const { unreadCount: sseUnreadCount, notifications: sseNotifications, latestNotification, markAsRead, markAllAsRead, markAsSeenByRelated, openNotificationPanel } = useNotifications();
 
   const [activePopups, setActivePopups] = useState<Set<number>>(new Set());
 
@@ -120,8 +122,9 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
 
   const dismissPopup = useCallback((id: number) => {
     setActivePopups((prev) => { const next = new Set(prev); next.delete(id); return next; });
-    markAsSeen(id);
-  }, [markAsSeen]);
+    // Dismiss = mark read (keeps the entry in Notification History, stops it counting as unread)
+    markAsRead(id);
+  }, [markAsRead]);
 
   const { data: upcomingActivities } = useListActivities(
     { upcoming: true },
@@ -444,15 +447,29 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
               </div>
               <div className="divide-y">
                 {sseNotifications.filter(n => !n.readAt).slice(0, 10).map(n => (
-                  <div key={n.id} className="p-3 hover:bg-muted/30 cursor-pointer" onClick={() => { markAsRead(n.id); setBellOpen(false); if (n.link) setLocation(n.link); }}>
-                    <p className="text-sm font-medium truncate flex items-center gap-1.5">
-                      <span
-                        className={`w-2 h-2 rounded-full flex-shrink-0 ${n.type === "repeat_enquiry" ? "bg-yellow-500" : "bg-blue-500"}`}
-                        title={n.type === "repeat_enquiry" ? "Repeat enquiry" : "New lead"}
-                      />
-                      {n.title}
-                    </p>
-                    <p className="text-xs text-muted-foreground line-clamp-2 whitespace-pre-line ml-3.5">{n.message}</p>
+                  <div key={n.id} className="flex items-start gap-1.5 group">
+                    <div
+                      className="flex-1 min-w-0 p-3 hover:bg-muted/30 cursor-pointer"
+                      onClick={() => { markAsRead(n.id); setBellOpen(false); openNotificationPanel(n); }}
+                    >
+                      <p className="text-sm font-medium truncate flex items-center gap-1.5">
+                        <span
+                          className={`w-2 h-2 rounded-full flex-shrink-0 ${n.type === "repeat_enquiry" ? "bg-yellow-500" : "bg-blue-500"}`}
+                          title={n.type === "repeat_enquiry" ? "Repeat enquiry" : "New lead"}
+                        />
+                        {n.title}
+                      </p>
+                      <p className="text-xs text-muted-foreground line-clamp-2 whitespace-pre-line ml-3.5">{n.message}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 mt-2 mr-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                      title="Dismiss (mark as read)"
+                      onClick={() => { markAsRead(n.id); }}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -569,6 +586,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
           link={n.link}
           type={n.type}
           onDismiss={dismissPopup}
+          onOpen={() => { dismissPopup(n.id); openNotificationPanel(n); }}
         />
       ))}
     </div>

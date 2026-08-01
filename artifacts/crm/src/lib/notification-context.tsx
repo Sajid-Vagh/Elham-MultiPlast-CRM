@@ -18,6 +18,8 @@ interface Notification {
   soundPlayed: boolean;
   reminderShown: boolean;
   reminderSoundPlayed: boolean;
+  customerName?: string | null;
+  customerCompany?: string | null;
 }
 
 interface NotificationContextValue {
@@ -33,6 +35,9 @@ interface NotificationContextValue {
   markAsSeenByRelated: (relatedId: number, relatedType: string) => Promise<void>;
   deleteNotification: (id: number) => Promise<void>;
   refetch: () => Promise<void>;
+  panelNotification: Notification | null;
+  openNotificationPanel: (notification: Notification) => void;
+  closeNotificationPanel: () => void;
 }
 
 const NotificationContext = createContext<NotificationContextValue | null>(null);
@@ -60,6 +65,7 @@ export function NotificationProvider({ userId, children }: { userId: number | un
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [latestNotification, setLatestNotification] = useState<Notification | null>(null);
+  const [panelNotification, setPanelNotification] = useState<Notification | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const mountedRef = useRef(true);
@@ -84,9 +90,12 @@ export function NotificationProvider({ userId, children }: { userId: number | un
         setTotal(data.total || 0);
         const maxId = fetched.length ? Math.max(...fetched.map(n => n.id)) : null;
         if (maxId !== null) {
+          // Only surface a NEW unread + unseen notification via popup/browser.
+          // Seen/read items must never re-trigger popups (prevents the glitch where
+          // dismissed notifications fired repeatedly on every poll/refetch).
           if (!isInitial && maxId > (lastKnownMaxIdRef.current ?? 0)) {
             const newest = fetched.find(n => n.id === maxId);
-            if (newest && !newest.readAt) setLatestNotification(newest);
+            if (newest && !newest.readAt && !newest.notificationSeen) setLatestNotification(newest);
           }
           lastKnownMaxIdRef.current = maxId;
         }
@@ -188,25 +197,33 @@ export function NotificationProvider({ userId, children }: { userId: number | un
   }, []);
 
   const markAsSeen = useCallback(async (id: number) => {
+    // Mark as seen (acknowledged) but KEEP in the notifications list so the
+    // Notification History page never loses entries. Dismissing a popup should
+    // not delete history.
     try {
       await fetch(`/api/notifications/${id}/seen`, { method: "PATCH", headers: getHeaders() });
-      setNotifications((prev) => prev.filter((n) => n.id !== id));
+      setNotifications((prev) => prev.map((n) =>
+        n.id === id ? { ...n, notificationSeen: true, notificationSeenAt: new Date().toISOString() } : n
+      ));
     } catch { /* ignore */ }
-  }, []);
+  }, [getHeaders]);
 
   const markAsSeenByRelated = useCallback(async (relatedId: number, relatedType: string) => {
+    // Mark as READ by related entity (activity / chat) — keeps the entry in
+    // history but stops it counting as unread.
     try {
-      const res = await fetch("/api/notifications/seen-by-related", {
+      await fetch("/api/notifications/read-by-related", {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...getHeaders() },
         body: JSON.stringify({ relatedId, relatedType }),
       });
-      const data = await res.json();
-      if (data.notification) {
-        setNotifications((prev) => prev.filter((n) => n.id !== data.notification.id));
-      }
+      setNotifications((prev) => prev.map((n) =>
+        (n.relatedId === relatedId && n.relatedType === relatedType && !n.readAt)
+          ? { ...n, readAt: new Date().toISOString() }
+          : n
+      ));
     } catch { /* ignore */ }
-  }, []);
+  }, [getHeaders]);
 
   const deleteNotification = useCallback(async (id: number) => {
     // Optimistically remove from local state immediately
@@ -233,11 +250,20 @@ export function NotificationProvider({ userId, children }: { userId: number | un
     }
   }, [getHeaders]);
 
+  const openNotificationPanel = useCallback((notification: Notification) => {
+    setPanelNotification(notification);
+  }, []);
+
+  const closeNotificationPanel = useCallback(() => {
+    setPanelNotification(null);
+  }, []);
+
   const value: NotificationContextValue = {
     notifications, total, unreadCount, latestNotification,
     loading, error,
     markAsRead, markAllAsRead, markAsSeen, markAsSeenByRelated,
     deleteNotification, refetch: fetchAll,
+    panelNotification, openNotificationPanel, closeNotificationPanel,
   };
 
   return (

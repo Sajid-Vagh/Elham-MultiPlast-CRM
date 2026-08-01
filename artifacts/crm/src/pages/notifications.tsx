@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
-import { Bell, CheckCheck, Loader2, ArrowLeft, Trash2 } from "lucide-react";
+import { Bell, CheckCheck, Loader2, ArrowLeft, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { useNotifications } from "@/lib/notification-context";
 
 type Filter = "all" | "unread" | "today" | "this_week" | "older";
@@ -30,6 +30,8 @@ const TYPE_ICONS: Record<string, string> = {
   deal_reopened: "🔁",
   user_created: "👤",
   product_added: "📦",
+  production_message: "💬",
+  lead_transfer_requested: "🔁",
 };
 
 function isToday(d: Date) {
@@ -61,12 +63,11 @@ function parseUtcDate(value: string | null | undefined): Date | null {
 }
 
 export default function NotificationsPage() {
-  const [, setLocation] = useLocation();
   const [filter, setFilter] = useState<Filter>("all");
   const [page, setPage] = useState(0);
   const limit = 50;
 
-  const { notifications, total, unreadCount, loading, error, markAsRead, markAllAsRead, deleteNotification, refetch } = useNotifications();
+  const { notifications, total, unreadCount, loading, error, markAsRead, markAllAsRead, deleteNotification, refetch, openNotificationPanel } = useNotifications();
 
   const filtered = useMemo(() => {
     let list = [...notifications];
@@ -155,7 +156,8 @@ export default function NotificationsPage() {
             return (
               <div
                 key={n.id}
-                className={`flex items-start gap-3 p-3 rounded-lg transition-colors ${isUnread ? "bg-blue-50 border border-blue-100" : "hover:bg-muted/30"}`}
+                className={`flex items-start gap-3 p-3 rounded-lg transition-colors cursor-pointer ${isUnread ? "bg-blue-50 border border-blue-100" : "hover:bg-muted/30"}`}
+                onClick={() => { markAsRead(n.id); openNotificationPanel(n); }}
               >
                 <span className="text-lg mt-0.5">{icon}</span>
                 <div className="flex-1 min-w-0">
@@ -171,15 +173,10 @@ export default function NotificationsPage() {
                   <p className="text-xs text-muted-foreground whitespace-pre-line mt-0.5">{n.message}</p>
                   <p className="text-[10px] text-muted-foreground mt-1">{dateStr} at {timeStr}</p>
                 </div>
-                <div className="flex gap-1 flex-shrink-0 mt-0.5">
-                  {n.link && (
-                    <Button variant="ghost" size="icon" className="h-7 w-7" title="View" onClick={() => setLocation(n.link!)}>
-                      <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
-                    </Button>
-                  )}
+                <div className="flex gap-1 flex-shrink-0 mt-0.5" onClick={(e) => e.stopPropagation()}>
                   {isUnread && (
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600" title="Mark as read" onClick={() => markAsRead(n.id)}>
-                      <CheckCheck className="h-3.5 w-3.5" />
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600" title="Dismiss (mark as read)" onClick={() => markAsRead(n.id)}>
+                      <X className="h-3.5 w-3.5" />
                     </Button>
                   )}
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:text-red-600" title="Delete" onClick={() => deleteNotification(n.id)}>

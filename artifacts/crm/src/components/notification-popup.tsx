@@ -1,7 +1,5 @@
-import { useEffect, useState } from "react";
 import { X, ExternalLink } from "lucide-react";
 import { Button } from "./ui/button";
-import { useLocation } from "wouter";
 
 interface NotificationPopupProps {
   id: number;
@@ -10,31 +8,20 @@ interface NotificationPopupProps {
   link?: string | null;
   type?: string;
   onDismiss: (id: number) => void;
+  onOpen: () => void;
 }
 
-export function NotificationPopup({ id, title, message, link, type, onDismiss }: NotificationPopupProps) {
-  const [, setLocation] = useLocation();
-  const [visible, setVisible] = useState(true);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setVisible(false);
-      setTimeout(() => onDismiss(id), 300);
-    }, 10000);
-    return () => clearTimeout(timer);
-  }, [id, onDismiss]);
-
-  if (!visible) return null;
+export function NotificationPopup({ id, title, message, link, type, onDismiss, onOpen }: NotificationPopupProps) {
+  // NOTE: No auto-hide. Notifications stay on screen until the user manually
+  // dismisses them (X) or opens them (opens the side panel).
 
   const isEnquiry = type === "enquiry_assigned";
   const isRepeatEnquiry = type === "repeat_enquiry";
   const accent = isRepeatEnquiry ? "bg-yellow-50 border-yellow-200" : isEnquiry ? "bg-blue-50 border-blue-200" : "bg-white";
-  const progressBar = isRepeatEnquiry ? "bg-yellow-500" : "bg-blue-500";
   const showLabeled = isEnquiry || isRepeatEnquiry;
 
   const handleClick = () => {
-    if (link) setLocation(link);
-    onDismiss(id);
+    onOpen();
   };
 
   return (
@@ -83,10 +70,9 @@ export function NotificationPopup({ id, title, message, link, type, onDismiss }:
             className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-100/50 border-t border-blue-100 transition-colors"
           >
             <ExternalLink className="h-3 w-3" />
-            {isRepeatEnquiry ? "Repeat Enquiry" : isEnquiry ? "View Lead" : "View"}
+            {isRepeatEnquiry ? "Open Repeat Enquiry" : isEnquiry ? "Open Lead" : "Open"}
           </button>
         )}
-        <div className={`h-1 ${progressBar} animate-[shrink_10s_linear]`} />
       </div>
     </div>
   );

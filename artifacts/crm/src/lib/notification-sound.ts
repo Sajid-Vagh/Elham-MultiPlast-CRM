@@ -16,8 +16,10 @@ export function playNotificationSoundForType(type: string) {
     invoice_updated: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
     invoice_deleted: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
     user_created: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
-    product_added: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
-  };
+  product_added: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
+  production_message: "https://assets.mixkit.co/active_storage/sfx/2011/2011-preview.mp3",
+  repeat_enquiry: "https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3",
+};
   const url = soundMap[type] || "https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3";
   try {
     const audio = new Audio(url);

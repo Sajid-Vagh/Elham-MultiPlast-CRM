@@ -2059,12 +2059,24 @@ export async function sendMessage(
   }
 
   // Use createNotification for SSE emission; use message ID as relatedId to avoid dedup suppression
+  // Heading explicitly states the department the message came from; body holds the snippet.
+  const senderDept =
+    user.role === "production" ? "Production"
+      : user.role === "production_and_support" ? "Support"
+        : user.role === "sales" ? "Sales"
+          : user.role === "admin" ? "Admin"
+            : user.role || "Team";
+  const chatTitle =
+    senderDept === "Production" ? "Message from Production"
+      : senderDept === "Support" ? "Support Chat"
+        : `Message from ${senderDept}`;
+
   for (const uid of notifyUserIds) {
     await createNotification({
       userId: uid,
       type: "production_message",
-      title: `New message from ${user.name}`,
-      message: message.trim().slice(0, 200),
+      title: chatTitle,
+      message: `${user.name}: ${message.trim().slice(0, 200)}`,
       link: `/production/orders/${orderId}`,
       relatedId: newMessage.id,
       relatedType: "production_message",

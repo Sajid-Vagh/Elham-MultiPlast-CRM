@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, notificationsTable, usersTable } from "@workspace/db";
+import { db, notificationsTable, usersTable, contactsTable } from "@workspace/db";
 import { eq, and, or, isNull, isNotNull, desc, sql, gte } from "drizzle-orm";
 import { getUserFromRequest, getUserIdFromToken } from "./auth";
 import { notificationEmitter, NOTIFICATION_EVENT } from "../lib/notification-emitter";
@@ -46,7 +46,29 @@ function formatNotification(row: any) {
     reminderSoundPlayed: row.reminderSoundPlayed,
     isRead: row.readAt !== null,
     module: deriveModule(row.type),
+    customerName: row.customerName ?? null,
+    customerCompany: row.customerCompany ?? null,
   };
+}
+
+// Enrich a notification row with the linked customer's name/company when it points
+// at a contact. Guarantees the frontend always receives `customerName`/`customerCompany`
+// so drawers and lists render real data instead of empty strings.
+async function withCustomerInfo(row: any) {
+  const base = formatNotification(row);
+  if (base.customerName != null || base.relatedType !== "contact") return base;
+  if (base.relatedId) {
+    const [c] = await db
+      .select({ name: contactsTable.name, companyName: contactsTable.companyName })
+      .from(contactsTable)
+      .where(eq(contactsTable.id, base.relatedId))
+      .limit(1);
+    if (c) {
+      base.customerName = c.name;
+      base.customerCompany = c.companyName;
+    }
+  }
+  return base;
 }
 
 // SSE stream for real-time notifications
@@ -144,7 +166,7 @@ router.get("/notifications/history", async (req: Request, res: Response) => {
       .where(and(...conditions));
 
     res.json({
-      notifications: rows.map(formatNotification),
+      notifications: await Promise.all(rows.map(withCustomerInfo)),
       total: Number(count),
     });
   } catch (err) {
@@ -263,6 +285,38 @@ router.patch("/notifications/seen-by-related", async (req: Request, res: Respons
     res.json({ success: true, notification: n ?? null });
   } catch (err) {
     req.log.error({ err }, "Mark seen by related error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Mark notification(s) as READ by related entity (activity / chat).
+// Unlike "seen", this persists readAt so the item stops counting as unread
+// but stays visible in the Notification History page.
+router.patch("/notifications/read-by-related", async (req: Request, res: Response) => {
+  const user = await getUser(req, res);
+  if (!user) return;
+
+  const { relatedId, relatedType } = req.body;
+  if (!relatedId || !relatedType) {
+    res.status(400).json({ error: "relatedId and relatedType are required" });
+    return;
+  }
+
+  try {
+    const rows = await db
+      .update(notificationsTable)
+      .set({ readAt: new Date() })
+      .where(and(
+        eq(notificationsTable.userId, user.id),
+        eq(notificationsTable.relatedId, Number(relatedId)),
+        eq(notificationsTable.relatedType, relatedType as string),
+        isNull(notificationsTable.readAt),
+      ))
+      .returning({ id: notificationsTable.id });
+
+    res.json({ success: true, updated: rows.length });
+  } catch (err) {
+    req.log.error({ err }, "Mark read by related error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -392,7 +446,7 @@ export async function createNotification(params: {
 
   const [n] = await db.insert(notificationsTable).values({ ...params, createdAt: new Date() }).returning();
   if (n) {
-    notificationEmitter.emit(NOTIFICATION_EVENT, n);
+    notificationEmitter.emit(NOTIFICATION_EVENT, await withCustomerInfo(n));
   }
   return n;
 }
