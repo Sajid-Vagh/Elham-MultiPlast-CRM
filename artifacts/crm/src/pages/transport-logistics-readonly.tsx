@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,15 @@ function formatRate(v: any): string {
   if (v === null || v === undefined || v === "") return "—";
   const n = Number(v);
   return isNaN(n) ? "—" : `₹${n.toLocaleString("en-IN")}`;
+}
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
 }
 
 function norm(h: string): string {
@@ -137,6 +146,7 @@ export default function TransportLogisticsLookup() {
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
   const [pinCode, setPinCode] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
@@ -175,13 +185,16 @@ export default function TransportLogisticsLookup() {
     enabled: true,
   });
 
-  // Bundle data for packing tab
+  // Bundle data for packing tab (debounced search + strict unit filter)
   const { data: bundleData, isLoading: bundleLoading } = useQuery({
-    queryKey: ["product-bundles-lookup", { search, unit: unitFilter }],
+    queryKey: ["product-bundles-lookup", { search: debouncedSearch, unit: unitFilter }],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (search) params.set("search", search);
-      if (unitFilter !== "all") params.set("unit", unitFilter);
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      if (unitFilter !== "all") {
+        params.set("unit", unitFilter);
+        params.set("strict", "true");
+      }
       params.set("limit", "100");
       const res = await fetch(`/api/transport-masters/bundles?${params}`, { headers: authHeaders() });
       if (!res.ok) throw new Error("Failed");
@@ -475,29 +488,25 @@ export default function TransportLogisticsLookup() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product Name</TableHead>
-                    <TableHead>Unit</TableHead>
-                    <TableHead className="text-right">Liner Qty</TableHead>
                     <TableHead className="text-right">TCI Bora</TableHead>
                     <TableHead className="text-right">Normal Bora</TableHead>
-                    <TableHead className="text-right">Bundle Size</TableHead>
+                    <TableHead className="text-right">Liner Packing</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {bundleLoading ? (
-                    <TableRow><TableCell colSpan={6} className="text-center py-8">Loading...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={4} className="text-center py-8">Loading...</TableCell></TableRow>
                   ) : bundleData?.data?.length === 0 ? (
-                    <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                      {search ? "No products found" : "Search to view packing quantities"}
+                    <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                      {debouncedSearch ? "No products found" : "No packing records found"}
                     </TableCell></TableRow>
                   ) : (
                     bundleData?.data?.map((item: any) => (
                       <TableRow key={item.id}>
                         <TableCell className="font-medium">{item.productName}</TableCell>
-                        <TableCell><Badge variant="outline">{item.productionUnit || "All"}</Badge></TableCell>
-                        <TableCell className="text-right">{item.linerPackingQty}</TableCell>
-                        <TableCell className="text-right">{item.tciBoraQty}</TableCell>
-                        <TableCell className="text-right">{item.normalBoraQty}</TableCell>
-                        <TableCell className="text-right font-bold">{item.bundleSize} pcs</TableCell>
+                        <TableCell className="text-right">{item.tciBoraQty ?? "—"}</TableCell>
+                        <TableCell className="text-right">{item.normalBoraQty ?? "—"}</TableCell>
+                        <TableCell className="text-right font-bold">{item.linerPacking ?? item.linerPackingQty ?? "—"}</TableCell>
                       </TableRow>
                     ))
                   )}

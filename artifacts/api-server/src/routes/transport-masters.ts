@@ -550,7 +550,7 @@ router.get("/transport-masters/bundles", async (req, res) => {
     const user = await authUser(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { search, page = "1", limit = "50", unit } = req.query as Record<string, string>;
+    const { search, page = "1", limit = "50", unit, strict } = req.query as Record<string, string>;
     const conditions: any[] = [eq(productBundleMasterTable.isActive, true)];
 
     if (search) {
@@ -558,10 +558,15 @@ router.get("/transport-masters/bundles", async (req, res) => {
     }
 
     if (unit && unit !== "all") {
-      conditions.push(or(
-        eq(productBundleMasterTable.productionUnit, unit),
-        isNull(productBundleMasterTable.productionUnit),
-      ));
+      // strict=true → return ONLY records tagged to this unit (no shared/All fallback).
+      if (strict === "true") {
+        conditions.push(eq(productBundleMasterTable.productionUnit, unit));
+      } else {
+        conditions.push(or(
+          eq(productBundleMasterTable.productionUnit, unit),
+          isNull(productBundleMasterTable.productionUnit),
+        ));
+      }
     } else {
       const visibleUnits = getVisibleUnits(user);
       if (visibleUnits !== null && visibleUnits.length === 0) {
@@ -581,7 +586,7 @@ router.get("/transport-masters/bundles", async (req, res) => {
       .offset((pageNum - 1) * limitNum);
 
     res.json({
-      data,
+      data: data.map((b) => ({ ...b, linerPacking: b.linerPackingQty })),
       pagination: {
         page: pageNum,
         limit: limitNum,
