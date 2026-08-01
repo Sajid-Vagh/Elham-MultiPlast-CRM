@@ -502,6 +502,28 @@ router.get("/contacts/:id", async (req, res) => {
   }
 });
 
+// POST /contacts/:id/read — Mark a lead as read (unread indicator)
+router.post("/contacts/:id/read", async (req, res) => {
+  try {
+    const access = await requireContactAccess(req, res);
+    if (!access) return;
+    const { contact } = access;
+    if (contact.isRead) {
+      res.json(await withOwner(contact));
+      return;
+    }
+    const [updated] = await db
+      .update(contactsTable)
+      .set({ isRead: true })
+      .where(eq(contactsTable.id, contact.id))
+      .returning();
+    res.json(await withOwner(updated!));
+  } catch (err) {
+    req.log.error({ err }, "Mark contact read error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // Get comment history for a contact
 router.get("/contacts/:id/comments", async (req, res) => {
   try {
@@ -585,6 +607,11 @@ router.patch("/contacts/:id", async (req, res) => {
           return;
         }
       }
+    }
+
+    // Reset the unread flag whenever the lead is reassigned to a different owner
+    if (parsed.data.salesOwnerId !== undefined && parsed.data.salesOwnerId !== oldContact.salesOwnerId) {
+      updatePayload.isRead = false;
     }
 
     const [contact] = await db.update(contactsTable).set(updatePayload).where(eq(contactsTable.id, params.data.id)).returning();

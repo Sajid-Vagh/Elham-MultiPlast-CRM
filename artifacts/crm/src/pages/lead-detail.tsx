@@ -89,6 +89,19 @@ export default function LeadDetail() {
   const { units: activeUnits } = useActiveUnits();
   const { data: contactProformas } = useListContactProformaInvoices(contactId, { query: { enabled: !!contactId, queryKey: getListContactProformaInvoicesQueryKey(contactId) } });
 
+  // Mark the lead as read when viewed so the unread dot clears on the Leads table
+  useEffect(() => {
+    if (!contact || contact.isRead) return;
+    fetch(`/api/contacts/${contact.id}/read`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
+    }).catch(() => {});
+    queryClient.setQueriesData<any[]>(
+      { queryKey: ["leads-contacts"] },
+      (old) => old?.map((c) => (c.id === contact.id ? { ...c, isRead: true } : c)) ?? old
+    );
+  }, [contact?.id]);
+
   const createDeal = useCreateDeal();
   const deleteContact = useDeleteContact();
   const updateContact = useUpdateContact();

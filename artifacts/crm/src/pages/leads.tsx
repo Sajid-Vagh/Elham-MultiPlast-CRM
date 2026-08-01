@@ -242,6 +242,19 @@ export default function Leads() {
     });
   };
 
+  const markLeadAsRead = (id: number) => {
+    // Optimistically update all cached leads lists so the dot disappears immediately on return
+    queryClient.setQueriesData<any[]>(
+      { queryKey: ["leads-contacts"] },
+      (old) => old?.map((c) => (c.id === id ? { ...c, isRead: true } : c)) ?? old
+    );
+    // Fire-and-forget background request to persist the read state
+    fetch(`/api/contacts/${id}/read`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
+    }).catch(() => {});
+  };
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex justify-between items-center">
@@ -410,9 +423,20 @@ export default function Leads() {
                       />
                     </TableCell>
                     <TableCell className="font-medium">
-                      <Link href={`/leads/${contact.id}`} className="hover:underline text-primary">
+                      <Link
+                        href={`/leads/${contact.id}`}
+                        onClick={() => markLeadAsRead(contact.id)}
+                        className="hover:underline text-primary"
+                      >
                         {contact.name}
                       </Link>
+                      {contact.isRead === false && (
+                        <span
+                          className="ml-1.5 inline-block h-2 w-2 rounded-full bg-blue-500 ring-2 ring-blue-200"
+                          title="Unread lead"
+                          aria-label="Unread lead"
+                        />
+                      )}
                       {contact.customerCode && <span className="ml-1.5 text-[10px] text-muted-foreground font-mono">({contact.customerCode})</span>}
                     </TableCell>
                     <TableCell>{contact.companyName || "-"}</TableCell>

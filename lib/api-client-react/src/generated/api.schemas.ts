@@ -223,6 +223,7 @@ export interface Contact {
   commentUpdatedBy?: number | null;
   customerCode?: string | null;
   isMyClient: boolean;
+  isRead?: boolean;
   createdAt: string;
 }
 
