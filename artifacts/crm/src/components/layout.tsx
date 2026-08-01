@@ -360,7 +360,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 h-screen overflow-y-auto">
         {children}
       </main>
 
