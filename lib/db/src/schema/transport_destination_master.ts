@@ -13,6 +13,8 @@ export const transportDestinationMasterTable = pgTable("transport_destination_ma
   transportCompany: text("transport_company"),
   transportType: text("transport_type").notNull().default("Bundle Wise"),
   transportCharge: numeric("transport_charge", { precision: 12, scale: 2 }).notNull().default("0"),
+  tciBora: numeric("tci_bora", { precision: 12, scale: 2 }).notNull().default("0"),
+  normalBora: numeric("normal_bora", { precision: 12, scale: 2 }).notNull().default("0"),
   transitDays: integer("transit_days"),
   productionUnit: text("production_unit"),
   remarks: text("remarks"),

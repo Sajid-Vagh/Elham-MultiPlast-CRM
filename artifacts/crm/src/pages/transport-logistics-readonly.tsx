@@ -20,8 +20,8 @@ const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("crm_
 const EDIT_ROLES = ["admin", "production", "production_and_support"];
 
 // ── Add Record form types ──
-type TransportForm = { state: string; city: string; pinCode: string; transportCompany: string; transportType: string; transportCharge: string; transitDays: string; productionUnit: string; remarks: string };
-const EMPTY_TRANSPORT_FORM: TransportForm = { state: "", city: "", pinCode: "", transportCompany: "", transportType: "Bundle Wise", transportCharge: "", transitDays: "", productionUnit: "all", remarks: "" };
+type TransportForm = { state: string; city: string; pinCode: string; transportCompany: string; tciBora: string; normalBora: string; productionUnit: string; remarks: string };
+const EMPTY_TRANSPORT_FORM: TransportForm = { state: "", city: "", pinCode: "", transportCompany: "", tciBora: "", normalBora: "", productionUnit: "all", remarks: "" };
 
 type BundleForm = { productName: string; bundleSize: string; linerPackingQty: string; tciBoraQty: string; normalBoraQty: string; productionUnit: string; remarks: string };
 const EMPTY_BUNDLE_FORM: BundleForm = { productName: "", bundleSize: "", linerPackingQty: "", tciBoraQty: "", normalBoraQty: "", productionUnit: "all", remarks: "" };
@@ -40,6 +40,12 @@ type ImportPreview = {
 
 const PARSER_LABELS: Record<DetectedParser, string> = { transport: "Transport Master", liner: "Liner Packing", bora: "Bora Packing" };
 
+function formatRate(v: any): string {
+  if (v === null || v === undefined || v === "") return "—";
+  const n = Number(v);
+  return isNaN(n) ? "—" : `₹${n.toLocaleString("en-IN")}`;
+}
+
 function norm(h: string): string {
   return h.toLowerCase().trim().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
 }
@@ -57,9 +63,8 @@ const TRANSPORT_ALIASES: Record<string, string[]> = {
   city: ["city", "destination city", "dest city", "town", "place"],
   pinCode: ["pin code", "pincode", "pin", "zip code", "zip", "postal code"],
   transportCompany: ["transport company", "transport co", "transporter", "company", "carrier", "transport name", "transport"],
-  transportType: ["transport type", "type", "mode"],
-  transportCharge: ["freight charge", "freight", "charge", "rate", "cost", "transport charge", "amount"],
-  transitDays: ["transit days", "transit", "days", "delivery days"],
+  tciBora: ["tci bora", "tci", "tci bora rate", "tci rate"],
+  normalBora: ["normal bora", "normal", "normal bora rate", "bora rate", "bora"],
   productionUnit: ["production unit", "factory unit", "unit"],
   remarks: ["remarks", "notes", "comments"],
 };
@@ -81,10 +86,14 @@ const BORA_ALIASES: Record<string, string[]> = {
 
 function detectParser(headers: string[]): DetectedParser {
   const joined = headers.map(norm).join(" ");
+  // Transport rate sheets carry STATE + CITY (+ TRANSPORT COMPANY, TCI/NORMAL BORA).
+  // Check for state/city/transport markers BEFORE the bora check — a transport
+  // sheet also contains "tci bora"/"normal bora" columns which would otherwise
+  // be misdetected as a bora packing sheet.
+  if (/state/.test(joined) && /city/.test(joined)) return "transport";
+  if (/transport/.test(joined) || /freight/.test(joined) || /transit/.test(joined)) return "transport";
   if (/liner/.test(joined) && !/tci|bora|normal/.test(joined)) return "liner";
   if (/\btci\b/.test(joined) || /normal.*bora/.test(joined) || /bora/.test(joined)) return "bora";
-  if (/transport/.test(joined) || /freight/.test(joined) || /transit/.test(joined)) return "transport";
-  if (/state/.test(joined) && /city/.test(joined)) return "transport";
   return "transport";
 }
 
@@ -117,7 +126,7 @@ function previewEndpoint(p: DetectedParser): string {
 }
 
 function executeEndpoint(p: DetectedParser): string {
-  if (p === "transport") return "/api/transport-masters/destinations/import/execute";
+  if (p === "transport") return "/api/transport-rates/upload";
   if (p === "liner") return "/api/transport-masters/bundles/import/liner/execute";
   return "/api/transport-masters/bundles/import/bora/execute";
 }
@@ -143,6 +152,10 @@ export default function TransportLogisticsLookup() {
   const [bundleForm, setBundleForm] = useState<BundleForm>(EMPTY_BUNDLE_FORM);
 
   // Import state
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadUnit, setUploadUnit] = useState<string>("");
+  const [selectedFile, setSelectedFile] = useState<string>("");
+  const [importUnit, setImportUnit] = useState<string>("");
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [importing, setImporting] = useState(false);
 
@@ -193,9 +206,9 @@ export default function TransportLogisticsLookup() {
         method: "POST", headers: authHeaders(),
         body: JSON.stringify({
           state: form.state, city: form.city, pinCode: form.pinCode || undefined,
-          transportCompany: form.transportCompany || undefined, transportType: form.transportType,
-          transportCharge: Number(form.transportCharge || 0),
-          transitDays: form.transitDays ? Number(form.transitDays) : undefined,
+          transportCompany: form.transportCompany || undefined,
+          tciBora: form.tciBora !== "" ? Number(form.tciBora) : 0,
+          normalBora: form.normalBora !== "" ? Number(form.normalBora) : 0,
           productionUnit: form.productionUnit === "all" ? null : form.productionUnit,
           remarks: form.remarks || undefined,
         }),
@@ -228,9 +241,9 @@ export default function TransportLogisticsLookup() {
     onError: (e: any) => toast({ title: e.message || "Error", variant: "destructive" }),
   });
 
-  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleUploadContinue = useCallback(async () => {
+    const file = fileRef.current?.files?.[0];
+    if (!file || !uploadUnit) return;
     try {
       const XLSX = await import("xlsx");
       const data = await file.arrayBuffer();
@@ -249,13 +262,17 @@ export default function TransportLogisticsLookup() {
       });
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || "Preview failed"); }
       const result = await res.json();
+      setImportUnit(uploadUnit);
       setPreview({ parser, fileName: file.name, summary: result.summary, errors: result.errors, warnings: result.warnings || [], validRows: result.validRows || [] });
       toast({ title: `Detected: ${PARSER_LABELS[parser]}` });
+      setUploadOpen(false);
+      setUploadUnit("");
+      setSelectedFile("");
+      if (fileRef.current) fileRef.current.value = "";
     } catch (err: any) {
       toast({ title: err.message || "Failed to parse file", variant: "destructive" });
     }
-    if (fileRef.current) fileRef.current.value = "";
-  }, [toast]);
+  }, [uploadUnit, toast]);
 
   const handleImport = useCallback(async () => {
     if (!preview) return;
@@ -266,21 +283,22 @@ export default function TransportLogisticsLookup() {
         body: JSON.stringify({
           rows: preview.validRows,
           fileName: preview.fileName,
-          productionUnit: unitFilter,
+          productionUnit: importUnit,
         }),
       });
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || "Import failed"); }
       const result = await res.json();
       queryClient.invalidateQueries({ queryKey: ["transport-lookup"] });
       queryClient.invalidateQueries({ queryKey: ["product-bundles-lookup"] });
-      toast({ title: `Imported ${result.imported} ${PARSER_LABELS[preview.parser]} record(s)${unitFilter !== "all" ? ` for ${unitFilter}` : ""}` });
+      toast({ title: `Imported ${result.imported} ${PARSER_LABELS[preview.parser]} record(s) for ${importUnit}` });
       setPreview(null);
+      setImportUnit("");
     } catch (err: any) {
       toast({ title: err.message || "Import failed", variant: "destructive" });
     } finally {
       setImporting(false);
     }
-  }, [preview, unitFilter, toast, queryClient]);
+  }, [preview, importUnit, toast, queryClient]);
 
   const renderUnitOptions = (includeAll: boolean) => (
     <>
@@ -302,18 +320,8 @@ export default function TransportLogisticsLookup() {
       <div><Label>Destination State *</Label><Input value={form.state} onChange={e => setForm(p => ({ ...p, state: e.target.value }))} placeholder="e.g. Maharashtra" /></div>
       <div><Label>Destination City *</Label><Input value={form.city} onChange={e => setForm(p => ({ ...p, city: e.target.value }))} placeholder="e.g. Pune" /></div>
       <div><Label>Transport Company</Label><Input value={form.transportCompany} onChange={e => setForm(p => ({ ...p, transportCompany: e.target.value }))} placeholder="e.g. TCI, VRL" /></div>
-      <div>
-        <Label>Transport Type</Label>
-        <Select value={form.transportType} onValueChange={v => setForm(p => ({ ...p, transportType: v }))}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="Bundle Wise">Bundle Wise</SelectItem>
-            <SelectItem value="Vehicle Wise">Vehicle Wise</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div><Label>Freight Charge (₹) *</Label><Input type="number" min={0} step={0.01} value={form.transportCharge} onChange={e => setForm(p => ({ ...p, transportCharge: e.target.value }))} placeholder="Per bundle/vehicle" /></div>
-      <div><Label>Transit Days</Label><Input type="number" min={0} value={form.transitDays} onChange={e => setForm(p => ({ ...p, transitDays: e.target.value }))} placeholder="Days" /></div>
+      <div><Label>TCI Bora (₹)</Label><Input type="number" min={0} step={0.01} value={form.tciBora} onChange={e => setForm(p => ({ ...p, tciBora: e.target.value }))} placeholder="TCI transport rate" /></div>
+      <div><Label>Normal Bora (₹)</Label><Input type="number" min={0} step={0.01} value={form.normalBora} onChange={e => setForm(p => ({ ...p, normalBora: e.target.value }))} placeholder="Normal transport rate" /></div>
       <div className="col-span-2"><Label>Remarks</Label><Input value={form.remarks} onChange={e => setForm(p => ({ ...p, remarks: e.target.value }))} placeholder="Optional notes" /></div>
     </div>
   );
@@ -355,8 +363,7 @@ export default function TransportLogisticsLookup() {
 
         {canEdit && (
           <div className="flex items-center gap-2">
-            <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileUpload} />
-            <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}>
+            <Button size="sm" variant="outline" onClick={() => setUploadOpen(true)}>
               <Upload className="h-4 w-4 mr-1" /> Upload Sheet
             </Button>
             <Button size="sm" onClick={openAdd}>
@@ -420,37 +427,33 @@ export default function TransportLogisticsLookup() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Unit</TableHead>
-                    <TableHead>PIN</TableHead>
-                    <TableHead>City</TableHead>
                     <TableHead>State</TableHead>
+                    <TableHead>City</TableHead>
+                    <TableHead>PIN Code</TableHead>
                     <TableHead>Transport Company</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead className="text-right">Freight (₹)</TableHead>
-                    <TableHead className="text-right">Transit Days</TableHead>
+                    <TableHead className="text-right">TCI Bora (₹)</TableHead>
+                    <TableHead className="text-right">Normal Bora (₹)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {lookupLoading ? (
-                    <TableRow><TableCell colSpan={8} className="text-center py-8">Searching...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={6} className="text-center py-8">Searching...</TableCell></TableRow>
                   ) : !lookupData?.data?.length ? (
-                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                       {pinCode || city || state ? "No transport routes found for this destination" : "No transport records found"}
                     </TableCell></TableRow>
                   ) : (
                     lookupData.data.map((item: any, idx: number) => (
                       <TableRow key={item.id} className={idx === 0 ? "bg-green-50" : ""}>
-                        <TableCell><Badge variant="outline">{item.productionUnit || "All"}</Badge></TableCell>
+                        <TableCell className="font-medium">{item.state}</TableCell>
+                        <TableCell>{item.city}</TableCell>
                         <TableCell className="font-mono text-sm">{item.pinCode || "—"}</TableCell>
-                        <TableCell className="font-medium">{item.city}</TableCell>
-                        <TableCell>{item.state}</TableCell>
                         <TableCell className="font-medium">
                           {item.transportCompany || "—"}
                           {idx === 0 && <Star className="h-3 w-3 text-amber-500 ml-1 inline" />}
                         </TableCell>
-                        <TableCell><Badge variant="outline" className="text-xs">{item.transportType}</Badge></TableCell>
-                        <TableCell className="text-right font-bold text-green-700">₹{Number(item.transportCharge).toLocaleString("en-IN")}</TableCell>
-                        <TableCell className="text-right">{item.transitDays ? `${item.transitDays} days` : "—"}</TableCell>
+                        <TableCell className="text-right font-bold text-green-700">{formatRate(item.tciBora)}</TableCell>
+                        <TableCell className="text-right font-bold">{formatRate(item.normalBora)}</TableCell>
                       </TableRow>
                     ))
                   )}
@@ -520,7 +523,7 @@ export default function TransportLogisticsLookup() {
           <div className="flex gap-2 pt-3">
             {activeTab === "lookup" ? (
               <Button
-                disabled={createTransportMut.isPending || !transportForm.state || !transportForm.city || !transportForm.transportCharge}
+                disabled={createTransportMut.isPending || !transportForm.state || !transportForm.city || (!transportForm.tciBora && !transportForm.normalBora)}
                 onClick={() => createTransportMut.mutate(transportForm)}
               >
                 {createTransportMut.isPending ? "Saving..." : "Save"}
@@ -534,6 +537,52 @@ export default function TransportLogisticsLookup() {
               </Button>
             )}
             <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Upload Sheet Dialog — unit selection is mandatory */}
+      <Dialog open={uploadOpen} onOpenChange={o => {
+        if (!o) { setUploadOpen(false); setUploadUnit(""); setSelectedFile(""); if (fileRef.current) fileRef.current.value = ""; }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-4 w-4" />
+              Upload Sheet
+            </DialogTitle>
+            <DialogDescription>
+              Select the unit this sheet belongs to — every imported row will be tagged with this unit.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <Label>Select Unit *</Label>
+              <Select value={uploadUnit} onValueChange={setUploadUnit}>
+                <SelectTrigger><SelectValue placeholder="Choose a unit" /></SelectTrigger>
+                <SelectContent>
+                  {activeUnits.filter(u => u !== "Not Sure").map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Excel / CSV File *</Label>
+              <Input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={() => setSelectedFile(fileRef.current?.files?.[0]?.name || "")}
+              />
+              {selectedFile && <p className="text-xs text-muted-foreground mt-1">{selectedFile}</p>}
+            </div>
+          </div>
+          <div className="flex gap-2 pt-3">
+            <Button size="sm" disabled={!uploadUnit || !selectedFile} onClick={handleUploadContinue}>
+              Continue to Preview
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => { setUploadOpen(false); setUploadUnit(""); setSelectedFile(""); if (fileRef.current) fileRef.current.value = ""; }}>
+              Cancel
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -552,7 +601,7 @@ export default function TransportLogisticsLookup() {
                 <Badge variant="outline" className="bg-green-50">{preview?.summary.valid} valid</Badge>
                 {preview && preview.summary.invalid > 0 && <Badge variant="destructive">{preview.summary.invalid} skipped</Badge>}
                 {preview && preview.warnings.length > 0 && <Badge variant="outline" className="bg-yellow-50 text-yellow-700">{preview.warnings.length} warnings</Badge>}
-                {unitFilter !== "all" && <Badge variant="outline" className="bg-teal-50 text-teal-700">Tagging unit: {unitFilter}</Badge>}
+                {importUnit && <Badge variant="outline" className="bg-teal-50 text-teal-700">Tagging unit: {importUnit}</Badge>}
               </div>
             </DialogDescription>
           </DialogHeader>
@@ -575,8 +624,8 @@ export default function TransportLogisticsLookup() {
                     <TableHead className="w-12">Row</TableHead>
                     {preview.parser === "transport" && (
                       <>
-                        <TableHead>Unit</TableHead><TableHead>PIN</TableHead><TableHead>City</TableHead>
-                        <TableHead>State</TableHead><TableHead>Transport Co.</TableHead><TableHead className="text-right">Charge</TableHead>
+                        <TableHead>State</TableHead><TableHead>City</TableHead><TableHead>PIN</TableHead>
+                        <TableHead>Transport Co.</TableHead><TableHead className="text-right">TCI Bora</TableHead><TableHead className="text-right">Normal Bora</TableHead>
                       </>
                     )}
                     {preview.parser === "liner" && (
@@ -603,12 +652,12 @@ export default function TransportLogisticsLookup() {
                         <TableCell className="text-xs">{rowNum}</TableCell>
                         {preview.parser === "transport" && (
                           <>
-                            <TableCell className="text-xs">{unitFilter !== "all" ? unitFilter : (row.productionUnit || "All")}</TableCell>
-                            <TableCell className="text-xs font-mono">{row.pinCode || "—"}</TableCell>
-                            <TableCell className="text-xs">{row.city}</TableCell>
                             <TableCell className="text-xs">{row.state}</TableCell>
+                            <TableCell className="text-xs">{row.city}</TableCell>
+                            <TableCell className="text-xs font-mono">{row.pinCode || "—"}</TableCell>
                             <TableCell className="text-xs">{row.transportCompany || "—"}</TableCell>
-                            <TableCell className="text-xs text-right">₹{row.transportCharge || 0}</TableCell>
+                            <TableCell className="text-xs text-right">{row.tciBora || 0}</TableCell>
+                            <TableCell className="text-xs text-right">{row.normalBora || 0}</TableCell>
                           </>
                         )}
                         {preview.parser === "liner" && (

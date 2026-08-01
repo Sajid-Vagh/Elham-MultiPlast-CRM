@@ -208,7 +208,7 @@ router.post("/transport-masters/destinations", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
     if (!canManageTransportLookup(user)) { res.status(403).json({ error: "Forbidden" }); return; }
 
-    const { state, city, pinCode, transportCompany, transportType, transportCharge, transitDays, productionUnit, remarks } = req.body;
+    const { state, city, pinCode, transportCompany, transportType, transportCharge, transitDays, tciBora, normalBora, productionUnit, remarks } = req.body;
     if (!state || !city) {
       res.status(400).json({ error: "State and city are required" }); return;
     }
@@ -220,6 +220,8 @@ router.post("/transport-masters/destinations", async (req, res) => {
       transportCompany: transportCompany?.trim() || null,
       transportType: transportType?.trim() || "Bundle Wise",
       transportCharge: String(transportCharge || 0),
+      tciBora: tciBora !== undefined && tciBora !== "" ? String(tciBora) : "0",
+      normalBora: normalBora !== undefined && normalBora !== "" ? String(normalBora) : "0",
       transitDays: transitDays ? Number(transitDays) : null,
       productionUnit: productionUnit && productionUnit !== "all" ? productionUnit : null,
       remarks: remarks?.trim() || null,
@@ -257,6 +259,8 @@ router.patch("/transport-masters/destinations/:id", async (req, res) => {
       }
     }
     if (req.body.transportCharge !== undefined) updateData.transport_charge = String(req.body.transportCharge);
+    if (req.body.tciBora !== undefined) updateData.tci_bora = String(Number(req.body.tciBora) || 0);
+    if (req.body.normalBora !== undefined) updateData.normal_bora = String(Number(req.body.normalBora) || 0);
     if (req.body.minFreight !== undefined) updateData.min_freight = req.body.minFreight ? String(req.body.minFreight) : null;
     if (req.body.maxFreight !== undefined) updateData.max_freight = req.body.maxFreight ? String(req.body.maxFreight) : null;
 
@@ -374,11 +378,12 @@ router.post("/transport-masters/destinations/import/preview", async (req, res) =
       if (!row.state?.trim()) { errors.push({ row: rowNum, field: "state", message: "State is required" }); rowValid = false; }
       if (!row.city?.trim()) { errors.push({ row: rowNum, field: "city", message: "City is required" }); rowValid = false; }
       if (!row.transportCompany?.trim()) { errors.push({ row: rowNum, field: "transportCompany", message: "Transport Name is required" }); rowValid = false; }
-      if (row.transportCharge !== undefined && row.transportCharge !== "" && isNaN(Number(row.transportCharge))) {
-        errors.push({ row: rowNum, field: "transportCharge", message: "Invalid charge" }); rowValid = false;
-      }
-      if (row.transportCharge !== undefined && row.transportCharge !== "" && Number(row.transportCharge) < 0) {
-        errors.push({ row: rowNum, field: "transportCharge", message: "Charge cannot be negative" }); rowValid = false;
+      for (const [rateField, label] of [["tciBora", "TCI Bora"], ["normalBora", "Normal Bora"]] as const) {
+        if (row[rateField] !== undefined && row[rateField] !== "" && isNaN(Number(row[rateField]))) {
+          errors.push({ row: rowNum, field: rateField, message: `Invalid ${label} rate` }); rowValid = false;
+        } else if (row[rateField] !== undefined && row[rateField] !== "" && Number(row[rateField]) < 0) {
+          errors.push({ row: rowNum, field: rateField, message: `${label} rate cannot be negative` }); rowValid = false;
+        }
       }
       if (row.pinCode && !/^\d{6}$/.test(String(row.pinCode).trim())) {
         warnings.push({ row: rowNum, field: "pinCode", message: "PIN code should be 6 digits" });
@@ -400,70 +405,82 @@ router.post("/transport-masters/destinations/import/preview", async (req, res) =
 });
 
 // Execute import: insert valid rows
-router.post("/transport-masters/destinations/import/execute", async (req, res) => {
-  try {
-    const user = await authUser(req);
-    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (!canImportTransportLookup(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+// Shared by the legacy execute route (unit optional) and the `/transport-rates/upload`
+// alias (unit mandatory — every imported row is stamped with the selected unit).
+function makeDestinationsImportExecute(requireUnit: boolean) {
+  return async (req: any, res: any) => {
+    try {
+      const user = await authUser(req);
+      if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!canImportTransportLookup(user)) { res.status(403).json({ error: "Forbidden" }); return; }
 
-    const { rows, fileName, productionUnit: forcedUnit } = req.body as { rows: any[]; fileName?: string; productionUnit?: string };
-    if (!Array.isArray(rows) || rows.length === 0) {
-      res.status(400).json({ error: "rows array is required" }); return;
-    }
-    const tagUnit = forcedUnit && forcedUnit !== "all" ? String(forcedUnit).trim() : null;
-
-    // Create import batch
-    const [batch] = await db.insert(importBatchesTable).values({
-      entityType: "transport_master",
-      importedBy: user.id,
-      fileName: fileName || "unknown.xlsx",
-      rowCount: rows.length,
-      successCount: 0,
-      errorCount: 0,
-    }).returning();
-
-    let successCount = 0;
-    const importErrors: { row: number; field: string; message: string }[] = [];
-
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      const rowNum = i + 1;
-      try {
-        await db.insert(transportDestinationMasterTable).values({
-          state: (row.state || "").trim(),
-          city: (row.city || "").trim(),
-          pinCode: row.pinCode?.trim() || null,
-          transportCompany: row.transportCompany?.trim() || null,
-          transportType: row.transportType?.trim() || "Bundle Wise",
-          transportCharge: String(row.transportCharge || 0),
-          transitDays: row.transitDays ? Number(row.transitDays) : null,
-          productionUnit: tagUnit ?? (row.productionUnit && row.productionUnit !== "all" ? row.productionUnit.trim() : null),
-          remarks: row.remarks?.trim() || null,
-          createdBy: user.id,
-          updatedBy: user.id,
-          importBatchId: batch.id,
-        });
-        successCount++;
-      } catch (e: any) {
-        importErrors.push({ row: rowNum, field: "database", message: e.message || "Insert failed" });
+      const { rows, fileName, productionUnit: forcedUnit } = req.body as { rows: any[]; fileName?: string; productionUnit?: string };
+      if (!Array.isArray(rows) || rows.length === 0) {
+        res.status(400).json({ error: "rows array is required" }); return;
       }
+      const tagUnit = forcedUnit && forcedUnit !== "all" ? String(forcedUnit).trim() : null;
+      if (requireUnit && !tagUnit) {
+        res.status(400).json({ error: "Unit selection is required — every imported row must be tagged with a production unit" }); return;
+      }
+
+      // Create import batch
+      const [batch] = await db.insert(importBatchesTable).values({
+        entityType: "transport_master",
+        importedBy: user.id,
+        fileName: fileName || "unknown.xlsx",
+        rowCount: rows.length,
+        successCount: 0,
+        errorCount: 0,
+      }).returning();
+
+      let successCount = 0;
+      const importErrors: { row: number; field: string; message: string }[] = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const rowNum = i + 1;
+        try {
+          await db.insert(transportDestinationMasterTable).values({
+            state: (row.state || "").trim(),
+            city: (row.city || "").trim(),
+            pinCode: row.pinCode?.trim() || null,
+            transportCompany: row.transportCompany?.trim() || null,
+            transportType: row.transportType?.trim() || "Bundle Wise",
+            transportCharge: String(row.transportCharge || 0),
+            tciBora: row.tciBora !== undefined && row.tciBora !== "" ? String(row.tciBora) : "0",
+            normalBora: row.normalBora !== undefined && row.normalBora !== "" ? String(row.normalBora) : "0",
+            transitDays: row.transitDays ? Number(row.transitDays) : null,
+            productionUnit: tagUnit ?? (row.productionUnit && row.productionUnit !== "all" ? row.productionUnit.trim() : null),
+            remarks: row.remarks?.trim() || null,
+            createdBy: user.id,
+            updatedBy: user.id,
+            importBatchId: batch.id,
+          });
+          successCount++;
+        } catch (e: any) {
+          importErrors.push({ row: rowNum, field: "database", message: e.message || "Insert failed" });
+        }
+      }
+
+      // Update batch with results
+      await db.update(importBatchesTable).set({
+        successCount,
+        errorCount: importErrors.length,
+        report: { errors: importErrors, fileName },
+      }).where(eq(importBatchesTable.id, batch.id));
+
+      await logAudit("import_batch", batch.id, "import", null, { entityType: "transport_master", rowCount: rows.length, successCount, errorCount: importErrors.length }, user.id);
+
+      res.json({ batchId: batch.id, imported: successCount, errors: importErrors });
+    } catch (err) {
+      console.error("Transport import execute error:", err);
+      res.status(500).json({ error: "Internal server error" });
     }
+  };
+}
 
-    // Update batch with results
-    await db.update(importBatchesTable).set({
-      successCount,
-      errorCount: importErrors.length,
-      report: { errors: importErrors, fileName },
-    }).where(eq(importBatchesTable.id, batch.id));
-
-    await logAudit("import_batch", batch.id, "import", null, { entityType: "transport_master", rowCount: rows.length, successCount, errorCount: importErrors.length }, user.id);
-
-    res.json({ batchId: batch.id, imported: successCount, errors: importErrors });
-  } catch (err) {
-    console.error("Transport import execute error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
+router.post("/transport-masters/destinations/import/execute", makeDestinationsImportExecute(false));
+router.post("/transport-rates/upload", makeDestinationsImportExecute(true));
 
 // Undo last import
 router.post("/transport-masters/destinations/import/undo", async (req, res) => {
