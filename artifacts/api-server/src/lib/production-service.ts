@@ -2400,17 +2400,17 @@ export async function getMachineReport(
     const existing = machineMap.get(key) || { productCount: 0, orderIds: new Set<number>(), totalBottles: 0, pendingQty: 0, inProductionQty: 0 };
     existing.productCount++;
     existing.orderIds.add(row.orderId);
-    existing.totalBottles += row.quantity;
+    existing.totalBottles += row.quantity - row.readyQuantity;
     const remaining = row.quantity - row.readyQuantity;
     const bucket = statusBucket(row);
-    if (bucket === "pending") { pendingCount++; existing.pendingQty += remaining > 0 ? remaining : row.quantity; }
-    else if (bucket === "inProduction") { inProductionCount++; existing.inProductionQty += remaining > 0 ? remaining : row.quantity; }
+    if (bucket === "pending") { pendingCount++; existing.pendingQty += remaining > 0 ? remaining : 0; }
+    else if (bucket === "inProduction") { inProductionCount++; existing.inProductionQty += remaining > 0 ? remaining : 0; }
     machineMap.set(key, existing);
   }
 
   const summary = {
     totalProducts: filteredRows.length,
-    totalBottles: filteredRows.reduce((s, r) => s + r.quantity, 0),
+    totalBottles: filteredRows.reduce((s, r) => s + (r.quantity - r.readyQuantity), 0),
     pending: pendingCount,
     inProduction: inProductionCount,
     completed: 0,
@@ -2428,11 +2428,11 @@ export async function getMachineReport(
     const existing = innerMap.get(machine) || { productCount: 0, orderIds: new Set<number>(), totalBottles: 0, pendingQty: 0, inProductionQty: 0 };
     existing.productCount++;
     existing.orderIds.add(row.orderId);
-    existing.totalBottles += row.quantity;
+    existing.totalBottles += row.quantity - row.readyQuantity;
     const remaining = row.quantity - row.readyQuantity;
     const bucket = statusBucket(row);
-    if (bucket === "pending") existing.pendingQty += remaining > 0 ? remaining : row.quantity;
-    else if (bucket === "inProduction") existing.inProductionQty += remaining > 0 ? remaining : row.quantity;
+    if (bucket === "pending") existing.pendingQty += remaining > 0 ? remaining : 0;
+    else if (bucket === "inProduction") existing.inProductionQty += remaining > 0 ? remaining : 0;
     innerMap.set(machine, existing);
   }
 
