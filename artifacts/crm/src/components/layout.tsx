@@ -7,7 +7,7 @@ import { NotificationPopup } from "./notification-popup";
 import {
   LayoutDashboard, Users, Briefcase,
   Package, BarChart, Download, Settings, LogOut, Bell, X, Clock, Phone, FolderTree, FileText, CheckCheck,
-  Factory, ClipboardList, Truck, AlertTriangle, Layers, MapPin, Database, ShoppingCart
+  Factory, ClipboardList, Truck, AlertTriangle, Layers, MapPin, ShoppingCart
 } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -222,7 +222,6 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: ShoppingCart, label: "Orders", href: "/orders", color: "#0ea5e9" },
     { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
     { icon: FileText, label: "Proforma Invoices", href: "/proforma-invoices", color: "#06b6d4" },
-    { icon: Database, label: "Masters", href: "/masters", color: "#14b8a6" },
     { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
   ];
 

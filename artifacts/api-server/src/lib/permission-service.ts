@@ -158,6 +158,22 @@ export function canImportMaster(user: PermissionUser): boolean {
 }
 
 /**
+ * Check if a user can add/upload records from the Freight & Packing Lookup page.
+ * Admin, Support, and Production roles only (Sales is view-only).
+ */
+export function canManageTransportLookup(user: PermissionUser): boolean {
+  return user.role === "admin" || user.role === "production" || user.role === "production_and_support";
+}
+
+/**
+ * Check if a user can upload/import sheets from the Freight & Packing Lookup page.
+ * Admin, Support, and Production roles only (Sales is view-only).
+ */
+export function canImportTransportLookup(user: PermissionUser): boolean {
+  return user.role === "admin" || user.role === "production" || user.role === "production_and_support";
+}
+
+/**
  * Check if a user can delete master import records.
  * Admin only.
  */

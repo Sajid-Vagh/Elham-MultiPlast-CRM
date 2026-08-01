@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, productBundleMasterTable, transportDestinationMasterTable, importBatchesTable, auditLogsTable, ordersTable, orderItemsTable } from "@workspace/db";
 import { eq, and, sql, ilike, or, isNull, desc } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
-import { canManageMaster, canImportMaster, canUndoImport, type PermissionUser } from "../lib/permission-service";
+import { canManageMaster, canManageTransportLookup, canImportTransportLookup, canUndoImport, type PermissionUser } from "../lib/permission-service";
 
 const router: IRouter = Router();
 
@@ -201,12 +201,12 @@ router.get("/transport-masters/destinations/lookup", async (req, res) => {
   }
 });
 
-// Create destination (admin/inventory only)
+// Create destination (admin/support/production only)
 router.post("/transport-masters/destinations", async (req, res) => {
   try {
     const user = await authUser(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (!canManageMaster(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (!canManageTransportLookup(user)) { res.status(403).json({ error: "Forbidden" }); return; }
 
     const { state, city, pinCode, transportCompany, transportType, transportCharge, transitDays, productionUnit, remarks } = req.body;
     if (!state || !city) {
@@ -352,7 +352,7 @@ router.post("/transport-masters/destinations/import/preview", async (req, res) =
   try {
     const user = await authUser(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (!canImportMaster(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (!canImportTransportLookup(user)) { res.status(403).json({ error: "Forbidden" }); return; }
 
     const { rows, fileName } = req.body as { rows: any[]; fileName?: string };
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -404,12 +404,13 @@ router.post("/transport-masters/destinations/import/execute", async (req, res) =
   try {
     const user = await authUser(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (!canImportMaster(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (!canImportTransportLookup(user)) { res.status(403).json({ error: "Forbidden" }); return; }
 
-    const { rows, fileName } = req.body as { rows: any[]; fileName?: string };
+    const { rows, fileName, productionUnit: forcedUnit } = req.body as { rows: any[]; fileName?: string; productionUnit?: string };
     if (!Array.isArray(rows) || rows.length === 0) {
       res.status(400).json({ error: "rows array is required" }); return;
     }
+    const tagUnit = forcedUnit && forcedUnit !== "all" ? String(forcedUnit).trim() : null;
 
     // Create import batch
     const [batch] = await db.insert(importBatchesTable).values({
@@ -436,7 +437,7 @@ router.post("/transport-masters/destinations/import/execute", async (req, res) =
           transportType: row.transportType?.trim() || "Bundle Wise",
           transportCharge: String(row.transportCharge || 0),
           transitDays: row.transitDays ? Number(row.transitDays) : null,
-          productionUnit: row.productionUnit && row.productionUnit !== "all" ? row.productionUnit.trim() : null,
+          productionUnit: tagUnit ?? (row.productionUnit && row.productionUnit !== "all" ? row.productionUnit.trim() : null),
           remarks: row.remarks?.trim() || null,
           createdBy: user.id,
           updatedBy: user.id,
@@ -613,12 +614,12 @@ router.get("/transport-masters/bundles/lookup", async (req, res) => {
   }
 });
 
-// Create bundle (admin/inventory only)
+// Create bundle (admin/support/production only)
 router.post("/transport-masters/bundles", async (req, res) => {
   try {
     const user = await authUser(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (!canManageMaster(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (!canManageTransportLookup(user)) { res.status(403).json({ error: "Forbidden" }); return; }
 
     const { productName, productId, bundleSize, linerPackingQty, tciBoraQty, normalBoraQty, productionUnit, remarks } = req.body;
     if (!productName) {
@@ -722,7 +723,7 @@ router.post("/transport-masters/bundles/import/preview", async (req, res) => {
   try {
     const user = await authUser(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (!canImportMaster(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (!canImportTransportLookup(user)) { res.status(403).json({ error: "Forbidden" }); return; }
 
     const { rows, fileName } = req.body as { rows: any[]; fileName?: string };
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -787,12 +788,13 @@ router.post("/transport-masters/bundles/import/execute", async (req, res) => {
   try {
     const user = await authUser(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (!canImportMaster(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (!canImportTransportLookup(user)) { res.status(403).json({ error: "Forbidden" }); return; }
 
-    const { rows, fileName } = req.body as { rows: any[]; fileName?: string };
+    const { rows, fileName, productionUnit: forcedUnit } = req.body as { rows: any[]; fileName?: string; productionUnit?: string };
     if (!Array.isArray(rows) || rows.length === 0) {
       res.status(400).json({ error: "rows array is required" }); return;
     }
+    const tagUnit = forcedUnit && forcedUnit !== "all" ? String(forcedUnit).trim() : null;
 
     const [batch] = await db.insert(importBatchesTable).values({
       entityType: "packing_master",
@@ -817,7 +819,7 @@ router.post("/transport-masters/bundles/import/execute", async (req, res) => {
           linerPackingQty: Number(row.linerPackingQty || 0),
           tciBoraQty: Number(row.tciBoraQty || 0),
           normalBoraQty: Number(row.normalBoraQty || 0),
-          productionUnit: row.productionUnit && row.productionUnit !== "all" ? row.productionUnit.trim() : null,
+          productionUnit: tagUnit ?? (row.productionUnit && row.productionUnit !== "all" ? row.productionUnit.trim() : null),
           remarks: row.remarks?.trim() || null,
           createdBy: user.id,
           updatedBy: user.id,
@@ -903,7 +905,7 @@ router.post("/transport-masters/bundles/import/liner/preview", async (req, res) 
   try {
     const user = await authUser(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (!canImportMaster(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (!canImportTransportLookup(user)) { res.status(403).json({ error: "Forbidden" }); return; }
 
     const { rows, fileName } = req.body as { rows: any[]; fileName?: string };
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -946,12 +948,13 @@ router.post("/transport-masters/bundles/import/liner/execute", async (req, res) 
   try {
     const user = await authUser(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (!canImportMaster(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (!canImportTransportLookup(user)) { res.status(403).json({ error: "Forbidden" }); return; }
 
-    const { rows, fileName } = req.body as { rows: any[]; fileName?: string };
+    const { rows, fileName, productionUnit: forcedUnit } = req.body as { rows: any[]; fileName?: string; productionUnit?: string };
     if (!Array.isArray(rows) || rows.length === 0) {
       res.status(400).json({ error: "rows array is required" }); return;
     }
+    const tagUnit = forcedUnit && forcedUnit !== "all" ? String(forcedUnit).trim() : null;
 
     const [batch] = await db.insert(importBatchesTable).values({
       entityType: "liner_master",
@@ -970,7 +973,7 @@ router.post("/transport-masters/bundles/import/liner/execute", async (req, res) 
       const rowNum = i + 1;
       try {
         const productName = (row.productName || "").trim();
-        const productionUnit = row.productionUnit && row.productionUnit !== "all" ? row.productionUnit.trim() : null;
+        const productionUnit = tagUnit ?? (row.productionUnit && row.productionUnit !== "all" ? row.productionUnit.trim() : null);
         const linerQty = Number(row.linerPackingQty || 0);
         const bundleSize = row.bundleSize ? Number(row.bundleSize) : undefined;
 
@@ -1067,7 +1070,7 @@ router.post("/transport-masters/bundles/import/bora/preview", async (req, res) =
   try {
     const user = await authUser(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (!canImportMaster(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (!canImportTransportLookup(user)) { res.status(403).json({ error: "Forbidden" }); return; }
 
     const { rows, fileName } = req.body as { rows: any[]; fileName?: string };
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -1118,12 +1121,13 @@ router.post("/transport-masters/bundles/import/bora/execute", async (req, res) =
   try {
     const user = await authUser(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (!canImportMaster(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (!canImportTransportLookup(user)) { res.status(403).json({ error: "Forbidden" }); return; }
 
-    const { rows, fileName } = req.body as { rows: any[]; fileName?: string };
+    const { rows, fileName, productionUnit: forcedUnit } = req.body as { rows: any[]; fileName?: string; productionUnit?: string };
     if (!Array.isArray(rows) || rows.length === 0) {
       res.status(400).json({ error: "rows array is required" }); return;
     }
+    const tagUnit = forcedUnit && forcedUnit !== "all" ? String(forcedUnit).trim() : null;
 
     const [batch] = await db.insert(importBatchesTable).values({
       entityType: "bora_master",
@@ -1142,7 +1146,7 @@ router.post("/transport-masters/bundles/import/bora/execute", async (req, res) =
       const rowNum = i + 1;
       try {
         const productName = (row.productName || "").trim();
-        const productionUnit = row.productionUnit && row.productionUnit !== "all" ? row.productionUnit.trim() : null;
+        const productionUnit = tagUnit ?? (row.productionUnit && row.productionUnit !== "all" ? row.productionUnit.trim() : null);
         const tciBora = row.tciBoraQty !== undefined && row.tciBoraQty !== "" ? Number(row.tciBoraQty) : 0;
         const normalBora = row.normalBoraQty !== undefined && row.normalBoraQty !== "" ? Number(row.normalBoraQty) : 0;
         const bundleSize = row.bundleSize ? Number(row.bundleSize) : undefined;

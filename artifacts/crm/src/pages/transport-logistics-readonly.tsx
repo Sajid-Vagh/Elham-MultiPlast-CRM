@@ -1,17 +1,132 @@
-import { useState, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useCallback, useRef } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, MapPin, Package, Truck, Star } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Search, MapPin, Package, Truck, Star, Plus, Upload, CheckCircle, FileSpreadsheet, AlertTriangle } from "lucide-react";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { useToast } from "@/hooks/use-toast";
+import { useGetMe } from "@workspace/api-client-react";
 
-const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("crm_token")}` });
+const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("crm_token")}`, "Content-Type": "application/json" });
+
+// Roles allowed to add records / upload sheets (Admin, Support, Production). Sales is view-only.
+const EDIT_ROLES = ["admin", "production", "production_and_support"];
+
+// ── Add Record form types ──
+type TransportForm = { state: string; city: string; pinCode: string; transportCompany: string; transportType: string; transportCharge: string; transitDays: string; productionUnit: string; remarks: string };
+const EMPTY_TRANSPORT_FORM: TransportForm = { state: "", city: "", pinCode: "", transportCompany: "", transportType: "Bundle Wise", transportCharge: "", transitDays: "", productionUnit: "all", remarks: "" };
+
+type BundleForm = { productName: string; bundleSize: string; linerPackingQty: string; tciBoraQty: string; normalBoraQty: string; productionUnit: string; remarks: string };
+const EMPTY_BUNDLE_FORM: BundleForm = { productName: "", bundleSize: "", linerPackingQty: "", tciBoraQty: "", normalBoraQty: "", productionUnit: "all", remarks: "" };
+
+// ── Import parser detection (flexible column mapping) ──
+type DetectedParser = "transport" | "liner" | "bora";
+
+type ImportPreview = {
+  parser: DetectedParser;
+  fileName: string;
+  summary: { total: number; valid: number; invalid: number };
+  errors: { row: number; field: string; message: string }[];
+  warnings: { row?: number; field?: string; message: string }[];
+  validRows: any[];
+};
+
+const PARSER_LABELS: Record<DetectedParser, string> = { transport: "Transport Master", liner: "Liner Packing", bora: "Bora Packing" };
+
+function norm(h: string): string {
+  return h.toLowerCase().trim().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function hasCol(headers: string[], ...aliases: string[]): string | undefined {
+  for (const h of headers) {
+    const n = norm(h);
+    for (const a of aliases) { if (n === a || n.includes(a)) return h; }
+  }
+  return undefined;
+}
+
+const TRANSPORT_ALIASES: Record<string, string[]> = {
+  state: ["state", "destination state", "dest state"],
+  city: ["city", "destination city", "dest city", "town", "place"],
+  pinCode: ["pin code", "pincode", "pin", "zip code", "zip", "postal code"],
+  transportCompany: ["transport company", "transport co", "transporter", "company", "carrier", "transport name", "transport"],
+  transportType: ["transport type", "type", "mode"],
+  transportCharge: ["freight charge", "freight", "charge", "rate", "cost", "transport charge", "amount"],
+  transitDays: ["transit days", "transit", "days", "delivery days"],
+  productionUnit: ["production unit", "factory unit", "unit"],
+  remarks: ["remarks", "notes", "comments"],
+};
+
+const LINER_ALIASES: Record<string, string[]> = {
+  productName: ["product name", "product", "item", "item name", "description"],
+  linerPackingQty: ["liner packing qty", "liner packing", "liner qty", "liner", "packing qty"],
+  productionUnit: ["production unit", "factory unit", "unit"],
+  bundleSize: ["bundle size", "bundle", "pack size", "pack"],
+};
+
+const BORA_ALIASES: Record<string, string[]> = {
+  productName: ["product name", "product", "item", "item name", "description"],
+  tciBoraQty: ["tci bora qty", "tci bora", "tci"],
+  normalBoraQty: ["normal bora qty", "normal bora", "normal"],
+  bundleSize: ["bundle size", "bundle", "pack size", "pack"],
+  productionUnit: ["production unit", "factory unit", "unit"],
+};
+
+function detectParser(headers: string[]): DetectedParser {
+  const joined = headers.map(norm).join(" ");
+  if (/liner/.test(joined) && !/tci|bora|normal/.test(joined)) return "liner";
+  if (/\btci\b/.test(joined) || /normal.*bora/.test(joined) || /bora/.test(joined)) return "bora";
+  if (/transport/.test(joined) || /freight/.test(joined) || /transit/.test(joined)) return "transport";
+  if (/state/.test(joined) && /city/.test(joined)) return "transport";
+  return "transport";
+}
+
+function mapRow(row: any, headers: string[], aliases: Record<string, string[]>): any {
+  const result: any = {};
+  for (const [field, aliasList] of Object.entries(aliases)) {
+    const h = hasCol(headers, ...aliasList);
+    if (h) result[field] = row[h];
+  }
+  return result;
+}
+
+function parseRows(rawRows: any[], parser: DetectedParser): { mapped: any[]; mapping: Record<string, string> } {
+  if (rawRows.length === 0) return { mapped: [], mapping: {} };
+  const headers = Object.keys(rawRows[0]);
+  const aliases = parser === "transport" ? TRANSPORT_ALIASES : parser === "liner" ? LINER_ALIASES : BORA_ALIASES;
+  const mapping: Record<string, string> = {};
+  for (const [field, aliasList] of Object.entries(aliases)) {
+    const h = hasCol(headers, ...aliasList);
+    if (h) mapping[field] = h;
+  }
+  const mapped = rawRows.map((row, i) => ({ ...mapRow(row, headers, aliases), _rowNum: i + 1 }));
+  return { mapped, mapping };
+}
+
+function previewEndpoint(p: DetectedParser): string {
+  if (p === "transport") return "/api/transport-masters/destinations/import/preview";
+  if (p === "liner") return "/api/transport-masters/bundles/import/liner/preview";
+  return "/api/transport-masters/bundles/import/bora/preview";
+}
+
+function executeEndpoint(p: DetectedParser): string {
+  if (p === "transport") return "/api/transport-masters/destinations/import/execute";
+  if (p === "liner") return "/api/transport-masters/bundles/import/liner/execute";
+  return "/api/transport-masters/bundles/import/bora/execute";
+}
 
 export default function TransportLogisticsLookup() {
+  const { data: user } = useGetMe();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const [pinCode, setPinCode] = useState("");
   const [city, setCity] = useState("");
@@ -19,6 +134,17 @@ export default function TransportLogisticsLookup() {
   const [activeTab, setActiveTab] = useState("lookup");
   const [unitFilter, setUnitFilter] = useState<string>("all");
   const { units: activeUnits } = useActiveUnits();
+
+  const canEdit = EDIT_ROLES.includes(user?.role || "");
+
+  // Add Record state
+  const [addOpen, setAddOpen] = useState(false);
+  const [transportForm, setTransportForm] = useState<TransportForm>(EMPTY_TRANSPORT_FORM);
+  const [bundleForm, setBundleForm] = useState<BundleForm>(EMPTY_BUNDLE_FORM);
+
+  // Import state
+  const [preview, setPreview] = useState<ImportPreview | null>(null);
+  const [importing, setImporting] = useState(false);
 
   // PIN-first lookup
   const { data: lookupData, isLoading: lookupLoading } = useQuery({
@@ -55,6 +181,165 @@ export default function TransportLogisticsLookup() {
     // Trigger lookup based on whichever field has data
   }, []);
 
+  const openAdd = useCallback(() => {
+    setTransportForm({ ...EMPTY_TRANSPORT_FORM, productionUnit: unitFilter });
+    setBundleForm({ ...EMPTY_BUNDLE_FORM, productionUnit: unitFilter });
+    setAddOpen(true);
+  }, [unitFilter]);
+
+  const createTransportMut = useMutation({
+    mutationFn: async (form: TransportForm) => {
+      const res = await fetch("/api/transport-masters/destinations", {
+        method: "POST", headers: authHeaders(),
+        body: JSON.stringify({
+          state: form.state, city: form.city, pinCode: form.pinCode || undefined,
+          transportCompany: form.transportCompany || undefined, transportType: form.transportType,
+          transportCharge: Number(form.transportCharge || 0),
+          transitDays: form.transitDays ? Number(form.transitDays) : undefined,
+          productionUnit: form.productionUnit === "all" ? null : form.productionUnit,
+          remarks: form.remarks || undefined,
+        }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Failed"); }
+      return res.json();
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["transport-lookup"] }); toast({ title: "Transport record added" }); setAddOpen(false); },
+    onError: (e: any) => toast({ title: e.message || "Error", variant: "destructive" }),
+  });
+
+  const createBundleMut = useMutation({
+    mutationFn: async (form: BundleForm) => {
+      const res = await fetch("/api/transport-masters/bundles", {
+        method: "POST", headers: authHeaders(),
+        body: JSON.stringify({
+          productName: form.productName,
+          bundleSize: Number(form.bundleSize || form.linerPackingQty || 80),
+          linerPackingQty: Number(form.linerPackingQty || 0),
+          tciBoraQty: Number(form.tciBoraQty || 0),
+          normalBoraQty: Number(form.normalBoraQty || 0),
+          productionUnit: form.productionUnit === "all" ? null : form.productionUnit,
+          remarks: form.remarks || undefined,
+        }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Failed"); }
+      return res.json();
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["product-bundles-lookup"] }); toast({ title: "Packing record added" }); setAddOpen(false); },
+    onError: (e: any) => toast({ title: e.message || "Error", variant: "destructive" }),
+  });
+
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const XLSX = await import("xlsx");
+      const data = await file.arrayBuffer();
+      const wb = XLSX.read(data, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rawRows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      if (rawRows.length === 0) { toast({ title: "No data found in file", variant: "destructive" }); return; }
+
+      const headers = Object.keys(rawRows[0] as object);
+      const parser = detectParser(headers);
+      const { mapped } = parseRows(rawRows, parser);
+
+      const res = await fetch(previewEndpoint(parser), {
+        method: "POST", headers: authHeaders(),
+        body: JSON.stringify({ rows: mapped, fileName: file.name }),
+      });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || "Preview failed"); }
+      const result = await res.json();
+      setPreview({ parser, fileName: file.name, summary: result.summary, errors: result.errors, warnings: result.warnings || [], validRows: result.validRows || [] });
+      toast({ title: `Detected: ${PARSER_LABELS[parser]}` });
+    } catch (err: any) {
+      toast({ title: err.message || "Failed to parse file", variant: "destructive" });
+    }
+    if (fileRef.current) fileRef.current.value = "";
+  }, [toast]);
+
+  const handleImport = useCallback(async () => {
+    if (!preview) return;
+    setImporting(true);
+    try {
+      const res = await fetch(executeEndpoint(preview.parser), {
+        method: "POST", headers: authHeaders(),
+        body: JSON.stringify({
+          rows: preview.validRows,
+          fileName: preview.fileName,
+          productionUnit: unitFilter,
+        }),
+      });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || "Import failed"); }
+      const result = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["transport-lookup"] });
+      queryClient.invalidateQueries({ queryKey: ["product-bundles-lookup"] });
+      toast({ title: `Imported ${result.imported} ${PARSER_LABELS[preview.parser]} record(s)${unitFilter !== "all" ? ` for ${unitFilter}` : ""}` });
+      setPreview(null);
+    } catch (err: any) {
+      toast({ title: err.message || "Import failed", variant: "destructive" });
+    } finally {
+      setImporting(false);
+    }
+  }, [preview, unitFilter, toast, queryClient]);
+
+  const renderUnitOptions = (includeAll: boolean) => (
+    <>
+      {includeAll && <SelectItem value="all">All Units</SelectItem>}
+      {activeUnits.filter(u => u !== "Not Sure").map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+    </>
+  );
+
+  const renderTransportForm = (form: TransportForm, setForm: React.Dispatch<React.SetStateAction<TransportForm>>) => (
+    <div className="grid grid-cols-2 gap-3 pt-2">
+      <div>
+        <Label>Factory Unit</Label>
+        <Select value={form.productionUnit} onValueChange={v => setForm(p => ({ ...p, productionUnit: v }))}>
+          <SelectTrigger><SelectValue placeholder="All Units" /></SelectTrigger>
+          <SelectContent>{renderUnitOptions(true)}</SelectContent>
+        </Select>
+      </div>
+      <div><Label>PIN Code</Label><Input value={form.pinCode} onChange={e => setForm(p => ({ ...p, pinCode: e.target.value }))} placeholder="6-digit PIN" maxLength={6} /></div>
+      <div><Label>Destination State *</Label><Input value={form.state} onChange={e => setForm(p => ({ ...p, state: e.target.value }))} placeholder="e.g. Maharashtra" /></div>
+      <div><Label>Destination City *</Label><Input value={form.city} onChange={e => setForm(p => ({ ...p, city: e.target.value }))} placeholder="e.g. Pune" /></div>
+      <div><Label>Transport Company</Label><Input value={form.transportCompany} onChange={e => setForm(p => ({ ...p, transportCompany: e.target.value }))} placeholder="e.g. TCI, VRL" /></div>
+      <div>
+        <Label>Transport Type</Label>
+        <Select value={form.transportType} onValueChange={v => setForm(p => ({ ...p, transportType: v }))}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Bundle Wise">Bundle Wise</SelectItem>
+            <SelectItem value="Vehicle Wise">Vehicle Wise</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div><Label>Freight Charge (₹) *</Label><Input type="number" min={0} step={0.01} value={form.transportCharge} onChange={e => setForm(p => ({ ...p, transportCharge: e.target.value }))} placeholder="Per bundle/vehicle" /></div>
+      <div><Label>Transit Days</Label><Input type="number" min={0} value={form.transitDays} onChange={e => setForm(p => ({ ...p, transitDays: e.target.value }))} placeholder="Days" /></div>
+      <div className="col-span-2"><Label>Remarks</Label><Input value={form.remarks} onChange={e => setForm(p => ({ ...p, remarks: e.target.value }))} placeholder="Optional notes" /></div>
+    </div>
+  );
+
+  const renderBundleForm = (form: BundleForm, setForm: React.Dispatch<React.SetStateAction<BundleForm>>) => (
+    <div className="grid gap-3 pt-2">
+      <div><Label>Product Name *</Label><Input value={form.productName} onChange={e => setForm(p => ({ ...p, productName: e.target.value }))} placeholder="e.g. 500ml Bottle" /></div>
+      <div className="grid grid-cols-3 gap-3">
+        <div><Label>Liner Packing Qty</Label><Input type="number" min={0} value={form.linerPackingQty} onChange={e => setForm(p => ({ ...p, linerPackingQty: e.target.value }))} placeholder="0" /></div>
+        <div><Label>TCI Bora Qty</Label><Input type="number" min={0} value={form.tciBoraQty} onChange={e => setForm(p => ({ ...p, tciBoraQty: e.target.value }))} placeholder="0" /></div>
+        <div><Label>Normal Bora Qty</Label><Input type="number" min={0} value={form.normalBoraQty} onChange={e => setForm(p => ({ ...p, normalBoraQty: e.target.value }))} placeholder="0" /></div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label>Production Unit</Label>
+          <Select value={form.productionUnit} onValueChange={v => setForm(p => ({ ...p, productionUnit: v }))}>
+            <SelectTrigger><SelectValue placeholder="All Units" /></SelectTrigger>
+            <SelectContent>{renderUnitOptions(true)}</SelectContent>
+          </Select>
+        </div>
+        <div><Label>Bundle Size (pcs)</Label><Input type="number" min={1} value={form.bundleSize} onChange={e => setForm(p => ({ ...p, bundleSize: e.target.value }))} placeholder="e.g. 80" /></div>
+      </div>
+      <div><Label>Remarks</Label><Input value={form.remarks} onChange={e => setForm(p => ({ ...p, remarks: e.target.value }))} placeholder="Optional notes" /></div>
+    </div>
+  );
+
   return (
     <div className="p-6 space-y-6">
       <div>
@@ -62,14 +347,23 @@ export default function TransportLogisticsLookup() {
         <p className="text-sm text-muted-foreground mt-1">Search transport rates by PIN code or destination, and view packing quantities</p>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <Select value={unitFilter} onValueChange={setUnitFilter}>
           <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Units" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Units</SelectItem>
-            {activeUnits.filter(u => u !== "Not Sure").map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-          </SelectContent>
+          <SelectContent>{renderUnitOptions(true)}</SelectContent>
         </Select>
+
+        {canEdit && (
+          <div className="flex items-center gap-2">
+            <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileUpload} />
+            <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}>
+              <Upload className="h-4 w-4 mr-1" /> Upload Sheet
+            </Button>
+            <Button size="sm" onClick={openAdd}>
+              <Plus className="h-4 w-4 mr-1" /> Add Record
+            </Button>
+          </div>
+        )}
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -122,7 +416,7 @@ export default function TransportLogisticsLookup() {
 
           {/* Results */}
           <Card>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -173,7 +467,7 @@ export default function TransportLogisticsLookup() {
           </div>
 
           <Card>
-            <CardContent className="p-0">
+            <CardContent className="p-0 overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -210,6 +504,157 @@ export default function TransportLogisticsLookup() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Add Record Dialog */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{activeTab === "lookup" ? "Add Transport Record" : "Add Packing Record"}</DialogTitle>
+            <DialogDescription>
+              {unitFilter !== "all" ? `New record will be tagged to unit: ${unitFilter}` : "Select a unit from the dropdown above to auto-tag this record"}
+            </DialogDescription>
+          </DialogHeader>
+          {activeTab === "lookup"
+            ? renderTransportForm(transportForm, setTransportForm)
+            : renderBundleForm(bundleForm, setBundleForm)}
+          <div className="flex gap-2 pt-3">
+            {activeTab === "lookup" ? (
+              <Button
+                disabled={createTransportMut.isPending || !transportForm.state || !transportForm.city || !transportForm.transportCharge}
+                onClick={() => createTransportMut.mutate(transportForm)}
+              >
+                {createTransportMut.isPending ? "Saving..." : "Save"}
+              </Button>
+            ) : (
+              <Button
+                disabled={createBundleMut.isPending || !bundleForm.productName}
+                onClick={() => createBundleMut.mutate(bundleForm)}
+              >
+                {createBundleMut.isPending ? "Saving..." : "Save"}
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Preview Dialog */}
+      <Dialog open={!!preview} onOpenChange={o => !o && setPreview(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-4 w-4" />
+              Import Preview — {preview?.fileName}
+            </DialogTitle>
+            <DialogDescription>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                <Badge variant="outline" className="bg-blue-50 text-blue-700">{preview ? PARSER_LABELS[preview.parser] : ""}</Badge>
+                <Badge variant="outline" className="bg-green-50">{preview?.summary.valid} valid</Badge>
+                {preview && preview.summary.invalid > 0 && <Badge variant="destructive">{preview.summary.invalid} skipped</Badge>}
+                {preview && preview.warnings.length > 0 && <Badge variant="outline" className="bg-yellow-50 text-yellow-700">{preview.warnings.length} warnings</Badge>}
+                {unitFilter !== "all" && <Badge variant="outline" className="bg-teal-50 text-teal-700">Tagging unit: {unitFilter}</Badge>}
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+
+          {preview && preview.warnings.length > 0 && (
+            <div className="p-3 bg-yellow-50 rounded-md border border-yellow-200 max-h-24 overflow-y-auto">
+              <p className="text-xs font-medium text-yellow-800 mb-1">Warnings:</p>
+              {preview.warnings.slice(0, 5).map((w: any, i: number) => (
+                <p key={i} className="text-xs text-yellow-700">{w.row ? `Row ${w.row}: ` : ""}{w.message}</p>
+              ))}
+              {preview.warnings.length > 5 && <p className="text-xs text-yellow-600">...and {preview.warnings.length - 5} more</p>}
+            </div>
+          )}
+
+          {preview && preview.validRows.length > 0 && (
+            <div className="max-h-80 overflow-y-auto border rounded-md">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">Row</TableHead>
+                    {preview.parser === "transport" && (
+                      <>
+                        <TableHead>Unit</TableHead><TableHead>PIN</TableHead><TableHead>City</TableHead>
+                        <TableHead>State</TableHead><TableHead>Transport Co.</TableHead><TableHead className="text-right">Charge</TableHead>
+                      </>
+                    )}
+                    {preview.parser === "liner" && (
+                      <>
+                        <TableHead>Product</TableHead><TableHead className="text-right">Liner Qty</TableHead>
+                      </>
+                    )}
+                    {preview.parser === "bora" && (
+                      <>
+                        <TableHead>Product</TableHead><TableHead className="text-right">TCI Bora</TableHead>
+                        <TableHead className="text-right">Normal Bora</TableHead>
+                      </>
+                    )}
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {preview.validRows.slice(0, 30).map((row: any, i: number) => {
+                    const rowNum = row._rowNum || i + 1;
+                    const error = preview.errors.find(e => e.row === rowNum);
+                    const warning = preview.warnings?.find((w: any) => w.row === rowNum);
+                    return (
+                      <TableRow key={i} className={error ? "bg-red-50" : warning ? "bg-yellow-50/50" : ""}>
+                        <TableCell className="text-xs">{rowNum}</TableCell>
+                        {preview.parser === "transport" && (
+                          <>
+                            <TableCell className="text-xs">{unitFilter !== "all" ? unitFilter : (row.productionUnit || "All")}</TableCell>
+                            <TableCell className="text-xs font-mono">{row.pinCode || "—"}</TableCell>
+                            <TableCell className="text-xs">{row.city}</TableCell>
+                            <TableCell className="text-xs">{row.state}</TableCell>
+                            <TableCell className="text-xs">{row.transportCompany || "—"}</TableCell>
+                            <TableCell className="text-xs text-right">₹{row.transportCharge || 0}</TableCell>
+                          </>
+                        )}
+                        {preview.parser === "liner" && (
+                          <>
+                            <TableCell className="text-xs">{row.productName}</TableCell>
+                            <TableCell className="text-xs text-right">{row.linerPackingQty || 0}</TableCell>
+                          </>
+                        )}
+                        {preview.parser === "bora" && (
+                          <>
+                            <TableCell className="text-xs">{row.productName}</TableCell>
+                            <TableCell className="text-xs text-right">{row.tciBoraQty || 0}</TableCell>
+                            <TableCell className="text-xs text-right">{row.normalBoraQty || 0}</TableCell>
+                          </>
+                        )}
+                        <TableCell>
+                          {error ? (
+                            <Badge variant="destructive" className="text-xs">{error.message}</Badge>
+                          ) : warning ? (
+                            <Badge variant="outline" className="text-xs bg-yellow-50 text-yellow-700">{warning.message}</Badge>
+                          ) : (
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          {preview && preview.summary.valid === 0 && (
+            <div className="p-4 flex items-center gap-2 text-sm text-destructive">
+              <AlertTriangle className="h-4 w-4" /> No valid rows to import.
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <Button size="sm" disabled={importing || !preview || preview.summary.valid === 0} onClick={handleImport}>
+              {importing ? "Importing..." : `Import ${preview?.summary.valid || 0} Records`}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setPreview(null)}>Cancel</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
