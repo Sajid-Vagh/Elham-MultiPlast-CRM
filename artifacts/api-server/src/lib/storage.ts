@@ -79,20 +79,35 @@ class LocalStorageProvider implements StorageProvider {
 class SupabaseStorageProvider implements StorageProvider {
   private baseUrl: string;
   private apiKey: string;
+  private adminKey?: string;
   private buckets: Set<string> = new Set();
   private bucketCheckDone = false;
 
-  constructor(baseUrl: string, apiKey: string) {
+  constructor(baseUrl: string, apiKey: string, adminKey?: string) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.apiKey = apiKey;
+    // Optional service_role key for admin Storage operations (bucket create /
+    // set-public). Unlike the publishable/anon key, it bypasses RLS so bucket
+    // management succeeds via the Storage REST API instead of the DB fallback.
+    this.adminKey = adminKey;
   }
 
   // Storage API headers — uses `apikey` header for publishable keys
-  private authHeaders(): Record<string, string> {
+  private headersFor(key: string): Record<string, string> {
     return {
-      apikey: this.apiKey,
-      Authorization: `Bearer ${this.apiKey}`,
+      apikey: key,
+      Authorization: `Bearer ${key}`,
     };
+  }
+
+  private authHeaders(): Record<string, string> {
+    return this.headersFor(this.apiKey);
+  }
+
+  // Admin headers for bucket-management endpoints — use the service_role key
+  // when configured, otherwise fall back to the publishable/anon key.
+  private adminHeaders(): Record<string, string> {
+    return this.headersFor(this.adminKey || this.apiKey);
   }
 
   async save(filename: string, buffer: Buffer, subDir = "documents"): Promise<string> {
@@ -268,7 +283,7 @@ class SupabaseStorageProvider implements StorageProvider {
     // 1. Try listing buckets (informational; anon key may get RLS-filtered results)
     try {
       const res = await fetch(`${this.baseUrl}/storage/v1/bucket`, {
-        headers: this.authHeaders(),
+        headers: this.adminHeaders(),
       });
       if (res.ok) {
         const buckets = await res.json() as { id: string; public: boolean }[];
@@ -285,12 +300,11 @@ class SupabaseStorageProvider implements StorageProvider {
       return true;
     }
 
-    // 2. Try creating via Storage REST API (fast path — only works with a
-    //    service_role key; anon keys are blocked by RLS, which is fine)
+    // 2. Try creating via Storage REST API (requires a service_role key)
     try {
       const res = await fetch(`${this.baseUrl}/storage/v1/bucket`, {
         method: "POST",
-        headers: { ...this.authHeaders(), "Content-Type": "application/json" },
+        headers: { ...this.adminHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
           id: "voice-notes",
           name: "voice-notes",
@@ -349,7 +363,7 @@ class SupabaseStorageProvider implements StorageProvider {
     try {
       const res = await fetch(`${this.baseUrl}/storage/v1/bucket`, {
         method: "POST",
-        headers: { ...this.authHeaders(), "Content-Type": "application/json" },
+        headers: { ...this.adminHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
           id: bucket,
           name: bucket,
@@ -380,7 +394,7 @@ class SupabaseStorageProvider implements StorageProvider {
       const url = `${this.baseUrl}/storage/v1/bucket/${bucket}`;
       const res = await fetch(url, {
         method: "PUT",
-        headers: { ...this.authHeaders(), "Content-Type": "application/json" },
+        headers: { ...this.adminHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ public: true }),
       });
       ok = res.ok;
@@ -529,11 +543,17 @@ class CloudinaryStorageProvider implements StorageProvider {
 // ────────────────────────────────────────────
 function createProvider(): StorageProvider {
   const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_KEY;
+  const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (supabaseUrl && supabaseKey) {
     console.log("[storage] Using Supabase Storage:", supabaseUrl);
-    const p = new SupabaseStorageProvider(supabaseUrl, supabaseKey);
+    if (supabaseServiceRoleKey) {
+      console.log("[storage] SUPABASE_SERVICE_ROLE_KEY configured — using it for bucket management (bypasses storage RLS).");
+    } else {
+      console.warn("[storage] SUPABASE_SERVICE_ROLE_KEY not set. Bucket management will fall back to database inserts. Set it in .env to use the Storage REST API directly.");
+    }
+    const p = new SupabaseStorageProvider(supabaseUrl, supabaseKey, supabaseServiceRoleKey);
     // Run bucket check in background (non-blocking)
     p.ensureBucketExists().then(ok => {
       if (ok) console.log("[storage] Supabase Storage ready");
