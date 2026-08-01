@@ -132,6 +132,10 @@ class SupabaseStorageProvider implements StorageProvider {
       throw new Error(`Supabase upload failed (${res.status}): ${text}`);
     }
 
+    // Ensure the bucket is public so the returned public URL is actually
+    // readable by the browser (avatars, documents, etc.).
+    await this.ensureBucketPublic(bucket);
+
     return storagePath;
   }
 
@@ -315,6 +319,33 @@ class SupabaseStorageProvider implements StorageProvider {
   private async ensureBucket(bucket: string): Promise<void> {
     if (this.buckets.has(bucket)) return;
     await this.ensureBucketExists();
+    if (this.buckets.has(bucket)) return;
+
+    // Generic bucket creation for any bucket (voice-notes, profiles, etc.)
+    console.log(`[storage] Bucket "${bucket}" not found. Attempting to create via API...`);
+    try {
+      const res = await fetch(`${this.baseUrl}/storage/v1/bucket`, {
+        method: "POST",
+        headers: { ...this.authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: bucket,
+          name: bucket,
+          public: true,
+          file_size_limit: 10 * 1024 * 1024,
+        }),
+      });
+      if (res.ok) {
+        this.buckets.add(bucket);
+        console.log(`[storage] Created bucket "${bucket}" via API`);
+      } else if (res.status !== 409) {
+        const text = await res.text().catch(() => "");
+        console.warn(`[storage] Bucket creation failed for "${bucket}": ${text}`);
+      }
+    } catch (err: any) {
+      console.warn(`[storage] Bucket creation error for "${bucket}":`, err?.message);
+    }
+
+    await this.ensureBucketPublic(bucket);
   }
 
   private async ensureBucketPublic(bucket: string): Promise<void> {

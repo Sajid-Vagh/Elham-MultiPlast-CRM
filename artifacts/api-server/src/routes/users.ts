@@ -115,11 +115,25 @@ router.patch("/users/:id", async (req, res) => {
   const { password, ...fields } = parsed.data;
   const isAdmin = me.role === "admin";
 
-  // Non-admin users may only update profilePhoto
+  // Non-admin users may only update their profile photo.
+  // Graceful handling: ignore restricted fields that arrive UNCHANGED (no-op), and only
+  // reject when they actually try to change restricted fields to different values.
   if (!isAdmin) {
     const restrictedFields = ["name", "username", "role", "colorCode", "unit", "canViewAllReports", "canAssignLeads", "permissions"];
-    const attempted = Object.keys(fields).filter(k => restrictedFields.includes(k));
-    if (attempted.length > 0 || password) {
+    const [currentUser] = await db.select().from(usersTable).where(eq(usersTable.id, params.data.id));
+    if (!currentUser) { res.status(404).json({ error: "Not found" }); return; }
+    const attemptedChanges: string[] = [];
+    for (const key of restrictedFields) {
+      if ((fields as Record<string, unknown>)[key] !== undefined) {
+        if ((fields as Record<string, unknown>)[key] === (currentUser as Record<string, unknown>)[key]) {
+          // Unchanged field — strip it and continue with profilePhoto
+          delete (fields as Record<string, unknown>)[key];
+        } else {
+          attemptedChanges.push(key);
+        }
+      }
+    }
+    if (attemptedChanges.length > 0 || password) {
       res.status(403).json({ error: "Sales users may only update their profile photo" });
       return;
     }

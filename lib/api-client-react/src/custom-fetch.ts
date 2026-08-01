@@ -297,7 +297,7 @@ function getBasePath(base: string): string {
   return base.replace(/https?:\/\/[^\/]+/, "");
 }
 
-function resolveApiUrl(url: string): string {
+export function resolveApiUrl(url: string): string {
   if (_baseUrl && url.startsWith("/")) {
     const basePath = getBasePath(_baseUrl);
     if (basePath && url.startsWith(basePath)) {

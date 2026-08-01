@@ -167,6 +167,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
     profilePhoto: initial?.profilePhoto ?? null as string | null,
   });
   const [photoUploading, setPhotoUploading] = useState(false);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     setForm({
@@ -210,6 +211,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
       const data = await res.json();
       setForm(p => ({ ...p, profilePhoto: data.profilePhoto }));
       onSave({ ...form, profilePhoto: data.profilePhoto });
+      onUserChange(queryClient);
     } catch (err) {
       console.error("Photo upload error", err);
     } finally {
@@ -229,6 +231,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
       if (!res.ok) throw new Error("Remove failed");
       setForm(p => ({ ...p, profilePhoto: null }));
       onSave({ ...form, profilePhoto: null });
+      onUserChange(queryClient);
     } catch (err) {
       console.error("Photo remove error", err);
     } finally {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useQueryClient } from "@tanstack/react-query";
-import { X, Camera, User, Shield, Palette, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { X, Camera, User, Shield, Palette, Eye, EyeOff, AlertCircle, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,6 +61,8 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
   const fileRef = useRef<HTMLInputElement>(null);
 
   const isAdmin = me.role === "admin";
+  // Non-admin users (Sales, Production, etc.) may only update their profile photo
+  const isReadOnly = !isAdmin;
 
   const [form, setForm] = useState({
     name: "",
@@ -157,6 +159,7 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
       if (!res.ok) throw new Error("Upload failed");
       const data = await res.json();
       setForm(p => ({ ...p, profilePhoto: data.profilePhoto }));
+      onUserChange(queryClient);
     } catch {
       toast({ title: "Photo upload failed", variant: "destructive" });
     } finally {
@@ -174,6 +177,7 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
       });
       if (!res.ok) throw new Error("Remove failed");
       setForm(p => ({ ...p, profilePhoto: null }));
+      onUserChange(queryClient);
     } catch {
       toast({ title: "Failed to remove photo", variant: "destructive" });
     } finally {
@@ -187,13 +191,33 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
     setTouched({ name: true, username: true, email: true, mobile: true, currentPassword: true, newPassword: true, confirmPassword: true });
     if (Object.keys(validationErrors).length > 0) return;
 
-    const payload: Record<string, any> = {
-      name: form.name.trim(),
-      username: form.username.trim(),
-      unit: form.unit,
-      colorCode: form.colorCode,
-    };
-    if (form.newPassword) payload.password = form.newPassword;
+    // Only send fields that actually changed since the modal opened
+    let initial: { name: string; username: string; unit: string; colorCode: string; profilePhoto: string | null };
+    try {
+      initial = JSON.parse(initialSnapshot);
+    } catch {
+      initial = {
+        name: me.name || "",
+        username: me.username || "",
+        unit: me.unit || "All",
+        colorCode: me.colorCode || COLOR_PALETTE[0],
+        profilePhoto: (me as any).profilePhoto ?? null,
+      };
+    }
+
+    const payload: Record<string, any> = {};
+    // Non-admin users may never modify these fields — never include them in the payload
+    if (isAdmin && form.name.trim() !== initial.name) payload.name = form.name.trim();
+    if (isAdmin && form.username.trim() !== initial.username) payload.username = form.username.trim();
+    if (isAdmin && form.unit !== initial.unit) payload.unit = form.unit;
+    if (isAdmin && form.colorCode !== initial.colorCode) payload.colorCode = form.colorCode;
+    if (isAdmin && form.newPassword) payload.password = form.newPassword;
+    if (form.profilePhoto !== initial.profilePhoto) payload.profilePhoto = form.profilePhoto;
+
+    if (Object.keys(payload).length === 0) {
+      onOpenChange(false);
+      return;
+    }
 
     updateUser.mutate(
       { id: me.id, data: payload },
@@ -236,6 +260,12 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
               <div>
                 <h2 className="text-lg font-bold tracking-tight">Edit Profile</h2>
                 <p className="text-sm text-muted-foreground mt-0.5">Update your account information</p>
+                {isReadOnly && (
+                  <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1.5">
+                    <Lock className="h-3 w-3 shrink-0" />
+                    Only your profile photo is editable here. Contact an admin to change other details.
+                  </p>
+                )}
               </div>
               <DialogPrimitive.Close className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-ring">
                 <X className="h-4.5 w-4.5" />
@@ -285,6 +315,7 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
                   <Input
                     value={form.name}
                     onChange={set("name")}
+                    disabled={isReadOnly}
                     placeholder="Enter full name"
                     className={cn("mt-1.5", fieldError("name") && "border-destructive focus-visible:ring-destructive")}
                   />
@@ -301,6 +332,7 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
                   <Input
                     value={form.username}
                     onChange={set("username")}
+                    disabled={isReadOnly}
                     placeholder="username"
                     data-no-cap="1"
                     className={cn("mt-1.5", fieldError("username") && "border-destructive focus-visible:ring-destructive")}
@@ -317,6 +349,7 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
                     type="email"
                     value={form.email}
                     onChange={set("email")}
+                    disabled={isReadOnly}
                     placeholder="you@example.com"
                     className={cn("mt-1.5", fieldError("email") && "border-destructive focus-visible:ring-destructive")}
                   />
@@ -332,6 +365,7 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
                     type="tel"
                     value={form.mobile}
                     onChange={set("mobile")}
+                    disabled={isReadOnly}
                     placeholder="+91 98765 43210"
                     className={cn("mt-1.5", fieldError("mobile") && "border-destructive focus-visible:ring-destructive")}
                   />
@@ -365,6 +399,7 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
                       type={showCurrentPw ? "text" : "password"}
                       value={form.currentPassword}
                       onChange={set("currentPassword")}
+                      disabled={isReadOnly}
                       placeholder="Enter current password"
                       autoComplete="current-password"
                       className={cn("pr-10", fieldError("currentPassword") && "border-destructive focus-visible:ring-destructive")}
@@ -390,6 +425,7 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
                       type={showNewPw ? "text" : "password"}
                       value={form.newPassword}
                       onChange={set("newPassword")}
+                      disabled={isReadOnly}
                       placeholder="Enter new password"
                       autoComplete="new-password"
                       className={cn("pr-10", fieldError("newPassword") && "border-destructive focus-visible:ring-destructive")}
@@ -415,6 +451,7 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
                       type={showConfirmPw ? "text" : "password"}
                       value={form.confirmPassword}
                       onChange={set("confirmPassword")}
+                      disabled={isReadOnly}
                       placeholder="Confirm new password"
                       autoComplete="new-password"
                       className={cn("pr-10", fieldError("confirmPassword") && "border-destructive focus-visible:ring-destructive")}
@@ -468,7 +505,7 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Unit</Label>
-                  <Select value={form.unit} onValueChange={v => setForm(p => ({ ...p, unit: v }))}>
+                  <Select value={form.unit} onValueChange={v => setForm(p => ({ ...p, unit: v }))} disabled={isReadOnly}>
                     <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {["All", "Himatnagar", "Surat", "Rajkot"].map(u => (
@@ -497,11 +534,13 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
                     key={c}
                     type="button"
                     onClick={() => setForm(p => ({ ...p, colorCode: c }))}
+                    disabled={isReadOnly}
                     className={cn(
                       "w-8 h-8 rounded-full border-2 transition-all duration-150",
                       form.colorCode === c
                         ? "border-foreground scale-110 ring-2 ring-foreground/20"
-                        : "border-transparent hover:scale-105 hover:border-muted-foreground/30"
+                        : "border-transparent hover:scale-105 hover:border-muted-foreground/30",
+                      isReadOnly && "cursor-not-allowed opacity-60"
                     )}
                     style={{ backgroundColor: c }}
                     title={c}
@@ -510,6 +549,7 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
                 <Input
                   value={form.colorCode}
                   onChange={set("colorCode")}
+                  disabled={isReadOnly}
                   placeholder="#hex"
                   data-no-cap="1"
                   className="w-24 h-8 text-xs font-mono"
