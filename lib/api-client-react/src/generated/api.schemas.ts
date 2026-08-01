@@ -224,6 +224,8 @@ export interface Contact {
   customerCode?: string | null;
   isMyClient: boolean;
   isRead?: boolean;
+  isRepeatEnquiry?: boolean;
+  updatedAt?: string;
   createdAt: string;
 }
 

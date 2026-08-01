@@ -246,7 +246,7 @@ export default function Leads() {
     // Optimistically update all cached leads lists so the dot disappears immediately on return
     queryClient.setQueriesData<any[]>(
       { queryKey: ["leads-contacts"] },
-      (old) => old?.map((c) => (c.id === id ? { ...c, isRead: true } : c)) ?? old
+      (old) => old?.map((c) => (c.id === id ? { ...c, isRead: true, isRepeatEnquiry: false } : c)) ?? old
     );
     // Fire-and-forget background request to persist the read state
     fetch(`/api/contacts/${id}/read`, {
@@ -432,9 +432,11 @@ export default function Leads() {
                       </Link>
                       {contact.isRead === false && (
                         <span
-                          className="ml-1.5 inline-block h-2 w-2 rounded-full bg-blue-500 ring-2 ring-blue-200"
-                          title="Unread lead"
-                          aria-label="Unread lead"
+                          className={`ml-1.5 inline-block h-2 w-2 rounded-full ring-2 ${
+                            contact.isRepeatEnquiry ? "bg-yellow-500 ring-yellow-200" : "bg-blue-500 ring-blue-200"
+                          }`}
+                          title={contact.isRepeatEnquiry ? "Repeat enquiry" : "Newly assigned lead"}
+                          aria-label={contact.isRepeatEnquiry ? "Repeat enquiry" : "Newly assigned lead"}
                         />
                       )}
                       {contact.customerCode && <span className="ml-1.5 text-[10px] text-muted-foreground font-mono">({contact.customerCode})</span>}

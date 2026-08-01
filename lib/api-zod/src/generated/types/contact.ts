@@ -44,5 +44,7 @@ export interface Contact {
   /** @nullable */
   nextCallDate?: string | null;
   isRead?: boolean;
+  isRepeatEnquiry?: boolean;
+  updatedAt?: string;
   createdAt: string;
 }

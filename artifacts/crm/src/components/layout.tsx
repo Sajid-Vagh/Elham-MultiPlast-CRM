@@ -446,8 +446,14 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
               <div className="divide-y">
                 {sseNotifications.filter(n => !n.readAt).slice(0, 10).map(n => (
                   <div key={n.id} className="p-3 hover:bg-muted/30 cursor-pointer" onClick={() => { markAsRead(n.id); setBellOpen(false); if (n.link) setLocation(n.link); }}>
-                    <p className="text-sm font-medium truncate">{n.title}</p>
-                    <p className="text-xs text-muted-foreground line-clamp-2 whitespace-pre-line">{n.message}</p>
+                    <p className="text-sm font-medium truncate flex items-center gap-1.5">
+                      <span
+                        className={`w-2 h-2 rounded-full flex-shrink-0 ${n.type === "repeat_enquiry" ? "bg-yellow-500" : "bg-blue-500"}`}
+                        title={n.type === "repeat_enquiry" ? "Repeat enquiry" : "New lead"}
+                      />
+                      {n.title}
+                    </p>
+                    <p className="text-xs text-muted-foreground line-clamp-2 whitespace-pre-line ml-3.5">{n.message}</p>
                   </div>
                 ))}
               </div>

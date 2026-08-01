@@ -46,7 +46,7 @@ export default function LeadsNew() {
         setLocation(`/leads/${contact.id}`);
       },
       onError: (err: any) => {
-        const isDuplicate = err?.status === 409 && err?.data?.duplicate;
+        const isDuplicate = err?.status === 409 || err?.data?.duplicate === true;
         if (isDuplicate && err?.data?.leadId) {
           setDuplicateData({
             duplicate: true,
@@ -80,7 +80,7 @@ export default function LeadsNew() {
   };
 
   return (
-    <div className="p-8 max-w-4xl mx-auto space-y-6">
+    <div className="p-8 max-w-4xl mx-auto space-y-6 min-h-full pb-24">
       <div className="flex items-center gap-4">
         <Link href="/leads">
           <Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-1" /> Back</Button>

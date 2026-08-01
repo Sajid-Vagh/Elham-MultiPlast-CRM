@@ -16,6 +16,7 @@ const FILTER_OPTIONS: { value: Filter; label: string }[] = [
 
 const TYPE_ICONS: Record<string, string> = {
   enquiry_assigned: "📌",
+  repeat_enquiry: "🔄",
   follow_up: "🔔",
   deal_won: "🎉",
   deal_lost: "💔",
@@ -137,7 +138,12 @@ export default function NotificationsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className={`text-sm truncate ${isUnread ? "font-semibold" : ""}`}>{n.title}</p>
-                    {isUnread && <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />}
+                    {isUnread && (
+                      <span
+                        className={`w-2 h-2 rounded-full flex-shrink-0 ${n.type === "repeat_enquiry" ? "bg-yellow-500" : "bg-blue-500"}`}
+                        title={n.type === "repeat_enquiry" ? "Repeat enquiry" : "New lead"}
+                      />
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground whitespace-pre-line mt-0.5">{n.message}</p>
                   <p className="text-[10px] text-muted-foreground mt-1">{dateStr} at {timeStr}</p>

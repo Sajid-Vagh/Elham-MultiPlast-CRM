@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { AlertTriangle, ExternalLink, Repeat, X, Phone, Mail, MapPin, Calendar, Tag, TrendingUp, Clock, Shield, CheckCircle } from "lucide-react";
 import { UserAvatar } from "@/components/user-avatar";
 import { useToast } from "@/hooks/use-toast";
+import { onContactChange } from "@/lib/query-invalidation";
 
 export interface DuplicateLeadInfo {
   duplicate: boolean;
@@ -82,6 +83,7 @@ export function DuplicateWarningDialog({
 }: DuplicateWarningDialogProps) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [repeatLoading, setRepeatLoading] = useState(false);
   const [repeatDone, setRepeatDone] = useState(false);
 
@@ -99,6 +101,7 @@ export function DuplicateWarningDialog({
       if (res.ok) {
         const result = await res.json().catch(() => ({}));
         setRepeatDone(true);
+        onContactChange(queryClient);
         toast({
           title: "Repeat Enquiry",
           description: isOwnLead

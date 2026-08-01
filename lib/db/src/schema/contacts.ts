@@ -36,11 +36,13 @@ export const contactsTable = pgTable("contacts", {
   commentUpdatedBy: integer("comment_updated_by").references(() => usersTable.id),
   isMyClient: boolean("is_my_client").notNull().default(false),
   isRead: boolean("is_read").notNull().default(false),
+  isRepeatEnquiry: boolean("is_repeat_enquiry").notNull().default(false),
   lostReason: text("lost_reason"),
   otherReason: text("other_reason"),
   lostNotes: text("lost_notes"),
   lostDate: timestamp("lost_date", { withTimezone: true }),
   customerCode: text("customer_code").unique(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

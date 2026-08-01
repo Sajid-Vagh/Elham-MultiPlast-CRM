@@ -640,3 +640,45 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `artifacts/crm/src/pages/dispatch.tsx`: Builty optional in Load Vehicle dialog
 - `artifacts/crm/src/pages/production-order-detail.tsx`: Builty optional in Load Vehicle dialog
 - `artifacts/crm/src/pages/machine-report.tsx`: 4 summary cards, updated status colors
+
+---
+
+# Unread Dots, Repeat Enquiry Priority, Duplicate Modal on /leads/new
+
+## Goal
+- Dynamic unread dots in the Leads table + notifications: **Blue** = newly assigned lead, **Yellow** = repeat enquiry; notification text must clearly state "Repeat Enquiry".
+- Fix bottom clipping on `/leads/new` (form cut off before "Create Lead" button).
+- On `/leads/new`, catch the duplicate-mobile 409 and open the same "Customer Already Exists" modal as the Import page, passing existing-customer data.
+- Repeat enquiries behave like new assignments: backend bumps the lead's `updated_at` to NOW(), Leads default sort = `updated_at` DESC so a repeat enquiry jumps to the top row.
+
+## Progress
+### Done
+- **DB:** Added `updated_at` (`timestamptz`, `defaultNow`, index DESC) + `is_repeat_enquiry` (`boolean`, default false, indexed) columns to `contacts` (schema `lib/db/src/schema/contacts.ts`, migration `lib/db/migrations/067_add_lead_updated_at_and_repeat_flag.sql` — backfills existing rows with `created_at`).
+- **Backend `contacts.ts`:**
+  - `GET /contacts` sorts by `updatedAt DESC` in ALL branches (default, category, Existing Client, RFU + My-Client-with-active-deal virtual) so the most recently active lead is first.
+  - `POST /contacts` now does an explicit duplicate **pre-check** (`findExistingContact`) returning the rich 409 payload via shared `buildDuplicatePayload()` helper — deterministic, independent of DB driver error codes; the `23505` catch is the safety net. Also sets `isRead: true` for self-assigned leads so only cross-owner assignments show the blue dot.
+  - `POST /contacts/:id/repeat-enquiry` sets `category: "Regular Follow up"`, `updatedAt: new Date()`, `isRead: false`, `isRepeatEnquiry: true`; notification message now reads "Repeat Enquiry logged by: ...".
+  - `POST /contacts/:id/read` clears both `isRead` and `isRepeatEnquiry`.
+  - `PATCH /contacts/:id` reassignment clears `isRepeatEnquiry` alongside `isRead = false`.
+- **Generated types:** `Contact` interface in `api-client-react` + `api-zod` gained `isRepeatEnquiry?` + `updatedAt?`.
+- **Frontend:**
+  - `leads.tsx`: unread dot is **yellow** (`isRepeatEnquiry`) or **blue** (new assignment); `markLeadAsRead` optimistically clears both flags.
+  - `lead-detail.tsx`: mark-read effect also clears `isRepeatEnquiry`.
+  - `layout.tsx` bell dropdown + `notifications.tsx`: unread dot color-coded by type (`repeat_enquiry` = yellow, else blue); `repeat_enquiry: "🔄"` added to `TYPE_ICONS`.
+  - `notification-popup.tsx`: repeat-enquiry toasts get yellow accent + "Repeat Enquiry" label/footer.
+  - `leads-new.tsx`: broader duplicate detection (`err?.status === 409 || err?.data?.duplicate === true` → opens `DuplicateWarningDialog`); added `min-h-full pb-24` to fix bottom clipping.
+  - `lead-form.tsx`: `checkDuplicate` fetch now sends `Authorization: Bearer` header (was silently 401-ing, so on-blur duplicate detection never fired).
+  - `duplicate-warning-dialog.tsx`: calls `onContactChange(queryClient)` after a successful repeat enquiry so the Leads list re-sorts + shows the yellow dot immediately.
+- **Build verified:** CRM typecheck clean; API server back to 34 pre-existing errors (no new).
+
+## Key Decisions
+- `updated_at` bumped ONLY on repeat enquiry (per request) — general edits/comments/category changes do NOT reshuffle the Leads list.
+- Duplicate pre-check makes the 409 → modal flow reliable even if the DB driver error code differs from `23505`.
+- Migration must be applied (`067_add_lead_updated_at_and_repeat_flag.sql`) against the Supabase DB before deploy, else `updated_at`/`is_repeat_enquiry` columns are missing at runtime.
+
+## Relevant Files
+- `lib/db/src/schema/contacts.ts` + `lib/db/migrations/067_add_lead_updated_at_and_repeat_flag.sql`: new columns
+- `artifacts/api-server/src/routes/contacts.ts`: sort, pre-check, repeat-enquiry/read/PATCH flags
+- `artifacts/crm/src/pages/leads.tsx`, `lead-detail.tsx`, `leads-new.tsx`: dots, sort, duplicate modal + scroll fix
+- `artifacts/crm/src/components/lead-form.tsx`, `duplicate-warning-dialog.tsx`, `layout.tsx`, `notification-popup.tsx`: auth header fix, invalidation, notification dots/styling
+- `artifacts/crm/src/pages/notifications.tsx`: color-coded unread dots + `repeat_enquiry` icon

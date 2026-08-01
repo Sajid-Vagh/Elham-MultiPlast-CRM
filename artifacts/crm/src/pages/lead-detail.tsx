@@ -98,7 +98,7 @@ export default function LeadDetail() {
     }).catch(() => {});
     queryClient.setQueriesData<any[]>(
       { queryKey: ["leads-contacts"] },
-      (old) => old?.map((c) => (c.id === contact.id ? { ...c, isRead: true } : c)) ?? old
+      (old) => old?.map((c) => (c.id === contact.id ? { ...c, isRead: true, isRepeatEnquiry: false } : c)) ?? old
     );
   }, [contact?.id]);
 

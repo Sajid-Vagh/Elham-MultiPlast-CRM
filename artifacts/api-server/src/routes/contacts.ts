@@ -43,6 +43,53 @@ async function withOwner(contact: typeof contactsTable.$inferSelect) {
   return { ...contact, salesOwner: owner ? safeOwner : null, commentUpdatedByUser: commentUser };
 }
 
+// Build the rich 409 duplicate payload shown by the "Customer Already Exists" dialog
+async function buildDuplicatePayload(existing: typeof contactsTable.$inferSelect) {
+  const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, existing.salesOwnerId));
+  const { passwordHash: _, ...safeOwner } = owner ?? {};
+  const [latestDeal] = await db.select().from(dealsTable)
+    .where(eq(dealsTable.contactId, existing.id))
+    .orderBy(desc(dealsTable.updatedAt)).limit(1);
+  const [lastActivity] = await db
+    .select({ followUpDate: activitiesTable.followUpDate, createdAt: activitiesTable.createdAt })
+    .from(activitiesTable)
+    .where(eq(activitiesTable.contactId, existing.id))
+    .orderBy(desc(activitiesTable.followUpDate)).limit(1);
+
+  return {
+    error: "Mobile or email already exists",
+    duplicate: true,
+    leadId: existing.id,
+    customerName: existing.name,
+    companyName: existing.companyName || null,
+    mobile: existing.mobile,
+    email: existing.email || null,
+    ownerId: existing.salesOwnerId,
+    ownerName: safeOwner?.name || "Unknown",
+    ownerRole: safeOwner?.role || "sales",
+    ownerProfilePhoto: safeOwner?.profilePhoto || null,
+    unit: existing.unit || null,
+    category: existing.category,
+    dealStage: latestDeal?.stage || null,
+    status: existing.customerStatus || "Active",
+    lastFollowUp: lastActivity?.followUpDate || lastActivity?.createdAt || null,
+    createdAt: existing.createdAt,
+    viewUrl: `/leads/${existing.id}`,
+  };
+}
+
+// Find an existing contact matching mobile OR email (used for the duplicate pre-check)
+async function findExistingContact(mobile: string, email?: string | null) {
+  return db
+    .select()
+    .from(contactsTable)
+    .where(or(
+      eq(contactsTable.mobile, mobile),
+      ...(email ? [eq(contactsTable.email, email)] : []),
+    ))
+    .limit(1);
+}
+
 router.get("/contacts", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
@@ -111,11 +158,11 @@ router.get("/contacts", async (req, res) => {
       // Physical RFU contacts
       const rfuContacts = await db.select().from(contactsTable)
         .where(and(eq(contactsTable.category, "Regular Follow up"), ...conditions))
-        .orderBy(desc(contactsTable.createdAt));
+        .orderBy(desc(contactsTable.updatedAt));
       // My Client contacts with active deals
       const myClientContacts = await db.select().from(contactsTable)
         .where(and(eq(contactsTable.category, "My Client"), ...conditions))
-        .orderBy(desc(contactsTable.createdAt));
+        .orderBy(desc(contactsTable.updatedAt));
       const allDeals = await db.select().from(dealsTable);
       const activeDealContactIds = new Set(
         allDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").map(d => d.contactId)
@@ -125,14 +172,14 @@ router.get("/contacts", async (req, res) => {
     } else if (isExistingClient) {
       // Existing Client: fetch ALL contacts with category "My Client" (bypass owner filter)
       conditions.push(eq(contactsTable.category, "My Client"));
-      contacts = await db.select().from(contactsTable).where(and(...conditions)).orderBy(desc(contactsTable.createdAt));
+      contacts = await db.select().from(contactsTable).where(and(...conditions)).orderBy(desc(contactsTable.updatedAt));
     } else if (categoryParam) {
       conditions.push(eq(contactsTable.category, categoryParam));
-      contacts = await db.select().from(contactsTable).where(and(...conditions)).orderBy(desc(contactsTable.createdAt));
+      contacts = await db.select().from(contactsTable).where(and(...conditions)).orderBy(desc(contactsTable.updatedAt));
     } else {
       contacts = conditions.length
-        ? await db.select().from(contactsTable).where(and(...conditions)).orderBy(desc(contactsTable.createdAt))
-        : await db.select().from(contactsTable).orderBy(desc(contactsTable.createdAt));
+        ? await db.select().from(contactsTable).where(and(...conditions)).orderBy(desc(contactsTable.updatedAt))
+        : await db.select().from(contactsTable).orderBy(desc(contactsTable.updatedAt));
     }
 
     const users = await db.select().from(usersTable);
@@ -174,11 +221,25 @@ router.post("/contacts", async (req, res) => {
       values.unit = ownerUser.unit;
     }
   }
+  // Duplicate pre-check: return the rich 409 payload deterministically (before any DB write)
+  // so the frontend always opens the "Customer Already Exists" dialog instead of a generic toast.
+  const duplicateCheck = await findExistingContact(values.mobile, values.email);
+  if (duplicateCheck.length > 0) {
+    res.status(409).json(await buildDuplicatePayload(duplicateCheck[0]!));
+    return;
+  }
   // Auto-assign customer code
   const customerCode = await generateCustomerCode();
-  values.customerCode = customerCode;
+  // A lead created for the caller is immediately "read" for them; only cross-owner
+  // assignments stay unread so the assignee sees the blue "new lead" dot.
+  const insertValues: typeof contactsTable.$inferInsert = {
+    ...values,
+    customerCode,
+    isRead: values.salesOwnerId === user.id,
+    isRepeatEnquiry: false,
+  };
   try {
-    const [contact] = await db.insert(contactsTable).values(values).returning();
+    const [contact] = await db.insert(contactsTable).values(insertValues).returning();
     if (contact && values.salesOwnerId && values.salesOwnerId !== user.id) {
       const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, values.salesOwnerId));
       if (owner) {
@@ -197,49 +258,10 @@ router.post("/contacts", async (req, res) => {
     res.status(201).json(await withOwner(contact!));
   } catch (err: any) {
     if (err?.code === "23505") {
-      // Try to find the existing contact for rich metadata
-      const existingContact = await db
-        .select()
-        .from(contactsTable)
-        .where(or(
-          eq(contactsTable.mobile, values.mobile),
-          ...(values.email ? [eq(contactsTable.email, values.email)] : []),
-        ))
-        .limit(1);
-
+      // Safety net: the unique constraint fired anyway — try to find the existing contact for rich metadata
+      const existingContact = await findExistingContact(values.mobile, values.email);
       if (existingContact.length > 0) {
-        const existing = existingContact[0]!;
-        const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, existing.salesOwnerId));
-        const { passwordHash: _, ...safeOwner } = owner ?? {};
-        const [latestDeal] = await db.select().from(dealsTable)
-          .where(eq(dealsTable.contactId, existing.id))
-          .orderBy(desc(dealsTable.updatedAt)).limit(1);
-        const [lastActivity] = await db
-          .select({ followUpDate: activitiesTable.followUpDate, createdAt: activitiesTable.createdAt })
-          .from(activitiesTable)
-          .where(eq(activitiesTable.contactId, existing.id))
-          .orderBy(desc(activitiesTable.followUpDate)).limit(1);
-
-        res.status(409).json({
-          error: "Mobile or email already exists",
-          duplicate: true,
-          leadId: existing.id,
-          customerName: existing.name,
-          companyName: existing.companyName || null,
-          mobile: existing.mobile,
-          email: existing.email || null,
-          ownerId: existing.salesOwnerId,
-          ownerName: safeOwner?.name || "Unknown",
-          ownerRole: safeOwner?.role || "sales",
-          ownerProfilePhoto: safeOwner?.profilePhoto || null,
-          unit: existing.unit || null,
-          category: existing.category,
-          dealStage: latestDeal?.stage || null,
-          status: existing.customerStatus || "Active",
-          lastFollowUp: lastActivity?.followUpDate || lastActivity?.createdAt || null,
-          createdAt: existing.createdAt,
-          viewUrl: `/leads/${existing.id}`,
-        });
+        res.status(409).json(await buildDuplicatePayload(existingContact[0]!));
       } else {
         res.status(409).json({ error: "Mobile or email already exists", duplicate: true });
       }
@@ -395,9 +417,11 @@ router.post("/contacts/:id/repeat-enquiry", async (req, res) => {
 
     const isOwnLead = contact.salesOwnerId === user.id;
 
-    // Update category to "Regular Follow up" so the lead comes back into the follow-up pipeline
+    // Update category to "Regular Follow up" so the lead comes back into the follow-up pipeline,
+    // bump updatedAt (NOW) so the lead jumps to the top of the Leads list, and flag it as an
+    // unread repeat enquiry (yellow dot) until the owner opens it.
     const [updated] = await db.update(contactsTable)
-      .set({ category: "Regular Follow up" })
+      .set({ category: "Regular Follow up", updatedAt: new Date(), isRead: false, isRepeatEnquiry: true })
       .where(eq(contactsTable.id, id))
       .returning();
 
@@ -411,7 +435,7 @@ router.post("/contacts/:id/repeat-enquiry", async (req, res) => {
           userId: currentOwner.id,
           type: "repeat_enquiry",
           title: "Repeat Enquiry",
-          message: `Lead "${contact.name}" (${contact.mobile})\nRepeat enquiry logged by: ${user.name}\nDate & Time: ${enquiryTime}\n\nCategory updated to Regular Follow up.`,
+          message: `Lead "${contact.name}" (${contact.mobile})\nRepeat Enquiry logged by: ${user.name}\nDate & Time: ${enquiryTime}\n\nCategory updated to Regular Follow up.`,
           link: `/leads/${contact.id}`,
           relatedId: contact.id,
           relatedType: "contact",
@@ -514,7 +538,7 @@ router.post("/contacts/:id/read", async (req, res) => {
     }
     const [updated] = await db
       .update(contactsTable)
-      .set({ isRead: true })
+      .set({ isRead: true, isRepeatEnquiry: false })
       .where(eq(contactsTable.id, contact.id))
       .returning();
     res.json(await withOwner(updated!));
@@ -612,6 +636,7 @@ router.patch("/contacts/:id", async (req, res) => {
     // Reset the unread flag whenever the lead is reassigned to a different owner
     if (parsed.data.salesOwnerId !== undefined && parsed.data.salesOwnerId !== oldContact.salesOwnerId) {
       updatePayload.isRead = false;
+      updatePayload.isRepeatEnquiry = false;
     }
 
     const [contact] = await db.update(contactsTable).set(updatePayload).where(eq(contactsTable.id, params.data.id)).returning();
