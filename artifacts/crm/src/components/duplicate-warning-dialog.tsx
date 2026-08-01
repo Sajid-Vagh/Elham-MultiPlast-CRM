@@ -99,17 +99,13 @@ export function DuplicateWarningDialog({
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
       });
       if (res.ok) {
-        const result = await res.json().catch(() => ({}));
         setRepeatDone(true);
         onContactChange(queryClient);
         toast({
           title: "Repeat Enquiry",
-          description: isOwnLead
-            ? (result.message || "Lead category updated to Regular Follow up.")
-            : (result.message || `Notification sent to ${data.ownerName} and lead marked as repeat enquiry.`),
+          description: "Repeat enquiry logged successfully",
         });
         onOpenChange(false);
-        setLocation(data.viewUrl || `/leads/${data.leadId}`);
       } else {
         const err = await res.json().catch(() => ({}));
         toast({
