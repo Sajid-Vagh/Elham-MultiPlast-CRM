@@ -9,6 +9,42 @@ function canManageInventory(user: { role: string }): boolean {
   return user.role === "admin" || user.role === "inventory";
 }
 
+/**
+ * Unit that the user is allowed to READ. Strict isolation:
+ *   - admin: honors ?unit= (undefined = all units)
+ *   - unit "All": honors ?unit= (undefined = all units)
+ *   - inventory role with a real unit: ALWAYS that unit, ignores client ?unit=
+ *   - sales: honors ?unit= (dropdown controls; undefined = all units)
+ *   - other roles: own unit (or ?unit= if own unit is "All")
+ */
+function resolveReadUnit(
+  user: { role: string; unit?: string | null },
+  requestedUnit?: string,
+): string | undefined {
+  if (user.role === "admin") return requestedUnit || undefined;
+  const ownUnit = user.unit || "All";
+  if (ownUnit === "All") return requestedUnit || undefined;
+  if (user.role === "inventory") return ownUnit; // strict, ignore requested
+  if (user.role === "sales") return requestedUnit || undefined;
+  return requestedUnit || ownUnit;
+}
+
+/**
+ * Unit to stamp when WRITING inventory rows. The unit is read from the
+ * session token, never trusted from the frontend:
+ *   - admin or unit "All": honor requested unit (must be provided)
+ *   - scoped users (real unit): ALWAYS forced to their own unit
+ */
+function resolveWriteUnit(
+  user: { role: string; unit?: string | null },
+  requestedUnit?: string,
+): string | null {
+  if (user.role === "admin") return requestedUnit || null;
+  const ownUnit = user.unit || "All";
+  if (ownUnit === "All") return requestedUnit || null;
+  return ownUnit;
+}
+
 // ── GET /inventory — Fetch inventory rows, filtered by unit ──
 router.get("/inventory", async (req, res) => {
   try {
@@ -18,27 +54,10 @@ router.get("/inventory", async (req, res) => {
     const { unit, search } = req.query as Record<string, string | undefined>;
     const conditions: any[] = [];
 
-    // Unit-based access control
-    if (user.role === "inventory") {
-      const userUnit = user.unit || "All";
-      if (userUnit !== "All" && unit) {
-        conditions.push(eq(inventoryTable.unitName, unit));
-      } else if (userUnit !== "All" && !unit) {
-        conditions.push(eq(inventoryTable.unitName, userUnit));
-      } else if (unit) {
-        conditions.push(eq(inventoryTable.unitName, unit));
-      }
-    } else if (user.role === "admin" || user.role === "sales") {
-      if (unit) {
-        conditions.push(eq(inventoryTable.unitName, unit));
-      }
-    } else {
-      const userUnit = user.unit || "All";
-      if (userUnit !== "All") {
-        conditions.push(eq(inventoryTable.unitName, userUnit));
-      } else if (unit) {
-        conditions.push(eq(inventoryTable.unitName, unit));
-      }
+    // Unit-based access control (strict)
+    const effectiveUnit = resolveReadUnit(user, unit);
+    if (effectiveUnit) {
+      conditions.push(eq(inventoryTable.unitName, effectiveUnit));
     }
 
     let rows = await db
@@ -75,7 +94,10 @@ router.get("/inventory/logs", async (req, res) => {
     const conditions: any[] = [];
 
     if (productName) conditions.push(ilike(inventoryLogsTable.productName, productName));
-    if (unit) conditions.push(eq(inventoryLogsTable.unitName, unit));
+
+    // Unit isolation (strict) for logs as well
+    const effectiveUnit = resolveReadUnit(user, unit);
+    if (effectiveUnit) conditions.push(eq(inventoryLogsTable.unitName, effectiveUnit));
 
     const logs = await db
       .select()
@@ -105,7 +127,10 @@ router.post("/inventory/save", async (req, res) => {
 
     const { id, productName, unitName, size, bottleColor, weight, stock, clientOrder, sortOrder } = req.body;
 
-    if (!unitName) {
+    // Unit always comes from the session token for scoped users; otherwise the
+    // frontend-provided unit is honored (required).
+    const effectiveUnit = resolveWriteUnit(user, unitName);
+    if (!effectiveUnit) {
       res.status(400).json({ error: "unitName is required" });
       return;
     }
@@ -127,7 +152,7 @@ router.post("/inventory/save", async (req, res) => {
         .where(
           and(
             sql`lower(${inventoryTable.productName}) = lower(${trimmedName})`,
-            eq(inventoryTable.unitName, unitName)
+            eq(inventoryTable.unitName, effectiveUnit)
           )
         );
       existing = row || null;
@@ -152,7 +177,7 @@ router.post("/inventory/save", async (req, res) => {
     } else {
       await db.insert(inventoryTable).values({
         productName: trimmedName,
-        unitName,
+        unitName: effectiveUnit,
         size: size || null,
         bottleColor: bottleColor || null,
         weight: weight || null,
@@ -166,7 +191,7 @@ router.post("/inventory/save", async (req, res) => {
     if (trimmedName && newStock !== previousStock) {
       await db.insert(inventoryLogsTable).values({
         productName: trimmedName,
-        unitName,
+        unitName: effectiveUnit,
         adjustmentType: newStock > previousStock ? "add" : "set",
         quantity: Math.abs(newStock - previousStock),
         previousStock,
@@ -176,7 +201,7 @@ router.post("/inventory/save", async (req, res) => {
       });
     }
 
-    res.json({ productName: trimmedName, unitName, previousStock, newStock });
+    res.json({ productName: trimmedName, unitName: effectiveUnit, previousStock, newStock });
   } catch (err) {
     console.error("Save inventory error:", err);
     res.status(500).json({ error: "Internal server error" });
@@ -197,7 +222,9 @@ router.post("/inventory/save-bulk", async (req, res) => {
 
     const { unitName, items } = req.body;
 
-    if (!unitName || !Array.isArray(items) || items.length === 0) {
+    // Unit from session token for scoped users; required otherwise.
+    const effectiveUnit = resolveWriteUnit(user, unitName);
+    if (!effectiveUnit || !Array.isArray(items) || items.length === 0) {
       res.status(400).json({ error: "unitName and items array are required" });
       return;
     }
@@ -223,7 +250,7 @@ router.post("/inventory/save-bulk", async (req, res) => {
           .where(
             and(
               sql`lower(${inventoryTable.productName}) = lower(${trimmedName})`,
-              eq(inventoryTable.unitName, unitName)
+              eq(inventoryTable.unitName, effectiveUnit)
             )
           );
         existing = row || null;
@@ -248,7 +275,7 @@ router.post("/inventory/save-bulk", async (req, res) => {
       } else {
         await db.insert(inventoryTable).values({
           productName: trimmedName,
-          unitName,
+          unitName: effectiveUnit,
           size: size || null,
           bottleColor: bottleColor || null,
           weight: weight || null,
@@ -261,7 +288,7 @@ router.post("/inventory/save-bulk", async (req, res) => {
       if (trimmedName && newStock !== previousStock) {
         await db.insert(inventoryLogsTable).values({
           productName: trimmedName,
-          unitName,
+          unitName: effectiveUnit,
           adjustmentType: newStock > previousStock ? "import" : "set",
           quantity: Math.abs(newStock - previousStock),
           previousStock,
@@ -310,7 +337,10 @@ router.post("/inventory/bulk-save", async (req, res) => {
         const newClientOrder = Number(clientOrder) || 0;
         const newSortOrder = sortOrder != null ? Number(sortOrder) : null;
 
-        if (!unitName) continue;
+        // Unit always from session token for scoped users; for admin/"All"
+        // users the per-item unit must be present to be written.
+        const effectiveUnit = resolveWriteUnit(user, unitName);
+        if (!effectiveUnit) continue;
 
         let existing = null;
         if (id) {
@@ -325,7 +355,7 @@ router.post("/inventory/bulk-save", async (req, res) => {
             .update(inventoryTable)
             .set({
               productName: trimmedName || existing.productName,
-              unitName,
+              unitName: effectiveUnit,
               size: size !== undefined ? (size || null) : existing.size,
               bottleColor: bottleColor !== undefined ? (bottleColor || null) : existing.bottleColor,
               weight: weight !== undefined ? (weight || null) : existing.weight,
@@ -340,7 +370,7 @@ router.post("/inventory/bulk-save", async (req, res) => {
           if (trimmedName && newStock !== previousStock) {
             await tx.insert(inventoryLogsTable).values({
               productName: trimmedName,
-              unitName,
+              unitName: effectiveUnit,
               adjustmentType: newStock > previousStock ? "add" : "set",
               quantity: Math.abs(newStock - previousStock),
               previousStock,
@@ -356,7 +386,7 @@ router.post("/inventory/bulk-save", async (req, res) => {
             .insert(inventoryTable)
             .values({
               productName: trimmedName,
-              unitName,
+              unitName: effectiveUnit,
               size: size || null,
               bottleColor: bottleColor || null,
               weight: weight || null,
@@ -370,7 +400,7 @@ router.post("/inventory/bulk-save", async (req, res) => {
           if (trimmedName && newStock > 0) {
             await tx.insert(inventoryLogsTable).values({
               productName: trimmedName,
-              unitName,
+              unitName: effectiveUnit,
               adjustmentType: "import",
               quantity: newStock,
               previousStock: 0,
@@ -413,6 +443,19 @@ router.patch("/inventory/:id/formatting", async (req, res) => {
 
     const { formatting } = req.body;
 
+    // Strict unit isolation: scoped users may only format rows in their own unit
+    const effectiveUnit = resolveWriteUnit(user, undefined);
+    if (effectiveUnit) {
+      const [row] = await db
+        .select({ unitName: inventoryTable.unitName })
+        .from(inventoryTable)
+        .where(eq(inventoryTable.id, id));
+      if (!row || row.unitName !== effectiveUnit) {
+        res.status(403).json({ error: "Access denied: unit mismatch" });
+        return;
+      }
+    }
+
     await db
       .update(inventoryTable)
       .set({ formatting: formatting || null, updatedAt: new Date() })
@@ -439,10 +482,13 @@ router.delete("/inventory/clear-all", async (req, res) => {
 
     const { unitName } = req.query as Record<string, string | undefined>;
 
-    if (unitName) {
+    // Strict unit isolation: scoped users may only clear rows in their own unit.
+    const effectiveUnit = resolveWriteUnit(user, unitName);
+
+    if (effectiveUnit) {
       const deleted = await db
         .delete(inventoryTable)
-        .where(eq(inventoryTable.unitName, unitName))
+        .where(eq(inventoryTable.unitName, effectiveUnit))
         .returning({ id: inventoryTable.id });
       res.json({ success: true, deleted: deleted.length });
     } else {
@@ -474,6 +520,19 @@ router.delete("/inventory/:id", async (req, res) => {
       return;
     }
 
+    // Strict unit isolation: scoped users may only delete rows in their own unit
+    const effectiveUnit = resolveWriteUnit(user, undefined);
+    if (effectiveUnit) {
+      const [row] = await db
+        .select({ unitName: inventoryTable.unitName })
+        .from(inventoryTable)
+        .where(eq(inventoryTable.id, id));
+      if (!row || row.unitName !== effectiveUnit) {
+        res.status(403).json({ error: "Access denied: unit mismatch" });
+        return;
+      }
+    }
+
     await db.delete(inventoryTable).where(eq(inventoryTable.id, id));
     res.json({ success: true });
   } catch (err) {
@@ -495,7 +554,9 @@ router.post("/inventory/insert-row", async (req, res) => {
     }
 
     const { afterId, unitName } = req.body;
-    if (!unitName) {
+    // Unit always from session token for scoped users; required otherwise.
+    const effectiveUnit = resolveWriteUnit(user, unitName);
+    if (!effectiveUnit) {
       res.status(400).json({ error: "unitName is required" });
       return;
     }
@@ -504,7 +565,7 @@ router.post("/inventory/insert-row", async (req, res) => {
     const allRows = await db
       .select({ id: inventoryTable.id, sortOrder: inventoryTable.sortOrder })
       .from(inventoryTable)
-      .where(eq(inventoryTable.unitName, unitName))
+      .where(eq(inventoryTable.unitName, effectiveUnit))
       .orderBy(inventoryTable.sortOrder, inventoryTable.id);
 
     // Determine the sort_order for the new row
@@ -538,7 +599,7 @@ router.post("/inventory/insert-row", async (req, res) => {
       .insert(inventoryTable)
       .values({
         productName: "",
-        unitName,
+        unitName: effectiveUnit,
         size: null,
         bottleColor: null,
         weight: null,

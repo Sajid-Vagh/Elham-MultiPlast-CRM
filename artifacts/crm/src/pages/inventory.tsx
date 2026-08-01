@@ -176,15 +176,30 @@ export default function Inventory() {
 
   const canEdit = (user as any)?.role === "admin" || (user as any)?.role === "inventory";
 
+  const role = (user as any)?.role;
+  const userUnit = (user as any)?.unit;
+
+  // Dropdown is shown for Sales / Admin roles, or users assigned to "All" units.
+  // Inventory-role users with a specific unit are strictly locked to their unit.
+  const showUnitDropdown =
+    role === "admin" || role === "sales" || userUnit === "All";
+
   // Unit filter
   const [unitFilter, setUnitFilter] = useState<string>("all");
 
   const effectiveUnit = useMemo(() => {
-    if (!canEdit) return undefined;
-    if ((user as any)?.unit !== "All" && unitFilter === "all") return (user as any)?.unit;
-    if (unitFilter !== "all") return unitFilter;
+    // Strict isolation: inventory managers with a real unit only ever see their own unit
+    if (role === "inventory" && userUnit && userUnit !== "All") return userUnit;
+    if (showUnitDropdown) return unitFilter !== "all" ? unitFilter : undefined;
     return undefined;
-  }, [user, unitFilter, canEdit]);
+  }, [role, userUnit, showUnitDropdown, unitFilter]);
+
+  // The unit stamped on writes. Undefined = no specific unit chosen yet.
+  const getWriteUnit = useCallback((): string | undefined => {
+    const u = effectiveUnit;
+    if (!u || u === "All" || u === "all") return undefined;
+    return u;
+  }, [effectiveUnit]);
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
@@ -330,21 +345,21 @@ export default function Inventory() {
   });
 
   const insertRowBelow = useCallback((row: GridRow) => {
-    const unitName = effectiveUnit || (user as any)?.unit || unitFilter;
-    if (!unitName || unitName === "all") {
+    const unitName = getWriteUnit();
+    if (!unitName) {
       toast({ title: "Please select a unit first", variant: "destructive" });
       return;
     }
     insertRow.mutate({ afterId: row.id, unitName });
-  }, [effectiveUnit, unitFilter, user, insertRow, toast]);
+  }, [getWriteUnit, insertRow, toast]);
 
   // ─── Row operations ───
   const addRow = useCallback(() => {
-    if (!effectiveUnit && (user as any)?.unit === "All" && unitFilter === "all") {
+    const unitForRow = getWriteUnit();
+    if (!unitForRow) {
       toast({ title: "Please select a unit first", variant: "destructive" });
       return;
     }
-    const unitForRow = effectiveUnit || (user as any)?.unit || unitFilter;
     const maxSort = rows.length > 0 ? Math.max(...rows.map((r) => r.sortOrder ?? 0)) : 0;
     const newRow: GridRow = {
       _key: newKey(),
@@ -361,7 +376,7 @@ export default function Inventory() {
       formatting: null,
     };
     setRows((prev) => [...prev, newRow]);
-  }, [effectiveUnit, unitFilter, user, toast, rows]);
+  }, [getWriteUnit, toast, rows]);
 
   const updateCell = useCallback((key: string, field: "productName" | "size" | "bottleColor" | "weight" | "stock" | "clientOrder", value: string) => {
     setRows((prev) =>
@@ -374,8 +389,8 @@ export default function Inventory() {
 
   const handleSaveRow = useCallback(
     (row: GridRow) => {
-      const unitName = effectiveUnit || (user as any)?.unit || unitFilter;
-      if (!unitName || unitName === "all") {
+      const unitName = getWriteUnit();
+      if (!unitName) {
         toast({ title: "Please select a unit first", variant: "destructive" });
         return;
       }
@@ -391,7 +406,7 @@ export default function Inventory() {
         sortOrder: row.sortOrder,
       });
     },
-    [effectiveUnit, unitFilter, user, saveRow, toast]
+    [getWriteUnit, saveRow, toast]
   );
 
   const handleDeleteRow = useCallback(
@@ -412,12 +427,14 @@ export default function Inventory() {
   }, [serverData]);
 
   const handleClearAll = useCallback(() => {
+    // Backend strictly restricts the unit: scoped users only clear their own unit,
+    // while admin/"All" users may clear all (undefined unit).
     clearAll.mutate(effectiveUnit);
   }, [clearAll, effectiveUnit]);
 
   const handleSaveAll = useCallback(() => {
-    const unitName = effectiveUnit || (user as any)?.unit || unitFilter;
-    if (!unitName || unitName === "all") {
+    const unitName = getWriteUnit();
+    if (!unitName) {
       toast({ title: "Please select a unit first", variant: "destructive" });
       return;
     }
@@ -434,7 +451,7 @@ export default function Inventory() {
       formatting: r.formatting,
     }));
     saveAll.mutate({ items });
-  }, [rows, saveAll, effectiveUnit, unitFilter, user, toast]);
+  }, [rows, saveAll, getWriteUnit, toast]);
 
   // ─── Selection & formatting ───
   const toggleSelectRow = useCallback((key: string) => {
@@ -519,7 +536,7 @@ export default function Inventory() {
           return;
         }
 
-        const unitForRow = effectiveUnit || (user as any)?.unit || "all";
+        const unitForRow = getWriteUnit() || "all";
         setImportFileName(file.name);
 
         // Map Excel columns — match exact headers from user's Excel sheet
@@ -560,11 +577,11 @@ export default function Inventory() {
     };
     reader.readAsArrayBuffer(file);
     e.target.value = "";
-  }, [toast, effectiveUnit, user]);
+  }, [toast, getWriteUnit]);
 
   const confirmImport = useCallback(() => {
-    const unitForRow = effectiveUnit || (user as any)?.unit || unitFilter;
-    if (!unitForRow || unitForRow === "all") {
+    const unitForRow = getWriteUnit();
+    if (!unitForRow) {
       toast({ title: "Please select a unit first", variant: "destructive" });
       return;
     }
@@ -578,7 +595,7 @@ export default function Inventory() {
       sortOrder: r.sortOrder,
     }));
     bulkSave.mutate({ unitName: unitForRow, items });
-  }, [importData, bulkSave, effectiveUnit, unitFilter, user, toast]);
+  }, [importData, bulkSave, getWriteUnit, toast]);
 
   // ─── Logs dialog ───
   const [logsOpen, setLogsOpen] = useState(false);
@@ -622,8 +639,9 @@ export default function Inventory() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Unit filter */}
-          {canEdit && (
+          {/* Unit filter — shown for Sales / Admin / All-unit users; inventory
+              managers with a specific unit are locked to their own unit */}
+          {showUnitDropdown && (
             <Select value={unitFilter} onValueChange={setUnitFilter}>
               <SelectTrigger className="w-[160px] h-8 text-sm">
                 <SelectValue placeholder="Select Unit" />
