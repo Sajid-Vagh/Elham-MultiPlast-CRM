@@ -67,7 +67,7 @@ const SALES_ADMIN_ROLES = ["admin", "sales", "production", "production_and_suppo
 const PRODUCTION_ROLES = ["admin", "production", "production_and_support", "sales"];
 const SUPPORT_ROLES = ["admin", "sales", "production_and_support", "production"];
 const SUPPORT_DASHBOARD_ROLES = ["admin", "production_and_support", "sales", "production"];
-const INVENTORY_ROLES = ["admin", "sales", "inventory"];
+const INVENTORY_ROLES = ["admin", "sales", "inventory", "production", "production_and_support"];
 
 function Router() {
   return (
