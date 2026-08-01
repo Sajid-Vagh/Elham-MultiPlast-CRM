@@ -92,6 +92,16 @@ export function onUserChange(queryClient: QueryClient) {
   queryClient.invalidateQueries({ queryKey: ["category-report"] });
 }
 
+// Immediately propagate the current user's new data (e.g. a freshly uploaded
+// profile photo) into the global "me" query so the Header, Sidebar and every
+// UserAvatar re-render instantly instead of waiting for a refetch.
+export function syncMe(queryClient: QueryClient, data: unknown) {
+  const updated = (data as { user?: unknown })?.user ?? data;
+  if (!updated) return;
+  queryClient.setQueryData(getGetMeQueryKey(), updated);
+  onUserChange(queryClient);
+}
+
 export function onProductionChange(queryClient: QueryClient, orderId?: string, dealId?: number, contactId?: number) {
   queryClient.invalidateQueries({ queryKey: ["production-dashboard"] });
   queryClient.invalidateQueries({ queryKey: ["production-orders"] });

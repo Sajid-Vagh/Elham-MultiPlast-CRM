@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 export interface StorageProvider {
   save(filename: string, buffer: Buffer, subDir?: string): Promise<string>;
@@ -369,6 +369,133 @@ class SupabaseStorageProvider implements StorageProvider {
 }
 
 // ────────────────────────────────────────────
+// Cloudinary (persistent image hosting for profile photos)
+//
+// Server-to-server signed uploads via Cloudinary's Upload API using
+// native fetch — no npm package required. Unlike Supabase's anon-key
+// storage, signed uploads never depend on storage RLS policies, so they
+// work reliably on Vercel/Render serverless runtimes where the local
+// filesystem is ephemeral. The returned secure URL is an absolute,
+// CDN-backed URL (https://res.cloudinary.com/...).
+//
+// Env: CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
+// ────────────────────────────────────────────
+function mimeFromExt(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase() || "";
+  const mimeMap: Record<string, string> = {
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    gif: "image/gif",
+    webp: "image/webp",
+    svg: "image/svg+xml",
+    bmp: "image/bmp",
+  };
+  return mimeMap[ext] || "application/octet-stream";
+}
+
+class CloudinaryStorageProvider implements StorageProvider {
+  private cloudName: string;
+  private apiKey: string;
+  private apiSecret: string;
+
+  constructor(cloudName: string, apiKey: string, apiSecret: string) {
+    this.cloudName = cloudName;
+    this.apiKey = apiKey;
+    this.apiSecret = apiSecret;
+  }
+
+  private uploadEndpoint(): string {
+    return `https://api.cloudinary.com/v1_1/${this.cloudName}/image/upload`;
+  }
+
+  private destroyEndpoint(): string {
+    return `https://api.cloudinary.com/v1_1/${this.cloudName}/image/destroy`;
+  }
+
+  // Cloudinary signs all non-file, non-key parameters (sorted alphabetically
+  // as `key=value&...` with the API secret appended, SHA-1 hashed).
+  private signature(params: Record<string, string | number | boolean>): string {
+    const sorted = Object.entries(params)
+      .filter(([k]) => k !== "file" && k !== "api_key" && k !== "signature" && k !== "cloud_name")
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([k, v]) => `${k}=${v}`)
+      .join("&");
+    return createHash("sha1").update(`${sorted}${this.apiSecret}`).digest("hex");
+  }
+
+  async save(filename: string, buffer: Buffer, subDir = "profiles"): Promise<string> {
+    const publicId = `${subDir}/${randomUUID()}`;
+    const timestamp = Math.floor(Date.now() / 1000);
+    const signature = this.signature({ public_id: publicId, overwrite: true, timestamp });
+
+    const form = new FormData();
+    form.append("file", new Blob([new Uint8Array(buffer)], { type: mimeFromExt(filename) }), filename);
+    form.append("public_id", publicId);
+    form.append("overwrite", "true");
+    form.append("timestamp", String(timestamp));
+    form.append("api_key", this.apiKey);
+    form.append("signature", signature);
+
+    const res = await fetch(this.uploadEndpoint(), { method: "POST", body: form });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Cloudinary upload failed (${res.status}): ${text}`);
+    }
+    return publicId;
+  }
+
+  async get(storagePath: string): Promise<Buffer | null> {
+    const res = await fetch(this.getUrl(storagePath));
+    if (!res.ok) return null;
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  async delete(storagePath: string): Promise<boolean> {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const signature = this.signature({ public_id: storagePath, timestamp });
+    const form = new FormData();
+    form.append("public_id", storagePath);
+    form.append("timestamp", String(timestamp));
+    form.append("api_key", this.apiKey);
+    form.append("signature", signature);
+
+    const res = await fetch(this.destroyEndpoint(), { method: "POST", body: form });
+    if (!res.ok) return false;
+    const body = await res.json().catch(() => ({})) as { result?: string };
+    return body.result === "ok";
+  }
+
+  async exists(storagePath: string): Promise<boolean> {
+    try {
+      const res = await fetch(this.getUrl(storagePath), { method: "HEAD", redirect: "follow" });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  getUrl(storagePath: string): string {
+    return `https://res.cloudinary.com/${this.cloudName}/image/upload/${storagePath}`;
+  }
+
+  getPhysicalPath(storagePath: string): string {
+    return this.getUrl(storagePath);
+  }
+
+  async verifyPublicAccess(storagePath: string): Promise<{ accessible: boolean; error?: string }> {
+    try {
+      const res = await fetch(this.getUrl(storagePath), { method: "HEAD", redirect: "follow" });
+      return res.ok
+        ? { accessible: true }
+        : { accessible: false, error: `Cloudinary returned HTTP ${res.status}` };
+    } catch (err: any) {
+      return { accessible: false, error: err?.message || "Network error" };
+    }
+  }
+}
+
+// ────────────────────────────────────────────
 // Provider selection: Supabase if configured, else local
 // ────────────────────────────────────────────
 function createProvider(): StorageProvider {
@@ -392,6 +519,24 @@ function createProvider(): StorageProvider {
 }
 
 let provider: StorageProvider = createProvider();
+
+// ────────────────────────────────────────────
+// Profile photo storage: Cloudinary when configured (reliable server-side
+// signed uploads), otherwise the shared provider (Supabase → local).
+// ────────────────────────────────────────────
+function createProfilePhotoProvider(): StorageProvider {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+  if (cloudName && apiKey && apiSecret) {
+    console.log(`[storage] Profile photos: using Cloudinary (${cloudName})`);
+    return new CloudinaryStorageProvider(cloudName, apiKey, apiSecret);
+  }
+  console.warn("[storage] Profile photos: CLOUDINARY_* env vars not set — falling back to the shared storage provider.");
+  return provider;
+}
+
+export const profilePhotoStorage: StorageProvider = createProfilePhotoProvider();
 
 export function setStorageProvider(p: StorageProvider) {
   provider = p;

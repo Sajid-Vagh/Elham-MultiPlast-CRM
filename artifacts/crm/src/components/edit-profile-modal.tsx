@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserAvatar } from "@/components/user-avatar";
 import { useToast } from "@/hooks/use-toast";
-import { onUserChange } from "@/lib/query-invalidation";
+import { onUserChange, syncMe } from "@/lib/query-invalidation";
 
 const COLOR_PALETTE = ["#6366f1", "#ec4899", "#f59e0b", "#10b981", "#3b82f6", "#ef4444", "#8b5cf6", "#14b8a6", "#f97316", "#84cc16"];
 
@@ -159,7 +159,7 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
       if (!res.ok) throw new Error("Upload failed");
       const data = await res.json();
       setForm(p => ({ ...p, profilePhoto: data.profilePhoto }));
-      onUserChange(queryClient);
+      syncMe(queryClient, data);
     } catch {
       toast({ title: "Photo upload failed", variant: "destructive" });
     } finally {
@@ -176,8 +176,9 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Remove failed");
+      const data = await res.json();
       setForm(p => ({ ...p, profilePhoto: null }));
-      onUserChange(queryClient);
+      syncMe(queryClient, data);
     } catch {
       toast({ title: "Failed to remove photo", variant: "destructive" });
     } finally {

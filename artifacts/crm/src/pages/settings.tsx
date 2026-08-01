@@ -12,7 +12,7 @@ import { Plus, Pencil, Trash2, SlidersHorizontal, Users, Camera, X as XIcon, Che
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { onUserChange } from "@/lib/query-invalidation";
+import { onUserChange, syncMe } from "@/lib/query-invalidation";
 import { UserAvatar } from "@/components/user-avatar";
 import { EditProfileModal } from "@/components/edit-profile-modal";
 import { useActiveUnits, useAllUnits } from "@/lib/use-active-units";
@@ -210,8 +210,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
       if (!res.ok) throw new Error("Upload failed");
       const data = await res.json();
       setForm(p => ({ ...p, profilePhoto: data.profilePhoto }));
-      onSave({ ...form, profilePhoto: data.profilePhoto });
-      onUserChange(queryClient);
+      syncMe(queryClient, data);
     } catch (err) {
       console.error("Photo upload error", err);
     } finally {
@@ -229,9 +228,9 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Remove failed");
+      const data = await res.json();
       setForm(p => ({ ...p, profilePhoto: null }));
-      onSave({ ...form, profilePhoto: null });
-      onUserChange(queryClient);
+      syncMe(queryClient, data);
     } catch (err) {
       console.error("Photo remove error", err);
     } finally {
