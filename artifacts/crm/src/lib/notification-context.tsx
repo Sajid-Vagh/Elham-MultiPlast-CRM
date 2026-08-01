@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
 import { playNotificationSoundForType, showBrowserNotification } from "./notification-sound";
+import { toast } from "@/hooks/use-toast";
 
 interface Notification {
   id: number;
@@ -208,12 +209,29 @@ export function NotificationProvider({ userId, children }: { userId: number | un
   }, []);
 
   const deleteNotification = useCallback(async (id: number) => {
+    // Optimistically remove from local state immediately
+    let removed: Notification | undefined;
+    setNotifications((prev) => {
+      const target = prev.find((n) => n.id === id);
+      if (target) removed = target;
+      return prev.filter((n) => n.id !== id);
+    });
+    setTotal((prev) => Math.max(0, prev - 1));
+
     try {
-      await fetch(`/api/notifications/${id}`, { method: "DELETE", headers: getHeaders() });
-      setNotifications((prev) => prev.filter((n) => n.id !== id));
-      setTotal((prev) => Math.max(0, prev - 1));
-    } catch { /* ignore */ }
-  }, []);
+      const res = await fetch(`/api/notifications/${id}`, { method: "DELETE", headers: getHeaders() });
+      if (!res.ok) throw new Error(`Delete failed (${res.status})`);
+      toast({ title: "Notification deleted" });
+    } catch (err: any) {
+      // Roll back on failure
+      setNotifications((prev) => {
+        if (!removed) return prev;
+        return prev.some((n) => n.id === id) ? prev : [removed, ...prev];
+      });
+      setTotal((prev) => prev + 1);
+      toast({ title: err?.message || "Failed to delete notification", variant: "destructive" });
+    }
+  }, [getHeaders]);
 
   const value: NotificationContextValue = {
     notifications, total, unreadCount, latestNotification,

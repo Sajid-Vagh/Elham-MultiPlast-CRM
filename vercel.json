@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/notifications/cleanup-expired?key=CRON_SECRET_PLACEHOLDER",
+      "path": "/api/notifications/cleanup-expired",
       "schedule": "30 0 * * *"
     }
   ],

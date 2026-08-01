@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, notificationsTable, usersTable } from "@workspace/db";
-import { eq, and, isNull, isNotNull, desc, sql } from "drizzle-orm";
+import { eq, and, or, isNull, isNotNull, desc, sql, gte } from "drizzle-orm";
 import { getUserFromRequest, getUserIdFromToken } from "./auth";
 import { notificationEmitter, NOTIFICATION_EVENT } from "../lib/notification-emitter";
 
@@ -103,6 +103,10 @@ router.get("/notifications/history", async (req: Request, res: Response) => {
 
   try {
     const conditions: any[] = [eq(notificationsTable.userId, user.id)];
+
+    // Exclude notifications that were read more than 24 hours ago (auto-expire read items)
+    const readCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    conditions.push(or(isNull(notificationsTable.readAt), gte(notificationsTable.readAt, readCutoff)));
 
     if (filter === "unread" || filter === "unseen") {
       conditions.push(isNull(notificationsTable.readAt));
@@ -386,7 +390,7 @@ export async function createNotification(params: {
     }
   }
 
-  const [n] = await db.insert(notificationsTable).values(params).returning();
+  const [n] = await db.insert(notificationsTable).values({ ...params, createdAt: new Date() }).returning();
   if (n) {
     notificationEmitter.emit(NOTIFICATION_EVENT, n);
   }
@@ -394,12 +398,14 @@ export async function createNotification(params: {
 }
 
 // Delete notifications read more than 24 hours ago. Unread notifications are NEVER deleted.
-// Triggered by cron (CRON_SECRET query param) or manually by an admin.
-router.post("/notifications/cleanup-expired", async (req: Request, res: Response) => {
+// Triggered by cron (Vercel cron sends a GET with user-agent "vercel-cron/1.0",
+// or a CRON_SECRET query param, or an admin user).
+router.all("/notifications/cleanup-expired", async (req: Request, res: Response) => {
   const cronSecret = process.env.CRON_SECRET;
   const hasCronAuth = !!cronSecret && req.query.key === cronSecret;
+  const isVercelCron = (req.get("user-agent") || "").includes("vercel-cron/1.0");
 
-  if (!hasCronAuth) {
+  if (!hasCronAuth && !isVercelCron) {
     const user = await getUser(req, res);
     if (!user) return;
     if (user.role !== "admin") {
@@ -425,14 +431,10 @@ router.post("/notifications/cleanup-expired", async (req: Request, res: Response
   }
 });
 
-// Delete notification (admin only)
+// Delete notification (owner can delete their own; admin can delete any)
 router.delete("/notifications/:id", async (req: Request, res: Response) => {
   const user = await getUser(req, res);
   if (!user) return;
-  if (user.role !== "admin") {
-    res.status(403).json({ error: "Admin only" });
-    return;
-  }
 
   const id = Number(req.params.id);
   if (isNaN(id)) {
@@ -441,7 +443,15 @@ router.delete("/notifications/:id", async (req: Request, res: Response) => {
   }
 
   try {
-    await db.delete(notificationsTable).where(eq(notificationsTable.id, id));
+    const conditions = [eq(notificationsTable.id, id)];
+    if (user.role !== "admin") {
+      conditions.push(eq(notificationsTable.userId, user.id));
+    }
+    const [deleted] = await db.delete(notificationsTable).where(and(...conditions)).returning({ id: notificationsTable.id });
+    if (!deleted) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Delete notification error");

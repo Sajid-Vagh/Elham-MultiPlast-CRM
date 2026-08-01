@@ -46,6 +46,20 @@ function isThisWeek(d: Date) {
   return d >= startOfWeek;
 }
 
+// Parse a backend timestamp safely as UTC. Backend stores created_at in UTC
+// (ISO with trailing Z). If a legacy naive value (no timezone) slips through,
+// treat it as UTC so the local-time display is always correct.
+function parseUtcDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const s = String(value).trim();
+  if (!s) return null;
+  if (!/Z$|[+-]\d{2}:?\d{2}$/.test(s)) {
+    return new Date(s.endsWith(" ") ? `${s}Z` : `${s}Z`);
+  }
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 export default function NotificationsPage() {
   const [, setLocation] = useLocation();
   const [filter, setFilter] = useState<Filter>("all");
@@ -59,11 +73,20 @@ export default function NotificationsPage() {
     if (filter === "unread") {
       list = list.filter((n) => !n.readAt);
     } else if (filter === "today") {
-      list = list.filter((n) => isToday(new Date(n.createdAt)));
+      list = list.filter((n) => {
+        const d = parseUtcDate(n.createdAt);
+        return d ? isToday(d) : false;
+      });
     } else if (filter === "this_week") {
-      list = list.filter((n) => isThisWeek(new Date(n.createdAt)));
+      list = list.filter((n) => {
+        const d = parseUtcDate(n.createdAt);
+        return d ? isThisWeek(d) : false;
+      });
     } else if (filter === "older") {
-      list = list.filter((n) => !isThisWeek(new Date(n.createdAt)));
+      list = list.filter((n) => {
+        const d = parseUtcDate(n.createdAt);
+        return d ? !isThisWeek(d) : false;
+      });
     }
     const offset = page * limit;
     return { items: list.slice(offset, offset + limit), total: list.length };
@@ -125,9 +148,9 @@ export default function NotificationsPage() {
           {filtered.items.map((n) => {
             const isUnread = !n.readAt;
             const icon = TYPE_ICONS[n.type] || "🔔";
-            const createdDate = new Date(n.createdAt);
-            const dateStr = createdDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-            const timeStr = createdDate.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+            const createdDate = parseUtcDate(n.createdAt);
+            const dateStr = createdDate?.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) ?? "—";
+            const timeStr = createdDate?.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) ?? "";
 
             return (
               <div
