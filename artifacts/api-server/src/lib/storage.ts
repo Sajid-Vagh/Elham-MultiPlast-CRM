@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
+import { sql } from "drizzle-orm";
 
 export interface StorageProvider {
   save(filename: string, buffer: Buffer, subDir?: string): Promise<string>;
@@ -224,13 +225,47 @@ class SupabaseStorageProvider implements StorageProvider {
   // ────────────────────────────────────────
   // Bucket management
   // ────────────────────────────────────────
+  // Create a bucket by inserting into storage.buckets directly. The Postgres
+  // connection role (table owner) bypasses RLS, so this works with the anon
+  // publishable key — no service_role key required. Mirrors the Storage REST
+  // API create shape (public, 10 MB limit, allowed MIME types).
+  private async createBucketViaDb(bucket: string): Promise<boolean> {
+    try {
+      const { db } = await import("@workspace/db");
+      await db.execute(sql`
+        INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+        VALUES (${bucket}, ${bucket}, true, 10485760,
+          ARRAY['audio/webm','audio/mpeg','audio/mp3','audio/wav','audio/wave','audio/x-wav','audio/ogg','audio/mp4','audio/m4a','application/pdf','image/jpeg','image/png'])
+        ON CONFLICT (id) DO UPDATE SET public = true
+      `);
+      this.buckets.add(bucket);
+      return true;
+    } catch (err: any) {
+      console.warn(`[storage] Database bucket creation failed for "${bucket}":`, err?.message);
+      return false;
+    }
+  }
+
+  // Set the public flag directly via the database (bypasses storage RLS, so it
+  // does not depend on the API key having bucket-management privileges).
+  private async setBucketPublicViaDb(bucket: string): Promise<boolean> {
+    try {
+      const { db } = await import("@workspace/db");
+      await db.execute(sql`UPDATE storage.buckets SET public = true WHERE id = ${bucket}`);
+      return true;
+    } catch (err: any) {
+      console.warn(`[storage] Could not set bucket "${bucket}" public via database:`, err?.message);
+      return false;
+    }
+  }
+
   async ensureBucketExists(): Promise<boolean> {
     if (this.buckets.has("voice-notes")) return true;
     if (this.bucketCheckDone) return this.buckets.has("voice-notes");
 
     this.bucketCheckDone = true;
 
-    // 1. Try listing buckets with apikey header
+    // 1. Try listing buckets (informational; anon key may get RLS-filtered results)
     try {
       const res = await fetch(`${this.baseUrl}/storage/v1/bucket`, {
         headers: this.authHeaders(),
@@ -239,12 +274,9 @@ class SupabaseStorageProvider implements StorageProvider {
         const buckets = await res.json() as { id: string; public: boolean }[];
         for (const b of buckets) this.buckets.add(b.id);
         console.log(`[storage] Supabase buckets found: [${buckets.map(b => `${b.id}(public=${b.public})`).join(", ")}]`);
-      } else {
-        const text = await res.text().catch(() => "");
-        console.error(`[storage] Failed to list Supabase buckets: HTTP ${res.status}: ${text}`);
       }
     } catch (err: any) {
-      console.error(`[storage] Error listing Supabase buckets:`, err?.message);
+      console.warn(`[storage] Error listing Supabase buckets:`, err?.message);
     }
 
     if (this.buckets.has("voice-notes")) {
@@ -253,8 +285,8 @@ class SupabaseStorageProvider implements StorageProvider {
       return true;
     }
 
-    // 2. Try creating via Storage REST API (requires service_role key)
-    console.log(`[storage] Bucket "voice-notes" not found. Attempting to create via API...`);
+    // 2. Try creating via Storage REST API (fast path — only works with a
+    //    service_role key; anon keys are blocked by RLS, which is fine)
     try {
       const res = await fetch(`${this.baseUrl}/storage/v1/bucket`, {
         method: "POST",
@@ -275,32 +307,23 @@ class SupabaseStorageProvider implements StorageProvider {
       if (res.ok) {
         this.buckets.add("voice-notes");
         console.log(`[storage] Created bucket "voice-notes" via API`);
-        return true;
+      } else {
+        const text = await res.text().catch(() => "");
+        console.log(`[storage] API bucket creation unavailable (HTTP ${res.status}${text ? `: ${text}` : ""}). Falling back to database...`);
       }
-      const text = await res.text().catch(() => "");
-      console.warn(`[storage] API bucket creation failed: ${text}`);
     } catch (err: any) {
       console.warn(`[storage] API bucket creation error:`, err?.message);
     }
 
-    // 3. Try creating via database (insert into storage.buckets)
-    console.log(`[storage] Trying database bucket creation...`);
-    try {
-      const { db } = await import("@workspace/db");
-      // Use raw SQL to insert bucket into storage schema
-      await db.execute(
-        `INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-         VALUES ('voice-notes', 'voice-notes', true, 10485760,
-           ARRAY['audio/webm','audio/mpeg','audio/mp3','audio/wav','audio/wave','audio/x-wav','audio/ogg','audio/mp4','audio/m4a','application/pdf','image/jpeg','image/png'])
-         ON CONFLICT (id) DO UPDATE SET public = true`
-      );
-      this.buckets.add("voice-notes");
+    // 3. Create via database (Postgres role bypasses RLS — reliable default)
+    if (!this.buckets.has("voice-notes") && (await this.createBucketViaDb("voice-notes"))) {
       console.log(`[storage] Created bucket "voice-notes" via database`);
-      // Set bucket public via API
-      await this.ensureBucketPublic("voice-notes");
+    }
+
+    // 4. Ensure public via database so it doesn't depend on API key privileges
+    if (this.buckets.has("voice-notes")) {
+      await this.setBucketPublicViaDb("voice-notes");
       return true;
-    } catch (err: any) {
-      console.warn(`[storage] Database bucket creation failed:`, err?.message);
     }
 
     console.error(`[storage] ═══════════════════════════════════════════════════════`);
@@ -322,7 +345,7 @@ class SupabaseStorageProvider implements StorageProvider {
     if (this.buckets.has(bucket)) return;
 
     // Generic bucket creation for any bucket (voice-notes, profiles, etc.)
-    console.log(`[storage] Bucket "${bucket}" not found. Attempting to create via API...`);
+    // API first (service_role fast path), then database (anon-key safe).
     try {
       const res = await fetch(`${this.baseUrl}/storage/v1/bucket`, {
         method: "POST",
@@ -337,33 +360,39 @@ class SupabaseStorageProvider implements StorageProvider {
       if (res.ok) {
         this.buckets.add(bucket);
         console.log(`[storage] Created bucket "${bucket}" via API`);
-      } else if (res.status !== 409) {
-        const text = await res.text().catch(() => "");
-        console.warn(`[storage] Bucket creation failed for "${bucket}": ${text}`);
       }
     } catch (err: any) {
       console.warn(`[storage] Bucket creation error for "${bucket}":`, err?.message);
+    }
+
+    if (!this.buckets.has(bucket) && (await this.createBucketViaDb(bucket))) {
+      console.log(`[storage] Created bucket "${bucket}" via database`);
     }
 
     await this.ensureBucketPublic(bucket);
   }
 
   private async ensureBucketPublic(bucket: string): Promise<void> {
+    // Fast path: Storage REST API (works with service_role key). Uses the
+    // valid HTTP PUT method — `UPDATE` is not a valid HTTP verb.
+    let ok = false;
     try {
       const url = `${this.baseUrl}/storage/v1/bucket/${bucket}`;
       const res = await fetch(url, {
-        method: "UPDATE",
+        method: "PUT",
         headers: { ...this.authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ public: true }),
       });
-      if (res.ok) {
-        console.log(`[storage] Bucket "${bucket}" set to public`);
-      } else if (res.status !== 404) {
-        const text = await res.text().catch(() => "");
-        console.warn(`[storage] Could not set bucket "${bucket}" to public: HTTP ${res.status}: ${text}`);
-      }
+      ok = res.ok;
+      if (res.ok) console.log(`[storage] Bucket "${bucket}" set to public`);
     } catch {
-      // Non-critical
+      // fall through to database
+    }
+
+    if (!ok) {
+      if (await this.setBucketPublicViaDb(bucket)) {
+        console.log(`[storage] Bucket "${bucket}" set to public via database`);
+      }
     }
   }
 }
