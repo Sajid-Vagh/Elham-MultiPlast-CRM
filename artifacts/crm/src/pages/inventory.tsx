@@ -627,7 +627,7 @@ export default function Inventory() {
   }
 
   return (
-    <div className="p-6 space-y-4 max-w-full min-w-0">
+    <div className="p-6 space-y-4 w-full max-w-full min-w-0">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -816,19 +816,21 @@ export default function Inventory() {
       {/* Spreadsheet Grid */}
       <div className="border rounded-lg w-full max-w-full overflow-hidden">
         <div className="w-full overflow-x-auto">
-          <table className="w-full min-w-max text-sm border-collapse">
+          <table className="min-w-full text-sm border-collapse">
             <thead>
               <tr className="bg-muted/40 border-b">
-                <th className="w-10 text-center py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
-                  {canEdit && rows.length > 0 && (
-                    <input
-                      type="checkbox"
-                      checked={selectedRows.size === rows.length && rows.length > 0}
-                      onChange={selectAll}
-                      className="cursor-pointer"
-                    />
-                  )}
-                </th>
+                {canEdit && (
+                  <th className="w-10 text-center py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                    {rows.length > 0 && (
+                      <input
+                        type="checkbox"
+                        checked={selectedRows.size === rows.length && rows.length > 0}
+                        onChange={selectAll}
+                        className="cursor-pointer"
+                      />
+                    )}
+                  </th>
+                )}
                 <th className="w-12 text-center py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">NO</th>
                 <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[300px]">PRODUCT NAME</th>
                 <th className="text-left py-2 px-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider min-w-[140px]">SIZE</th>
