@@ -42,7 +42,8 @@ app.use((err: any, _req: any, res: any, _next: any) => {
   }
 
   res.status(err?.status ?? 500).json({
-    error: "Internal server error",
+    success: false,
+    error: "Internal Server Error",
   });
 });
 

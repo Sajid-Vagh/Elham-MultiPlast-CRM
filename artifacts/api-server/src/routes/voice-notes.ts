@@ -195,8 +195,8 @@ router.post("/voice-notes", upload.single("file"), async (req: Request, res: Res
 
     res.status(201).json(note);
   } catch (err) {
-    console.error("Voice note upload error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Voice note upload error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -236,8 +236,8 @@ router.get("/voice-notes", async (req: Request, res: Response) => {
     const notes = await getVoiceNotes(entityType, entityId, user.id, user.role);
     res.json(notes);
   } catch (err) {
-    console.error("Get voice notes error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Get voice notes error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -254,8 +254,8 @@ router.get("/voice-notes/deal/:dealId", async (req: Request, res: Response) => {
     const notes = await getVoiceNotes("deal", dealId, user.id, user.role);
     res.json(notes);
   } catch (err) {
-    console.error("Get voice notes error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Get voice notes error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -270,8 +270,8 @@ router.get("/voice-notes/production/:productionOrderId", async (req: Request, re
     const notes = await getVoiceNotes("production", poId, user.id, user.role);
     res.json(notes);
   } catch (err) {
-    console.error("Get voice notes error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Get voice notes error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -301,8 +301,8 @@ router.patch("/voice-notes/:id/transcript", async (req: Request, res: Response) 
 
     res.json(updated);
   } catch (err) {
-    console.error("Update transcript error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Update transcript error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -343,8 +343,8 @@ router.patch("/voice-notes/:id", async (req: Request, res: Response) => {
 
     res.json(updated);
   } catch (err) {
-    console.error("Update voice note error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Update voice note error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -366,8 +366,8 @@ router.delete("/voice-notes/:id", async (req: Request, res: Response) => {
 
     res.json({ success: true });
   } catch (err) {
-    console.error("Delete voice note error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Delete voice note error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -393,8 +393,8 @@ router.get("/voice-notes/:id/stream", async (req: Request, res: Response) => {
     res.setHeader("Cache-Control", "private, max-age=86400");
     res.end(audioData.data);
   } catch (err) {
-    console.error("Stream voice note error:", err);
-    if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Stream voice note error:");
+    if (!res.headersSent) res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -417,8 +417,8 @@ router.get("/voice-notes/:id/verify", async (req: Request, res: Response) => {
 
     res.json({ available: true });
   } catch (err) {
-    console.error("Verify voice note error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Verify voice note error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -486,8 +486,8 @@ router.post("/voice-notes/:id/replace", upload.single("file"), async (req: Reque
 
     res.status(201).json(note);
   } catch (err) {
-    console.error("Replace voice note error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Replace voice note error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -513,8 +513,8 @@ router.get("/voice-notes/:id/download", async (req: Request, res: Response) => {
     res.setHeader("Content-Length", audioData.data.length);
     res.end(audioData.data);
   } catch (err) {
-    console.error("Download voice note error:", err);
-    if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Download voice note error:");
+    if (!res.headersSent) res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -531,8 +531,8 @@ router.get("/voice-notes/diagnostics", async (req: Request, res: Response) => {
     const diagnostics = await getVoiceNotesDiagnostics();
     res.json(diagnostics);
   } catch (err) {
-    console.error("Voice note diagnostics error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Voice note diagnostics error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

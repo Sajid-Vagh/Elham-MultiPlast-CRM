@@ -28,7 +28,7 @@ router.get("/contacts/:id/notes", async (req, res) => {
     res.json(notes);
   } catch (err) {
     console.error("Get notes error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -51,7 +51,7 @@ router.post("/contacts/:id/notes", async (req, res) => {
     res.status(201).json(note);
   } catch (err) {
     console.error("Create note error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -67,7 +67,7 @@ router.patch("/notes/:id", async (req, res) => {
     res.json(updated);
   } catch (err) {
     console.error("Update note error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

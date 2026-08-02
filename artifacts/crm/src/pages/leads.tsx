@@ -239,6 +239,9 @@ export default function Leads() {
       setLostContactId(null);
       onContactChange(queryClient);
       toast({ title: "Inquiry marked as Lost" });
+    }).catch(() => {
+      setLostSubmitting(false);
+      toast({ title: "Error", description: "Failed to mark as Lost. Please try again.", variant: "destructive" });
     });
   };
 

@@ -67,7 +67,7 @@ router.get("/categories/counts", async (req, res) => {
     res.json(counts);
   } catch (err) {
     req.log.error({ err }, "Get category counts error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -199,7 +199,7 @@ router.get("/categories/:category/contacts", async (req, res) => {
     })));
   } catch (err) {
     req.log.error({ err }, "Get category contacts error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -279,7 +279,7 @@ router.get("/categories/:category/contacts/search", async (req, res) => {
     })));
   } catch (err) {
     req.log.error({ err }, "Search category contacts error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -379,7 +379,7 @@ router.post("/categories/move", async (req, res) => {
     res.json({ success: true, moved: history.length, history });
   } catch (err) {
     req.log.error({ err }, "Move category error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -422,7 +422,7 @@ router.get("/categories/history/:contactId", async (req, res) => {
     })));
   } catch (err) {
     req.log.error({ err }, "Get category history error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -523,7 +523,7 @@ router.get("/categories/report", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Get category report error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

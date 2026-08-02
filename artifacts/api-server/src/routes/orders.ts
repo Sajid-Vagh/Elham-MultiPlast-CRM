@@ -129,7 +129,7 @@ router.get("/orders", async (req, res) => {
     });
   } catch (err) {
     console.error("List orders error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -311,7 +311,7 @@ router.get("/orders/global", async (req, res) => {
     });
   } catch (err) {
     console.error("Global orders list error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -328,7 +328,7 @@ router.get("/orders/:id", async (req, res) => {
     res.json(await enrichOrder(order));
   } catch (err) {
     console.error("Get order error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -454,7 +454,7 @@ router.post("/orders", async (req, res) => {
     res.status(201).json(await enrichOrder(order));
   } catch (err) {
     console.error("Create order error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -576,7 +576,7 @@ router.patch("/orders/:id", async (req, res) => {
     res.json(await enrichOrder(updated));
   } catch (err) {
     console.error("Update order error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -597,7 +597,7 @@ router.delete("/orders/:id", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     console.error("Delete order error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -621,7 +621,7 @@ router.post("/orders/:id/cancel", async (req, res) => {
     res.json({ success: true, order: result.order });
   } catch (err) {
     console.error("Cancel order error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -650,7 +650,7 @@ router.get("/orders/:id/timeline", async (req, res) => {
     res.json(events);
   } catch (err) {
     console.error("Get order timeline error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -683,7 +683,7 @@ router.get("/orders/:id/revisions", async (req, res) => {
     res.json(revisions);
   } catch (err) {
     console.error("Get order revisions error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -748,7 +748,7 @@ router.post("/orders/:id/revisions", async (req, res) => {
     res.status(201).json(revision);
   } catch (err) {
     console.error("Create revision error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -781,7 +781,7 @@ router.patch("/orders/:id/revisions/:revisionId/approve", async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error("Approve revision error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -827,7 +827,7 @@ router.get("/orders/product-demand", async (req, res) => {
     res.json(demand.rows || []);
   } catch (err) {
     console.error("Get product demand error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -874,7 +874,7 @@ router.get("/orders/by-product/:productName", async (req, res) => {
     res.json(enriched);
   } catch (err) {
     console.error("Get orders by product error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

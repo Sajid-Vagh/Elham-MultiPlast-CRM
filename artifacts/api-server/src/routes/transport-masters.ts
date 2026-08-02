@@ -111,7 +111,7 @@ router.get("/transport-masters/destinations", async (req, res) => {
     });
   } catch (err) {
     console.error("List destinations error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -197,7 +197,7 @@ router.get("/transport-masters/destinations/lookup", async (req, res) => {
     res.json({ matchedBy: null, data: [] });
   } catch (err) {
     console.error("Transport lookup error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -232,7 +232,7 @@ router.post("/transport-masters/destinations", async (req, res) => {
     res.status(201).json(created);
   } catch (err) {
     console.error("Create destination error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -272,7 +272,7 @@ router.patch("/transport-masters/destinations/:id", async (req, res) => {
     res.json(updated);
   } catch (err) {
     console.error("Update destination error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -292,7 +292,7 @@ router.delete("/transport-masters/destinations/:id", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     console.error("Delete destination error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -310,7 +310,7 @@ router.get("/transport-masters/destinations/history/:id", async (req, res) => {
     res.json(logs);
   } catch (err) {
     console.error("Transport history error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -343,7 +343,7 @@ router.get("/transport-masters/destinations/customer-suggest/:contactId", async 
     res.json(suggestions);
   } catch (err) {
     console.error("Customer suggest error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -400,7 +400,7 @@ router.post("/transport-masters/destinations/import/preview", async (req, res) =
     });
   } catch (err) {
     console.error("Transport import preview error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -474,7 +474,7 @@ function makeDestinationsImportExecute(requireUnit: boolean) {
       res.json({ batchId: batch.id, imported: successCount, errors: importErrors });
     } catch (err) {
       console.error("Transport import execute error:", err);
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ success: false, error: "Internal Server Error" });
     }
   };
 }
@@ -518,7 +518,7 @@ router.post("/transport-masters/destinations/import/undo", async (req, res) => {
     res.json({ undone: deleted.length, batchId: lastBatch.id });
   } catch (err) {
     console.error("Transport import undo error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -536,7 +536,7 @@ router.get("/transport-masters/destinations/import/last", async (req, res) => {
 
     res.json(lastBatch || null);
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -596,7 +596,7 @@ router.get("/transport-masters/bundles", async (req, res) => {
     });
   } catch (err) {
     console.error("List bundles error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -632,7 +632,7 @@ router.get("/transport-masters/bundles/lookup", async (req, res) => {
     res.json(bundle || null);
   } catch (err) {
     console.error("Bundle lookup error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -664,7 +664,7 @@ router.post("/transport-masters/bundles", async (req, res) => {
     res.status(201).json(created);
   } catch (err) {
     console.error("Create bundle error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -696,7 +696,7 @@ router.patch("/transport-masters/bundles/:id", async (req, res) => {
     res.json(updated);
   } catch (err) {
     console.error("Update bundle error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -716,7 +716,7 @@ router.delete("/transport-masters/bundles/:id", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     console.error("Delete bundle error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -733,7 +733,7 @@ router.get("/transport-masters/bundles/history/:id", async (req, res) => {
 
     res.json(logs);
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -802,7 +802,7 @@ router.post("/transport-masters/bundles/import/preview", async (req, res) => {
     });
   } catch (err) {
     console.error("Packing import preview error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -864,7 +864,7 @@ router.post("/transport-masters/bundles/import/execute", async (req, res) => {
     res.json({ batchId: batch.id, imported: successCount, errors: importErrors });
   } catch (err) {
     console.error("Packing import execute error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -898,7 +898,7 @@ router.post("/transport-masters/bundles/import/undo", async (req, res) => {
     res.json({ undone: deleted.length, batchId: lastBatch.id });
   } catch (err) {
     console.error("Packing import undo error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -915,7 +915,7 @@ router.get("/transport-masters/bundles/import/last", async (req, res) => {
 
     res.json(lastBatch || null);
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -962,7 +962,7 @@ router.post("/transport-masters/bundles/import/liner/preview", async (req, res) 
     });
   } catch (err) {
     console.error("Liner import preview error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1045,7 +1045,7 @@ router.post("/transport-masters/bundles/import/liner/execute", async (req, res) 
     res.json({ batchId: batch.id, imported: successCount, errors: importErrors });
   } catch (err) {
     console.error("Liner import execute error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1080,7 +1080,7 @@ router.post("/transport-masters/bundles/import/liner/undo", async (req, res) => 
     res.json({ undone: deleted.length, batchId: lastBatch.id });
   } catch (err) {
     console.error("Liner import undo error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1135,7 +1135,7 @@ router.post("/transport-masters/bundles/import/bora/preview", async (req, res) =
     });
   } catch (err) {
     console.error("Bora import preview error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1219,7 +1219,7 @@ router.post("/transport-masters/bundles/import/bora/execute", async (req, res) =
     res.json({ batchId: batch.id, imported: successCount, errors: importErrors });
   } catch (err) {
     console.error("Bora import execute error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1253,7 +1253,7 @@ router.post("/transport-masters/bundles/import/bora/undo", async (req, res) => {
     res.json({ undone: deleted.length, batchId: lastBatch.id });
   } catch (err) {
     console.error("Bora import undo error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1357,7 +1357,7 @@ router.post("/transport-masters/calculate", async (req, res) => {
     });
   } catch (err) {
     console.error("Transport calculation error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

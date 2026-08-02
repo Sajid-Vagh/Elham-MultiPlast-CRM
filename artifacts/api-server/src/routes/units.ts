@@ -13,7 +13,7 @@ router.get("/units", async (req, res) => {
     res.json(units);
   } catch (err) {
     req.log.error({ err }, "List units error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -40,7 +40,7 @@ router.post("/units", async (req, res) => {
     res.status(201).json(unit);
   } catch (err) {
     req.log.error({ err }, "Create unit error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -76,7 +76,7 @@ router.patch("/units/:id", async (req, res) => {
       return;
     }
     req.log.error({ err }, "Update unit error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -96,7 +96,7 @@ router.delete("/units/:id", async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Delete unit error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

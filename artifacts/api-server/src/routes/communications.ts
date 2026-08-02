@@ -30,7 +30,7 @@ router.get("/contacts/:id/communications", async (req, res) => {
     res.json(comms);
   } catch (err) {
     console.error("Get communications error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -56,7 +56,7 @@ router.post("/contacts/:id/communications", async (req, res) => {
     res.status(201).json(comm);
   } catch (err) {
     console.error("Create communication error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

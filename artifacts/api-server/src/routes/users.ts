@@ -38,7 +38,7 @@ router.get("/users", async (req, res) => {
     res.json(users.map(safeUser));
   } catch (err) {
     req.log.error({ err }, "List users error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -83,7 +83,7 @@ router.post("/users", async (req, res) => {
       return;
     }
     req.log.error({ err }, "Create user error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -98,7 +98,7 @@ router.get("/users/:id", async (req, res) => {
     res.json(safeUser(user));
   } catch (err) {
     req.log.error({ err }, "Get user error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -158,7 +158,7 @@ router.patch("/users/:id", async (req, res) => {
     res.json(safeUser(user));
   } catch (err) {
     req.log.error({ err }, "Update user error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -185,7 +185,7 @@ router.post("/users/:id/photo", upload.single("photo"), async (req, res) => {
     res.json({ profilePhoto: photoUrl, user: safeUser(user) });
   } catch (err) {
     req.log.error({ err }, "Upload profile photo error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -204,7 +204,7 @@ router.delete("/users/:id/photo", async (req, res) => {
     res.json(safeUser(user));
   } catch (err) {
     req.log.error({ err }, "Delete profile photo error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -228,7 +228,7 @@ router.delete("/users/:id", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Delete user error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

@@ -194,7 +194,7 @@ router.get("/contacts", async (req, res) => {
     res.json(enriched);
   } catch (err) {
     req.log.error({ err }, "List contacts error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -268,7 +268,7 @@ router.post("/contacts", async (req, res) => {
       return;
     }
     req.log.error({ err }, "Create contact error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -350,7 +350,7 @@ router.post("/contacts/check-duplicate", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Check duplicate error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -398,7 +398,7 @@ router.post("/contacts/:id/request-transfer", async (req, res) => {
     res.json({ success: true, message: "Transfer request sent to current owner and admins" });
   } catch (err) {
     req.log.error({ err }, "Request transfer error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -446,7 +446,7 @@ router.post("/contacts/:id/repeat-enquiry", async (req, res) => {
     res.json({ success: true, message: isOwnLead ? "Lead marked as repeat enquiry" : "Repeat enquiry logged and owner notified", contact: await withOwner(updated!) });
   } catch (err) {
     req.log.error({ err }, "Repeat enquiry error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -511,7 +511,7 @@ router.get("/contacts/duplicates", async (req, res) => {
     res.json(groups);
   } catch (err) {
     req.log.error({ err }, "Duplicate contacts error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -522,7 +522,7 @@ router.get("/contacts/:id", async (req, res) => {
     res.json(await withOwner(access.contact));
   } catch (err) {
     req.log.error({ err }, "Get contact error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -544,7 +544,7 @@ router.post("/contacts/:id/read", async (req, res) => {
     res.json(await withOwner(updated!));
   } catch (err) {
     req.log.error({ err }, "Mark contact read error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -569,7 +569,7 @@ router.get("/contacts/:id/comments", async (req, res) => {
     res.json(history);
   } catch (err) {
     req.log.error({ err }, "Get comment history error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -825,7 +825,7 @@ router.patch("/contacts/:id", async (req, res) => {
       return;
     }
     req.log.error({ err }, "Update contact error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -911,7 +911,7 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
     res.json({ success: true });
   } catch (err: any) {
     req.log.error({ err, message: err?.message, stack: err?.stack }, "Mark lost error");
-    res.status(500).json({ success: false, error: err?.message || "Internal server error" });
+    res.status(500).json({ success: false, error: err?.message || "Internal Server Error" });
   }
 });
 
@@ -941,7 +941,7 @@ router.post("/contacts/bulk-delete", async (req, res) => {
     res.json({ deleted });
   } catch (err) {
     req.log.error({ err }, "Bulk delete contacts error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -985,7 +985,7 @@ router.delete("/contacts/:id", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Delete contact error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1011,7 +1011,7 @@ router.get("/contacts/:id/category-history", async (req, res) => {
     res.json(history);
   } catch (err) {
     req.log.error({ err }, "Get category history error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1037,7 +1037,7 @@ router.get("/contacts/:id/unit-history", async (req, res) => {
     res.json(history);
   } catch (err) {
     req.log.error({ err }, "Get unit history error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1231,7 +1231,7 @@ router.get("/contacts/:id/timeline", async (req, res) => {
     res.json(timeline);
   } catch (err) {
     req.log.error({ err }, "Get timeline error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1258,7 +1258,7 @@ router.get("/contacts/:id/notifications", async (req, res) => {
     res.json(notifications);
   } catch (err) {
     req.log.error({ err }, "Get notification history error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1303,7 +1303,7 @@ router.get("/contacts/search/mobile", async (req, res) => {
     res.json(result);
   } catch (err) {
     req.log.error({ err }, "Search contact by mobile error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1353,7 +1353,7 @@ router.get("/contacts/:id/proforma-invoices", async (req, res) => {
     res.json(enriched);
   } catch (err) {
     req.log.error({ err }, "List contact proforma invoices error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1409,7 +1409,7 @@ router.get("/contacts/:id/active-deals", async (req, res) => {
     res.json(enriched);
   } catch (err) {
     req.log.error({ err }, "Get active deals error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1483,7 +1483,7 @@ router.get("/contacts/:id/customer-history", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Get customer history error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

@@ -171,7 +171,7 @@ router.get("/notifications/history", async (req: Request, res: Response) => {
     });
   } catch (err) {
     req.log.error({ err }, "List notification history error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -226,7 +226,7 @@ router.patch("/notifications/:id/read", async (req: Request, res: Response) => {
     res.json(n);
   } catch (err) {
     req.log.error({ err }, "Mark read error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -255,7 +255,7 @@ router.patch("/notifications/:id/seen", async (req: Request, res: Response) => {
     res.json(n);
   } catch (err) {
     req.log.error({ err }, "Mark seen error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -285,7 +285,7 @@ router.patch("/notifications/seen-by-related", async (req: Request, res: Respons
     res.json({ success: true, notification: n ?? null });
   } catch (err) {
     req.log.error({ err }, "Mark seen by related error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -317,7 +317,7 @@ router.patch("/notifications/read-by-related", async (req: Request, res: Respons
     res.json({ success: true, updated: rows.length });
   } catch (err) {
     req.log.error({ err }, "Mark read by related error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -346,7 +346,7 @@ router.patch("/notifications/:id/mark-sound-played", async (req: Request, res: R
     res.json(n);
   } catch (err) {
     req.log.error({ err }, "Mark sound played error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -375,7 +375,7 @@ router.patch("/notifications/:id/mark-reminder", async (req: Request, res: Respo
     res.json(n);
   } catch (err) {
     req.log.error({ err }, "Mark reminder error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -393,7 +393,7 @@ router.post("/notifications/read-all", async (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Mark all read error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -481,7 +481,7 @@ router.all("/notifications/cleanup-expired", async (req: Request, res: Response)
     res.json({ success: true, deleted: deleted.length });
   } catch (err) {
     req.log.error({ err }, "Cleanup expired notifications error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -509,7 +509,7 @@ router.delete("/notifications/:id", async (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Delete notification error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

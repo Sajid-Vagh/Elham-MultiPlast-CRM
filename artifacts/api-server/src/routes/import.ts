@@ -430,7 +430,7 @@ router.post("/import/indiamart", async (req, res) => {
       return;
     }
     req.log.error({ err }, "IndiaMart import error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

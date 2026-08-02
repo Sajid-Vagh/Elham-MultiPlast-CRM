@@ -168,6 +168,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
   });
   const [photoUploading, setPhotoUploading] = useState(false);
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   useEffect(() => {
     setForm({
@@ -213,6 +214,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
       syncMe(queryClient, data);
     } catch (err) {
       console.error("Photo upload error", err);
+      toast({ title: "Photo upload failed", description: "Could not upload the photo. Please try again.", variant: "destructive" });
     } finally {
       setPhotoUploading(false);
     }
@@ -233,6 +235,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
       syncMe(queryClient, data);
     } catch (err) {
       console.error("Photo remove error", err);
+      toast({ title: "Photo removal failed", description: "Could not remove the photo. Please try again.", variant: "destructive" });
     } finally {
       setPhotoUploading(false);
     }

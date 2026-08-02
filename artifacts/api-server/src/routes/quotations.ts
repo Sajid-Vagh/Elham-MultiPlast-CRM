@@ -41,7 +41,7 @@ router.get("/quotations", async (req, res) => {
     res.json({ data: enriched, pagination: { page: pageNum, limit: limitNum, total: countResult?.count ?? 0, totalPages: Math.ceil((countResult?.count ?? 0) / limitNum) } });
   } catch (err) {
     console.error("List quotations error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -56,7 +56,7 @@ router.get("/quotations/:id", async (req, res) => {
     res.json(await enrichQuotation(q));
   } catch (err) {
     console.error("Get quotation error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -112,7 +112,7 @@ router.post("/quotations", async (req, res) => {
     res.status(201).json(await enrichQuotation(quotation));
   } catch (err) {
     console.error("Create quotation error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -148,7 +148,7 @@ router.patch("/quotations/:id", async (req, res) => {
     res.json(await enrichQuotation(updated));
   } catch (err) {
     console.error("Update quotation error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -233,7 +233,7 @@ router.post("/quotations/:id/convert", async (req, res) => {
     res.json({ order, quotation });
   } catch (err) {
     console.error("Convert quotation error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -246,7 +246,7 @@ router.delete("/quotations/:id", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     console.error("Delete quotation error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

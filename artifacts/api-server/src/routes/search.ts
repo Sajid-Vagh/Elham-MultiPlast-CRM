@@ -225,7 +225,7 @@ router.get("/search", async (req, res) => {
     res.json({ contacts, orders, products, deals, productionOrders, proformaInvoices, activities });
   } catch (err) {
     console.error("Search error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

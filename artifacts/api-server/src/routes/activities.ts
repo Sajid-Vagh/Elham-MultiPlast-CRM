@@ -208,7 +208,7 @@ router.get("/activities", async (req, res) => {
     res.json(enriched);
   } catch (err) {
     req.log.error({ err }, "List activities error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -380,7 +380,7 @@ router.post("/activities", async (req, res) => {
     res.status(201).json(enriched);
   } catch (err) {
     req.log.error({ err }, "Create activity error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -495,7 +495,7 @@ router.patch("/activities/:id", async (req, res) => {
     res.json(await enrichActivity(activity));
   } catch (err) {
     req.log.error({ err }, "Update activity error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -516,7 +516,7 @@ router.delete("/activities/:id", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Delete activity error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

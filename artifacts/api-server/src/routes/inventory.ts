@@ -80,7 +80,7 @@ router.get("/inventory", async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error("Get inventory error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -109,7 +109,7 @@ router.get("/inventory/logs", async (req, res) => {
     res.json(logs);
   } catch (err) {
     console.error("Get inventory logs error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -204,7 +204,7 @@ router.post("/inventory/save", async (req, res) => {
     res.json({ productName: trimmedName, unitName: effectiveUnit, previousStock, newStock });
   } catch (err) {
     console.error("Save inventory error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -304,7 +304,7 @@ router.post("/inventory/save-bulk", async (req, res) => {
     res.json({ saved: results.length, results });
   } catch (err) {
     console.error("Bulk save inventory error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -420,7 +420,7 @@ router.post("/inventory/bulk-save", async (req, res) => {
     res.json({ saved: results.length, results });
   } catch (err) {
     console.error("Bulk save inventory error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -464,7 +464,7 @@ router.patch("/inventory/:id/formatting", async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error("Update formatting error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -499,7 +499,7 @@ router.delete("/inventory/clear-all", async (req, res) => {
     }
   } catch (err) {
     console.error("Clear all inventory error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -537,7 +537,7 @@ router.delete("/inventory/:id", async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error("Delete inventory error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -612,7 +612,7 @@ router.post("/inventory/insert-row", async (req, res) => {
     res.json({ success: true, id: inserted.id, sortOrder: newSortOrder });
   } catch (err) {
     console.error("Insert row error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

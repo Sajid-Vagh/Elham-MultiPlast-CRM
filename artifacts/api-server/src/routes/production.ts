@@ -68,8 +68,8 @@ router.get("/production/pending-requirements", async (req, res) => {
     const { unit: unitFilter } = req.query as Record<string, string | undefined>;
     res.json(await getPendingRequirements(user, unitFilter));
   } catch (err) {
-    console.error("Get pending requirements error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Get pending requirements error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -81,8 +81,8 @@ router.get("/production/pending-summary", async (req, res) => {
     const { unit: unitFilter } = req.query as Record<string, string | undefined>;
     res.json(await getPendingSummary(user, unitFilter));
   } catch (err) {
-    console.error("Pending production summary error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Pending production summary error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -94,8 +94,8 @@ router.get("/production/dashboard", async (req, res) => {
     const { unit: unitFilter, origin: originFilter, startDate, endDate } = req.query as Record<string, string | undefined>;
     res.json(await getDashboard(user, unitFilter, originFilter, startDate, endDate));
   } catch (err) {
-    console.error("Production dashboard error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Production dashboard error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -107,8 +107,8 @@ router.get("/production/machine-report", async (req, res) => {
     const { unit, machineType, product, status, dateFrom, dateTo } = req.query as Record<string, string | undefined>;
     res.json(await getMachineReport(user, { unit, machineType, product, status, dateFrom, dateTo }));
   } catch (err) {
-    console.error("Machine-wise report error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Machine-wise report error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -120,8 +120,8 @@ router.get("/production/orders", async (req, res) => {
     const { status, dispatchStatus, priority, search, dateFrom, dateTo, createdBy, unit, origin, page, limit } = req.query as Record<string, string | undefined>;
     res.json(await listOrders(user, { status, dispatchStatus, priority, search, dateFrom, dateTo, createdBy, unit, origin, page, limit }));
   } catch (err) {
-    console.error("List production orders error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "List production orders error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -136,8 +136,8 @@ router.get("/production/orders/:id", async (req, res) => {
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result.order);
   } catch (err) {
-    console.error("Get production order error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Get production order error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -157,8 +157,8 @@ router.get("/production/by-invoice/:invoiceId", async (req, res) => {
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result.order);
   } catch (err) {
-    console.error("Get production by invoice error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Get production by invoice error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -171,8 +171,8 @@ router.get("/production/by-contact/:contactId", async (req, res) => {
     if (isNaN(contactId)) { res.status(400).json({ error: "Invalid contact id" }); return; }
     res.json(await getProductionByContact(user, contactId));
   } catch (err) {
-    console.error("Get production by contact error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Get production by contact error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -187,8 +187,8 @@ router.post("/production/orders/:id/accept", async (req, res) => {
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result.order);
   } catch (err) {
-    console.error("Accept production order error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Accept production order error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -204,8 +204,8 @@ router.patch("/production/orders/:id/planning", async (req, res) => {
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result.order);
   } catch (err) {
-    console.error("Update planning error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Update planning error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -221,8 +221,8 @@ router.post("/production/orders/:id/start", async (req, res) => {
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result.order);
   } catch (err) {
-    console.error("Start production error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Start production error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -241,8 +241,8 @@ router.post("/production/orders/:id/packing", async (req, res) => {
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result.order);
   } catch (err) {
-    console.error("Packing error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Packing error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -258,8 +258,8 @@ router.post("/production/orders/:id/ready-for-dispatch", async (req, res) => {
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result.order);
   } catch (err) {
-    console.error("Ready for dispatch error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Ready for dispatch error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -281,8 +281,8 @@ router.post("/production/orders/:id/transport", async (req, res) => {
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result.order);
   } catch (err) {
-    console.error("Book transport error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Book transport error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -297,8 +297,8 @@ router.post("/production/orders/:id/complete", async (req, res) => {
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result.order);
   } catch (err) {
-    console.error("Complete order error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Complete order error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -315,8 +315,8 @@ router.patch("/production/orders/:id/status", async (req, res) => {
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result.order);
   } catch (err) {
-    console.error("Update production status error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Update production status error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -333,8 +333,8 @@ router.post("/production/orders/:id/cancel", async (req, res) => {
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result.order);
   } catch (err) {
-    console.error("Cancel production order error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Cancel production order error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -351,8 +351,8 @@ router.post("/production/orders/:id/approve-modification", async (req, res) => {
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result.order);
   } catch (err) {
-    console.error("Approve modification error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Approve modification error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -368,8 +368,8 @@ router.patch("/production/orders/:id/transfer", async (req, res) => {
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result.order);
   } catch (err) {
-    console.error("Transfer production order error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Transfer production order error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -382,8 +382,8 @@ router.get("/production/orders/:id/transfers", async (req, res) => {
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     res.json(await getTransferHistory(id));
   } catch (err) {
-    console.error("Get transfer history error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Get transfer history error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -396,8 +396,8 @@ router.get("/production/orders/:id/audit-trail", async (req, res) => {
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     res.json(await getAuditTrail(id));
   } catch (err) {
-    console.error("Get audit trail error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Get audit trail error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -414,8 +414,8 @@ router.post("/production/orders/:id/notes", async (req, res) => {
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.status(201).json(result.note);
   } catch (err) {
-    console.error("Add production note error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Add production note error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -428,8 +428,8 @@ router.get("/production/orders/:id/messages", async (req, res) => {
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     res.json(await getMessages(id));
   } catch (err) {
-    console.error("Get production messages error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Get production messages error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -446,8 +446,8 @@ router.post("/production/orders/:id/messages", async (req, res) => {
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.status(201).json(result.message);
   } catch (err) {
-    console.error("Send production message error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Send production message error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -459,8 +459,8 @@ router.get("/production/reports", async (req, res) => {
     const { unit, status, dateFrom, dateTo, origin } = req.query as Record<string, string | undefined>;
     res.json(await getReports(user, { unit, status, dateFrom, dateTo, origin }));
   } catch (err) {
-    console.error("Production reports error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Production reports error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -475,8 +475,8 @@ router.get("/production/progress-by-deal/:dealId", async (req, res) => {
     if (result?.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result);
   } catch (err) {
-    console.error("Get production progress by deal error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Get production progress by deal error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -488,8 +488,8 @@ router.get("/production/manufacturing-summary", async (req, res) => {
     const { unit: unitFilter, origin: originFilter, material: materialFilter } = req.query as Record<string, string | undefined>;
     res.json(await getManufacturingSummary(user, unitFilter, originFilter, materialFilter));
   } catch (err) {
-    console.error("Manufacturing summary error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Manufacturing summary error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -509,8 +509,8 @@ router.get("/production/manufacturing-summary/detail", async (req, res) => {
       res.status(400).json({ error: "productName, weight, colour params required (or ids)" });
     }
   } catch (err) {
-    console.error("Manufacturing summary detail error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Manufacturing summary detail error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -522,8 +522,8 @@ router.get("/production/modified-since", async (req, res) => {
     const { since } = req.query as Record<string, string | undefined>;
     res.json(await getModifiedSince(user, since));
   } catch (err) {
-    console.error("Modified since error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Modified since error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -541,8 +541,8 @@ router.get("/production/dispatch-dashboard", async (req, res) => {
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result);
   } catch (err) {
-    console.error("Dispatch dashboard error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Dispatch dashboard error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -556,8 +556,8 @@ router.get("/production/dispatch-orders", async (req, res) => {
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result);
   } catch (err) {
-    console.error("List dispatch orders error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "List dispatch orders error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -587,8 +587,8 @@ router.post("/production/orders/:id/load-vehicle", async (req, res) => {
     }
     res.json(result.order);
   } catch (err) {
-    console.error("Load vehicle error:", err);
-    res.status(500).json({ success: false, code: "INTERNAL_ERROR", message: "Internal server error" });
+    req.log.error({ err }, "Load vehicle error:");
+    res.status(500).json({ success: false, code: "INTERNAL_ERROR", message: "Internal Server Error" });
   }
 });
 
@@ -603,8 +603,8 @@ router.post("/production/orders/:id/dispatch", async (req, res) => {
     if (result.error || result.success === false) { res.status(result.status || 400).json(result); return; }
     res.json(result.order);
   } catch (err) {
-    console.error("Mark dispatched error:", err);
-    res.status(500).json({ success: false, code: "INTERNAL_ERROR", message: "Internal server error" });
+    req.log.error({ err }, "Mark dispatched error:");
+    res.status(500).json({ success: false, code: "INTERNAL_ERROR", message: "Internal Server Error" });
   }
 });
 
@@ -619,8 +619,8 @@ router.post("/production/orders/:id/deliver", async (req, res) => {
     if (result.error || result.success === false) { res.status(result.status || 400).json(result); return; }
     res.json(result.order);
   } catch (err) {
-    console.error("Mark delivered error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Mark delivered error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -663,8 +663,8 @@ router.get("/production/sheet/stats", async (req, res) => {
       outdated: stats?.outdated || 0,
     });
   } catch (err) {
-    console.error("Production sheet stats error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Production sheet stats error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -888,8 +888,8 @@ router.get("/production/sheet", async (req, res) => {
     const filename = `production-sheet-${todayStr()}`;
     await sendWorkbook(res, wb, filename);
   } catch (err) {
-    console.error("Production sheet error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Production sheet error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -906,8 +906,8 @@ router.get("/production/orders/:id/product-lines", async (req, res) => {
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     res.json(await getProductLineItems(id));
   } catch (err) {
-    console.error("Get product line items error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Get product line items error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -925,8 +925,8 @@ router.patch("/production/orders/:id/product-lines/:itemId/status", async (req, 
     if (result?.error) { res.status(result.status).json({ error: result.error }); return; }
     res.json(result.order);
   } catch (err) {
-    console.error("Update product line status error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Update product line status error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -943,8 +943,8 @@ router.post("/production/orders/:id/product-lines/sync", async (req, res) => {
     await syncProductionOrderItems(id, order.proformaInvoiceId);
     res.json(await getProductLineItems(id));
   } catch (err) {
-    console.error("Sync product line items error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Sync product line items error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -977,8 +977,8 @@ router.post("/production/product-lines/backfill", async (req, res) => {
 
     res.json({ total: rows.length, synced, skipped, message: `Synced ${synced} orders, skipped ${skipped}` });
   } catch (err) {
-    console.error("Backfill product line items error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Backfill product line items error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1001,8 +1001,8 @@ router.post("/production/orders/:id/mark-reprint", async (req, res) => {
 
     res.json({ success: true, needsReprint: needsReprint ?? true });
   } catch (err) {
-    console.error("Mark reprint error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Mark reprint error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1018,8 +1018,8 @@ router.post("/production/repair-stuck-orders", async (req, res) => {
     const result = await repairStuckOrders(user);
     res.json(result);
   } catch (err) {
-    console.error("Repair stuck orders error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    req.log.error({ err }, "Repair stuck orders error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

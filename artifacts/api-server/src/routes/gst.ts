@@ -306,7 +306,7 @@ router.post("/gst/verify", async (req, res) => {
     });
   } catch (err: any) {
     req.log.error({ err }, "GST verification error");
-    res.status(500).json({ success: false, error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -388,7 +388,7 @@ router.post("/gst/refresh", async (req, res) => {
     }
   } catch (err: any) {
     req.log.error({ err }, "GST refresh error");
-    res.status(500).json({ success: false, error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -424,7 +424,7 @@ router.get("/gst/verify/:gstin", async (req, res) => {
     });
   } catch (err: any) {
     req.log.error({ err }, "GST verification history error");
-    res.status(500).json({ success: false, error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

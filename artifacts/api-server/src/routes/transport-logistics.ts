@@ -49,7 +49,7 @@ router.get("/transport-logistics", async (req, res) => {
     });
   } catch (err) {
     console.error("List transport logistics error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -79,7 +79,7 @@ router.post("/transport-logistics", async (req, res) => {
     res.status(201).json(created);
   } catch (err) {
     console.error("Create transport logistics error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -107,7 +107,7 @@ router.patch("/transport-logistics/:id", async (req, res) => {
     res.json(updated);
   } catch (err) {
     console.error("Update transport logistics error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -128,7 +128,7 @@ router.delete("/transport-logistics/:id", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     console.error("Delete transport logistics error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

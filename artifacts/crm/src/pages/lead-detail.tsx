@@ -583,6 +583,9 @@ export default function LeadDetail() {
       onContactChange(queryClient, contactId);
       onDealChange(queryClient, undefined, contactId);
       toast({ title: "Inquiry marked as Lost" });
+    }).catch(() => {
+      setLostSubmitting(false);
+      toast({ title: "Error", description: "Failed to mark as Lost. Please try again.", variant: "destructive" });
     });
   };
 

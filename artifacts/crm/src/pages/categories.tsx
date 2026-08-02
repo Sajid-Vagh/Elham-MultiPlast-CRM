@@ -72,9 +72,17 @@ export default function CategoriesPage() {
     fetch(`/api/categories/counts?${params}`, {
       headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
     })
-      .then(r => r.json())
+      .then(async r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(data => { if (!cancelled && Array.isArray(data)) setCounts(data); })
-      .catch(() => {})
+      .catch(err => {
+        console.error("Failed to load category counts:", err);
+        if (!cancelled) {
+          toast({ title: "Error", description: "Could not load category counts", variant: "destructive" });
+        }
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };

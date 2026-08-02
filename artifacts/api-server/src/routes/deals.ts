@@ -99,7 +99,7 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
     res.json({ contacts, deals: enrichedDeals });
   } catch (err) {
     req.log.error({ err }, "Search deals by mobile error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -278,7 +278,7 @@ router.get("/deals", async (req, res) => {
     })));
   } catch (err) {
     req.log.error({ err }, "List deals error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -325,7 +325,7 @@ router.post("/deals", async (req, res) => {
     res.status(201).json(await enrichDeal(deal!));
   } catch (err) {
     req.log.error({ err }, "Create deal error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -352,7 +352,7 @@ router.get("/deals/:id", async (req, res) => {
     res.json(await enrichDeal(deal));
   } catch (err) {
     req.log.error({ err }, "Get deal error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -396,7 +396,7 @@ router.get("/deals/:id/validate-won", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Validate won error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -692,7 +692,7 @@ router.patch("/deals/:id", async (req, res) => {
   } catch (err) {
     console.error("[DEAL-PATCH-DEBUG] === PATCH /deals/:id CATCH ERROR ===", err);
     req.log.error({ err }, "Update deal error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1025,7 +1025,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
     req.log.error({ err, dealId: req.params?.id }, "Mark deal as Won error");
     // Surface the real message in non-production for easier debugging.
     const detail = process.env.NODE_ENV !== "production" && err?.message ? String(err.message) : undefined;
-    res.status(500).json({ error: "Internal server error", ...(detail ? { detail } : {}) });
+    res.status(500).json({ success: false, error: "Internal Server Error", ...(detail ? { detail } : {}) });
   }
 });
 
@@ -1046,7 +1046,7 @@ router.delete("/deals/:id", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Delete deal error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1131,7 +1131,7 @@ router.post("/deals/:id/change-production-unit", async (req, res) => {
     res.json({ success: true, message: `Production Unit changed to "${productionUnit}"`, previousUnit });
   } catch (err) {
     req.log.error({ err }, "Change production unit error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1155,7 +1155,7 @@ router.get("/deals/:id/products", async (req, res) => {
     res.json(items.map(i => ({ ...i, product: productMap.get(i.productId) ?? null })));
   } catch (err) {
     req.log.error({ err }, "List deal products error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1180,7 +1180,7 @@ router.post("/deals/:id/products", async (req, res) => {
     res.status(201).json({ ...item, product: product ?? null });
   } catch (err) {
     req.log.error({ err }, "Add deal product error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1204,7 +1204,7 @@ router.delete("/deals/:id/products/:productId", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Remove deal product error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

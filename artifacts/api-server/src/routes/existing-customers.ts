@@ -229,7 +229,7 @@ router.get("/existing-customers/dashboard", async (req, res) => {
     });
   } catch (err) {
     console.error("Existing customers dashboard error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -311,7 +311,7 @@ router.get("/existing-customers", async (req, res) => {
     });
   } catch (err) {
     console.error("List existing customers error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -342,7 +342,7 @@ router.get("/existing-customers/:id", async (req, res) => {
     res.json(await enrichExistingCustomer(ec));
   } catch (err) {
     console.error("Get existing customer error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -368,7 +368,7 @@ router.get("/existing-customers/:id/orders", async (req, res) => {
     res.json(enriched);
   } catch (err) {
     console.error("Get existing customer orders error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -398,7 +398,7 @@ router.get("/existing-customers/:id/communications", async (req, res) => {
     res.json(comms);
   } catch (err) {
     console.error("Get existing customer communications error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -424,7 +424,7 @@ router.post("/existing-customers/:id/communications", async (req, res) => {
     res.status(201).json(comm);
   } catch (err) {
     console.error("Create communication error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -452,7 +452,7 @@ router.get("/existing-customers/:id/notes", async (req, res) => {
     res.json(notes);
   } catch (err) {
     console.error("Get existing customer notes error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -475,7 +475,7 @@ router.post("/existing-customers/:id/notes", async (req, res) => {
     res.status(201).json(note);
   } catch (err) {
     console.error("Create note error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -498,7 +498,7 @@ router.patch("/existing-customers/:id", async (req, res) => {
     res.json(await enrichExistingCustomer(updated));
   } catch (err) {
     console.error("Update existing customer error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -524,7 +524,7 @@ router.get("/existing-customers/:id/repeat-orders", async (req, res) => {
     res.json(enriched);
   } catch (err) {
     console.error("Get existing customer repeat orders error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -665,7 +665,7 @@ router.get("/existing-customers/:id/timeline", async (req, res) => {
     res.json(events);
   } catch (err) {
     console.error("Get existing customer timeline error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -727,7 +727,7 @@ router.post("/existing-customers/:id/follow-ups", async (req, res) => {
     res.status(201).json(activity);
   } catch (err) {
     console.error("Create follow-up error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -870,7 +870,7 @@ router.post("/existing-customers/:id/repeat-order", async (req, res) => {
     res.status(201).json({ ...newOrder, items, salesOwner: safe(salesOwner) });
   } catch (err) {
     console.error("Create repeat order error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -886,7 +886,7 @@ router.post("/existing-customers/refresh/:contactId", async (req, res) => {
     res.json(ec || null);
   } catch (err) {
     console.error("Refresh existing customer stats error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

@@ -175,7 +175,7 @@ router.get("/dashboard/kpi", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Dashboard KPI error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -256,7 +256,7 @@ router.get("/dashboard/sales-performance", async (req, res) => {
     res.json(result);
   } catch (err) {
     req.log.error({ err }, "Sales performance error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -319,7 +319,7 @@ router.get("/dashboard/charts", async (req, res) => {
     res.json({ categoryDistribution, dealStageDistribution, monthlyTrends });
   } catch (err) {
     req.log.error({ err }, "Dashboard charts error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -384,7 +384,7 @@ router.get("/dashboard/recent-activities", async (req, res) => {
     res.json(result);
   } catch (err) {
     req.log.error({ err }, "Recent activities error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -466,7 +466,7 @@ router.get("/dashboard/support-kpi", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Support KPI error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

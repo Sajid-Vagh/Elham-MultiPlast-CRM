@@ -126,7 +126,7 @@ router.get("/reports/summary", async (req, res) => {
     res.json({ totalContacts, totalDeals, wonDeals, lostDeals, activeDeals, totalWonValue, upcomingFollowUps, newLeadsThisMonth });
   } catch (err) {
     req.log.error({ err }, "Report summary error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -171,7 +171,7 @@ router.get("/reports/pipeline", async (req, res) => {
     res.json(result);
   } catch (err) {
     req.log.error({ err }, "Pipeline report error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -233,7 +233,7 @@ router.get("/reports/by-owner", async (req, res) => {
     res.json(result);
   } catch (err) {
     req.log.error({ err }, "By-owner report error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -312,7 +312,7 @@ router.get("/reports/by-product", async (req, res) => {
     res.json(rows);
   } catch (err) {
     req.log.error({ err }, "By-product report error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -380,7 +380,7 @@ router.get("/reports/lost-reasons", async (req, res) => {
     res.json(result);
   } catch (err) {
     req.log.error({ err }, "Lost reasons report error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -561,7 +561,7 @@ router.get("/reports/by-city", async (req, res) => {
     res.json(Array.from(cityMap.entries()).map(([city, s]) => ({ city, ...s })));
   } catch (err) {
     req.log.error({ err }, "By-city report error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

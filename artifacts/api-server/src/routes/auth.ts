@@ -105,20 +105,26 @@ router.post("/auth/login", async (req, res) => {
     logger.error({ err }, "Login error");
 
     return res.status(500).json({
-      error: "Internal server error",
+      success: false,
+      error: "Internal Server Error",
     });
   }
 });
 
 router.post("/auth/logout", async (req, res) => {
-  const auth = req.headers["authorization"];
+  try {
+    const auth = req.headers["authorization"];
 
-  if (auth?.startsWith("Bearer ")) {
-    const token = auth.slice(7);
-    await db.delete(sessionsTable).where(eq(sessionsTable.token, token));
+    if (auth?.startsWith("Bearer ")) {
+      const token = auth.slice(7);
+      await db.delete(sessionsTable).where(eq(sessionsTable.token, token));
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "Logout error");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
-
-  res.json({ ok: true });
 });
 
 router.get("/auth/me", async (req, res) => {
@@ -146,7 +152,8 @@ router.get("/auth/me", async (req, res) => {
     logger.error({ err }, "Auth/me error");
 
     return res.status(500).json({
-      error: "Internal server error",
+      success: false,
+      error: "Internal Server Error",
     });
   }
 });

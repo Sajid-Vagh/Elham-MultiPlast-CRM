@@ -701,7 +701,7 @@ router.get("/proforma-invoices", async (req, res) => {
     res.json({ data: enriched, total: count as number, page: pageNum, totalPages: Math.ceil((count as number) / pageSize) });
   } catch (err) {
     req.log.error({ err }, "List proforma invoices error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -759,7 +759,7 @@ router.get("/proforma-invoices/all", async (req, res) => {
     res.json(enriched);
   } catch (err) {
     req.log.error({ err }, "List all proforma invoices error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -930,7 +930,7 @@ router.post("/proforma-invoices", async (req, res) => {
     res.status(201).json({ ...response, dealStageUpdated });
   } catch (err) {
     req.log.error({ err }, "Create proforma invoice error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1009,7 +1009,7 @@ router.get("/proforma-invoices/report/summary", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Proforma report summary error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1083,7 +1083,7 @@ router.get("/proforma-invoices/report/export", async (req, res) => {
     }
   } catch (err) {
     req.log.error({ err }, "Proforma report export error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1110,7 +1110,7 @@ router.get("/proforma-invoices/:id", async (req, res) => {
     res.json(await enrichInvoice(invoice));
   } catch (err) {
     req.log.error({ err }, "Get proforma invoice error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1196,7 +1196,7 @@ router.get("/proforma-invoices/:id/production-progress", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Get production progress error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1660,7 +1660,7 @@ async function updateInvoiceHandler(req: any, res: any) {
     res.json(await enrichInvoice(invoice!));
   } catch (err) {
     req.log.error({ err }, "Update proforma invoice error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 }
 
@@ -1711,7 +1711,7 @@ router.get("/proforma-invoices/last-by-phone/:phone", async (req, res) => {
     res.json({ found: true, ...match });
   } catch (err) {
     console.error("Last-by-phone lookup error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -1791,7 +1791,7 @@ router.get("/proforma-invoices/previous-by-contact/:contactId", async (req, res)
     res.json(enriched);
   } catch (err) {
     console.error("Previous by contact lookup error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -2122,7 +2122,7 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
     res.json(await enrichInvoice(updated!));
   } catch (err) {
     req.log.error({ err }, "Update proforma invoice status error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -2235,7 +2235,7 @@ router.post("/proforma-invoices/:id/duplicate", async (req, res) => {
     res.status(201).json(await enrichInvoice(invoice!));
   } catch (err) {
     req.log.error({ err }, "Duplicate proforma invoice error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -2288,7 +2288,7 @@ router.delete("/proforma-invoices/:id", async (req, res) => {
     res.status(200).json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Delete proforma invoice error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -2317,7 +2317,7 @@ router.get("/proforma-invoices/:id/html", async (req, res) => {
     res.send(html);
   } catch (err) {
     req.log.error({ err }, "Get proforma invoice HTML error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -2371,7 +2371,7 @@ router.get("/proforma-invoices/:id/pdf", async (req, res) => {
     }
   } catch (err) {
     req.log.error({ err }, "Get proforma invoice PDF error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -2436,7 +2436,7 @@ router.get("/proforma-invoices/:id/versions", async (req, res) => {
     res.json(result);
   } catch (err) {
     req.log.error({ err }, "Get version history error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -2521,7 +2521,7 @@ router.get("/proforma-invoices/:id/diff", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Get diff error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

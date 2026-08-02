@@ -78,7 +78,7 @@ router.get("/dispatch", async (req, res) => {
     res.json({ data: enriched, pagination: { page: pageNum, limit: limitNum, total: countResult?.count ?? 0, totalPages: Math.ceil((countResult?.count ?? 0) / limitNum) } });
   } catch (err) {
     console.error("List dispatch error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -108,7 +108,7 @@ router.get("/dispatch/:id", async (req, res) => {
     res.json(await enrichDispatch(d));
   } catch (err) {
     console.error("Get dispatch error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -162,7 +162,7 @@ router.post("/dispatch", async (req, res) => {
     res.status(201).json(await enrichDispatch(dispatch));
   } catch (err) {
     console.error("Create dispatch error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -228,7 +228,7 @@ router.patch("/dispatch/:id", async (req, res) => {
     res.json(await enrichDispatch(updated));
   } catch (err) {
     console.error("Update dispatch error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -261,7 +261,7 @@ router.delete("/dispatch/:id", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     console.error("Delete dispatch error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -308,7 +308,7 @@ router.post("/dispatch/:id/builty", builtyUpload.single("file"), async (req, res
     res.json({ url: fileUrl });
   } catch (err) {
     console.error("Upload builty error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

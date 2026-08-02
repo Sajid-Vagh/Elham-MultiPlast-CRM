@@ -31,7 +31,7 @@ router.post("/customer-master/lookup-by-gstin", async (req, res) => {
     res.json({ found: true, ...customer });
   } catch (err) {
     req.log.error({ err }, "Customer master lookup error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -106,7 +106,7 @@ router.post("/customer-master/:id/refresh-gst", async (req, res) => {
     res.json({ success: true, updated: true, customer: updated, changes });
   } catch (err) {
     req.log.error({ err }, "Customer GST refresh error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -174,7 +174,7 @@ router.post("/customer-master", async (req, res) => {
     res.status(201).json(customer);
   } catch (err) {
     req.log.error({ err }, "Create customer master error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -228,7 +228,7 @@ router.patch("/customer-master/:id", async (req, res) => {
     res.json(updated);
   } catch (err) {
     req.log.error({ err }, "Update customer master error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -270,7 +270,7 @@ router.get("/customer-master", async (req, res) => {
     res.json(customers);
   } catch (err) {
     req.log.error({ err }, "List customer master error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -306,7 +306,7 @@ router.get("/customer-master/lookup", async (req, res) => {
     res.json(profiles);
   } catch (err) {
     req.log.error({ err }, "Customer master mobile lookup error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -329,7 +329,7 @@ router.get("/customer-master/:id", async (req, res) => {
     res.json(customer);
   } catch (err) {
     req.log.error({ err }, "Get customer master error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -369,7 +369,7 @@ router.get("/customer-master/:id/proforma-history", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Customer proforma history error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -391,7 +391,7 @@ router.get("/customer-master/by-contact/:contactId", async (req, res) => {
     res.json(profiles);
   } catch (err) {
     req.log.error({ err }, "Get customer master by contact error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -426,7 +426,7 @@ router.get("/customer-master/search-by-mobile/:mobile", async (req, res) => {
     res.json(profiles);
   } catch (err) {
     req.log.error({ err }, "Search customer master by mobile error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -459,7 +459,7 @@ router.get("/customer-master/search-by-name/:name", async (req, res) => {
     res.json(profiles);
   } catch (err) {
     req.log.error({ err }, "Search customer master by name error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -488,7 +488,7 @@ router.delete("/customer-master/:id", async (req, res) => {
     res.json({ success: true, id });
   } catch (err) {
     req.log.error({ err }, "Delete customer master error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

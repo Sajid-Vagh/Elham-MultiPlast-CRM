@@ -81,8 +81,8 @@ router.post("/documents/upload", upload.single("file"), async (req: Request, res
   } catch (err) {
     console.error("[Document Upload Error]", err);
     req.log.error({ err }, "Document upload error");
-    const message = err instanceof Error ? err.message : "Internal server error";
-    res.status(500).json({ error: message });
+    const message = err instanceof Error ? err.message : "Internal Server Error";
+    res.status(500).json({ success: false, error: message });
   }
 });
 
@@ -144,8 +144,8 @@ router.post("/documents/upload-multiple", upload.array("files", 20), async (req:
   } catch (err) {
     console.error("[Document Multiple Upload Error]", err);
     req.log.error({ err }, "Multiple upload error");
-    const message = err instanceof Error ? err.message : "Internal server error";
-    res.status(500).json({ error: message });
+    const message = err instanceof Error ? err.message : "Internal Server Error";
+    res.status(500).json({ success: false, error: message });
   }
 });
 
@@ -260,7 +260,7 @@ router.get("/documents/:id", async (req: Request, res: Response) => {
     res.json({ ...doc, uploadedByUser: uploaderSafe, updatedByUser: updaterSafe });
   } catch (err) {
     req.log.error({ err }, "Get document error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -297,7 +297,7 @@ router.get("/documents/:id/download", async (req: Request, res: Response) => {
     res.sendFile(fullPath);
   } catch (err) {
     req.log.error({ err }, "Download error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -340,7 +340,7 @@ router.get("/documents/:id/preview", async (req: Request, res: Response) => {
     res.sendFile(fullPath);
   } catch (err) {
     req.log.error({ err }, "Preview error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -367,7 +367,7 @@ router.patch("/documents/:id/rename", async (req: Request, res: Response) => {
     res.json({ message: "Document renamed" });
   } catch (err) {
     req.log.error({ err }, "Rename error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -419,7 +419,7 @@ router.post("/documents/:id/replace", upload.single("file"), async (req: Request
     res.json({ message: "Document replaced", version: newVersion });
   } catch (err) {
     req.log.error({ err }, "Replace error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -456,7 +456,7 @@ router.get("/documents/:id/versions", async (req: Request, res: Response) => {
     res.json(versions.map(v => ({ ...v, uploadedByUser: userMap.get(v.uploadedBy) || null })));
   } catch (err) {
     req.log.error({ err }, "Versions error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
@@ -483,7 +483,7 @@ router.delete("/documents/:id", async (req: Request, res: Response) => {
     res.json({ message: "Document deleted" });
   } catch (err) {
     req.log.error({ err }, "Delete error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 

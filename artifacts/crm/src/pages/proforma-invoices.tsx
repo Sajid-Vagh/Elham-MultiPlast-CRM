@@ -22,6 +22,7 @@ import {
   Plus, Download, Printer, Share2, Mail, Eye, FileText, Save, ArrowLeft, Trash2, Search,
   ChevronLeft, ChevronRight, Send, Loader2, CheckCircle2, RefreshCw, Building2, Calendar, Clock,
   Shield, Store, MapPin, Verified, History, GitBranch, ArrowRight, Link as LinkIcon, Copy,
+  AlertTriangle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ProductionProgressSection } from "@/components/production-progress";
@@ -134,6 +135,7 @@ export default function ProformaInvoicesPage() {
   const [tab, setTab] = useState("all");
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const perPage = 15;
@@ -236,15 +238,25 @@ export default function ProformaInvoicesPage() {
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) {
-        const json = await res.json();
-        setInvoices(ensureArray(json));
-      } else {
+      if (!res.ok) {
+        let message = `Failed to load invoices (HTTP ${res.status})`;
+        try {
+          const data = await res.json();
+          if (data?.error) message = data.error;
+        } catch { /* ignore parse errors */ }
+        setFetchError(message);
         setInvoices([]);
+        toast({ title: "Error", description: message, variant: "destructive" });
+        return;
       }
+      const json = await res.json();
+      setInvoices(ensureArray(json));
+      setFetchError("");
     } catch (err) {
-      console.error(err);
+      console.error("[proforma-invoices] fetchInvoices failed:", err);
+      setFetchError("Failed to load invoices. Please check your connection and try again.");
       setInvoices([]);
+      toast({ title: "Error", description: "Failed to load invoices. Please try again.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -1364,17 +1376,20 @@ const selectProduct = (idx: number, product: any) => {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ status: newStatus, notes: statusNotes || null }),
       });
-      if (res.ok) {
-        toast({ title: "Status Updated", description: `Invoice moved to ${newStatus}` });
-        setStatusDialog({ open: false, invoice: null });
-        setNewStatus("");
-        setStatusNotes("");
-        fetchInvoices();
-        onPIChange(queryClient, statusDialog.invoice.dealId || undefined, statusDialog.invoice.contactId || undefined);
-        if (mode === "detail") {
-          const updated = await res.json();
-          setSelectedInvoice(updated);
-        }
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        toast({ title: "Error", description: errData.error || "Failed to update status", variant: "destructive" });
+        return;
+      }
+      const updated = await res.json().catch(() => null);
+      toast({ title: "Status Updated", description: `Invoice moved to ${newStatus}` });
+      setStatusDialog({ open: false, invoice: null });
+      setNewStatus("");
+      setStatusNotes("");
+      fetchInvoices();
+      onPIChange(queryClient, statusDialog.invoice.dealId || undefined, statusDialog.invoice.contactId || undefined);
+      if (mode === "detail" && updated) {
+        setSelectedInvoice(updated);
       }
     } catch (err) {
       toast({ title: "Error", description: "Failed to update status", variant: "destructive" });
@@ -2758,6 +2773,13 @@ ${pagesHtml}
         )}
       </div>
 
+      {fetchError && (
+        <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>{fetchError}</span>
+        </div>
+      )}
+
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -2777,7 +2799,7 @@ ${pagesHtml}
               {paginatedInvoices.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                    No invoices found
+                    {fetchError ? "Invoices could not be loaded. See the error above." : "No invoices found"}
                   </TableCell>
                 </TableRow>
               ) : (

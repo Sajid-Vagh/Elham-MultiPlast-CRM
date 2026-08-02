@@ -47,7 +47,7 @@ router.get("/audit-logs", async (req, res) => {
     res.json({ data: logs, pagination: { page: pageNum, limit: limitNum, total: countResult?.count ?? 0, totalPages: Math.ceil((countResult?.count ?? 0) / limitNum) } });
   } catch (err) {
     console.error("Get audit logs error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
