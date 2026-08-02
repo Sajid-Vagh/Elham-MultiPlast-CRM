@@ -7,7 +7,7 @@ import { eq, inArray } from "drizzle-orm";
 import { CreateUserBody, UpdateUserBody, GetUserParams, UpdateUserParams, DeleteUserParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
-import { profilePhotoStorage } from "../lib/storage";
+import { storage } from "../lib/storage";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -178,8 +178,8 @@ router.post("/users/:id/photo", upload.single("photo"), async (req, res) => {
       res.status(400).json({ error: "Only image files are allowed" });
       return;
     }
-    const storagePath = await profilePhotoStorage.save(`profile-${userId}${path.extname(file.originalname)}`, file.buffer, "profiles");
-    const photoUrl = profilePhotoStorage.getUrl(storagePath);
+    const storagePath = await storage.save(`profile-${userId}${path.extname(file.originalname)}`, file.buffer, "profile-photos");
+    const photoUrl = storage.getUrl(storagePath);
     const [user] = await db.update(usersTable).set({ profilePhoto: photoUrl }).where(eq(usersTable.id, userId)).returning();
     if (!user) { res.status(404).json({ error: "User not found" }); return; }
     res.json({ profilePhoto: photoUrl, user: safeUser(user) });
