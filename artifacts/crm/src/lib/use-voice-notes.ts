@@ -21,7 +21,7 @@ export interface VoiceNoteData {
   originalName: string;
   mimeType: string;
   fileSize: number;
-  storagePath: string;
+  storagePath: string | null;
   url: string;
   durationMs: number | null;
   transcript: string | null;

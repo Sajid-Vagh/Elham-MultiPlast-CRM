@@ -44,7 +44,7 @@ export interface VoiceNoteResponse {
   originalName: string;
   mimeType: string;
   fileSize: number;
-  storagePath: string;
+  storagePath: string | null;
   url: string;
   durationMs: number | null;
   transcript: string | null;
@@ -340,7 +340,7 @@ export async function cleanupOrphanVoiceNotes(): Promise<{ deletedCount: number 
 // ────────────────────────────────────────
 export interface VoiceNoteDiagnostic {
   id: number;
-  storagePath: string;
+  storagePath: string | null;
   hasFileData: boolean;
   dealId: number | null;
   productionOrderId: number | null;
