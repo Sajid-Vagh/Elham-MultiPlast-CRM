@@ -217,6 +217,13 @@ router.delete("/users/:id", async (req, res) => {
   const params = DeleteUserParams.safeParse({ id: Number(req.params.id) });
   if (!params.success) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
+    // Fetch the target user first — admin accounts are protected and can never be deleted.
+    const [target] = await db.select().from(usersTable).where(eq(usersTable.id, params.data.id));
+    if (!target) { res.status(404).json({ error: "Not found" }); return; }
+    if (target.role === "admin") {
+      res.status(403).json({ error: "Admin users cannot be deleted" });
+      return;
+    }
     await db.delete(usersTable).where(eq(usersTable.id, params.data.id));
     res.status(204).send();
   } catch (err) {

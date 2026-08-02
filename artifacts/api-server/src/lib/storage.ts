@@ -17,6 +17,21 @@ const UPLOADS_ROOT = path.resolve(process.cwd(), "uploads");
 
 export { UPLOADS_ROOT };
 
+// Strip path separators (POSIX + Windows), keep only safe characters, and never
+// allow traversal sequences ("../", "..\") or a bare ".." to reach the filesystem.
+function sanitizeFilename(filename: string): string {
+  if (!filename) return "file";
+  // Collapse both separators so path.basename always returns the last component
+  const base = path.basename(filename.replace(/\\/g, "/"));
+  // Whitelist-safe characters only, collapse dots, trim leading/trailing dots
+  const clean = base
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .replace(/\.{2,}/g, ".")
+    .replace(/^\.+|\.+$/g, "");
+  const safe = clean && !clean.includes("..") ? clean : "file";
+  return safe.slice(0, 150);
+}
+
 // ────────────────────────────────────────────
 // Local filesystem storage (for development)
 // ────────────────────────────────────────────
@@ -24,7 +39,7 @@ class LocalStorageProvider implements StorageProvider {
   async save(filename: string, buffer: Buffer, subDir = "documents"): Promise<string> {
     const dir = path.join(UPLOADS_ROOT, subDir);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    const uniqueName = `${randomUUID()}-${filename}`;
+    const uniqueName = `${randomUUID()}-${sanitizeFilename(filename)}`;
     const filePath = path.join(dir, uniqueName);
     await fs.promises.writeFile(filePath, buffer);
     return path.join(subDir, uniqueName).replace(/\\/g, "/");
@@ -114,7 +129,7 @@ class SupabaseStorageProvider implements StorageProvider {
     const bucket = subDir;
     await this.ensureBucket(bucket);
 
-    const uniqueName = `${randomUUID()}-${filename}`;
+    const uniqueName = `${randomUUID()}-${sanitizeFilename(filename)}`;
     const storagePath = `${bucket}/${uniqueName}`;
     const uploadUrl = `${this.baseUrl}/storage/v1/object/${storagePath}`;
 

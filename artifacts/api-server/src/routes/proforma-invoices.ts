@@ -12,6 +12,7 @@ import { generateOrderNumber } from "../lib/order-id-generator";
 import { notifyProductionUsers } from "../lib/notification-service";
 import { logPiActivity, logActivity, formatTimestamp } from "../lib/activity-logger";
 import { canModifyInvoice } from "../lib/permission-service";
+import { convertContactToMyClient } from "../lib/won-service";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 
@@ -1878,23 +1879,25 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
     // ── Auto-create Contact + Deal (Won) + Sales Order for orphaned PIs ──
     // When a PI with no contact/deal is converted to Order, create a full sales record
     // so the order is visible on Sales dashboards, revenue reports, and Won Value KPIs.
+    // Contact + Deal + Order + Order Items + PI link are created inside a single
+    // transaction so a mid-way failure rolls everything back (no orphan records).
     const isConversion = (status === "Converted to Order" || status === "Converted to Production")
       && prevStatus !== "Converted to Order" && prevStatus !== "Converted to Production";
-    if (isConversion && !invoice.contactId) {
-      let autoContactId: number | null = null;
-
-      // 1. Find or create Contact from PI data
-      if (invoice.mobile) {
-        const [existingContact] = await db
+    if (isConversion && !invoice.contactId && invoice.mobile) {
+      await db.transaction(async (tx) => {
+        // 1. Find or create Contact from PI data
+        const [existingContact] = await tx
           .select()
           .from(contactsTable)
           .where(eq(contactsTable.mobile, invoice.mobile))
           .limit(1);
+
+        let autoContactId: number;
         if (existingContact) {
           autoContactId = existingContact.id;
         } else {
           const addressStr = [invoice.addressLine1, invoice.addressLine2, invoice.addressLine3].filter(Boolean).join(", ") || null;
-          const [newContact] = await db.insert(contactsTable).values({
+          const [newContact] = await tx.insert(contactsTable).values({
             name: invoice.customerName,
             mobile: invoice.mobile,
             companyName: invoice.companyName || null,
@@ -1908,11 +1911,9 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
           }).returning();
           autoContactId = newContact.id;
         }
-      }
 
-      // 2. Create Deal (Won) + Sales Order + Order Items
-      if (autoContactId) {
-        const piItems = await db
+        // 2. Create Deal (Won) + Sales Order + Order Items
+        const piItems = await tx
           .select()
           .from(proformaInvoiceItemsTable)
           .where(eq(proformaInvoiceItemsTable.invoiceId, id));
@@ -1920,17 +1921,21 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
         const orderNumber = await generateOrderNumber();
         const dealTitle = `${invoice.customerName} - ${invoice.invoiceNumber}`;
 
-        const [deal] = await db.insert(dealsTable).values({
+        // Won Amount must reflect the taxable (pre-GST, pre-freight) value. The grand
+        // total incorrectly includes GST + freight.
+        const wonAmount = Number(invoice.taxableAmount || 0);
+
+        const [deal] = await tx.insert(dealsTable).values({
           contactId: autoContactId,
           title: dealTitle,
           stage: "Won",
-          totalValue: String(invoice.grandTotal || 0),
-          wonAmount: String(invoice.grandTotal || 0),
+          totalValue: String(wonAmount),
+          wonAmount: String(wonAmount),
           salesOwnerId: user.id,
           productionUnit: productionUnit || null,
         }).returning();
 
-        const [order] = await db.insert(ordersTable).values({
+        const [order] = await tx.insert(ordersTable).values({
           contactId: autoContactId,
           dealId: deal.id,
           customerName: invoice.customerName,
@@ -1955,7 +1960,7 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
         }).returning();
 
         for (const piItem of piItems) {
-          await db.insert(orderItemsTable).values({
+          await tx.insert(orderItemsTable).values({
             orderId: order.id,
             productId: piItem.productId,
             productName: piItem.productName,
@@ -1971,13 +1976,25 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
           });
         }
 
-        // 3. Update PI to link contact and deal
-        await db.update(proformaInvoicesTable)
+        // 3. Convert the contact's category to "My Client" (shared helper — writes
+        //    customerCode/customerSince + category_history inside the same transaction)
+        const now = new Date();
+        await convertContactToMyClient(tx, {
+          contactId: autoContactId,
+          dealId: deal.id,
+          userId: user.id,
+          isMyClient: false,
+          convertedToClient: false,
+          now,
+        });
+
+        // 4. Update PI to link contact and deal
+        await tx.update(proformaInvoicesTable)
           .set({
             contactId: autoContactId,
             dealId: deal.id,
             salesOwnerId: user.id,
-            updatedAt: new Date(),
+            updatedAt: now,
           })
           .where(eq(proformaInvoicesTable.id, id));
 
@@ -1985,7 +2002,7 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
         invoice.contactId = autoContactId;
         invoice.dealId = deal.id;
         invoice.salesOwnerId = user.id;
-      }
+      });
     }
 
     // Auto-create Production Order when status changes to "Converted to Order" or "Converted to Production"

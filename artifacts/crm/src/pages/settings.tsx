@@ -524,6 +524,11 @@ export default function Settings() {
   };
 
   const handleDelete = (id: number) => {
+    const target = users?.find(u => u.id === id);
+    if (target?.role === "admin") {
+      toast({ title: "Admin users cannot be deleted", variant: "destructive" });
+      return;
+    }
     if (!confirm("Remove this team member?")) return;
     deleteUser.mutate({ id }, {
       onSuccess: () => { onUserChange(queryClient); toast({ title: "Removed" }); },
@@ -822,7 +827,14 @@ export default function Settings() {
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditUser(u as User)}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(u.id)}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => handleDelete(u.id)}
+                          disabled={u.role === "admin"}
+                          title={u.role === "admin" ? "Admin users cannot be deleted" : "Delete"}
+                        >
                           <Trash2 className="h-3.5 w-3.5 text-destructive" />
                         </Button>
                       </div>
