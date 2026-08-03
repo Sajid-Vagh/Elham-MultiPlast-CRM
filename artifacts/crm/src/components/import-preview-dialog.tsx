@@ -242,7 +242,8 @@ export function ImportPreviewDialog({
   if (loading) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-3xl max-h-[90vh]">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh]" aria-describedby={undefined}>
+          <DialogTitle className="sr-only">Importing...</DialogTitle>
           <div className="flex flex-col items-center justify-center py-12 space-y-4">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             <p className="text-sm text-muted-foreground">Parsing enquiry with multi-layer engine...</p>
