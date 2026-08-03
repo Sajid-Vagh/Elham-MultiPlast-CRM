@@ -701,7 +701,7 @@ router.post("/existing-customers/:id/follow-ups", async (req, res) => {
         contactId: ec.contactId,
         title: `${contact?.name || "Customer"} - Existing Customer Follow-up`,
         stage: "CL Sent",
-        salesOwnerId: ec.salesOwnerId || user.id,
+        salesOwnerId: user.id,
         probability: 50,
         totalValue: "0",
       }).returning();

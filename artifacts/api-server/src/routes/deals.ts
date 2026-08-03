@@ -78,9 +78,10 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
       )
       .orderBy(desc(dealsTable.createdAt));
 
-    // Role-based deal isolation: non-admin users only see their own deals
+    // Role-based deal isolation: non-admin users see deals they own OR deals on contacts they own
     if (user.role !== "admin") {
-      allDeals = allDeals.filter(d => d.salesOwnerId === user.id);
+      const ownedContactIds = new Set(contacts.filter(c => c.salesOwnerId === user.id).map(c => c.id));
+      allDeals = allDeals.filter(d => d.salesOwnerId === user.id || ownedContactIds.has(d.contactId));
     }
 
     // Enrich deals with contact info and active PI summary
@@ -143,7 +144,12 @@ router.get("/deals", async (req, res) => {
     const conditions: SQL[] = [];
 
     if (user.role !== "admin") {
-      conditions.push(eq(dealsTable.salesOwnerId, user.id));
+      // Show deals the user owns OR deals on contacts the user owns
+      const ownedContactIds = (await db.select({ id: contactsTable.id }).from(contactsTable).where(eq(contactsTable.salesOwnerId, user.id))).map(c => c.id);
+      conditions.push(or(
+        eq(dealsTable.salesOwnerId, user.id),
+        inArray(dealsTable.contactId, ownedContactIds)
+      )!);
     }
 
     let isPipelineView = true;
@@ -315,7 +321,7 @@ router.post("/deals", async (req, res) => {
         reason: "New Deal Created - Entered active pipeline",
       });
     }
-    const [deal] = await db.insert(dealsTable).values({ ...parsed.data, probability }).returning();
+    const [deal] = await db.insert(dealsTable).values({ ...parsed.data, salesOwnerId: user.id, probability }).returning();
 
     // Notify sales owner about new deal
     const dealOwnerId = deal!.salesOwnerId || contact?.salesOwnerId;
@@ -346,9 +352,12 @@ router.get("/deals/:id", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
     const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, parsed.data.id));
     if (!deal) { res.status(404).json({ error: "Not found" }); return; }
-    if (user.role !== "admin" && deal.salesOwnerId !== user.id) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
+    if (user.role !== "admin") {
+      const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+      if (deal.salesOwnerId !== user.id && (!contact || contact.salesOwnerId !== user.id)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
     }
     const accessibleUnits = getAccessibleUnits(user);
     if (accessibleUnits) {
