@@ -27,6 +27,7 @@ import {
   loadVehicle, markDispatched, markDelivered,
   getDispatchDashboard, listDispatchOrders,
   updateProductLineStatus, getProductLineItems, syncProductionOrderItems,
+  fastTrackReady,
   repairStuckOrders,
 } from "../lib/production-service";
 import { transferOrder, getTransferHistory } from "../lib/production-transfer-service";
@@ -259,6 +260,22 @@ router.post("/production/orders/:id/ready-for-dispatch", async (req, res) => {
     res.json(result.order);
   } catch (err) {
     req.log.error({ err }, "Ready for dispatch error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
+
+// ── Fast-Track Dispatch (shortcut — all items ready, skip workflow) ──
+router.post("/production/orders/:id/fast-track-ready", async (req, res) => {
+  try {
+    const user = await requireProductionUser(req, res);
+    if (!user) return;
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    const result = await fastTrackReady(user, id);
+    if (result.error) { res.status(result.status).json({ error: result.error }); return; }
+    res.json(result.order);
+  } catch (err) {
+    req.log.error({ err }, "Fast-track dispatch error:");
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });

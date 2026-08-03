@@ -20,7 +20,7 @@ import { VoiceNotePlayer } from "@/components/voice-note-player";
 import { VoiceNoteUploader } from "@/components/voice-note-uploader";
 import { useVoiceNotes, type VoiceNoteData } from "@/lib/use-voice-notes";
 import { useActiveUnits } from "@/lib/use-active-units";
-import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Calendar, Factory, ClipboardList, CheckCircle2, AlertTriangle, CircleDot, ChevronDown, Mic, ArrowRightLeft } from "lucide-react";
+import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Calendar, Factory, ClipboardList, CheckCircle2, AlertTriangle, CircleDot, ChevronDown, Mic, ArrowRightLeft, Zap } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
@@ -143,6 +143,20 @@ export default function ProductionOrderDetail() {
       headers: { "Content-Type": "application/json" },
     }),
     onSuccess: () => { onProductionChange(queryClient, id); toast({ title: "Ready To Dispatch — Support team notified" }); },
+    onError: (err: any) => toast({ title: err?.message || "Failed", variant: "destructive" }),
+  });
+
+  const fastTrackDispatch = useMutation({
+    mutationFn: () => customFetch<any>(`/production/orders/${id}/fast-track-ready`, {
+      method: "POST",
+      body: JSON.stringify({}),
+      headers: { "Content-Type": "application/json" },
+    }),
+    onSuccess: () => {
+      onProductionChange(queryClient, id);
+      toast({ title: "Fast-Track complete — order ready for dispatch" });
+      if (isSupportUser) setLoadVehicleDialog(true);
+    },
     onError: (err: any) => toast({ title: err?.message || "Failed", variant: "destructive" }),
   });
 
@@ -383,6 +397,25 @@ export default function ProductionOrderDetail() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Fast-Track Dispatch shortcut */}
+                {!isReadyToDispatch && (
+                  <div className="p-3 bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-lg">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-indigo-600" />
+                        <span className="text-sm font-semibold text-indigo-800">Fast-Track Dispatch</span>
+                      </div>
+                      <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700" disabled={fastTrackDispatch.isPending}
+                        onClick={() => fastTrackDispatch.mutate()}>
+                        <Zap className="h-3.5 w-3.5 mr-1" /> {fastTrackDispatch.isPending ? "Fast-Tracking..." : "Mark All Ready & Skip to Dispatch"}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-indigo-600 mt-1.5">
+                      For items already in stock — marks every product line 100% ready and jumps straight to Load Vehicle.
+                    </p>
+                  </div>
+                )}
+
                 {/* Status Progress Bar */}
                 <div className="flex items-center gap-1 text-xs">
                   {["Pending", "Production On Going", "Packaging", "Ready To Dispatch"].map((s, i) => {

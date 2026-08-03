@@ -240,6 +240,87 @@ export async function syncProductionOrderItems(productionOrderId: number, invoic
   }
 }
 
+// ═══════════════════════════════════════════════════
+// FAST-TRACK DISPATCH (shortcut — bypasses step-by-step workflow)
+// ═══════════════════════════════════════════════════
+
+export async function fastTrackReady(
+  user: PermissionUser,
+  orderId: number
+): Promise<any> {
+  const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
+  if (!order) return { error: "Production order not found", status: 404 };
+
+  if (["Completed", "Cancelled"].includes(order.status)) {
+    return { error: `Cannot fast-track a "${order.status}" order`, status: 400 };
+  }
+  if (order.status === "Ready To Dispatch") {
+    return { error: "Order is already Ready To Dispatch", status: 400 };
+  }
+  if (order.dispatchStatus && order.dispatchStatus !== "Pending Dispatch") {
+    return { error: `Cannot fast-track order already in dispatch flow ("${order.dispatchStatus}")`, status: 400 };
+  }
+
+  const now = new Date();
+
+  await syncProductionOrderItems(orderId, order.proformaInvoiceId);
+
+  await db.update(productionOrderItemsTable).set({
+    readyQuantity: productionOrderItemsTable.orderedQuantity,
+    productionStatus: "Ready",
+    startedAt: now,
+    completedAt: now,
+    updatedAt: now,
+  }).where(eq(productionOrderItemsTable.productionOrderId, orderId));
+
+  await db.update(productionOrdersTable).set({
+    status: "Ready To Dispatch",
+    dispatchStatus: "Pending Dispatch",
+    isFrozen: true,
+    readyAt: now,
+    updatedBy: user.id,
+    updatedAt: now,
+  } as any).where(eq(productionOrdersTable.id, orderId));
+
+  await addTimelineEntry(db, orderId, "Ready To Dispatch",
+    `Status: ${order.status} → Ready To Dispatch (Fast-Track)\nAll items marked 100% ready. Fast-tracked by ${user.name}.`,
+    user.id);
+
+  await logProductionActivity(db, {
+    dealId: order.dealId, contactId: null, eventName: "Fast-Track Dispatch",
+    orderId, details: "All items marked ready and order fast-tracked to Ready To Dispatch",
+    userName: user.name || "", createdBy: user.id,
+  });
+
+  await writeAuditTrail(db, {
+    productionOrderId: orderId, action: "fast_track_dispatch",
+    oldValue: order.status, newValue: "Ready To Dispatch",
+    changedById: user.id, changedByName: user.name || "",
+  });
+
+  const [invoice] = order.proformaInvoiceId
+    ? await db.select({ invoiceNumber: proformaInvoicesTable.invoiceNumber })
+        .from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, order.proformaInvoiceId))
+    : [];
+
+  await notifySupportOfReadyForDispatch({
+    productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
+    title: "Ready To Dispatch",
+    message: `Order #${invoice?.invoiceNumber || orderId} fast-tracked to Ready To Dispatch. Support action required.`,
+    excludeUserId: user.id,
+  });
+
+  await notifySalesOfProductionEvent({
+    productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
+    title: "Ready To Dispatch",
+    message: `Order #${invoice?.invoiceNumber || orderId} fast-tracked to Ready To Dispatch. Support team has been notified.`,
+    excludeUserId: user.id, createdByRole: order.createdByRole,
+  });
+
+  const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
+  return { order: await enrichProductionOrder(updated!, user) };
+}
+
 async function resolveProductForPiItem(piItem: typeof proformaInvoiceItemsTable.$inferSelect): Promise<typeof productsTable.$inferSelect | undefined> {
   if (piItem.productId) {
     const [found] = await db.select().from(productsTable).where(eq(productsTable.id, piItem.productId)).limit(1);
