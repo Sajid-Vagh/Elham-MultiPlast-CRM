@@ -520,6 +520,105 @@ router.get("/reports/lost-reasons/detail", async (req, res) => {
   }
 });
 
+router.get("/reports/stage-detail", async (req, res) => {
+  try {
+    const stage = req.query.stage as string;
+    if (stage !== "Won" && stage !== "Lost") {
+      res.status(400).json({ error: "stage query param must be Won or Lost" });
+      return;
+    }
+
+    const params = GetPipelineReportQueryParams.safeParse(req.query);
+    const user = await restrictToOwnDeals(req, params.data ?? {});
+    if (!user) { res.status(403).json({ error: "Unauthorized" }); return; }
+
+    const search = ((req.query.search as string) ?? "").toLowerCase();
+
+    const allUsers = await db.select().from(usersTable);
+    const userMap = new Map(allUsers.map(u => [u.id, u]));
+
+    let deals = await db.select().from(dealsTable).where(eq(dealsTable.stage, stage));
+    const allContacts = await db.select().from(contactsTable);
+    const contactMap = new Map(allContacts.map(c => [c.id, c]));
+
+    // Deal products for product info
+    const dealIds = deals.map(d => d.id);
+    const dealProductRows = dealIds.length > 0
+      ? await db.select().from(dealProductsTable).where(inArray(dealProductsTable.dealId, dealIds))
+      : [];
+    const productIds = [...new Set(dealProductRows.map(dp => dp.productId))];
+    const productRows = productIds.length > 0
+      ? await db.select().from(productsTable).where(inArray(productsTable.id, productIds))
+      : [];
+    const productNameMap = new Map(productRows.map(p => [p.id, p.name]));
+    const dealProductMap = new Map<number, string>();
+    for (const dp of dealProductRows) {
+      const name = productNameMap.get(dp.productId);
+      if (name && !dealProductMap.has(dp.dealId)) dealProductMap.set(dp.dealId, name);
+    }
+
+    // Mirror the pipeline report filters so the drill-down matches the table counts
+    if (params.success) {
+      if (params.data.salesOwnerId) {
+        deals = deals.filter(d => d.salesOwnerId === params.data.salesOwnerId);
+      }
+      const { startDate, endDate } = getDateRange(req);
+      if (startDate || endDate) {
+        deals = deals.filter(d => {
+          const created = new Date(d.createdAt);
+          if (startDate && created < startDate) return false;
+          if (endDate && created > endDate) return false;
+          return true;
+        });
+      }
+      if (params.data.unit) {
+        const unitContactIds = await getUnitContactIds(params.data.unit);
+        deals = deals.filter(d => unitContactIds.has(d.contactId));
+      }
+    }
+
+    const records = deals
+      .map(d => {
+        const contact = contactMap.get(d.contactId);
+        const owner = d.salesOwnerId ? userMap.get(d.salesOwnerId) : undefined;
+        return {
+          id: d.id,
+          type: "deal" as const,
+          customerName: contact?.name ?? "Unknown",
+          companyName: contact?.companyName ?? "",
+          mobile: contact?.mobile ?? "",
+          city: contact?.city ?? "",
+          salesPerson: owner?.name ?? "",
+          unit: contact?.unit ?? "",
+          product: dealProductMap.get(d.id) ?? "",
+          lostDate: d.updatedAt ? new Date(d.updatedAt).toISOString() : "",
+          lostReason: d.lostReason ?? "",
+          notes: d.lostNotes ?? "",
+          contactId: d.contactId,
+          dealId: d.id,
+          dealValue: stage === "Won" ? (d.wonAmount ?? d.totalValue ?? 0) : (d.totalValue ?? 0),
+        };
+      })
+      .filter(r => {
+        if (!search) return true;
+        return (
+          r.customerName.toLowerCase().includes(search) ||
+          r.companyName.toLowerCase().includes(search) ||
+          r.mobile.includes(search) ||
+          r.city.toLowerCase().includes(search) ||
+          r.salesPerson.toLowerCase().includes(search) ||
+          r.notes.toLowerCase().includes(search)
+        );
+      });
+
+    res.json({ success: true, data: records, total: records.length });
+  } catch (err) {
+    console.error("Stage detail error:", err instanceof Error ? err.message : "");
+    req.log.error({ err }, "Stage detail error");
+    res.json({ success: true, data: [], total: 0 });
+  }
+});
+
 router.get("/reports/by-city", async (req, res) => {
   try {
     const params = GetReportByCityQueryParams.safeParse(req.query);

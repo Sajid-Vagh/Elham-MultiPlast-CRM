@@ -172,44 +172,36 @@ router.get("/deals", async (req, res) => {
     const contactMap = new Map(contacts.map(c => [c.id, c]));
     const userMap = new Map(users.map(u => { const { passwordHash: _, ...safe } = u; return [u.id, safe]; }));
 
-    // Pipeline view: show deals for "Regular Follow up" contacts + all "My Client" contacts
-    // Completed (Won/Lost) deal visibility is controlled by completedDealVisibility param
+    // Pipeline view: show deals for "Regular Follow up" contacts + all "My Client" contacts.
+    // Completed (Won/Lost) deal visibility is controlled by the completedDealVisibility
+    // param ("hide" | "24h" | "3d" | "forever"). Recently-completed deals stay in the
+    // pipeline for the configured grace window REGARDLESS of the contact's category —
+    // so a deal marked Lost today (whose contact may have been moved to Category A/B/C)
+    // remains visible until the window expires instead of vanishing immediately.
     let resultDeals = deals;
     if (isPipelineView) {
       const regularFollowUpIds = new Set(contacts.filter(c => c.category === "Regular Follow up").map(c => c.id));
       const myClientIds = new Set(
         deals.filter(d => contacts.some(c => c.id === d.contactId && c.category === "My Client")).map(d => d.id)
       );
-      resultDeals = deals.filter(d => regularFollowUpIds.has(d.contactId) || myClientIds.has(d.id));
 
-      // Apply completed deal visibility filter based on user preference
-      // completedDealVisibility values:
-      //   "hide"    → hide Won/Lost immediately
-      //   "24h"     → keep visible for 24 hours after completion (default)
-      //   "3d"      → keep visible for 72 hours
-      //   "forever" → never auto-hide completed deals
       if (params.success) {
         const visibility = params.data.completedDealVisibility || "24h";
-        if (visibility === "forever") {
-          // Keep all completed deals visible — no filter needed
-        } else if (visibility === "24h") {
-          const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-          resultDeals = resultDeals.filter(d => {
-            if (d.stage !== "Won" && d.stage !== "Lost") return true;
-            if (!d.completedAt) return true;
-            return new Date(d.completedAt) >= cutoff;
-          });
-        } else if (visibility === "3d") {
-          const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
-          resultDeals = resultDeals.filter(d => {
-            if (d.stage !== "Won" && d.stage !== "Lost") return true;
-            if (!d.completedAt) return true;
-            return new Date(d.completedAt) >= cutoff;
-          });
-        } else {
-          // "hide" or any other value: hide Won/Lost immediately
-          resultDeals = resultDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost");
-        }
+        const completedInWindow = (d: (typeof deals)[number]) => {
+          if (visibility === "hide") return false;
+          if (visibility === "forever") return true;
+          if (!d.completedAt) return true;
+          const windowMs = visibility === "3d" ? 3 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+          const cutoff = new Date(Date.now() - windowMs);
+          return new Date(d.completedAt) >= cutoff;
+        };
+        resultDeals = deals.filter(d =>
+          d.stage === "Won" || d.stage === "Lost"
+            ? completedInWindow(d)
+            : regularFollowUpIds.has(d.contactId) || myClientIds.has(d.id)
+        );
+      } else {
+        resultDeals = deals.filter(d => regularFollowUpIds.has(d.contactId) || myClientIds.has(d.id));
       }
     }
 

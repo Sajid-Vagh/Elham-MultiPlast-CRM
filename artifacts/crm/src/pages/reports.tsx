@@ -77,6 +77,8 @@ export default function Reports() {
   const [activeTab, setActiveTab] = useState("pipeline");
   const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
+  const [detailMode, setDetailMode] = useState<"reason" | "stage">("reason");
+  const [selectedStage, setSelectedStage] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailSearch, setDetailSearch] = useState("");
   const [detailData, setDetailData] = useState<{ data?: any[]; records?: any[]; total: number } | null>(null);
@@ -146,6 +148,8 @@ export default function Reports() {
   const fetchLostDetail = useCallback(async (reason: string) => {
     setDetailLoading(true);
     setSelectedReason(reason);
+    setSelectedStage(null);
+    setDetailMode("reason");
     setDetailSearch("");
     try {
       const token = localStorage.getItem("crm_token");
@@ -172,6 +176,42 @@ export default function Reports() {
       }
     } catch (err) {
       console.error("Failed to fetch lost reason detail", err);
+      toast({ title: "Error", description: String(err), variant: "destructive" });
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [dateFilter.startDate, dateFilter.endDate, unit, ownerId]);
+
+  const fetchStageDetail = useCallback(async (stage: string) => {
+    setDetailLoading(true);
+    setSelectedReason(null);
+    setSelectedStage(stage);
+    setDetailMode("stage");
+    setDetailSearch("");
+    try {
+      const token = localStorage.getItem("crm_token");
+      const p = new URLSearchParams();
+      p.set("stage", stage);
+      if (dateFilter.startDate) p.set("startDate", dateFilter.startDate);
+      if (dateFilter.endDate) p.set("endDate", dateFilter.endDate);
+      if (unit !== "All") p.set("unit", unit);
+      if (ownerId) p.set("salesOwnerId", ownerId);
+      const url = `/api/reports/stage-detail?${p.toString()}`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDetailData(data);
+        setDetailOpen(true);
+        toast({ title: `${stage} Deals`, description: `${data.length} records loaded` });
+      } else {
+        const text = await res.text();
+        console.error("Stage detail fetch failed:", res.status, text);
+        toast({ title: "Error", description: `Server returned ${res.status}: ${text.slice(0, 200)}`, variant: "destructive" });
+      }
+    } catch (err) {
+      console.error("Failed to fetch stage detail", err);
       toast({ title: "Error", description: String(err), variant: "destructive" });
     } finally {
       setDetailLoading(false);
@@ -257,7 +297,13 @@ export default function Reports() {
                     <TableRow
                       key={row.stage}
                       className="cursor-pointer hover:bg-primary/5 transition-colors"
-                      onClick={() => goDeals(row.stage)}
+                      onClick={() => {
+                        if (row.stage === "Won" || row.stage === "Lost") {
+                          fetchStageDetail(row.stage);
+                        } else {
+                          goDeals(row.stage);
+                        }
+                      }}
                     >
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -539,8 +585,12 @@ export default function Reports() {
         <SheetContent className="sm:max-w-[90vw] max-w-[90vw] overflow-y-auto">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2 text-xl">
-              <XCircle className="h-5 w-5 text-red-400" />
-              Lost Reason: {selectedReason}
+              {detailMode === "stage" ? (
+                <Briefcase className="h-5 w-5 text-primary" />
+              ) : (
+                <XCircle className="h-5 w-5 text-red-400" />
+              )}
+              {detailMode === "stage" ? `${selectedStage} Deals` : `Lost Reason: ${selectedReason}`}
             </SheetTitle>
           </SheetHeader>
 
@@ -556,6 +606,7 @@ export default function Reports() {
               {/* Search + Export */}
               {(() => {
                 const records: any[] = detailData.data ?? detailData.records ?? [];
+                const isStageMode = detailMode === "stage";
                 const searchQ = detailSearch.toLowerCase();
                 const filtered = detailSearch
                   ? records.filter((r: any) =>
@@ -582,25 +633,30 @@ export default function Reports() {
                       <div className="flex gap-2">
                         <Button variant="outline" size="sm" onClick={() => {
                           if (!filtered.length) return;
-                          const headers = ["Customer Name","Company Name","Mobile","City","Sales Person","Unit","Product","Type","Lost Date","Lost Reason","Notes","Deal Value"];
+                          const headers = isStageMode
+                            ? (selectedStage === "Won"
+                                ? ["Customer Name","Company Name","Mobile","City","Sales Person","Unit","Product","Type","Won Date","Notes","Deal Value"]
+                                : ["Customer Name","Company Name","Mobile","City","Sales Person","Unit","Product","Type","Lost Date","Lost Reason","Notes","Deal Value"])
+                            : ["Customer Name","Company Name","Mobile","City","Sales Person","Unit","Product","Type","Lost Date","Lost Reason","Notes","Deal Value"];
+                          const key: Record<string, string> = {
+                            "Customer Name": "customerName",
+                            "Company Name": "companyName",
+                            "Mobile": "mobile",
+                            "City": "city",
+                            "Sales Person": "salesPerson",
+                            "Unit": "unit",
+                            "Product": "product",
+                            "Type": "type",
+                            "Lost Date": "lostDate",
+                            "Won Date": "lostDate",
+                            "Lost Reason": "lostReason",
+                            "Notes": "notes",
+                            "Deal Value": "dealValue",
+                          };
                           const csv = [
                             headers.join(","),
                             ...filtered.map((r: any) =>
                               headers.map(h => {
-                                const key: Record<string, string> = {
-                                  "Customer Name": "customerName",
-                                  "Company Name": "companyName",
-                                  "Mobile": "mobile",
-                                  "City": "city",
-                                  "Sales Person": "salesPerson",
-                                  "Unit": "unit",
-                                  "Product": "product",
-                                  "Type": "type",
-                                  "Lost Date": "lostDate",
-                                  "Lost Reason": "lostReason",
-                                  "Notes": "notes",
-                                  "Deal Value": "dealValue",
-                                };
                                 const val = r[key[h]] ?? "";
                                 const str = String(val);
                                 return str.includes(",") || str.includes('"') || str.includes("\n")
@@ -613,7 +669,7 @@ export default function Reports() {
                           const url = URL.createObjectURL(blob);
                           const a = document.createElement("a");
                           a.href = url;
-                          a.download = `lost-reason-${selectedReason}.csv`;
+                          a.download = isStageMode ? `${selectedStage}-deals.csv` : `lost-reason-${selectedReason}.csv`;
                           document.body.appendChild(a);
                           a.click();
                           document.body.removeChild(a);
@@ -642,8 +698,8 @@ export default function Reports() {
                             <TableHead className="whitespace-nowrap">Unit</TableHead>
                             <TableHead className="whitespace-nowrap">Product</TableHead>
                             <TableHead className="whitespace-nowrap">Type</TableHead>
-                            <TableHead className="whitespace-nowrap">Lost Date</TableHead>
-                            <TableHead className="whitespace-nowrap">Lost Reason</TableHead>
+                            <TableHead className="whitespace-nowrap">{isStageMode ? "Completed Date" : "Lost Date"}</TableHead>
+                            {(!isStageMode || selectedStage !== "Won") && <TableHead className="whitespace-nowrap">Lost Reason</TableHead>}
                             <TableHead className="whitespace-nowrap">Notes</TableHead>
                             <TableHead className="whitespace-nowrap text-right">Deal Value</TableHead>
                             <TableHead className="whitespace-nowrap text-center">Actions</TableHead>
@@ -653,7 +709,7 @@ export default function Reports() {
                           {filtered.map((r: any) => (
                             <TableRow key={`${r.type}-${r.id}`}>
                               <TableCell className="font-medium whitespace-nowrap">
-                                <Link to={`/lead/${r.contactId}`} className="hover:underline text-primary">
+                                <Link to={`/leads/${r.contactId}`} className="hover:underline text-primary">
                                   {r.customerName}
                                 </Link>
                               </TableCell>
@@ -671,13 +727,15 @@ export default function Reports() {
                               <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                                 {r.lostDate ? new Date(r.lostDate).toLocaleDateString() : "—"}
                               </TableCell>
-                              <TableCell className="whitespace-nowrap max-w-[140px] truncate" title={r.lostReason}>
-                                {r.lostReason}
-                              </TableCell>
+                              {(!isStageMode || selectedStage !== "Won") && (
+                                <TableCell className="whitespace-nowrap max-w-[140px] truncate" title={r.lostReason}>
+                                  {r.lostReason}
+                                </TableCell>
+                              )}
                               <TableCell className="max-w-[180px] truncate text-sm text-muted-foreground" title={r.notes}>
                                 {r.notes || "—"}
                               </TableCell>
-                              <TableCell className="text-right whitespace-nowrap text-red-500 font-medium">
+                              <TableCell className={`text-right whitespace-nowrap font-medium ${isStageMode && selectedStage === "Won" ? "text-green-600" : "text-red-500"}`}>
                                 {r.dealValue ? `₹${Number(r.dealValue).toLocaleString()}` : "—"}
                               </TableCell>
                               <TableCell>
@@ -689,7 +747,7 @@ export default function Reports() {
                                     title="Open Customer"
                                     asChild
                                   >
-                                    <Link to={`/lead/${r.contactId}`}>
+                                    <Link to={`/leads/${r.contactId}`}>
                                       <ExternalLink className="h-3.5 w-3.5" />
                                     </Link>
                                   </Button>
@@ -701,7 +759,7 @@ export default function Reports() {
                                       title="Open Deal"
                                       asChild
                                     >
-                                      <Link to={`/deal/${r.dealId}`}>
+                                      <Link to={`/deals/${r.dealId}`}>
                                         <Eye className="h-3.5 w-3.5" />
                                       </Link>
                                     </Button>
@@ -721,7 +779,7 @@ export default function Reports() {
                           ))}
                           {filtered.length === 0 && (
                             <TableRow>
-                              <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
+                              <TableCell colSpan={isStageMode && selectedStage === "Won" ? 12 : 13} className="text-center py-8 text-muted-foreground">
                                 No records match your search.
                               </TableCell>
                             </TableRow>
