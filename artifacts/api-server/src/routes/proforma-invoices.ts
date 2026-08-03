@@ -540,7 +540,7 @@ router.post("/proforma-invoices/gst-lookup", async (req, res) => {
         const mapped = {
           success: true,
           legalName: source.lgnm || "",
-          tradeName: source.tradeName || "",
+          tradeName: source.tradeName || source.tradeNam || "",
           address: source.adr || "",
           addressLine1: "",
           addressLine2: "",

@@ -72,7 +72,7 @@ router.post("/customer-master/:id/refresh-gst", async (req, res) => {
     const changes: Record<string, { old: string | null; new: string | null }> = {};
 
     const fields: [string, string | null][] = [
-      ["companyName", gstData.legalName || gstData.tradeName || null],
+      ["companyName", gstData.tradeName || gstData.legalName || null],
       ["tradeName", gstData.tradeName || null],
       ["addressLine1", gstData.addressLine1 || null],
       ["addressLine2", gstData.addressLine2 || null],

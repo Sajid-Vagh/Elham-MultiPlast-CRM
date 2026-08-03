@@ -753,9 +753,10 @@ const selectProduct = (idx: number, product: any) => {
     setGstNumber("");
     setGstStatus("");
 
-    // tradeName -> Company Name (first line), legalName -> Party Name (second line)
+    // tradeName -> Company Name (first line, business brand name), legalName -> Party Name (second line).
+    // companyName MUST prioritize tradeName; only fall back to legalName when tradeName is empty.
     const partyName = data.legalName || "";
-    const companyNameVal = data.tradeName || "";
+    const companyNameVal = data.tradeName || data.legalName || "";
     setCustomerName(partyName);
     setCompanyName(companyNameVal);
     setTradeName(data.tradeName || "");
@@ -842,6 +843,8 @@ const selectProduct = (idx: number, product: any) => {
   const applyExistingCustomer = (customer: any) => {
     if (customer.companyName) setCustomerName(customer.companyName);
     if (customer.tradeName) setTradeName(customer.tradeName);
+    // Invoice companyName (list/PDF primary line) must prioritize the trade/business name
+    setCompanyName(customer.tradeName || customer.companyName || "");
     if (customer.addressLine1) setAddressLine1(customer.addressLine1);
     if (customer.addressLine2) setAddressLine2(customer.addressLine2);
     if (customer.addressLine3) setAddressLine3(customer.addressLine3);

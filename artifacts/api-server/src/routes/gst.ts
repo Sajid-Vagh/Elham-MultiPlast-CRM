@@ -104,7 +104,7 @@ export async function lookupGstinFromProviders(gstin: string, req: any): Promise
         }
         return normalize({
           legalName: source.lgnm || "",
-          tradeName: source.tradeName || "",
+          tradeName: source.tradeName || source.tradeNam || "",
           address: source.adr || "",
           city: cityFromAddr,
           state: stateFromAddr,
