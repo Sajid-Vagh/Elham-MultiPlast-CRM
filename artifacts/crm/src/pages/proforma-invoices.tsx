@@ -2986,6 +2986,16 @@ ${pagesHtml}
                       {inv.invoiceNumber}
                       {inv.version && inv.version > 1 && <span className="ml-1 text-[10px] bg-blue-100 text-blue-600 px-1 py-0.5 rounded">v{inv.version}</span>}
                     </TableCell>
+                    <TableCell>
+                      {inv.contact?.name ? (
+                        <div className="min-w-0">
+                          <span className="font-medium">{inv.contact.name}</span>
+                          {inv.contact.mobile && <span className="block text-xs text-muted-foreground">{inv.contact.mobile}</span>}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
                     <TableCell className="font-medium">₹{Number(inv.grandTotal).toLocaleString()}</TableCell>
                     <TableCell>
                       <Badge className={`text-xs ${STATUS_COLORS[inv.status] || ""}`}>{inv.status}</Badge>
