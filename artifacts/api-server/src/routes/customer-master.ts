@@ -117,6 +117,16 @@ router.post("/customer-master/:id/refresh-gst", async (req, res) => {
 });
 
 // Create customer master
+// POST /customer-master — Find-or-Create (Upsert) customer/GST profile.
+//  1. Look up an existing profile by GSTIN FIRST — INCLUDING soft-deleted rows. The
+//     `gstin` UNIQUE constraint still reserves the value after a soft-delete, so a blind
+//     INSERT would throw a 23505 unique violation → 500. If found, REUSE the companyId
+//     (reviving + refreshing the row if it was soft-deleted) instead of inserting.
+//  2. If no GSTIN match exists, INSERT a new profile and use its id.
+//  3. Link the current contact to the resolved companyId in the junction table
+//     (contact_companies_link) with ON CONFLICT DO NOTHING — no duplicate links.
+//  4. All of the above runs in a single DB transaction; failures return a clean JSON 400
+//     with the error message instead of crashing the server.
 router.post("/customer-master", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
@@ -132,67 +142,97 @@ router.post("/customer-master", async (req, res) => {
     const normalizedGstin = gstin ? gstin.toUpperCase().trim() : null;
     const normalizedMobile = mobile ? mobile.replace(/\s/g, "").trim() : null;
 
-    // Duplicate check: by GSTIN if provided, else by mobile (deleted profiles don't block re-creation)
-    let existing = null;
-    if (normalizedGstin) {
-      const [found] = await db
-        .select()
-        .from(customerMasterTable)
-        .where(and(eq(customerMasterTable.gstin, normalizedGstin), eq(customerMasterTable.isDeleted, false)));
-      existing = found;
-    } else if (normalizedMobile) {
-      const [found] = await db
+    // Mobile-only profiles are NOT merged by find-or-create — `mobile` is not unique and
+    // two different companies may legitimately share a phone number. Keep the explicit
+    // duplicate check for that case (a 409 → the client adopts the existing profile).
+    if (!normalizedGstin && normalizedMobile) {
+      const [existing] = await db
         .select()
         .from(customerMasterTable)
         .where(and(eq(customerMasterTable.mobile, normalizedMobile), eq(customerMasterTable.isDeleted, false)));
-      existing = found;
-    }
-
-    if (existing) {
-      res.status(409).json({ error: normalizedGstin ? "GSTIN already exists" : "Customer with this mobile number already exists", existing });
-      return;
-    }
-
-    const [customer] = await db
-      .insert(customerMasterTable)
-      .values({
-        companyName: companyName || "",
-        tradeName: tradeName || null,
-        contactPerson: contactPerson || null,
-        gstin: normalizedGstin,
-        addressLine1: addressLine1 || null,
-        addressLine2: addressLine2 || null,
-        addressLine3: addressLine3 || null,
-        city: city || null,
-        district: district || null,
-        state: state || null,
-        pincode: pincode || null,
-        mobile: normalizedMobile,
-        email: email || null,
-        customerType: customerType || (normalizedGstin ? "GST" : "Unregistered"),
-        gstStatus: gstStatus || (normalizedGstin ? "Active" : null),
-        businessConstitution: businessConstitution || null,
-        notes: notes || null,
-        linkedContactId: linkedContactId ? Number(linkedContactId) || null : null,
-        createdBy: user.id,
-      })
-      .returning();
-
-    // If the profile was created for a specific contact, record the M:N link too.
-    if (customer && linkedContactId) {
-      const cid = Number(linkedContactId);
-      if (!isNaN(cid)) {
-        await db
-          .insert(contactCompaniesLinkTable)
-          .values({ contactId: cid, companyId: customer.id, createdBy: user.id })
-          .onConflictDoNothing();
+      if (existing) {
+        res.status(409).json({ error: "Customer with this mobile number already exists", existing });
+        return;
       }
     }
 
-    res.status(201).json(customer);
-  } catch (err) {
+    const values = {
+      companyName: companyName || "",
+      tradeName: tradeName || null,
+      contactPerson: contactPerson || null,
+      gstin: normalizedGstin,
+      addressLine1: addressLine1 || null,
+      addressLine2: addressLine2 || null,
+      addressLine3: addressLine3 || null,
+      city: city || null,
+      district: district || null,
+      state: state || null,
+      pincode: pincode || null,
+      mobile: normalizedMobile,
+      email: email || null,
+      customerType: customerType || (normalizedGstin ? "GST" : "Unregistered"),
+      gstStatus: gstStatus || (normalizedGstin ? "Active" : null),
+      businessConstitution: businessConstitution || null,
+      notes: notes || null,
+      linkedContactId: linkedContactId ? Number(linkedContactId) || null : null,
+    };
+
+    const result = await db.transaction(async (tx) => {
+      let companyId: number | null = null;
+      let created = false;
+
+      // 1. Find-or-create by GSTIN (search includes soft-deleted rows so the UNIQUE
+      //    constraint on gstin can't reject the re-registration).
+      if (normalizedGstin) {
+        const [found] = await tx
+          .select()
+          .from(customerMasterTable)
+          .where(eq(customerMasterTable.gstin, normalizedGstin))
+          .limit(1);
+        if (found) {
+          companyId = found.id;
+          if (found.isDeleted) {
+            // Revive the soft-deleted profile and refresh its data — no new row, no 23505.
+            await tx
+              .update(customerMasterTable)
+              .set({ ...values, isDeleted: false, deletedAt: null, deletedBy: null })
+              .where(eq(customerMasterTable.id, found.id));
+          }
+        }
+      }
+
+      // 2. No existing profile with this GSTIN → insert a new one.
+      if (companyId === null) {
+        const [inserted] = await tx
+          .insert(customerMasterTable)
+          .values({ ...values, createdBy: user.id })
+          .returning();
+        companyId = inserted.id;
+        created = true;
+      }
+
+      // 3. Link to the current contact (M:N junction) — idempotent, no duplicate links.
+      const cid = linkedContactId ? Number(linkedContactId) : null;
+      if (companyId !== null && cid && !isNaN(cid) && cid > 0) {
+        await tx
+          .insert(contactCompaniesLinkTable)
+          .values({ contactId: cid, companyId, createdBy: user.id })
+          .onConflictDoNothing();
+      }
+
+      const [profile] = await tx
+        .select()
+        .from(customerMasterTable)
+        .where(eq(customerMasterTable.id, companyId));
+      return { profile, created };
+    });
+
+    res.status(result.created ? 201 : 200).json(result.profile);
+  } catch (err: any) {
     req.log.error({ err }, "Create customer master error");
-    res.status(500).json({ success: false, error: "Internal Server Error" });
+    // Unique violation (concurrent find-or-create race on gstin) → surface a clean,
+    // retryable error instead of crashing with a 500.
+    res.status(err?.code === "23505" ? 409 : 400).json({ error: err?.message || "Failed to save customer" });
   }
 });
 
