@@ -7,14 +7,23 @@
  * Run: node diagnose-voice-notes.js
  */
 
+require("dotenv").config();
+
 const { Client } = require("pg");
 
-// Production database
-const DB_URL = "postgresql://postgres.rzcbdtxlkspdgksycamg:Elhammultiplast@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true";
+// Read from the local .env file (repo root)
+const DB_URL = process.env.DATABASE_URL;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
-// Supabase Storage
-const SUPABASE_URL = "https://rzcbdtxlkspdgksycamg.supabase.co";
-const SUPABASE_KEY = "sb_publishable_t9yVnBGGxHxfdvuHWyCE-g_c2Dojz8y";
+if (!DB_URL || !SUPABASE_URL || !SUPABASE_KEY) {
+  console.error("ERROR: Missing required environment variables.");
+  console.error("Create a .env file at the repo root with:");
+  console.error("  DATABASE_URL=<postgres connection string>");
+  console.error("  SUPABASE_URL=https://<project-ref>.supabase.co");
+  console.error("  SUPABASE_KEY=<anon or publishable key>");
+  process.exit(1);
+}
 
 async function headRequest(url, headers = {}) {
   try {

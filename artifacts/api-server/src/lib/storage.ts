@@ -348,7 +348,7 @@ class SupabaseStorageProvider implements StorageProvider {
     console.error(`[storage] CRITICAL: Cannot create "voice-notes" bucket.`);
     console.error(`[storage] Voice notes will NOT be stored or playable.`);
     console.error(`[storage] FIX: Create the bucket manually in Supabase Dashboard:`);
-    console.error(`[storage]   1. Go to https://supabase.com/dashboard/project/rzcbdtxlkspdgksycamg/storage/buckets`);
+    console.error(`[storage]   1. Open your project at https://supabase.com/dashboard and go to Storage > Buckets`);
     console.error(`[storage]   2. Click "New Bucket"`);
     console.error(`[storage]   3. Name: voice-notes | Public: ON | Size limit: 10 MB`);
     console.error(`[storage]   4. Allowed MIME types: audio/webm, audio/mpeg, audio/mp3, audio/wav, audio/ogg, audio/mp4, audio/m4a`);

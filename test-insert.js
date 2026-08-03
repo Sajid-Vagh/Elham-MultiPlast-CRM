@@ -1,7 +1,14 @@
+require("dotenv").config();
 const { Client } = require("D:/Elham-crm/lib/db/node_modules/pg");
 
+if (!process.env.DATABASE_URL) {
+  console.error("ERROR: DATABASE_URL is not set.");
+  console.error("Create a .env file at the repo root with DATABASE_URL=<postgres connection string>.");
+  process.exit(1);
+}
+
 const client = new Client({
-  connectionString: "postgresql://postgres.rzcbdtxlkspdgksycamg:Elhammultiplast@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true",
+  connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
 
