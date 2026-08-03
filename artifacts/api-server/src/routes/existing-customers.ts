@@ -14,6 +14,14 @@ import { getAccessibleUnits } from "../lib/unit-filter";
 
 const router: IRouter = Router();
 
+// Roles exempt from unit-level filtering on Existing Customers: they must see ALL units.
+const EXISTING_CUSTOMER_UNIT_BYPASS_ROLES = ["admin", "production", "production_manager"];
+
+function getExistingCustomerUnits(user: { role: string; unit?: string | null }): string[] | null {
+  if (EXISTING_CUSTOMER_UNIT_BYPASS_ROLES.includes(user.role)) return null;
+  return getAccessibleUnits(user);
+}
+
 // ── Helper: enforce unit-based access on existing customer ──
 async function enforceExistingCustomerAccess(
   req: any,
@@ -42,7 +50,7 @@ async function enforceExistingCustomerAccess(
   }
 
   // Unit-based access control
-  const accessibleUnits = getAccessibleUnits(user);
+  const accessibleUnits = getExistingCustomerUnits(user);
   if (accessibleUnits) {
     const [contact] = await db
       .select({ unit: contactsTable.unit })
@@ -186,7 +194,7 @@ router.get("/existing-customers/dashboard", async (req, res) => {
     const conditions: any[] = [eq(existingCustomersTable.isActive, true)];
     if (user.role === "sales") conditions.push(eq(existingCustomersTable.salesOwnerId, user.id));
 
-    const accessibleUnits = getAccessibleUnits(user);
+    const accessibleUnits = getExistingCustomerUnits(user);
     if (accessibleUnits) {
       conditions.push(sql`EXISTS (
         SELECT 1 FROM contacts c WHERE c.id = ${existingCustomersTable.contactId} AND c.unit IN (${sql.join(accessibleUnits.map(u => sql`${u}`), sql`, `)})
@@ -256,11 +264,14 @@ router.get("/existing-customers", async (req, res) => {
       )!);
     }
 
-    const accessibleUnits = getAccessibleUnits(user);
-    if (accessibleUnits) {
-      conditions.push(sql`EXISTS (
-        SELECT 1 FROM contacts c WHERE c.id = ${existingCustomersTable.contactId} AND c.unit IN (${sql.join(accessibleUnits.map(u => sql`${u}`), sql`, `)})
-      )`);
+    const allowedUnits = getExistingCustomerUnits(user);
+    if (allowedUnits) {
+      conditions.push(inArray(
+        existingCustomersTable.contactId,
+        db.select({ contactId: contactsTable.id })
+          .from(contactsTable)
+          .where(inArray(contactsTable.unit, allowedUnits))
+      ));
     }
 
     const { startDate, endDate } = req.query as Record<string, string>;
@@ -331,7 +342,7 @@ router.get("/existing-customers/:id", async (req, res) => {
     }
 
     // Unit-based access control
-    const accessibleUnits = getAccessibleUnits(user);
+    const accessibleUnits = getExistingCustomerUnits(user);
     if (accessibleUnits) {
       const [contact] = await db.select({ unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, ec.contactId)).limit(1);
       if (!contact || !accessibleUnits.includes(contact.unit ?? "All")) {

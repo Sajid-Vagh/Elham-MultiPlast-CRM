@@ -209,7 +209,6 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: Briefcase, label: "Deals", href: "/deals", color: "#34d399" },
     { icon: Bell, label: "Activity", href: "/follow-ups", color: "#f59e0b" },
     { icon: FolderTree, label: "Categories", href: "/categories", color: "#f97316" },
-    { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" },
     { icon: ShoppingCart, label: "Orders", href: "/orders", color: "#0ea5e9" },
     { icon: FileText, label: "Proforma Invoices", href: "/proforma-invoices", color: "#06b6d4" },
     { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
@@ -236,6 +235,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: ShoppingCart, label: "Orders", href: "/orders", color: "#0ea5e9" },
     { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
     { icon: Truck, label: "Dispatch", href: "/dispatch", color: "#f43f5e" },
+    { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" },
     { icon: BarChart, label: "Machine Report", href: "/production/machine-report", color: "#7c3aed" },
     { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
   ];

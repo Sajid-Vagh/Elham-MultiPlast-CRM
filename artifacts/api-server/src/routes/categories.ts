@@ -53,6 +53,9 @@ router.get("/categories/counts", async (req, res) => {
     // "Existing Client" count: ALL "My Client" contacts across all owners (bypass owner filter), only unit/date filtered
     // Unit filter uses requestedUnit from dropdown (not user's restricted unit) so badge matches list
     const ecConditions: SQL[] = [];
+    if (user.role === "sales") {
+      ecConditions.push(eq(contactsTable.salesOwnerId, user.id));
+    }
     if (requestedUnit) {
       ecConditions.push(eq(contactsTable.unit, requestedUnit));
     }
@@ -87,8 +90,9 @@ router.get("/categories/:category/contacts", async (req, res) => {
     }
 
     const baseConditions: SQL[] = [];
-    // Bypass ownerId filter for Existing Client (global view)
-    if (!isAdmin && !isExistingClient) {
+    if (user.role === "sales") {
+      baseConditions.push(eq(contactsTable.salesOwnerId, user.id));
+    } else if (!isAdmin && !isExistingClient) {
       baseConditions.push(eq(contactsTable.salesOwnerId, user.id));
     }
 

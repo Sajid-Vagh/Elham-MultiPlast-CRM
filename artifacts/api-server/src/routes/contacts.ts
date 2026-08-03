@@ -101,7 +101,9 @@ router.get("/contacts", async (req, res) => {
     const categoryParam = req.query.category as string | undefined;
     const isExistingClient = categoryParam === "Existing Client";
 
-    if (user.role !== "admin" && (user.role === "sales" || !isExistingClient)) {
+    if (user.role === "sales") {
+      conditions.push(eq(contactsTable.salesOwnerId, user.id));
+    } else if (user.role !== "admin" && !isExistingClient) {
       conditions.push(eq(contactsTable.salesOwnerId, user.id));
     }
 
