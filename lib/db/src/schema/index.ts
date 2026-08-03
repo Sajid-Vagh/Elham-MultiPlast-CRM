@@ -11,6 +11,7 @@ export * from "./proforma_invoices";
 export * from "./sessions";
 export * from "./documents";
 export * from "./customer_master";
+export * from "./contact_companies_link";
 export * from "./gst_verification_log";
 export * from "./production_orders";
 export * from "./production_order_items";

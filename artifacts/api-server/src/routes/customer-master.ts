@@ -1,10 +1,16 @@
 import { Router, type IRouter } from "express";
-import { db, customerMasterTable, proformaInvoicesTable } from "@workspace/db";
+import { db, customerMasterTable, proformaInvoicesTable, contactCompaniesLinkTable, contactsTable } from "@workspace/db";
 import { eq, desc, and, sql, or } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { lookupGstinFromProviders } from "./gst";
 
 const router: IRouter = Router();
+
+// ── M:N Contact ↔ Company/GST linking ──
+// `contact_companies_link` maps contactId → customer_master.id (junction table).
+// A customer_master row is the single source of truth for a company's GST data;
+// linking it to another contact (e.g. Person B working at the same company) only
+// adds a junction row — the company's GST record is never duplicated.
 
 // Lookup customer by GSTIN — used for auto-fill on the form
 router.post("/customer-master/lookup-by-gstin", async (req, res) => {
@@ -116,7 +122,7 @@ router.post("/customer-master", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { companyName, tradeName, contactPerson, gstin, addressLine1, addressLine2, addressLine3, city, district, state, pincode, mobile, email, customerType, gstStatus, businessConstitution, notes } = req.body;
+    const { companyName, tradeName, contactPerson, gstin, addressLine1, addressLine2, addressLine3, city, district, state, pincode, mobile, email, customerType, gstStatus, businessConstitution, notes, linkedContactId } = req.body;
 
     if (!companyName && !mobile) {
       res.status(400).json({ error: "Company name or mobile number is required" });
@@ -167,9 +173,21 @@ router.post("/customer-master", async (req, res) => {
         gstStatus: gstStatus || (normalizedGstin ? "Active" : null),
         businessConstitution: businessConstitution || null,
         notes: notes || null,
+        linkedContactId: linkedContactId ? Number(linkedContactId) || null : null,
         createdBy: user.id,
       })
       .returning();
+
+    // If the profile was created for a specific contact, record the M:N link too.
+    if (customer && linkedContactId) {
+      const cid = Number(linkedContactId);
+      if (!isNaN(cid)) {
+        await db
+          .insert(contactCompaniesLinkTable)
+          .values({ contactId: cid, companyId: customer.id, createdBy: user.id })
+          .onConflictDoNothing();
+      }
+    }
 
     res.status(201).json(customer);
   } catch (err) {
@@ -194,7 +212,7 @@ router.patch("/customer-master/:id", async (req, res) => {
 
     if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
-    const { companyName, tradeName, contactPerson, gstin, addressLine1, addressLine2, addressLine3, city, district, state, pincode, mobile, email, customerType, gstStatus, businessConstitution, notes } = req.body;
+    const { companyName, tradeName, contactPerson, gstin, addressLine1, addressLine2, addressLine3, city, district, state, pincode, mobile, email, customerType, gstStatus, businessConstitution, notes, linkedContactId } = req.body;
 
     const updateData: any = {};
     if (companyName !== undefined) updateData.companyName = companyName;
@@ -214,11 +232,23 @@ router.patch("/customer-master/:id", async (req, res) => {
     if (gstStatus !== undefined) updateData.gstStatus = gstStatus;
     if (businessConstitution !== undefined) updateData.businessConstitution = businessConstitution;
     if (notes !== undefined) updateData.notes = notes;
+    if (linkedContactId !== undefined) updateData.linkedContactId = linkedContactId ? Number(linkedContactId) || null : null;
 
     await db
       .update(customerMasterTable)
       .set(updateData)
       .where(eq(customerMasterTable.id, id));
+
+    // Keep the M:N junction in sync when a primary contact is (un)linked.
+    if (linkedContactId !== undefined) {
+      const cid = Number(linkedContactId);
+      if (!isNaN(cid) && cid > 0) {
+        await db
+          .insert(contactCompaniesLinkTable)
+          .values({ contactId: cid, companyId: id, createdBy: user.id })
+          .onConflictDoNothing();
+      }
+    }
 
     const [updated] = await db
       .select()
@@ -288,7 +318,8 @@ router.get("/customer-master/lookup", async (req, res) => {
       return;
     }
 
-    // Search by direct mobile match AND by linked contact's mobile/otherPhone
+    // Search by direct mobile match, by linked contact's mobile/otherPhone,
+    // AND by M:N junction links (contact_companies_link → contact with this mobile).
     const profiles = await db
       .select()
       .from(customerMasterTable)
@@ -298,6 +329,11 @@ router.get("/customer-master/lookup", async (req, res) => {
           eq(customerMasterTable.mobile, mobile),
           sql`${customerMasterTable.linkedContactId} IN (
             SELECT id FROM contacts WHERE mobile = ${mobile} OR other_phone = ${mobile}
+          )`,
+          sql`${customerMasterTable.id} IN (
+            SELECT ccl.company_id FROM contact_companies_link ccl
+            JOIN contacts c ON c.id = ccl.contact_id
+            WHERE c.mobile = ${mobile} OR c.other_phone = ${mobile}
           )`
         )
       ))
@@ -374,6 +410,8 @@ router.get("/customer-master/:id/proforma-history", async (req, res) => {
 });
 
 // GET /customer-master/by-contact/:contactId — return all GST profiles linked to a contact
+// Includes: M:N junction links (contact_companies_link), legacy linkedContactId, and
+// profiles whose stored mobile matches the contact's mobile/otherPhone.
 router.get("/customer-master/by-contact/:contactId", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
@@ -385,7 +423,20 @@ router.get("/customer-master/by-contact/:contactId", async (req, res) => {
     const profiles = await db
       .select()
       .from(customerMasterTable)
-      .where(and(eq(customerMasterTable.linkedContactId, contactId), eq(customerMasterTable.isDeleted, false)))
+      .where(and(
+        eq(customerMasterTable.isDeleted, false),
+        or(
+          sql`${customerMasterTable.id} IN (
+            SELECT company_id FROM contact_companies_link WHERE contact_id = ${contactId}
+          )`,
+          eq(customerMasterTable.linkedContactId, contactId),
+          sql`${customerMasterTable.mobile} IN (
+            SELECT mobile FROM contacts WHERE id = ${contactId}
+            UNION
+            SELECT other_phone FROM contacts WHERE id = ${contactId} AND other_phone IS NOT NULL
+          )`
+        )
+      ))
       .orderBy(desc(customerMasterTable.createdAt));
 
     res.json(profiles);
@@ -408,7 +459,8 @@ router.get("/customer-master/search-by-mobile/:mobile", async (req, res) => {
       return;
     }
 
-    // Search by direct mobile match AND by linked contact's mobile/otherPhone
+    // Search by direct mobile match, by linked contact's mobile/otherPhone,
+    // AND by M:N junction links (contact_companies_link → contact with this mobile).
     const profiles = await db
       .select()
       .from(customerMasterTable)
@@ -418,6 +470,11 @@ router.get("/customer-master/search-by-mobile/:mobile", async (req, res) => {
           eq(customerMasterTable.mobile, mobile),
           sql`${customerMasterTable.linkedContactId} IN (
             SELECT id FROM contacts WHERE mobile = ${mobile} OR other_phone = ${mobile}
+          )`,
+          sql`${customerMasterTable.id} IN (
+            SELECT ccl.company_id FROM contact_companies_link ccl
+            JOIN contacts c ON c.id = ccl.contact_id
+            WHERE c.mobile = ${mobile} OR c.other_phone = ${mobile}
           )`
         )
       ))
@@ -488,6 +545,77 @@ router.delete("/customer-master/:id", async (req, res) => {
     res.json({ success: true, id });
   } catch (err) {
     req.log.error({ err }, "Delete customer master error");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
+
+// POST /customer-master/:id/link-contact — attach an EXISTING Company/GST profile to a
+// contact (M:N). This is the "Attach Existing Company/GST" operation: Person B can be
+// linked to 'Company X' without retyping or duplicating the GST record.
+// Idempotent — (contact_id, company_id) is unique, so re-linking is a no-op.
+router.post("/customer-master/:id/link-contact", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid customer id" }); return; }
+
+    const { contactId } = req.body as { contactId?: number | string };
+    const cid = Number(contactId);
+    if (!contactId || isNaN(cid)) {
+      res.status(400).json({ error: "contactId is required" });
+      return;
+    }
+
+    const [customer] = await db
+      .select()
+      .from(customerMasterTable)
+      .where(and(eq(customerMasterTable.id, id), eq(customerMasterTable.isDeleted, false)));
+    if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
+
+    const [contact] = await db
+      .select({ id: contactsTable.id })
+      .from(contactsTable)
+      .where(eq(contactsTable.id, cid));
+    if (!contact) { res.status(404).json({ error: "Contact not found" }); return; }
+
+    await db
+      .insert(contactCompaniesLinkTable)
+      .values({ contactId: contact.id, companyId: id, createdBy: user.id })
+      .onConflictDoNothing();
+
+    res.json({ success: true, customerId: id, contactId: contact.id });
+  } catch (err) {
+    req.log.error({ err }, "Link customer to contact error");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
+
+// DELETE /customer-master/:id/link-contact/:contactId — remove an M:N link.
+// (Removing the link does NOT delete the shared Company/GST profile.)
+router.delete("/customer-master/:id/link-contact/:contactId", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const id = Number(req.params.id);
+    const contactId = Number(req.params.contactId);
+    if (isNaN(id) || isNaN(contactId)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    await db
+      .delete(contactCompaniesLinkTable)
+      .where(and(
+        eq(contactCompaniesLinkTable.companyId, id),
+        eq(contactCompaniesLinkTable.contactId, contactId),
+      ));
+
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Unlink customer from contact error");
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });

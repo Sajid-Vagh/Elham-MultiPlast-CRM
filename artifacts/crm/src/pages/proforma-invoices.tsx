@@ -207,6 +207,13 @@ export default function ProformaInvoicesPage() {
   const [addingNewProfile, setAddingNewProfile] = useState(false);
   const [previousInvoices, setPreviousInvoices] = useState<any[]>([]);
 
+  // Attach Existing Company/GST (M:N contact ↔ customer_master linking)
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [attachQuery, setAttachQuery] = useState("");
+  const [attachResults, setAttachResults] = useState<any[]>([]);
+  const [attachLoading, setAttachLoading] = useState(false);
+  const [attachingId, setAttachingId] = useState<number | null>(null);
+
   const [statusFilter, setStatusFilter] = useState("all");
   const [orderTypeFilter, setOrderTypeFilter] = useState<string | null>(urlOrderType);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
@@ -374,6 +381,10 @@ export default function ProformaInvoicesPage() {
     setSelectedProfileIndex(0);
     setAddingNewProfile(false);
     setPreviousInvoices([]);
+    setAttachOpen(false);
+    setAttachQuery("");
+    setAttachResults([]);
+    setAttachingId(null);
   };
 
   // Product search autocomplete
@@ -403,16 +414,18 @@ export default function ProformaInvoicesPage() {
   // Customer Master is the ONLY source of GST data.
   const loadCustomerGstProfile = async (contactId: number, currentGst?: string) => {
     // 1. Fetch GST profiles (Customer Master records linked to this contact)
+    let loaded: any[] = [];
     try {
       const profilesRes = await fetch(`/api/customer-master/by-contact/${contactId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (profilesRes.ok) {
         const profiles = await profilesRes.json();
-        setGstProfiles(Array.isArray(profiles) ? profiles : []);
+        loaded = Array.isArray(profiles) ? profiles : [];
+        setGstProfiles(loaded);
         // Auto-fill from latest profile if no GST already set on the contact
-        if (profiles.length > 0 && !currentGst) {
-          const latest = profiles[0];
+        if (loaded.length > 0 && !currentGst) {
+          const latest = loaded[0];
           applyExistingCustomer(latest);
           setSelectedProfileIndex(0);
         }
@@ -428,6 +441,86 @@ export default function ProformaInvoicesPage() {
         setPreviousInvoices(Array.isArray(prev) ? prev : []);
       }
     } catch { }
+    return loaded;
+  };
+
+  // ── Attach Existing Company/GST (M:N) ──
+  // Debounced search across ALL customer_master profiles (shared across contacts).
+
+  useEffect(() => {
+    if (!attachOpen) {
+      setAttachResults([]);
+      return;
+    }
+    const q = attachQuery.trim();
+    if (q.length < 2) {
+      setAttachResults([]);
+      setAttachLoading(false);
+      return;
+    }
+    setAttachLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/customer-master?search=${encodeURIComponent(q)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setAttachResults(Array.isArray(data) ? data : []);
+        } else {
+          setAttachResults([]);
+        }
+      } catch {
+        setAttachResults([]);
+      } finally {
+        setAttachLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [attachOpen, attachQuery, token]);
+
+  // Attach an existing Company/GST profile to the currently selected contact.
+  // The profile is a shared customer_master row — linking never duplicates it.
+  const handleAttachCompany = async (profile: any) => {
+    if (!profile?.id) return;
+    const cid = selectedLead?.id || urlContactId;
+    if (!cid) {
+      toast({ title: "Select a Contact First", description: "Search and select the contact's mobile number before attaching a Company/GST.", variant: "destructive" });
+      return;
+    }
+    setAttachingId(profile.id);
+    try {
+      const res = await fetch(`/api/customer-master/${profile.id}/link-contact`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ contactId: cid }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to attach Company/GST");
+      }
+      toast({ title: "Company/GST Attached", description: `${profile.companyName || "Profile"} linked to this contact.` });
+      // Refresh the contact's profile list — by-contact now includes the junction link.
+      const loaded = await loadCustomerGstProfile(cid, gstNumber);
+      // Ensure the attached profile is present and selected (fall back to a prepend if
+      // the refreshed list somehow didn't include it).
+      let list = loaded.length > 0 ? loaded : gstProfiles;
+      if (!list.some((p: any) => p.id === profile.id)) {
+        list = [profile, ...list];
+        setGstProfiles(list);
+      }
+      const idx = list.findIndex((p: any) => p.id === profile.id);
+      setSelectedProfileIndex(idx >= 0 ? idx : 0);
+      setAddingNewProfile(false);
+      applyExistingCustomer(profile);
+      setAttachOpen(false);
+      setAttachQuery("");
+      setAttachResults([]);
+    } catch (err: any) {
+      toast({ title: "Attach Failed", description: err?.message || "Could not attach Company/GST", variant: "destructive" });
+    } finally {
+      setAttachingId(null);
+    }
   };
 
   // Debounced mobile number search — NEW ARCHITECTURE:
@@ -1170,6 +1263,20 @@ const selectProduct = (idx: number, product: any) => {
         }
       }
       if (resolvedCustomerMasterId) body.customerMasterId = resolvedCustomerMasterId;
+      // Ensure the profile is linked to the selected contact (M:N junction) so it shows
+      // up for this contact next time and can be shared across other contacts.
+      if (resolvedCustomerMasterId) {
+        const linkContactId = selectedLead?.id || urlContactId;
+        if (linkContactId) {
+          try {
+            await fetch(`/api/customer-master/${resolvedCustomerMasterId}/link-contact`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ contactId: linkContactId }),
+            });
+          } catch { /* best-effort */ }
+        }
+      }
       if (selectedLead?.id) body.contactId = selectedLead.id;
       else if (urlContactId) body.contactId = urlContactId;
       if (selectedDeal?.id) body.dealId = selectedDeal.id;
@@ -1996,6 +2103,73 @@ ${pagesHtml}
                       {addingNewProfile && <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 ml-2" />}
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* Attach Existing Company/GST (M:N) — share a GST profile across contacts */}
+              {(selectedLead?.id || urlContactId) && (
+                <div className="sm:col-span-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-xs gap-1.5"
+                    onClick={() => setAttachOpen(o => !o)}
+                  >
+                    <LinkIcon className="h-3.5 w-3.5" />
+                    {attachOpen ? "Close Attach Company/GST" : "Attach Existing Company/GST"}
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Link an existing Company/GST profile to {selectedLead?.name || "this contact"}{selectedLead?.mobile ? ` (${selectedLead.mobile})` : ""} without re-entering it. The same GST record stays shared across all linked contacts.
+                  </p>
+                  {attachOpen && (
+                    <div className="mt-2 space-y-2">
+                      <Input
+                        value={attachQuery}
+                        onChange={(e) => setAttachQuery(e.target.value)}
+                        placeholder="Search by Company name, GSTIN, city or trade name..."
+                        autoFocus
+                      />
+                      {attachLoading && (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Searching companies...
+                        </div>
+                      )}
+                      {!attachLoading && attachQuery.trim().length >= 2 && attachResults.length === 0 && (
+                        <p className="text-xs text-muted-foreground">No matching companies found. Try a different search, or use "Add New Profile / GST for this number".</p>
+                      )}
+                      {attachResults.map((r: any) => {
+                        const alreadyLinked = gstProfiles.some((p: any) => p.id === r.id);
+                        return (
+                          <div key={r.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50 transition-colors">
+                            <div className="flex-1 min-w-0">
+                              <span className="text-sm font-medium">{r.companyName}</span>
+                              {r.tradeName && <span className="text-xs text-muted-foreground ml-2">({r.tradeName})</span>}
+                              <div className="flex gap-3 mt-0.5">
+                                <span className="text-xs text-muted-foreground font-mono">{r.gstin || "No GSTIN"}</span>
+                                <span className="text-xs text-muted-foreground">{r.city || ""}</span>
+                              </div>
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="ml-3 shrink-0 text-xs"
+                              disabled={attachingId !== null}
+                              onClick={() => handleAttachCompany(r)}
+                            >
+                              {attachingId === r.id
+                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                : alreadyLinked
+                                  ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                                  : <LinkIcon className="h-3.5 w-3.5" />}
+                              <span className="ml-1">{alreadyLinked ? "Linked" : "Attach"}</span>
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
