@@ -113,12 +113,14 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   const { unreadCount: sseUnreadCount, notifications: sseNotifications, latestNotification, markAsRead, markAllAsRead, markAsSeenByRelated, openNotificationPanel } = useNotifications();
 
   const [activePopups, setActivePopups] = useState<Set<number>>(new Set());
+  const popupShownRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
-    if (!latestNotification || activePopups.has(latestNotification.id)) return;
+    if (!latestNotification || popupShownRef.current.has(latestNotification.id)) return;
+    popupShownRef.current.add(latestNotification.id);
     setActivePopups((prev) => new Set(prev).add(latestNotification.id));
     showBrowserNotification(latestNotification.title, latestNotification.message, `crm-notif-${latestNotification.id}`);
-  }, [latestNotification, activePopups]);
+  }, [latestNotification]);
 
   const dismissPopup = useCallback((id: number) => {
     setActivePopups((prev) => { const next = new Set(prev); next.delete(id); return next; });
