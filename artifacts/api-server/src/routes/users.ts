@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
+import type { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import multer from "multer";
-import path from "node:path";
 import { db, usersTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import { CreateUserBody, UpdateUserBody, GetUserParams, UpdateUserParams, DeleteUserParams } from "@workspace/api-zod";
@@ -13,6 +13,22 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
 });
+
+function uploadProfilePhoto(req: Request, res: Response, next: NextFunction) {
+  upload.single("photo")(req, res, (err: unknown) => {
+    if (err) {
+      const code = (err as { code?: string })?.code;
+      if (code === "LIMIT_FILE_SIZE") {
+        res.status(400).json({ success: false, error: "File too large (max 5MB)" });
+        return;
+      }
+      req.log?.error({ err }, "Profile photo upload rejected");
+      res.status(400).json({ success: false, error: "File upload failed" });
+      return;
+    }
+    next();
+  });
+}
 
 const router: IRouter = Router();
 
@@ -163,7 +179,7 @@ router.patch("/users/:id", async (req, res) => {
 });
 
 // Upload profile photo — admin can upload for any user, sales can upload own
-router.post("/users/:id/photo", upload.single("photo"), async (req, res) => {
+router.post("/users/:id/photo", uploadProfilePhoto, async (req, res) => {
   try {
     const me = await getUserFromRequest(req);
     if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -172,19 +188,18 @@ router.post("/users/:id/photo", upload.single("photo"), async (req, res) => {
       res.status(403).json({ error: "You can only upload your own profile photo" });
       return;
     }
-    const file = req.file;
-    if (!file) { res.status(400).json({ error: "No file provided" }); return; }
-    if (!file.mimetype.startsWith("image/")) {
-      res.status(400).json({ error: "Only image files are allowed" });
+    if (!req.file) { res.status(400).json({ success: false, error: "No file uploaded" }); return; }
+    if (!req.file.mimetype.startsWith("image/")) {
+      res.status(400).json({ success: false, error: "Only image files are allowed" });
       return;
     }
-    const storagePath = await storage.save(`profile-${userId}${path.extname(file.originalname)}`, file.buffer, "profile-photos");
+    const storagePath = await storage.save(req.file.originalname || "photo.png", req.file.buffer, "profile-photos");
     const photoUrl = storage.getUrl(storagePath);
     const [user] = await db.update(usersTable).set({ profilePhoto: photoUrl }).where(eq(usersTable.id, userId)).returning();
     if (!user) { res.status(404).json({ error: "User not found" }); return; }
     res.json({ profilePhoto: photoUrl, user: safeUser(user) });
   } catch (err) {
-    req.log.error({ err }, "Upload profile photo error");
+    req.log.error({ err }, "Failed to upload profile photo");
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
