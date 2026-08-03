@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable, unitHistoryTable, activitiesTable, DEAL_STAGES, STAGE_PROBS, ordersTable, orderItemsTable, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable } from "@workspace/db";
+import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable, unitHistoryTable, activitiesTable, DEAL_STAGES, STAGE_PROBS, ordersTable, orderItemsTable, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable, existingCustomersTable } from "@workspace/db";
 import { eq, and, or, inArray, SQL, sql, desc, gte, lte, between, isNull } from "drizzle-orm";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import { parseEndDate } from "../lib/parse-end-date";
@@ -305,21 +305,38 @@ router.post("/deals", async (req, res) => {
   }
   const probability = parsed.data.probability ?? STAGE_PROBS[parsed.data.stage] ?? 10;
   try {
-    // Auto-set contact category to Regular Follow up when creating a deal
-    // Regular Follow Up is a temporary working state while a deal is active.
-    // Permanent clients (My Client) also enter the active pipeline here, but the
-    // frontend keeps showing a "My Client" indicator via customerSince/isMyClient.
+    // Auto-set contact category to Regular Follow up when creating a deal.
+    // Regular Follow Up is a temporary working state while a deal is active. Permanent
+    // clients (My Client / Existing Customer) are exempt — their base category stays
+    // "My Client" and they surface in the RFU list via the virtual-active-deal logic
+    // in GET /contacts (driven by deal stage, never the category column).
     const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, parsed.data.contactId));
     if (contact && contact.category !== "Regular Follow up") {
-      const prevCategory = contact.category;
-      await db.update(contactsTable).set({ category: "Regular Follow up" }).where(eq(contactsTable.id, contact.id));
-      await db.insert(categoryHistoryTable).values({
-        contactId: contact.id,
-        previousCategory: prevCategory,
-        newCategory: "Regular Follow up",
-        changedBy: user.id,
-        reason: "New Deal Created - Entered active pipeline",
-      });
+      // Rule A — Base Category Lock: permanent clients (My Client / Existing Customer)
+      // must NEVER be physically downgraded to "Regular Follow up" when a new deal is
+      // created. Their base category stays "My Client"; the RFU list shows them via the
+      // virtual-active-deal logic in GET /contacts, which relies on deal status only.
+      const [existingCustomer] = await db
+        .select({ id: existingCustomersTable.id })
+        .from(existingCustomersTable)
+        .where(eq(existingCustomersTable.contactId, contact.id))
+        .limit(1);
+      const isPermanentClient =
+        contact.category === "My Client" ||
+        contact.isMyClient === true ||
+        !!contact.customerSince ||
+        !!existingCustomer;
+      if (!isPermanentClient) {
+        const prevCategory = contact.category;
+        await db.update(contactsTable).set({ category: "Regular Follow up" }).where(eq(contactsTable.id, contact.id));
+        await db.insert(categoryHistoryTable).values({
+          contactId: contact.id,
+          previousCategory: prevCategory,
+          newCategory: "Regular Follow up",
+          changedBy: user.id,
+          reason: "New Deal Created - Entered active pipeline",
+        });
+      }
     }
     const [deal] = await db.insert(dealsTable).values({ ...parsed.data, salesOwnerId: user.id, probability }).returning();
 

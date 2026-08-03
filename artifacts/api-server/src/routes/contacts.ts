@@ -404,8 +404,10 @@ router.post("/contacts/:id/request-transfer", async (req, res) => {
   }
 });
 
-// POST /contacts/:id/repeat-enquiry — Mark an existing lead as a repeat enquiry
-// Updates category to "Regular Follow up" and notifies the current owner (unless it's the caller's own lead).
+// POST /contacts/:id/repeat-enquiry — Mark an existing lead as a repeat enquiry.
+// Non-permanent leads move to "Regular Follow up" (physical); permanent clients
+// (My Client / Existing Customer) keep their base category and rely on the virtual
+// active-deal RFU logic in GET /contacts. Contact ownership is never overwritten.
 router.post("/contacts/:id/repeat-enquiry", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
@@ -419,11 +421,35 @@ router.post("/contacts/:id/repeat-enquiry", async (req, res) => {
 
     const isOwnLead = contact.salesOwnerId === user.id;
 
-    // Update category to "Regular Follow up" so the lead comes back into the follow-up pipeline,
-    // bump updatedAt (NOW) so the lead jumps to the top of the Leads list, and flag it as an
-    // unread repeat enquiry (yellow dot) until the owner opens it.
+    // Rule A — Base Category Lock: permanent clients (My Client / Existing Customer)
+    // must NEVER be physically downgraded to "Regular Follow up" on a repeat enquiry.
+    // They are shown in the RFU list via the virtual-active-deal logic in GET /contacts,
+    // which relies on deal status, not the category column.
+    const [existingCustomer] = await db
+      .select({ id: existingCustomersTable.id })
+      .from(existingCustomersTable)
+      .where(eq(existingCustomersTable.contactId, id))
+      .limit(1);
+    const isPermanentClient =
+      contact.category === "My Client" ||
+      contact.isMyClient === true ||
+      !!contact.customerSince ||
+      !!existingCustomer;
+
+    // Bump updatedAt (NOW) so the lead jumps to the top of the Leads list, flag it as an
+    // unread repeat enquiry (yellow dot), but DO NOT overwrite contact.salesOwnerId
+    // (Rule C — the parent contact always belongs to the original sales owner) and DO NOT
+    // downgrade the category of permanent clients.
+    const updatePayload: Record<string, any> = {
+      updatedAt: new Date(),
+      isRead: false,
+      isRepeatEnquiry: true,
+    };
+    if (!isPermanentClient) {
+      updatePayload.category = "Regular Follow up";
+    }
     const [updated] = await db.update(contactsTable)
-      .set({ category: "Regular Follow up", updatedAt: new Date(), isRead: false, isRepeatEnquiry: true })
+      .set(updatePayload)
       .where(eq(contactsTable.id, id))
       .returning();
 
@@ -433,11 +459,14 @@ router.post("/contacts/:id/repeat-enquiry", async (req, res) => {
         .from(usersTable).where(eq(usersTable.id, contact.salesOwnerId)).limit(1);
       if (currentOwner && currentOwner.id !== user.id) {
         const enquiryTime = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+        const categoryNote = isPermanentClient
+          ? "Customer remains a permanent client. Active repeat deal will show in Regular Follow up while pending."
+          : "Category updated to Regular Follow up.";
         await createNotification({
           userId: currentOwner.id,
           type: "repeat_enquiry",
           title: "Repeat Enquiry",
-          message: `Lead "${contact.name}" (${contact.mobile})\nRepeat Enquiry logged by: ${user.name}\nDate & Time: ${enquiryTime}\n\nCategory updated to Regular Follow up.`,
+          message: `Lead "${contact.name}" (${contact.mobile})\nRepeat Enquiry logged by: ${user.name}\nDate & Time: ${enquiryTime}\n\n${categoryNote}`,
           link: `/leads/${contact.id}`,
           relatedId: contact.id,
           relatedType: "contact",
