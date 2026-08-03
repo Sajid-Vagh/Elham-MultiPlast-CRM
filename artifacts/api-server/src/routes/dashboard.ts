@@ -17,7 +17,7 @@ function filterContactsByUnit(contacts: (typeof contactsTable.$inferSelect)[], u
 
 function filterDealsByUnit(deals: (typeof dealsTable.$inferSelect)[], unit: string | undefined, allContacts: (typeof contactsTable.$inferSelect)[]) {
   if (!unit) return deals;
-  const contactIds = new Set(allContacts.filter(c => c.unit === unit).map(c => c.id));
+  const contactIds = new Set(filterContactsByUnit(allContacts, unit).map(c => c.id));
   return deals.filter(d => contactIds.has(d.contactId));
 }
 
@@ -357,7 +357,9 @@ router.get("/dashboard/recent-activities", async (req, res) => {
     if (unitFilter) {
       activities = activities.filter(a => {
         const c = contactMap.get(a.contactId ?? -1);
-        return c?.unit === unitFilter;
+        if (!c) return false;
+        if (unitFilter === PENDING_UNIT_ASSIGNMENT) return !c.unit;
+        return c.unit === unitFilter;
       });
     }
 

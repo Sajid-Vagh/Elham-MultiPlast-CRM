@@ -189,31 +189,29 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
           <p className="text-muted-foreground mt-1">Overview of your sales performance and pipeline.</p>
         </div>
-        <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
-        {isAdmin && (
-          <div className="flex gap-2 flex-wrap">
-            {users && (
-              <Select value={ownerFilter} onValueChange={v => setOwnerFilter(v === "all" ? "" : v)}>
-                <SelectTrigger className="w-36 h-8 text-sm"><SelectValue placeholder="All Owners" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Owners</SelectItem>
-                  {users.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            )}
-            <Select value={unitFilter} onValueChange={setUnitFilter}>
-              <SelectTrigger className="w-36 h-8 text-sm"><SelectValue placeholder="All Units" /></SelectTrigger>
+        <div className="flex items-center gap-2 flex-wrap">
+          <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
+          <Select value={unitFilter} onValueChange={setUnitFilter}>
+            <SelectTrigger className="w-36 h-8 text-sm"><SelectValue placeholder="All Units" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="All">All Units</SelectItem>
+              <SelectItem value={PENDING_UNIT_ASSIGNMENT}>Pending Unit Assignment</SelectItem>
+              {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          {isAdmin && users && (
+            <Select value={ownerFilter} onValueChange={v => setOwnerFilter(v === "all" ? "" : v)}>
+              <SelectTrigger className="w-36 h-8 text-sm"><SelectValue placeholder="All Owners" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="All">All Units</SelectItem>
-                <SelectItem value={PENDING_UNIT_ASSIGNMENT}>Pending Unit Assignment</SelectItem>
-                {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                <SelectItem value="all">All Owners</SelectItem>
+                {users.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}
               </SelectContent>
             </Select>
-          </div>
-        )}
-        <Button variant="ghost" size="icon" onClick={togglePrivacy} className="h-8 w-8 text-muted-foreground" title={privacyHidden ? "Show financial values" : "Hide financial values"}>
-          {privacyHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-        </Button>
+          )}
+          <Button variant="ghost" size="icon" onClick={togglePrivacy} className="h-8 w-8 text-muted-foreground" title={privacyHidden ? "Show financial values" : "Hide financial values"}>
+            {privacyHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </Button>
+        </div>
       </div>
 
       {/* ── KPI CARDS ── */}
