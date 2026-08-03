@@ -7,6 +7,7 @@
     "seed": "tsx --env-file ../.env ./src/seed.ts",
     "backfill": "tsx --env-file ../.env ./src/backfill-existing-data.ts",
     "fix-existing": "tsx --env-file ../.env ./src/fix-existing-data.ts",
+    "fix-legacy-categories": "tsx --env-file ../.env ./src/fix-legacy-categories.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
