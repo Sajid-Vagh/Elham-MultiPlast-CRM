@@ -8,7 +8,7 @@ import {
   VALID_DISPATCH_TRANSITIONS, PRODUCT_LINE_STATUSES,
   type ProductionStatus, type NoteType, type ProductLineStatus,
 } from "@workspace/db";
-import { eq, and, desc, sql, gte, lte, or, inArray, notInArray, type SQL } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte, or, inArray, notInArray, ilike, type SQL } from "drizzle-orm";
 import { getActivePiForDeal } from "./proforma-service";
 import { notifyProductionUsers, notifyDealEvent } from "./notification-service";
 import { createNotification } from "../routes/notifications";
@@ -2483,17 +2483,58 @@ export async function listOrders(
   const conditions = buildOrderConditions(user, filters);
 
   if (filters.search) {
-    const searchLower = filters.search.toLowerCase();
-    const matchingInvoices = await db.select({ id: proformaInvoicesTable.id }).from(proformaInvoicesTable).where(
-      or(
-        sql`LOWER(${proformaInvoicesTable.customerName}) LIKE ${`%${searchLower}%`}`,
-        sql`LOWER(${proformaInvoicesTable.companyName}) LIKE ${`%${searchLower}%`}`,
-        sql`${proformaInvoicesTable.invoiceNumber} ILIKE ${`%${filters.search}%`}`,
-        sql`${proformaInvoicesTable.mobile} ILIKE ${`%${filters.search}%`}`
-      )
-    );
-    if (matchingInvoices.length === 0) return { data: [], total: 0, page: 1, totalPages: 0 };
-    conditions.push(sql`${productionOrdersTable.proformaInvoiceId} IN (${sql.join(matchingInvoices.map(i => sql`${i.id}`), sql`, `)})`);
+    // Case-insensitive search across every source that contributes to the enriched
+    // order display: the proforma invoice (customerName, companyName, invoiceNumber,
+    // mobile), the parent contact reachable via PI.contactId or deal.contactId
+    // (name, companyName, customerCode, mobile), and the order number stored on the
+    // production order itself (formattedOrderId). Combined with `or()` and appended
+    // to the shared `and()` conditions so it stacks with status/origin/unit/priority.
+    const searchPattern = `%${filters.search}%`;
+    const lowerPattern = `%${filters.search.toLowerCase()}%`;
+
+    const [matchingInvoices, matchingContacts] = await Promise.all([
+      db.select({ id: proformaInvoicesTable.id }).from(proformaInvoicesTable).where(
+        or(
+          sql`LOWER(${proformaInvoicesTable.customerName}) LIKE ${lowerPattern}`,
+          sql`LOWER(${proformaInvoicesTable.companyName}) LIKE ${lowerPattern}`,
+          ilike(proformaInvoicesTable.invoiceNumber, searchPattern),
+          sql`LOWER(${proformaInvoicesTable.mobile}) LIKE ${lowerPattern}`
+        )
+      ),
+      db.select({ id: contactsTable.id }).from(contactsTable).where(
+        or(
+          sql`LOWER(${contactsTable.name}) LIKE ${lowerPattern}`,
+          sql`LOWER(${contactsTable.companyName}) LIKE ${lowerPattern}`,
+          sql`LOWER(${contactsTable.customerCode}) LIKE ${lowerPattern}`,
+          sql`LOWER(${contactsTable.mobile}) LIKE ${lowerPattern}`
+        )
+      ),
+    ]);
+
+    const searchConditions: SQL[] = [
+      // Order number stored directly on the production order
+      ilike(productionOrdersTable.formattedOrderId, searchPattern),
+    ];
+
+    if (matchingInvoices.length > 0) {
+      searchConditions.push(
+        inArray(productionOrdersTable.proformaInvoiceId, matchingInvoices.map(i => i.id))
+      );
+    }
+
+    if (matchingContacts.length > 0) {
+      const contactIds = matchingContacts.map(c => c.id);
+      // PI-linked orders whose PI points at a matching contact
+      searchConditions.push(
+        sql`${productionOrdersTable.proformaInvoiceId} IN (SELECT ${proformaInvoicesTable.id} FROM ${proformaInvoicesTable} WHERE ${inArray(proformaInvoicesTable.contactId, contactIds)})`
+      );
+      // Deal-linked orders whose deal points at a matching contact
+      searchConditions.push(
+        sql`${productionOrdersTable.dealId} IN (SELECT ${dealsTable.id} FROM ${dealsTable} WHERE ${inArray(dealsTable.contactId, contactIds)})`
+      );
+    }
+
+    conditions.push(or(...searchConditions)!);
   }
 
   const pageNum = Math.max(1, parseInt(filters.page || "1", 10) || 1);
