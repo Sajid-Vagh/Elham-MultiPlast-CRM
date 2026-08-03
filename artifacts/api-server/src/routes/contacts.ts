@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, usersTable, activitiesTable, dealsTable, notificationsTable, commentHistoryTable, categoryHistoryTable, unitHistoryTable, documentsTable, proformaInvoicesTable, proformaInvoiceItemsTable } from "@workspace/db";
+import { db, contactsTable, usersTable, activitiesTable, dealsTable, notificationsTable, commentHistoryTable, categoryHistoryTable, unitHistoryTable, documentsTable, proformaInvoicesTable, proformaInvoiceItemsTable, dealProductsTable, internalNotesTable, existingCustomersTable, customerCommunicationsTable } from "@workspace/db";
 import { eq, or, and, ilike, gte, lte, isNotNull, isNull, inArray, SQL, desc, sql } from "drizzle-orm";
 import { CreateContactBody, UpdateContactBody, GetContactParams, UpdateContactParams, DeleteContactParams, ListContactsQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
@@ -925,7 +925,7 @@ router.post("/contacts/bulk-delete", async (req, res) => {
   }
   try {
     const units = getAccessibleUnits(user);
-    let deleted = 0;
+    const deletableIds: number[] = [];
     for (const id of ids) {
       if (user.role === "sales") {
         const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId, unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, id));
@@ -935,9 +935,35 @@ router.post("/contacts/bulk-delete", async (req, res) => {
         const [contact] = await db.select({ unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, id));
         if (!contact || !contact.unit || !units.includes(contact.unit)) continue;
       }
-      await db.delete(contactsTable).where(eq(contactsTable.id, id));
-      deleted++;
+      deletableIds.push(id);
     }
+
+    const deleted = await db.transaction(async (tx) => {
+      // Collect deal ids belonging to the contacts being deleted so we can
+      // clear their child rows (deal_products) before removing the deals.
+      const deals = await tx.select({ id: dealsTable.id }).from(dealsTable).where(inArray(dealsTable.contactId, deletableIds));
+      const dealIds = deals.map(d => d.id);
+      if (dealIds.length > 0) {
+        await tx.delete(dealProductsTable).where(inArray(dealProductsTable.dealId, dealIds));
+      }
+
+      // Delete strictly related child records before the contacts themselves
+      // to avoid PostgreSQL foreign key constraint violations.
+      await tx.delete(activitiesTable).where(inArray(activitiesTable.contactId, deletableIds));
+      await tx.delete(dealsTable).where(inArray(dealsTable.contactId, deletableIds));
+      await tx.delete(internalNotesTable).where(inArray(internalNotesTable.contactId, deletableIds));
+      await tx.delete(commentHistoryTable).where(inArray(commentHistoryTable.contactId, deletableIds));
+      await tx.delete(categoryHistoryTable).where(inArray(categoryHistoryTable.contactId, deletableIds));
+      await tx.delete(unitHistoryTable).where(inArray(unitHistoryTable.contactId, deletableIds));
+      await tx.delete(documentsTable).where(inArray(documentsTable.contactId, deletableIds));
+      await tx.delete(existingCustomersTable).where(inArray(existingCustomersTable.contactId, deletableIds));
+      await tx.delete(customerCommunicationsTable).where(inArray(customerCommunicationsTable.contactId, deletableIds));
+
+      // Finally delete the contacts themselves.
+      const result = await tx.delete(contactsTable).where(inArray(contactsTable.id, deletableIds));
+      return result.rowCount ?? 0;
+    });
+
     res.json({ deleted });
   } catch (err) {
     req.log.error({ err }, "Bulk delete contacts error");
