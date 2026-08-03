@@ -159,7 +159,12 @@ export default function ExistingCustomers() {
                   >
                     <TableCell>
                       <div>
-                        <p className="font-medium">{ec.contact?.name || "-"}</p>
+                        <p className="font-medium">
+                          {ec.contact?.name || "-"}
+                          {ec.contact?.customerCode && (
+                            <span className="text-xs text-muted-foreground ml-1">({ec.contact.customerCode})</span>
+                          )}
+                        </p>
                         {ec.contact?.companyName && (
                           <p className="text-xs text-muted-foreground">{ec.contact.companyName}</p>
                         )}

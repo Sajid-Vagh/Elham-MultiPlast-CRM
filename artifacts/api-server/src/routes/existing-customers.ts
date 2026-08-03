@@ -169,7 +169,7 @@ async function enrichExistingCustomer(ec: any) {
 
   return {
     ...ec,
-    contact: contact ? { id: contact.id, name: contact.name, mobile: contact.mobile, email: contact.email, companyName: contact.companyName, city: contact.city, state: contact.state, address: contact.address, gstNumber: (contact as any).gstNumber || null } : null,
+    contact: contact ? { id: contact.id, name: contact.name, customerCode: contact.customerCode || null, mobile: contact.mobile, email: contact.email, companyName: contact.companyName, city: contact.city, state: contact.state, address: contact.address, gstNumber: (contact as any).gstNumber || null } : null,
     salesOwner: safe(salesOwner),
     supportOwner: safe(supportOwner),
     lastOrder: lastOrder ? { id: lastOrder.id, orderNumber: lastOrder.orderNumber, grandTotal: lastOrder.grandTotal, status: lastOrder.status, createdAt: lastOrder.createdAt, freight: lastOrder.freight, paymentTerms: lastOrder.paymentTerms, deliveryTerms: lastOrder.deliveryTerms, dispatchAddress: lastOrder.dispatchAddress, transportDetails: lastOrder.transportDetails } : null,
