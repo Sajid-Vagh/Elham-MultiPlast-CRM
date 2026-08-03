@@ -2,7 +2,7 @@ import {
   db, dealsTable, contactsTable, categoryHistoryTable,
   usersTable, ordersTable, proformaInvoicesTable,
 } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, ne, sql } from "drizzle-orm";
 import { getActivePiForDeal } from "./proforma-service";
 import { generateCustomerCode } from "./customer-code-generator";
 import { unitsTable } from "@workspace/db";
@@ -122,8 +122,24 @@ export async function convertContactToMyClient(
 ): Promise<boolean> {
   const { contactId, dealId, userId, isMyClient, convertedToClient, now } = params;
 
+  // Fetch the contact — needed for both the already-My-Client and conversion paths
+  const [contact] = await exec.select().from(contactsTable).where(eq(contactsTable.id, contactId));
+  if (!contact) return false;
+
   if (isMyClient) {
-    // Already a permanent My Client — just mark this deal as converted
+    // Already a permanent My Client. A new deal may have temporarily moved them
+    // to "Regular Follow up" — restore the My Client category on Won.
+    if (contact.category !== "My Client") {
+      const prevCategory = contact.category;
+      await exec.update(contactsTable).set({ category: "My Client" }).where(eq(contactsTable.id, contactId));
+      await exec.insert(categoryHistoryTable).values({
+        contactId,
+        previousCategory: prevCategory,
+        newCategory: "My Client",
+        changedBy: userId,
+        reason: "Deal Won - Restored to My Client (permanent client)",
+      });
+    }
     if (!convertedToClient) {
       await exec.update(dealsTable).set({
         convertedToClient: true,
@@ -134,9 +150,6 @@ export async function convertContactToMyClient(
   }
 
   // Convert to My Client
-  const [contact] = await exec.select().from(contactsTable).where(eq(contactsTable.id, contactId));
-  if (!contact) return false;
-
   const prevCategory = contact.category;
   const nowISO = now.toISOString();
 
@@ -149,7 +162,8 @@ export async function convertContactToMyClient(
   await exec.update(contactsTable).set({
     category: "My Client",
     isMyClient: true,
-    customerSince: nowISO,
+    // Preserve an existing customerSince date — only set on first conversion
+    customerSince: contact.customerSince || nowISO,
     customerStatus: "Active",
     lastPurchaseDate: nowISO.split("T")[0],
     customerCode,
@@ -203,4 +217,34 @@ export async function getTodayWonCount(userId: number): Promise<number> {
       )
     );
   return countResult?.count ?? 0;
+}
+
+/**
+ * Determine whether a contact is a permanent client:
+ * - has customerSince set (became a client at least once), or
+ * - isMyClient flag, or
+ * - has another Won deal besides the current one.
+ *
+ * Used to decide whether a Lost deal reverts the contact to "My Client"
+ * (permanent clients) instead of dropping them to a Lost/Category state.
+ */
+export async function isPermanentClient(
+  exec: { select: Function },
+  contactId: number,
+  excludeDealId?: number
+): Promise<boolean> {
+  const [contact] = await exec.select().from(contactsTable).where(eq(contactsTable.id, contactId));
+  if (!contact) return false;
+  if (contact.customerSince || contact.isMyClient) return true;
+  if (!excludeDealId) return false;
+  const [wonDeal] = await exec
+    .select({ id: dealsTable.id })
+    .from(dealsTable)
+    .where(and(
+      eq(dealsTable.contactId, contactId),
+      eq(dealsTable.stage, "Won"),
+      ne(dealsTable.id, excludeDealId),
+    ))
+    .limit(1);
+  return !!wonDeal;
 }

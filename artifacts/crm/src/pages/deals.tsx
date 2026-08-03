@@ -721,7 +721,7 @@ export default function Deals() {
         onOpenChange={(open) => { if (!open) handleLostCancel(); }}
         onSave={handleLostSave}
         saving={lostSubmitting}
-        hideCategory={lostDeal?.contact?.category === "My Client"}
+        hideCategory={lostDeal?.contact?.category === "My Client" || !!lostDeal?.contact?.customerSince || !!lostDeal?.contact?.isMyClient}
       />
       <DealDetailDrawer
         dealId={drawerDealId}

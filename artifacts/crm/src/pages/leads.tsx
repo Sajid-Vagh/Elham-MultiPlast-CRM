@@ -465,17 +465,28 @@ export default function Leads() {
                       ) : "-"}
                     </TableCell>
                     <TableCell>
-                      {contact.category && (
-                        <span
-                          className="text-xs font-medium px-2 py-0.5 rounded"
-                          style={{
-                            backgroundColor: `${CATEGORY_COLORS[contact.category] || "#6b7280"}20`,
-                            color: CATEGORY_COLORS[contact.category] || "#6b7280",
-                          }}
-                        >
-                          {contact.category}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {contact.category && (
+                          <span
+                            className="text-xs font-medium px-2 py-0.5 rounded"
+                            style={{
+                              backgroundColor: `${CATEGORY_COLORS[contact.category] || "#6b7280"}20`,
+                              color: CATEGORY_COLORS[contact.category] || "#6b7280",
+                            }}
+                          >
+                            {contact.category}
+                          </span>
+                        )}
+                        {(contact as any).customerSince && (contact as any).category !== "My Client" && (
+                          <span
+                            className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                            style={{ backgroundColor: `${CATEGORY_COLORS["My Client"]}20`, color: CATEGORY_COLORS["My Client"] }}
+                            title={`Customer since ${(contact as any).customerSince}`}
+                          >
+                            My Client
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>{contact.unit || PENDING_UNIT_ASSIGNMENT}</TableCell>
                     <TableCell className="max-w-[150px]">

@@ -14,7 +14,7 @@ import { generateId } from "../lib/id-generator";
 import { generateOrderNumber } from "../lib/order-id-generator";
 import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
 import { getActivePiForDeal, getActivePiSummary, validateActivePiForPiSent, deactivateActivePis } from "../lib/proforma-service";
-import { convertContactToMyClient, checkNoExistingOrder, getTodayWonCount, validateWonPrerequisites, validateProductionUnit } from "../lib/won-service";
+import { convertContactToMyClient, checkNoExistingOrder, getTodayWonCount, validateWonPrerequisites, validateProductionUnit, isPermanentClient } from "../lib/won-service";
 import { notifyProductionUsers } from "../lib/notification-service";
 import { logActivity, logDealStageActivity, formatTimestamp } from "../lib/activity-logger";
 import { canAccessSalesResource } from "../lib/permission-service";
@@ -300,11 +300,20 @@ router.post("/deals", async (req, res) => {
   const probability = parsed.data.probability ?? STAGE_PROBS[parsed.data.stage] ?? 10;
   try {
     // Auto-set contact category to Regular Follow up when creating a deal
-    // Regular Follow Up is a temporary working state while a deal is active
-    // EXCEPTION: My Clients stay in My Client permanently — the deal serves as the active opportunity
+    // Regular Follow Up is a temporary working state while a deal is active.
+    // Permanent clients (My Client) also enter the active pipeline here, but the
+    // frontend keeps showing a "My Client" indicator via customerSince/isMyClient.
     const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, parsed.data.contactId));
-    if (contact && contact.category !== "Regular Follow up" && !contact.isMyClient) {
+    if (contact && contact.category !== "Regular Follow up") {
+      const prevCategory = contact.category;
       await db.update(contactsTable).set({ category: "Regular Follow up" }).where(eq(contactsTable.id, contact.id));
+      await db.insert(categoryHistoryTable).values({
+        contactId: contact.id,
+        previousCategory: prevCategory,
+        newCategory: "Regular Follow up",
+        changedBy: user.id,
+        reason: "New Deal Created - Entered active pipeline",
+      });
     }
     const [deal] = await db.insert(dealsTable).values({ ...parsed.data, probability }).returning();
 
@@ -548,15 +557,28 @@ router.patch("/deals/:id", async (req, res) => {
     }
 
     // Restore contact category when deal is Lost
-    // EXCEPTION: My Clients is permanent — they stay in My Client regardless
+    // Permanent clients (customerSince or prior Won deal) revert to My Client;
+    // non-permanent contacts drop to the selected lostCategory.
     const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
     if (deal.stage === "Lost") {
       // Deactivate all active PIs for this deal
       await deactivateActivePis(db, deal.id);
 
       if (contact) {
-        if (contact.isMyClient) {
-          // My Clients is permanent — contact stays in My Client, nothing to restore
+        const permanentClient = await isPermanentClient(db, contact.id, deal.id);
+        if (permanentClient) {
+          // Permanent client — revert to My Client (they may have been in Regular Follow up for this deal)
+          if (contact.category !== "My Client") {
+            const prevCategory = contact.category;
+            await db.update(contactsTable).set({ category: "My Client" }).where(eq(contactsTable.id, contact.id));
+            await db.insert(categoryHistoryTable).values({
+              contactId: contact.id,
+              previousCategory: prevCategory,
+              newCategory: "My Client",
+              changedBy: user.id,
+              reason: "Deal Lost - Reverted to My Client (permanent client)",
+            });
+          }
         } else if (parsed.data.lostCategory) {
           // Move to Category A/B/C based on lostCategory value
           const prevCategory = contact.category;

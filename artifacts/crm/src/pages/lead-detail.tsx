@@ -22,6 +22,7 @@ import { UserAvatar } from "@/components/user-avatar";
 import { Label } from "@/components/ui/label";
 import { DialogFooter } from "@/components/ui/dialog";
 import { CategoryBadge } from "@/components/category-badge";
+import { CATEGORY_COLORS } from "@/lib/categories";
 import { MoveCategoryDialog } from "@/components/move-category-dialog";
 import { DocumentManager } from "@/components/document-manager";
 import { DocumentUploadDialog } from "@/components/document-upload-dialog";
@@ -619,6 +620,15 @@ export default function LeadDetail() {
                 <h1 className="text-xl font-bold truncate">{contact.name}</h1>
                 {(contact as any).customerCode && <Badge variant="secondary" className="text-[11px] font-mono">{(contact as any).customerCode}</Badge>}
                 <CategoryBadge category={(contact as any).category} />
+                {(contact as any).customerSince && (contact as any).category !== "My Client" && (
+                  <Badge
+                    className="text-[11px] font-medium border-0"
+                    style={{ backgroundColor: `${CATEGORY_COLORS["My Client"]}20`, color: CATEGORY_COLORS["My Client"] }}
+                    title={`Customer since ${(contact as any).customerSince}`}
+                  >
+                    ⭐ My Client
+                  </Badge>
+                )}
                 {contact.tags && <Badge variant="outline" className="text-[10px]">{contact.tags}</Badge>}
               </div>
               <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1 flex-wrap">
