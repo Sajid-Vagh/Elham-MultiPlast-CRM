@@ -1007,7 +1007,30 @@ router.delete("/contacts/:id", async (req, res) => {
       }
     }
 
-    await db.delete(contactsTable).where(eq(contactsTable.id, params.data.id));
+    await db.transaction(async (tx) => {
+      // Collect deal ids belonging to this contact so we can
+      // clear their child rows (deal_products) before removing the deals.
+      const deals = await tx.select({ id: dealsTable.id }).from(dealsTable).where(eq(dealsTable.contactId, params.data.id));
+      const dealIds = deals.map(d => d.id);
+      if (dealIds.length > 0) {
+        await tx.delete(dealProductsTable).where(inArray(dealProductsTable.dealId, dealIds));
+      }
+
+      // Delete strictly related child records before the contact itself
+      // to avoid PostgreSQL foreign key constraint violations.
+      await tx.delete(activitiesTable).where(eq(activitiesTable.contactId, params.data.id));
+      await tx.delete(dealsTable).where(eq(dealsTable.contactId, params.data.id));
+      await tx.delete(internalNotesTable).where(eq(internalNotesTable.contactId, params.data.id));
+      await tx.delete(commentHistoryTable).where(eq(commentHistoryTable.contactId, params.data.id));
+      await tx.delete(categoryHistoryTable).where(eq(categoryHistoryTable.contactId, params.data.id));
+      await tx.delete(unitHistoryTable).where(eq(unitHistoryTable.contactId, params.data.id));
+      await tx.delete(documentsTable).where(eq(documentsTable.contactId, params.data.id));
+      await tx.delete(existingCustomersTable).where(eq(existingCustomersTable.contactId, params.data.id));
+      await tx.delete(customerCommunicationsTable).where(eq(customerCommunicationsTable.contactId, params.data.id));
+
+      // Finally delete the contact itself.
+      await tx.delete(contactsTable).where(eq(contactsTable.id, params.data.id));
+    });
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Delete contact error");
