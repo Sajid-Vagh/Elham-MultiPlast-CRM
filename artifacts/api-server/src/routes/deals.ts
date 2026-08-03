@@ -556,15 +556,47 @@ router.patch("/deals/:id", async (req, res) => {
       }
     }
 
-    // Restore contact category when deal is Lost
-    // Permanent clients (customerSince or prior Won deal) revert to My Client;
-    // non-permanent contacts drop to the selected lostCategory.
+    // Update contact category on stage change.
+    // PRIORITY 1 (manual input): if the frontend explicitly sends a category value
+    // (`lostCategory` A/B/C or a direct `category`), ALWAYS respect it and update the
+    // contact to that category, regardless of the deal state or client permanence.
+    // PRIORITY 2 (automation): only when NO manual category was provided — permanent
+    // clients (customerSince or prior Won deal) revert to My Client; non-permanent
+    // contacts stay in their current category.
     const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+
+    // `lostCategory`/`category` are NOT part of the generated UpdateDealBody schema, so
+    // zod strips them from `parsed.data`. Read them from the raw body (same pattern as
+    // otherReason/lostNotes above) so manual category selection is never lost.
+    const rawBody = req.body as Record<string, any>;
+    const manualCategory = rawBody.lostCategory || rawBody.category || null;
+
+    if (manualCategory && contact) {
+      const categoryMap: Record<string, string> = {
+        A: "Category A",
+        B: "Category B",
+        C: "Category C",
+      };
+      const newCategory = categoryMap[manualCategory] || manualCategory;
+      if (contact.category !== newCategory) {
+        const prevCategory = contact.category;
+        await db.update(contactsTable).set({ category: newCategory }).where(eq(contactsTable.id, contact.id));
+        await db.insert(categoryHistoryTable).values({
+          contactId: contact.id,
+          previousCategory: prevCategory,
+          newCategory,
+          changedBy: user.id,
+          reason: `Deal ${deal.stage} - Categorized as ${newCategory}`,
+        });
+      }
+    }
+
     if (deal.stage === "Lost") {
       // Deactivate all active PIs for this deal
       await deactivateActivePis(db, deal.id);
 
-      if (contact) {
+      // Automated fallback only when the user did not explicitly provide a category.
+      if (contact && !manualCategory) {
         const permanentClient = await isPermanentClient(db, contact.id, deal.id);
         if (permanentClient) {
           // Permanent client — revert to My Client (they may have been in Regular Follow up for this deal)
@@ -579,26 +611,8 @@ router.patch("/deals/:id", async (req, res) => {
               reason: "Deal Lost - Reverted to My Client (permanent client)",
             });
           }
-        } else if (parsed.data.lostCategory) {
-          // Move to Category A/B/C based on lostCategory value
-          const prevCategory = contact.category;
-          const categoryMap: Record<string, string> = {
-            A: "Category A",
-            B: "Category B",
-            C: "Category C",
-          };
-          const newCategory = categoryMap[parsed.data.lostCategory] || "Category C";
-
-          await db.update(contactsTable).set({ category: newCategory }).where(eq(contactsTable.id, contact.id));
-
-          await db.insert(categoryHistoryTable).values({
-            contactId: contact.id,
-            previousCategory: prevCategory,
-            newCategory,
-            changedBy: user.id,
-            reason: `Deal Lost - Categorized as ${newCategory}`,
-          });
         }
+        // Non-permanent client with no selected category: stays in their current category.
       }
     }
 

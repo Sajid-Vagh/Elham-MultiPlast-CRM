@@ -849,26 +849,28 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
       lostDate: now,
     }).where(eq(contactsTable.id, contact.id));
 
-    // Move contact to Category A/B/C based on lostCategory
-    // EXCEPTION: My Client is permanent — they stay regardless
-    if (!contact.isMyClient && lostCategory) {
+    // Move contact to Category A/B/C based on lostCategory.
+    // Manual input always wins — apply it regardless of deal state or client permanence.
+    if (lostCategory) {
       const prevCategory = contact.category;
       const categoryMap: Record<string, string> = {
         A: "Category A",
         B: "Category B",
         C: "Category C",
       };
-      const newCategory = categoryMap[lostCategory] || "Category C";
+      const newCategory = categoryMap[lostCategory] || lostCategory;
 
-      await db.update(contactsTable).set({ category: newCategory }).where(eq(contactsTable.id, contact.id));
+      if (prevCategory !== newCategory) {
+        await db.update(contactsTable).set({ category: newCategory }).where(eq(contactsTable.id, contact.id));
 
-      await db.insert(categoryHistoryTable).values({
-        contactId: contact.id,
-        previousCategory: prevCategory,
-        newCategory,
-        changedBy: user.id,
-        reason: `Deal Lost - Categorized as ${newCategory}`,
-      });
+        await db.insert(categoryHistoryTable).values({
+          contactId: contact.id,
+          previousCategory: prevCategory,
+          newCategory,
+          changedBy: user.id,
+          reason: `Deal Lost - Categorized as ${newCategory}`,
+        });
+      }
     }
 
     // Mark all active deals as Lost
