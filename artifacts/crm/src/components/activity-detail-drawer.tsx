@@ -160,8 +160,10 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
         });
       }
 
-      // Step 2: Create today's activity log (unless we already updated the current one)
-      if (!isPendingActivity) {
+      // Step 2: Create today's activity log ONLY when the drawer was opened to log a NEW activity
+      // (no existing activity passed). When an existing activity is present (completing or viewing),
+      // only the PATCH above may run — never a duplicate POST.
+      if (!activity) {
         await createActivity.mutateAsync({
           data: {
             dealId: Number(dealId),
