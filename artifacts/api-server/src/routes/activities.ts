@@ -219,7 +219,7 @@ router.post("/activities", async (req, res) => {
     res.status(400).json({ error: "Invalid input", details: parsed.error });
     return;
   }
-  if (parsed.data.type === "FollowUp" && !parsed.data.followUpDate) {
+  if (!parsed.data.followUpDate) {
     res.status(400).json({ error: "Invalid input", details: { issues: [{ path: ["followUpDate"], message: "Date is required" }] } });
     return;
   }
@@ -324,7 +324,7 @@ router.post("/activities", async (req, res) => {
         contactId: parsed.data.contactId ?? null,
         type: parsed.data.type,
         notes: notesValue,
-        followUpDate: parsed.data.followUpDate ?? null,
+        followUpDate: parsed.data.followUpDate,
         followUpTime: parsed.data.followUpTime ?? null,
         followUpType: parsed.data.followUpType ?? null,
         callStatus: parsed.data.callStatus ?? "Pending",

@@ -97,7 +97,7 @@ export function ScheduleFollowUpDialog({ open, onOpenChange, contactId, dealId }
         contactId,
         type: "FollowUp",
         notes: notes || null,
-        followUpDate: date || null,
+        followUpDate: date,
         followUpTime: time || null,
         followUpType: followUpType,
         callStatus: "Pending",

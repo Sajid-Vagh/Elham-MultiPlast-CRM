@@ -1033,16 +1033,12 @@ export const CreateActivityBody = zod.object({
   "contactId": zod.number().nullish(),
   "type": zod.enum(['Call', 'WhatsApp', 'Email', 'Note', 'FollowUp', 'Meeting']),
   "notes": zod.string().nullish(),
-  "followUpDate": zod.string().min(1, "Date is required").nullish(),
+  "followUpDate": zod.string().min(1, "Date is required"),
   "followUpTime": zod.string().nullish(),
   "followUpType": zod.string().nullish(),
   "callStatus": zod.string().nullish(),
   "reminder": zod.string().nullish(),
   "assignedTo": zod.number().nullish()
-}).superRefine((val, ctx) => {
-  if (val.type === "FollowUp" && !val.followUpDate) {
-    ctx.addIssue({ code: zod.ZodIssueCode.custom, path: ["followUpDate"], message: "Date is required" });
-  }
 })
 
 export const CreateActivityResponse = zod.object({

@@ -1290,7 +1290,7 @@ components:
 
     ActivityInput:
       type: object
-      required: [dealId, type]
+      required: [dealId, type, followUpDate]
       properties:
         dealId:
           type: integer
@@ -1302,7 +1302,7 @@ components:
         notes:
           type: ["string", "null"]
         followUpDate:
-          type: ["string", "null"]
+          type: string
         followUpTime:
           type: ["string", "null"]
         followUpType:

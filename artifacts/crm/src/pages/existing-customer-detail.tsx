@@ -970,7 +970,7 @@ export default function ExistingCustomerDetail() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setFollowUpDialog(false)}>Cancel</Button>
-            <Button onClick={() => followUpMutation.mutate(followUpForm)} disabled={!followUpForm.notes || followUpMutation.isPending}>
+            <Button onClick={() => followUpMutation.mutate(followUpForm)} disabled={!followUpForm.notes || !followUpForm.followUpDate || followUpMutation.isPending}>
               {followUpMutation.isPending ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>

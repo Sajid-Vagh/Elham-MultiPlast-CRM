@@ -712,7 +712,7 @@ router.post("/existing-customers/:id/follow-ups", async (req, res) => {
       contactId: ec.contactId,
       type: req.body.type || "FollowUp",
       notes: req.body.notes || "",
-      followUpDate: req.body.followUpDate || null,
+      followUpDate: req.body.followUpDate || new Date().toISOString().split("T")[0],
       followUpTime: req.body.followUpTime || null,
       followUpType: req.body.followUpType || "General Customer Follow-up",
       priority: req.body.priority || "Medium",

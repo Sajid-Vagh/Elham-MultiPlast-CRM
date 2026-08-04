@@ -14,8 +14,7 @@ export interface ActivityInput {
   type: ActivityInputType;
   /** @nullable */
   notes?: string | null;
-  /** @nullable */
-  followUpDate?: string | null;
+  followUpDate: string;
   /** @nullable */
   followUpTime?: string | null;
   /** @nullable */

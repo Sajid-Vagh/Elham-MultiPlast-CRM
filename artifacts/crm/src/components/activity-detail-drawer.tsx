@@ -182,7 +182,7 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
             contactId,
             type: "FollowUp",
             notes: nextNotes || null,
-            followUpDate: nextDate || null,
+            followUpDate: nextDate,
             followUpTime: nextTime || null,
             followUpType: nextType,
             callStatus: "Pending",
