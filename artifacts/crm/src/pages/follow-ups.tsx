@@ -20,7 +20,7 @@ import { CategoryBadge } from "@/components/category-badge";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
-import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import { PENDING_UNIT_ASSIGNMENT, isPendingUnit } from "@/lib/unit-constants";
 import { useDateFilter } from "@/lib/use-date-filter";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import ActivityDetailDrawer from "@/components/activity-detail-drawer";
@@ -87,13 +87,17 @@ const STATUS_OPTIONS = [
 
 const TYPE_OPTIONS = [
   { value: "all", label: "All Types" },
-  { value: "Phone Call", label: "Phone Call" },
+  { value: "Call", label: "Phone Call" },
   { value: "WhatsApp", label: "WhatsApp" },
   { value: "Meeting", label: "Meeting" },
   { value: "Email", label: "Email" },
   { value: "Video Call", label: "Video Call" },
   { value: "Site Visit", label: "Site Visit" },
 ];
+
+const TYPE_VALUE_ALIASES: Record<string, string[]> = {
+  Call: ["Call", "Phone Call"],
+};
 
 const SORT_OPTIONS = [
   { value: "date-asc", label: "Date (Ascending)" },
@@ -300,6 +304,7 @@ export default function FollowUps() {
     if (unitFilter !== "All") {
       list = list.filter(a => {
         const contactUnit = a.contact?.unit || a.deal?.contact?.unit;
+        if (unitFilter === PENDING_UNIT_ASSIGNMENT) return isPendingUnit(contactUnit);
         return contactUnit === unitFilter;
       });
     }
@@ -342,9 +347,10 @@ export default function FollowUps() {
       list = list.filter(a => (a.callStatus || "Pending") === statusFilter);
     }
 
-    // Type filter
+    // Type filter — match either the `type` or `followUpType` column
     if (typeFilter !== "all") {
-      list = list.filter(a => (a.followUpType || a.type) === typeFilter);
+      const targets = TYPE_VALUE_ALIASES[typeFilter] || [typeFilter];
+      list = list.filter(a => targets.includes(a.type || "") || targets.includes(a.followUpType || ""));
     }
 
     // Sort
