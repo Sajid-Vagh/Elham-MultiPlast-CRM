@@ -69,12 +69,17 @@ async function createAuditEntry(
   description: string,
   userId: number
 ) {
+  // System-generated audit notes must never inherit the schema default
+  // call_status of "Pending" (with a NULL follow_up_date), which would surface
+  // them as ghost "Upcoming" follow-ups with a blank date. Mark them explicitly
+  // as "Completed" so they bypass the Upcoming filters.
   await db.insert(activitiesTable).values({
     dealId,
     contactId: contactId ?? null,
     type: "Note",
     notes: description,
     createdBy: userId,
+    callStatus: "Completed",
   });
 }
 
