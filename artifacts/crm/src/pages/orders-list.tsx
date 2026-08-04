@@ -151,7 +151,6 @@ export default function OrdersList() {
                 <SelectItem value="All">All Dispatch</SelectItem>
                 <SelectItem value="Pending Dispatch">Pending Dispatch</SelectItem>
                 <SelectItem value="Load Vehicle">Load Vehicle</SelectItem>
-                <SelectItem value="Dispatch">Dispatch</SelectItem>
                 <SelectItem value="Delivered">Delivered</SelectItem>
               </SelectContent>
             </Select>
