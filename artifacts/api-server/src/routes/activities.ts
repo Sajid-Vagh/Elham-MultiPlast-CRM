@@ -455,16 +455,6 @@ router.patch("/activities/:id", async (req, res) => {
         );
       }
 
-      if (parsed.data.callStatus !== undefined && parsed.data.callStatus !== existingActivity.callStatus) {
-        const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-        await createAuditEntry(
-          existingActivity.dealId,
-          existingActivity.contactId,
-          `${user.name} changed Status\n${existingActivity.callStatus || "Pending"} → ${parsed.data.callStatus}\n\n${now}`,
-          user.id
-        );
-      }
-
       if (parsed.data.followUpTime !== undefined && parsed.data.followUpTime !== existingActivity.followUpTime) {
         const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
         await createAuditEntry(
