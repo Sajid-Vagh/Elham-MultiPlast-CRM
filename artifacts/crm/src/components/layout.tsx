@@ -114,6 +114,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
 
   const [activePopups, setActivePopups] = useState<Set<number>>(new Set());
   const popupShownRef = useRef<Set<number>>(new Set());
+  const popupAutoDismissTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
   useEffect(() => {
     if (!latestNotification || popupShownRef.current.has(latestNotification.id)) return;
@@ -123,10 +124,37 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   }, [latestNotification]);
 
   const dismissPopup = useCallback((id: number) => {
+    const timer = popupAutoDismissTimersRef.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      popupAutoDismissTimersRef.current.delete(id);
+    }
     setActivePopups((prev) => { const next = new Set(prev); next.delete(id); return next; });
     // Dismiss = mark read (keeps the entry in Notification History, stops it counting as unread)
     markAsRead(id);
   }, [markAsRead]);
+
+  // Auto-dismiss each popup 5 seconds after it appears. Timers are tracked
+  // per-notification so rapid arrivals during bulk imports never reset each
+  // other. Only the popup is dismissed; the notification stays in the DB and
+  // remains visible in the bell dropdown.
+  useEffect(() => {
+    activePopups.forEach((id) => {
+      if (popupAutoDismissTimersRef.current.has(id)) return;
+      const timer = setTimeout(() => {
+        popupAutoDismissTimersRef.current.delete(id);
+        dismissPopup(id);
+      }, 5000);
+      popupAutoDismissTimersRef.current.set(id, timer);
+    });
+  }, [activePopups, dismissPopup]);
+
+  useEffect(() => {
+    return () => {
+      popupAutoDismissTimersRef.current.forEach((t) => clearTimeout(t));
+      popupAutoDismissTimersRef.current.clear();
+    };
+  }, []);
 
   const { data: upcomingActivities } = useListActivities(
     { upcoming: true },

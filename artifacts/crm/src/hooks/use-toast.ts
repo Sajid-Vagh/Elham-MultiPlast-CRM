@@ -13,6 +13,7 @@ type ToasterToast = ToastProps & {
   title?: React.ReactNode
   description?: React.ReactNode
   action?: ToastActionElement
+  duration?: number
 }
 
 const actionTypes = {
@@ -160,6 +161,13 @@ function toast({ ...props }: Toast) {
       },
     },
   })
+
+  // Auto-dismiss after `duration` (default 5000ms). Only the transient toast
+  // popup is dismissed; the underlying data/notification is never touched.
+  const { duration = 5000 } = props
+  if (duration > 0 && Number.isFinite(duration)) {
+    setTimeout(dismiss, duration)
+  }
 
   return {
     id: id,
