@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek,
-  subDays, subMonths, subYears, startOfYear, format,
+  subDays, subMonths, subYears, startOfYear, endOfYear, format,
 } from "date-fns";
 
 const STORAGE_KEY = "crm_date_filter";
@@ -26,20 +26,20 @@ function computeRange(preset: string, customStart?: string | null, customEnd?: s
       return { startDate: fmt(d), endDate: fmt(d) };
     }
     case "this-week":
-      return { startDate: fmt(startOfWeek(now, { weekStartsOn: 1 })), endDate: fmt(now) };
+      return { startDate: fmt(startOfWeek(now, { weekStartsOn: 1 })), endDate: fmt(endOfWeek(now, { weekStartsOn: 1 })) };
     case "last-week": {
       const ws = startOfWeek(subDays(now, 7), { weekStartsOn: 1 });
       const we = endOfWeek(subDays(now, 7), { weekStartsOn: 1 });
       return { startDate: fmt(ws), endDate: fmt(we) };
     }
     case "this-month":
-      return { startDate: fmt(startOfMonth(now)), endDate: fmt(now) };
+      return { startDate: fmt(startOfMonth(now)), endDate: fmt(endOfMonth(now)) };
     case "last-month": {
       const prev = subMonths(now, 1);
       return { startDate: fmt(startOfMonth(prev)), endDate: fmt(endOfMonth(prev)) };
     }
     case "this-year":
-      return { startDate: fmt(startOfYear(now)), endDate: fmt(now) };
+      return { startDate: fmt(startOfYear(now)), endDate: fmt(endOfYear(now)) };
     case "last-year": {
       const prev = subYears(now, 1);
       return { startDate: fmt(startOfYear(prev)), endDate: fmt(endOfMonth(new Date(prev.getFullYear(), 11, 1))) };
