@@ -7,7 +7,7 @@ import {
   contactsTable, usersTable, productsTable,
   productionOrderItemsTable,
 } from "@workspace/db";
-import { eq, and, or, desc, sql, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, or, desc, sql, inArray } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { storage } from "../lib/storage";
@@ -686,17 +686,16 @@ router.get("/production/sheet/stats", async (req, res) => {
 });
 
 // ── GET /production/sheet — Download Excel production sheet ──
-// Modes: new (default), pending, selected, today, week, month, reprint, date-range, all
+// Modes: updated (default), today, yesterday, this-week, last-week, this-month, custom
 // Reuses listOrders filtering to guarantee UI ↔ export parity
 router.get("/production/sheet", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
     if (!user) return;
 
-    const mode = (req.query.mode as string) || "new";
-    const orderIdsRaw = (req.query.orderIds as string) || "";
-    const dateFrom = (req.query.dateFrom as string) || undefined;
-    const dateTo = (req.query.dateTo as string) || undefined;
+    const mode = (req.query.mode as string) || "updated";
+    const startDate = (req.query.startDate as string) || (req.query.dateFrom as string) || undefined;
+    const endDate = (req.query.endDate as string) || (req.query.dateTo as string) || undefined;
     const unitFilter = (req.query.unit as string) || undefined;
     const searchFilter = (req.query.search as string) || undefined;
     const priorityFilter = (req.query.priority as string) || undefined;
@@ -704,44 +703,73 @@ router.get("/production/sheet", async (req, res) => {
     const originFilter = (req.query.origin as string) || undefined;
     const statusFilter = (req.query.status as string) || undefined;
 
-    // ── 1. Use listOrders to get matching order IDs (same logic as Production Orders page) ──
-    let effectiveStatus: string | undefined;
-    let effectiveDateFrom = dateFrom;
-    let effectiveDateTo = dateTo;
-    let explicitOrderIds: number[] | undefined;
+    // ── 1. Resolve date range for date-based modes ──
+    // Local date helper (YYYY-MM-DD in server timezone, matching createdAt local-midnight semantics)
+    const localDate = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    };
 
-    if (mode === "pending") {
-      effectiveStatus = "Pending";
-    } else if (mode === "today") {
-      const today = new Date().toISOString().split("T")[0];
-      effectiveDateFrom = today;
-      effectiveDateTo = today;
+    let effectiveDateFrom = startDate;
+    let effectiveDateTo = endDate;
+
+    const currentDate = new Date();
+    if (mode === "today") {
+      effectiveDateFrom = localDate(currentDate);
+      effectiveDateTo = localDate(currentDate);
     } else if (mode === "yesterday") {
-      const d = new Date();
+      const d = new Date(currentDate);
       d.setDate(d.getDate() - 1);
-      const yesterday = d.toISOString().split("T")[0];
-      effectiveDateFrom = yesterday;
-      effectiveDateTo = yesterday;
-    } else if (mode === "week") {
-      const d = new Date();
-      d.setDate(d.getDate() - 7);
-      effectiveDateFrom = d.toISOString().split("T")[0];
-      effectiveDateTo = new Date().toISOString().split("T")[0];
-    } else if (mode === "month") {
-      const d = new Date();
-      d.setDate(d.getDate() - 30);
-      effectiveDateFrom = d.toISOString().split("T")[0];
-      effectiveDateTo = new Date().toISOString().split("T")[0];
+      effectiveDateFrom = localDate(d);
+      effectiveDateTo = localDate(d);
+    } else if (mode === "this-week" || mode === "last-week") {
+      const dayOfWeek = currentDate.getDay(); // 0 = Sunday … 6 = Saturday
+      const daysSinceMonday = (dayOfWeek + 6) % 7;
+      const weekStart = new Date(currentDate);
+      weekStart.setDate(currentDate.getDate() - daysSinceMonday);
+      if (mode === "this-week") {
+        effectiveDateFrom = localDate(weekStart);
+      } else {
+        const prevStart = new Date(weekStart);
+        prevStart.setDate(weekStart.getDate() - 7);
+        const prevEnd = new Date(weekStart);
+        prevEnd.setDate(weekStart.getDate() - 1);
+        effectiveDateFrom = localDate(prevStart);
+        effectiveDateTo = localDate(prevEnd);
+      }
+    } else if (mode === "this-month") {
+      effectiveDateFrom = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}-01`;
     }
-    // mode = "all" / "new" / "reprint" / "date-range" → use query params as-is
+    // mode = "updated" / "custom" → handled below ("custom" uses startDate/endDate as-is)
 
     let matchedOrderIds: number[];
 
-    if (explicitOrderIds) {
-      matchedOrderIds = explicitOrderIds;
+    if (mode === "updated") {
+      // Updated Sheet: ONLY orders that need a reprint OR were never generated
+      const updatedConditions: any[] = [
+        or(
+          eq(productionOrdersTable.needsReprint, true),
+          eq(productionOrdersTable.productionSheetVersion, 0)
+        ),
+      ];
+      if (unitFilter && unitFilter !== "All" && unitFilter !== "all") {
+        updatedConditions.push(eq(productionOrdersTable.productionUnit, unitFilter));
+      } else if (user.role !== "admin") {
+        const u = (user as any).unit || "All";
+        if (u !== "All") updatedConditions.push(or(
+          eq(productionOrdersTable.productionUnit, u),
+          sql`${productionOrdersTable.productionUnit} IS NULL`
+        )!);
+      }
+      const updatedRows = await db.select({ id: productionOrdersTable.id })
+        .from(productionOrdersTable)
+        .where(and(...updatedConditions));
+      matchedOrderIds = updatedRows.map((o: any) => o.id);
     } else {
       const listResult = await listOrders(user, {
-        status: effectiveStatus || statusFilter || "all",
+        status: statusFilter || "all",
         unit: unitFilter || "all",
         search: searchFilter,
         priority: priorityFilter,
@@ -752,50 +780,6 @@ router.get("/production/sheet", async (req, res) => {
         limit: "10000",
       });
       matchedOrderIds = listResult.data.map((o: any) => o.id);
-
-      // For "reprint" mode, query orders that changed today
-      if (mode === "reprint") {
-        const today = new Date().toISOString().split("T")[0];
-        const todayStart = new Date(today);
-        const todayEnd = new Date(today + "T23:59:59.999Z");
-        const reprintConditions: any[] = [
-          or(
-            and(
-              gte(productionOrdersTable.createdAt, todayStart),
-              lte(productionOrdersTable.createdAt, todayEnd)
-            ),
-            and(
-              gte(productionOrdersTable.updatedAt, todayStart),
-              lte(productionOrdersTable.updatedAt, todayEnd)
-            )
-          ),
-        ];
-        if (unitFilter && unitFilter !== "All" && unitFilter !== "all") {
-          reprintConditions.push(eq(productionOrdersTable.productionUnit, unitFilter));
-        } else if (user.role !== "admin") {
-          const u = (user as any).unit || "All";
-          if (u !== "All") reprintConditions.push(or(
-            eq(productionOrdersTable.productionUnit, u),
-            sql`${productionOrdersTable.productionUnit} IS NULL`
-          )!);
-        }
-        const todayOrders = await db.select({ id: productionOrdersTable.id })
-          .from(productionOrdersTable)
-          .where(and(...reprintConditions));
-        matchedOrderIds = todayOrders.map((o: any) => o.id);
-      }
-
-      // For "new" mode, filter for orders with no sheet generated yet
-      if (mode === "new") {
-        const allOrders = await db.select({
-          id: productionOrdersTable.id,
-          sheetVersion: productionOrdersTable.productionSheetVersion,
-        }).from(productionOrdersTable)
-          .where(inArray(productionOrdersTable.id, matchedOrderIds));
-        matchedOrderIds = allOrders
-          .filter(o => (o.sheetVersion || 0) === 0)
-          .map(o => o.id);
-      }
     }
 
     if (matchedOrderIds.length === 0) {

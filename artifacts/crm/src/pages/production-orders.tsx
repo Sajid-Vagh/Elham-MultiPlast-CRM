@@ -18,7 +18,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Search, ArrowLeft, ArrowRight, Download, FileSpreadsheet, AlertTriangle, Clock, CalendarDays } from "lucide-react";
+import { Search, ArrowLeft, ArrowRight, Download, FileSpreadsheet, Clock, CalendarDays } from "lucide-react";
 import { useUserUnits } from "@/lib/use-user-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 import { useToast } from "@/hooks/use-toast";
@@ -93,25 +93,14 @@ export default function ProductionOrders() {
     enabled: !!user,
   });
 
-  const { data: sheetStats } = useQuery({
-    queryKey: ["production-sheet-stats"],
-    queryFn: () => customFetch<any>("/production/sheet/stats"),
-    enabled: !!user,
-  });
-
-  const downloadSheet = async (mode: string, dateFrom?: string, dateTo?: string) => {
+  const downloadSheet = async (mode: string, startDate?: string, endDate?: string) => {
     setSheetDownloading(true);
     try {
       const token = localStorage.getItem("crm_token");
       const p = new URLSearchParams({ mode });
-      if (status !== "all") p.set("status", status);
-      if (dispatchStatus !== "all") p.set("dispatchStatus", dispatchStatus);
-      if (priority !== "all") p.set("priority", priority);
-      if (origin !== "all") p.set("origin", origin);
       if (selectedUnit && selectedUnit !== "All") p.set("unit", selectedUnit);
-      if (search) p.set("search", search);
-      if (dateFrom) p.set("dateFrom", dateFrom);
-      if (dateTo) p.set("dateTo", dateTo);
+      if (startDate) p.set("startDate", startDate);
+      if (endDate) p.set("endDate", endDate);
 
       const res = await fetch(`/api/production/sheet?${p.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -143,14 +132,6 @@ export default function ProductionOrders() {
           <p className="text-sm text-muted-foreground mt-1">Manage and track all production orders</p>
         </div>
         <div className="flex items-center gap-2">
-          {sheetStats && (sheetStats.needsReprint > 0 || sheetStats.neverGenerated > 0) && (
-            <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
-              <AlertTriangle className="h-3 w-3 mr-1" />
-              {sheetStats.needsReprint > 0 && `${sheetStats.needsReprint} need reprint`}
-              {sheetStats.needsReprint > 0 && sheetStats.neverGenerated > 0 && " · "}
-              {sheetStats.neverGenerated > 0 && `${sheetStats.neverGenerated} never generated`}
-            </Badge>
-          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" disabled={sheetDownloading}>
@@ -158,32 +139,26 @@ export default function ProductionOrders() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onClick={() => downloadSheet("all")}>
-                <FileSpreadsheet className="h-4 w-4 mr-2" /> All Pending Orders
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => downloadSheet("pending")}>
-                <Clock className="h-4 w-4 mr-2" /> Pre-Production Only
+              <DropdownMenuItem onClick={() => downloadSheet("updated")}>
+                <FileSpreadsheet className="h-4 w-4 mr-2" /> Updated Sheet
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => downloadSheet("today")}>
-                <CalendarDays className="h-4 w-4 mr-2" /> Created Today
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => downloadSheet("week")}>
-                <CalendarDays className="h-4 w-4 mr-2" /> This Week
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => downloadSheet("month")}>
-                <CalendarDays className="h-4 w-4 mr-2" /> This Month
+                <CalendarDays className="h-4 w-4 mr-2" /> Today
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => downloadSheet("yesterday")}>
                 <Clock className="h-4 w-4 mr-2" /> Yesterday
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => downloadSheet("this-week")}>
+                <CalendarDays className="h-4 w-4 mr-2" /> This Week
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => downloadSheet("last-week")}>
+                <Clock className="h-4 w-4 mr-2" /> Last Week
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => downloadSheet("this-month")}>
+                <CalendarDays className="h-4 w-4 mr-2" /> This Month
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setSheetDateDialogOpen(true)}>
                 <CalendarDays className="h-4 w-4 mr-2" /> Custom Range
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => downloadSheet("reprint")}>
-                <AlertTriangle className="h-4 w-4 mr-2" /> Updated Orders (Reprint)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => downloadSheet("all")}>
-                <FileSpreadsheet className="h-4 w-4 mr-2" /> Current Filter ({status === "all" ? "All" : status})
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -316,16 +291,9 @@ export default function ProductionOrders() {
                         </Badge>
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <Badge variant="outline" className={`text-xs ${STATUS_COLORS[order.status] || "bg-gray-100"} border`}>
-                            {order.status}
-                          </Badge>
-                          {order.needsReprint && (
-                            <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-600 border-amber-200 whitespace-nowrap">
-                              <AlertTriangle className="h-2.5 w-2.5 mr-0.5" /> Reprint
-                            </Badge>
-                          )}
-                        </div>
+                        <Badge variant="outline" className={`text-xs ${STATUS_COLORS[order.status] || "bg-gray-100"} border`}>
+                          {order.status}
+                        </Badge>
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
                         {order.dispatchStatus ? (
@@ -400,7 +368,7 @@ export default function ProductionOrders() {
               disabled={!sheetDateFrom || !sheetDateTo || sheetDownloading}
               onClick={() => {
                 setSheetDateDialogOpen(false);
-                downloadSheet("date-range", sheetDateFrom, sheetDateTo);
+                downloadSheet("custom", sheetDateFrom, sheetDateTo);
               }}
             >
               {sheetDownloading ? "Downloading..." : "Download"}
