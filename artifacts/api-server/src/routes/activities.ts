@@ -219,6 +219,10 @@ router.post("/activities", async (req, res) => {
     res.status(400).json({ error: "Invalid input", details: parsed.error });
     return;
   }
+  if (parsed.data.type === "FollowUp" && !parsed.data.followUpDate) {
+    res.status(400).json({ error: "Invalid input", details: { issues: [{ path: ["followUpDate"], message: "Date is required" }] } });
+    return;
+  }
   try {
     const currentUser = await getUserFromRequest(req);
     if (!currentUser) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -417,82 +421,89 @@ router.patch("/activities/:id", async (req, res) => {
       updateData.notes = existingActivity.notes;
     }
 
-    // Create audit entries for changes
-    if (parsed.data.followUpDate !== undefined && parsed.data.followUpDate !== existingActivity.followUpDate) {
-      const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-      await createAuditEntry(
-        existingActivity.dealId,
-        existingActivity.contactId,
-        `${user.name} changed Follow-up Date\n${existingActivity.followUpDate || "(none)"} → ${parsed.data.followUpDate || "(none)"}\n\n${now}`,
-        user.id
-      );
-    }
-
-    if (parsed.data.callStatus !== undefined && parsed.data.callStatus !== existingActivity.callStatus) {
-      const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-      await createAuditEntry(
-        existingActivity.dealId,
-        existingActivity.contactId,
-        `${user.name} changed Status\n${existingActivity.callStatus || "Pending"} → ${parsed.data.callStatus}\n\n${now}`,
-        user.id
-      );
-    }
-
-    if (parsed.data.followUpTime !== undefined && parsed.data.followUpTime !== existingActivity.followUpTime) {
-      const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-      await createAuditEntry(
-        existingActivity.dealId,
-        existingActivity.contactId,
-        `${user.name} changed Follow-up Time\n${existingActivity.followUpTime || "(none)"} → ${parsed.data.followUpTime || "(none)"}\n\n${now}`,
-        user.id
-      );
-    }
-
-    // Dismiss notifications for any non-Pending status change
-    if (parsed.data.callStatus !== undefined && parsed.data.callStatus !== "Pending") {
-      const notifUpdate: Record<string, any> = { notificationSeen: true, notificationSeenAt: new Date() };
-      if (parsed.data.callStatus === "Completed") {
-        notifUpdate.readAt = new Date();
-      }
-      await db
-        .update(notificationsTable)
-        .set(notifUpdate)
-        .where(and(
-          eq(notificationsTable.relatedId, params.data.id),
-          eq(notificationsTable.relatedType, "activity"),
-          isNull(notificationsTable.readAt),
-        ));
-
-      // Create notification when follow-up is completed
-      if (parsed.data.callStatus === "Completed") {
-        let contactOwnerId: number | null = null;
-        let contactName = "Unknown";
-        if (existingActivity.contactId) {
-          const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId, name: contactsTable.name }).from(contactsTable).where(eq(contactsTable.id, existingActivity.contactId));
-          if (contact) { contactOwnerId = contact.salesOwnerId; contactName = contact.name; }
-        } else if (existingActivity.dealId) {
-          const [deal] = await db.select({ contactId: dealsTable.contactId }).from(dealsTable).where(eq(dealsTable.id, existingActivity.dealId));
-          if (deal) {
-            const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId, name: contactsTable.name }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
-            if (contact) { contactOwnerId = contact.salesOwnerId; contactName = contact.name; }
-          }
-        }
-        if (contactOwnerId && contactOwnerId !== user.id) {
-          await createNotification({
-            userId: contactOwnerId,
-            type: "follow_up_completed",
-            title: "Follow-up Completed",
-            message: `Follow-up for ${contactName} has been marked as Completed.\nCompleted By: ${user.name}`,
-            link: existingActivity.contactId ? `/leads/${existingActivity.contactId}` : existingActivity.dealId ? `/deals/${existingActivity.dealId}` : "#",
-            relatedId: params.data.id,
-            relatedType: "activity",
-          });
-        }
-      }
-    }
-
+    // Core status/date update FIRST so the completion always persists.
+    // Side-effects (audit + notifications) run after and must never block the update.
     const [activity] = await db.update(activitiesTable).set(updateData).where(eq(activitiesTable.id, params.data.id)).returning();
     if (!activity) { res.status(404).json({ error: "Not found" }); return; }
+
+    try {
+      // Create audit entries for changes
+      if (parsed.data.followUpDate !== undefined && parsed.data.followUpDate !== existingActivity.followUpDate) {
+        const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        await createAuditEntry(
+          existingActivity.dealId,
+          existingActivity.contactId,
+          `${user.name} changed Follow-up Date\n${existingActivity.followUpDate || "(none)"} → ${parsed.data.followUpDate || "(none)"}\n\n${now}`,
+          user.id
+        );
+      }
+
+      if (parsed.data.callStatus !== undefined && parsed.data.callStatus !== existingActivity.callStatus) {
+        const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        await createAuditEntry(
+          existingActivity.dealId,
+          existingActivity.contactId,
+          `${user.name} changed Status\n${existingActivity.callStatus || "Pending"} → ${parsed.data.callStatus}\n\n${now}`,
+          user.id
+        );
+      }
+
+      if (parsed.data.followUpTime !== undefined && parsed.data.followUpTime !== existingActivity.followUpTime) {
+        const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        await createAuditEntry(
+          existingActivity.dealId,
+          existingActivity.contactId,
+          `${user.name} changed Follow-up Time\n${existingActivity.followUpTime || "(none)"} → ${parsed.data.followUpTime || "(none)"}\n\n${now}`,
+          user.id
+        );
+      }
+
+      // Dismiss notifications for any non-Pending status change
+      if (parsed.data.callStatus !== undefined && parsed.data.callStatus !== "Pending") {
+        const notifUpdate: Record<string, any> = { notificationSeen: true, notificationSeenAt: new Date() };
+        if (parsed.data.callStatus === "Completed") {
+          notifUpdate.readAt = new Date();
+        }
+        await db
+          .update(notificationsTable)
+          .set(notifUpdate)
+          .where(and(
+            eq(notificationsTable.relatedId, params.data.id),
+            eq(notificationsTable.relatedType, "activity"),
+            isNull(notificationsTable.readAt),
+          ));
+
+        // Create notification when follow-up is completed
+        if (parsed.data.callStatus === "Completed") {
+          let contactOwnerId: number | null = null;
+          let contactName = "Unknown";
+          if (existingActivity.contactId) {
+            const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId, name: contactsTable.name }).from(contactsTable).where(eq(contactsTable.id, existingActivity.contactId));
+            if (contact) { contactOwnerId = contact.salesOwnerId; contactName = contact.name; }
+          } else if (existingActivity.dealId) {
+            const [deal] = await db.select({ contactId: dealsTable.contactId }).from(dealsTable).where(eq(dealsTable.id, existingActivity.dealId));
+            if (deal) {
+              const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId, name: contactsTable.name }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+              if (contact) { contactOwnerId = contact.salesOwnerId; contactName = contact.name; }
+            }
+          }
+          if (contactOwnerId && contactOwnerId !== user.id) {
+            await createNotification({
+              userId: contactOwnerId,
+              type: "follow_up_completed",
+              title: "Follow-up Completed",
+              message: `Follow-up for ${contactName} has been marked as Completed.\nCompleted By: ${user.name}`,
+              link: existingActivity.contactId ? `/leads/${existingActivity.contactId}` : existingActivity.dealId ? `/deals/${existingActivity.dealId}` : "#",
+              relatedId: params.data.id,
+              relatedType: "activity",
+            });
+          }
+        }
+      }
+    } catch (sideEffectErr) {
+      req.log.error({ err: sideEffectErr }, "Activity update side-effect error");
+    }
+
     res.json(await enrichActivity(activity));
   } catch (err) {
     req.log.error({ err }, "Update activity error");

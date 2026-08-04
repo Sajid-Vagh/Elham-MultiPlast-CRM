@@ -168,6 +168,7 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
             contactId,
             type: actType as any,
             notes: discussionNotes || null,
+            followUpDate: today,
             callStatus: "Completed",
           },
         });

@@ -110,8 +110,12 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
   };
 
   const handleLogActivity = () => {
+    if (!actFollowUp) {
+      toast({ title: "Validation Error", description: "Follow-up date is required", variant: "destructive" });
+      return;
+    }
     createActivity.mutate(
-      { data: { dealId: dealId!, type: actType as any, notes: actNotes || null, followUpDate: actFollowUp || null, followUpTime: actFollowUpTime || null } },
+      { data: { dealId: dealId!, type: actType as any, notes: actNotes || null, followUpDate: actFollowUp, followUpTime: actFollowUpTime || null } },
       { onSuccess: () => { toast({ title: "Activity logged" }); setActivityOpen(false); setActNotes(""); setActFollowUp(""); setActFollowUpTime(""); invalidateAllActivity(); }, onError: () => toast({ title: "Error logging activity", variant: "destructive" }) },
     );
   };
@@ -362,7 +366,7 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setActivityOpen(false)}>Cancel</Button>
-            <Button onClick={handleLogActivity} disabled={createActivity.isPending}>Log</Button>
+            <Button onClick={handleLogActivity} disabled={createActivity.isPending || !actFollowUp}>Log</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

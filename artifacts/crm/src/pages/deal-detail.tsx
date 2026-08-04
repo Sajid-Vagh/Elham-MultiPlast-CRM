@@ -414,7 +414,11 @@ export default function DealDetail() {
   };
 
   const handleLogActivity = () => {
-    const payload = { dealId, type: actType as any, notes: actNotes || null, followUpDate: actFollowUp || null, followUpTime: actFollowUpTime || null };
+    if (!actFollowUp) {
+      toast({ title: "Validation Error", description: "Follow-up date is required", variant: "destructive" });
+      return;
+    }
+    const payload = { dealId, type: actType as any, notes: actNotes || null, followUpDate: actFollowUp, followUpTime: actFollowUpTime || null };
     createActivity.mutate({ data: payload }, {
       onSuccess: () => {
         onActivityChange(queryClient, dealId, contact?.id);
@@ -685,7 +689,7 @@ export default function DealDetail() {
                     <div><Label>Notes</Label><Textarea value={actNotes} onChange={e => setActNotes(e.target.value)} placeholder="Notes from this interaction..." /></div>
                     <div><Label>Next Follow-up Date</Label><Input type="date" value={actFollowUp} onChange={e => setActFollowUp(e.target.value)} /></div>
                     {actFollowUp && <div><Label>Follow-up Time</Label><Input type="time" value={actFollowUpTime} onChange={e => setActFollowUpTime(e.target.value)} /></div>}
-                    <Button onClick={handleLogActivity} disabled={createActivity.isPending} className="w-full">Log</Button>
+                    <Button onClick={handleLogActivity} disabled={createActivity.isPending || !actFollowUp} className="w-full">Log</Button>
                   </div>
                 </DialogContent>
               </Dialog>
