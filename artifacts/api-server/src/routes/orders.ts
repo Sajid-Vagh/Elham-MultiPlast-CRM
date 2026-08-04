@@ -209,6 +209,18 @@ router.get("/orders/global", async (req, res) => {
     if (supportOwnerId && supportOwnerId !== "All") conditions.push(eq(ordersTable.supportOwnerId, Number(supportOwnerId)));
     if (productionUnit && productionUnit !== "All") conditions.push(eq(ordersTable.productionUnit, productionUnit));
 
+    // Dispatch status filter — dispatch status lives on the production order
+    // (production_orders.dispatch_status), linked to the order via dealId.
+    if (dispatchStatus && dispatchStatus !== "All" && dispatchStatus !== "all") {
+      conditions.push(
+        sql`EXISTS (
+          SELECT 1 FROM production_orders po
+          WHERE po.deal_id = ${ordersTable.dealId}
+            AND po.dispatch_status = ${dispatchStatus}
+        )`
+      );
+    }
+
     // Customer search
     if (customer) {
       const s = `%${customer}%`;

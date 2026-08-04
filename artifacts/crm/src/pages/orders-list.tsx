@@ -26,10 +26,10 @@ const PROD_STATUS_COLORS: Record<string, string> = {
 };
 
 const DISPATCH_STATUS_COLORS: Record<string, string> = {
-  "Pending": "bg-gray-100 text-gray-600",
-  "In Transport": "bg-purple-100 text-purple-700",
+  "Pending Dispatch": "bg-amber-100 text-amber-700",
+  "Load Vehicle": "bg-orange-100 text-orange-700",
+  "Dispatch": "bg-purple-100 text-purple-700",
   "Delivered": "bg-green-100 text-green-700",
-  "Completed": "bg-emerald-100 text-emerald-700",
 };
 
 const DATE_PRESETS = [
@@ -149,10 +149,10 @@ export default function OrdersList() {
               <SelectTrigger className="w-40"><SelectValue placeholder="Dispatch" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="All">All Dispatch</SelectItem>
-                <SelectItem value="Pending">Pending</SelectItem>
-                <SelectItem value="In Transport">In Transport</SelectItem>
+                <SelectItem value="Pending Dispatch">Pending Dispatch</SelectItem>
+                <SelectItem value="Load Vehicle">Load Vehicle</SelectItem>
+                <SelectItem value="Dispatch">Dispatch</SelectItem>
                 <SelectItem value="Delivered">Delivered</SelectItem>
-                <SelectItem value="Completed">Completed</SelectItem>
               </SelectContent>
             </Select>
 

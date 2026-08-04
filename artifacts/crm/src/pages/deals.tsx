@@ -120,6 +120,7 @@ export default function Deals() {
   const [markWonDeal, setMarkWonDeal] = useState<{ deal: Deal; oldStage: string } | null>(null);
   const [wonAmount, setWonAmount] = useState("");
   const [wonProductionUnit, setWonProductionUnit] = useState("");
+  const [wonPriority, setWonPriority] = useState("Medium");
   const [wonProductionNotes, setWonProductionNotes] = useState("");
   const [wonSalesNotes, setWonSalesNotes] = useState("");
   const [wonUnitReason, setWonUnitReason] = useState("");
@@ -170,6 +171,7 @@ export default function Deals() {
     setMarkWonDeal(null);
     setWonAmount("");
     setWonProductionUnit("");
+    setWonPriority("Medium");
     setWonProductionNotes("");
     setWonSalesNotes("");
     setWonUnitReason("");
@@ -225,6 +227,7 @@ export default function Deals() {
       body: JSON.stringify({
         wonAmount: amount,
         productionUnit: wonProductionUnit || markWonDeal.deal.productionUnit,
+        priority: wonPriority,
         productionNotes: wonProductionNotes || null,
         salesNotes: wonSalesNotes || null,
         unitChangeReason: wonUnitReason || null,
@@ -235,6 +238,7 @@ export default function Deals() {
     setMarkWonDeal(null);
     setWonAmount("");
     setWonProductionUnit("");
+    setWonPriority("Medium");
     setWonProductionNotes("");
     setWonSalesNotes("");
     setWonUnitReason("");
@@ -605,6 +609,19 @@ export default function Deals() {
                 <SelectContent>
                   {WON_UNITS.map((u) => (
                     <SelectItem key={u} value={u}>{u}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Priority</Label>
+              <Select value={wonPriority} onValueChange={setWonPriority}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  {["Low", "Medium", "High", "Urgent"].map((p) => (
+                    <SelectItem key={p} value={p}>{p}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

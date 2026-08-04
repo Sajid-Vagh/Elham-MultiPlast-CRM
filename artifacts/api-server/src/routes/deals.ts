@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable, unitHistoryTable, activitiesTable, DEAL_STAGES, STAGE_PROBS, ordersTable, orderItemsTable, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable, existingCustomersTable } from "@workspace/db";
+import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable, unitHistoryTable, activitiesTable, DEAL_STAGES, STAGE_PROBS, ordersTable, orderItemsTable, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable, existingCustomersTable, PRIORITY_LEVELS } from "@workspace/db";
 import { eq, and, or, inArray, SQL, sql, desc, gte, lte, between, isNull } from "drizzle-orm";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import { parseEndDate } from "../lib/parse-end-date";
@@ -763,7 +763,10 @@ router.post("/deals/:id/mark-won", async (req, res) => {
     const dealId = Number(req.params.id);
     if (isNaN(dealId)) { res.status(400).json({ error: "Invalid deal id" }); return; }
 
-    const { wonAmount, productionUnit, productionNotes, salesNotes, unitChangeReason, voiceNoteId } = req.body as Record<string, any>;
+    const { wonAmount, productionUnit, productionNotes, salesNotes, unitChangeReason, voiceNoteId, priority } = req.body as Record<string, any>;
+
+    // Priority validation — accept only PRIORITY_LEVELS values, default "Medium"
+    const effectivePriority = PRIORITY_LEVELS.includes(priority as any) ? priority : "Medium";
 
     // Defensive parse of voiceNoteId (sent by the client AFTER background upload).
     // Guard against non-numeric ids so we never send NaN to Postgres.
@@ -945,7 +948,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
           proformaInvoiceId: latestPI?.id || null,
           dealId: deal.id,
           status: "Pending",
-          priority: "Medium",
+          priority: effectivePriority,
           productionUnit: effectiveProductionUnit,
           requestedUnit: effectiveProductionUnit,
           productionRemarks: productionNotes || null,
@@ -1057,6 +1060,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
           : null,
         `Order No: ${result.orderNumber}`,
         `Won Amount: ₹${effectiveWonAmount.toLocaleString("en-IN")}`,
+        `Priority: ${effectivePriority}`,
         productionNotes ? `\nProduction Notes: ${productionNotes}` : null,
       ].filter(Boolean).join("\n"),
       link: `/production/orders/${result.productionOrder?.id || ""}`,

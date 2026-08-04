@@ -130,6 +130,7 @@ export default function DealDetail() {
   const [markWonOpen, setMarkWonOpen] = useState(false);
   const [wonAmount, setWonAmount] = useState("");
   const [wonProductionUnit, setWonProductionUnit] = useState("");
+  const [wonPriority, setWonPriority] = useState("Medium");
   const [wonProductionNotes, setWonProductionNotes] = useState("");
   const [wonSalesNotes, setWonSalesNotes] = useState("");
   const [wonUnitReason, setWonUnitReason] = useState("");
@@ -207,6 +208,7 @@ export default function DealDetail() {
     setMarkWonOpen(false);
     setWonAmount("");
     setWonProductionUnit("");
+    setWonPriority("Medium");
     setWonProductionNotes("");
     setWonSalesNotes("");
     setWonUnitReason("");
@@ -229,6 +231,7 @@ export default function DealDetail() {
         body: JSON.stringify({
           wonAmount: amount,
           productionUnit: wonProductionUnit || deal.productionUnit,
+          priority: wonPriority,
           productionNotes: wonProductionNotes || null,
           salesNotes: wonSalesNotes || null,
           unitChangeReason: wonUnitReason || null,
@@ -236,6 +239,7 @@ export default function DealDetail() {
       });
       setWonSubmitting(false);
       setMarkWonOpen(false);
+      setWonPriority("Medium");
       onDealChange(queryClient, dealId, contact?.id);
       onProductionChange(queryClient);
       toast({
@@ -911,6 +915,19 @@ export default function DealDetail() {
                 <SelectContent>
                   {WON_UNITS.map((u) => (
                     <SelectItem key={u} value={u}>{u}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Priority</Label>
+              <Select value={wonPriority} onValueChange={setWonPriority}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  {["Low", "Medium", "High", "Urgent"].map((p) => (
+                    <SelectItem key={p} value={p}>{p}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

@@ -193,7 +193,7 @@ export default function ProductionOrders() {
           <SelectTrigger className="w-[150px]"><SelectValue placeholder="Dispatch Status" /></SelectTrigger>
           <SelectContent>
             {DISPATCH_STATUSES.map(s => (
-              <SelectItem key={s} value={s}>{s === "all" ? "All Dispatch" : s}</SelectItem>
+              <SelectItem key={s} value={s}>{s === "all" ? "All" : s}</SelectItem>
             ))}
           </SelectContent>
         </Select>
