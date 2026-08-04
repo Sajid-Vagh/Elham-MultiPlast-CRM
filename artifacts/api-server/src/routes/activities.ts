@@ -414,6 +414,18 @@ router.patch("/activities/:id", async (req, res) => {
       isEdited: true,
     };
 
+    // Completion safety: moving to a terminal status must never wipe the
+    // scheduled follow-up date/time, even if a stale client payload sends
+    // null/empty values for them. Preserve the existing values instead.
+    if (parsed.data.callStatus !== undefined && parsed.data.callStatus !== "Pending") {
+      if ((parsed.data.followUpDate === null || parsed.data.followUpDate === "") && existingActivity.followUpDate) {
+        updateData.followUpDate = existingActivity.followUpDate;
+      }
+      if ((parsed.data.followUpTime === null || parsed.data.followUpTime === "") && existingActivity.followUpTime) {
+        updateData.followUpTime = existingActivity.followUpTime;
+      }
+    }
+
     // Append notes to history instead of replacing
     if (parsed.data.notes !== undefined) {
       updateData.notes = appendNotesHistory(existingActivity.notes, parsed.data.notes, user);
