@@ -5,7 +5,6 @@ import { CreateActivityBody, UpdateActivityBody, ListActivitiesQueryParams, Upda
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { getAccessibleUnits } from "../lib/unit-filter";
-import { parseEndDate } from "../lib/parse-end-date";
 
 const router: IRouter = Router();
 
@@ -150,9 +149,11 @@ router.get("/activities", async (req, res) => {
       conditions.push(gte(activitiesTable.followUpDate, today));
     }
 
+    // Date-range filters apply to the follow-up date, not the record creation date.
+    // followUpDate is stored as a yyyy-MM-dd string, so string comparison is correct.
     const { startDate, endDate } = req.query as Record<string, string>;
-    if (startDate) conditions.push(gte(activitiesTable.createdAt, new Date(startDate)));
-    if (endDate) conditions.push(lte(activitiesTable.createdAt, parseEndDate(endDate)));
+    if (startDate) conditions.push(gte(activitiesTable.followUpDate, startDate));
+    if (endDate) conditions.push(lte(activitiesTable.followUpDate, endDate));
 
     const activities = conditions.length
       ? await db.select().from(activitiesTable).where(and(...conditions)).orderBy(desc(activitiesTable.createdAt))

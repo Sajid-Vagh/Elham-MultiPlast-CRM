@@ -140,9 +140,6 @@ export default function FollowUps() {
       const params = new URLSearchParams();
       if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
       if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
-      if (!dateFilter.startDate && !dateFilter.endDate) {
-        params.set("upcoming", "true");
-      }
       if (!isAdmin && me?.id) {
         params.set("userId", String(me.id));
       }
