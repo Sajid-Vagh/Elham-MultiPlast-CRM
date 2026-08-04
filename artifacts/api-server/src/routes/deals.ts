@@ -494,8 +494,11 @@ router.patch("/deals/:id", async (req, res) => {
         return;
       }
       console.log("[DEAL-PATCH-DEBUG] Won prerequisites OK, piTaxableAmount:", piValidation.piTaxableAmount);
-      // Won Value = PI Subtotal only — never GST, freight, or other charges
-      updateData.wonAmount = String(piValidation.piTaxableAmount);
+      // Won Value: prioritize the user-edited wonAmount from the request body.
+      // Fall back to the PI taxable amount only when the client did not send a valid value.
+      const bodyWonAmount = updateData.wonAmount;
+      const hasValidBodyWonAmount = bodyWonAmount !== undefined && bodyWonAmount !== null && bodyWonAmount !== "" && !isNaN(Number(bodyWonAmount)) && Number(bodyWonAmount) > 0;
+      updateData.wonAmount = hasValidBodyWonAmount ? String(Number(bodyWonAmount)) : String(piValidation.piTaxableAmount);
     }
     // Validate PI Sent: Active Proforma Invoice must exist for this deal
     if (updateData.stage === "PI Sent") {
@@ -809,8 +812,11 @@ router.post("/deals/:id/mark-won", async (req, res) => {
     // Fetch contact
     const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, deal.contactId));
 
-    // Won Value = PI Subtotal (taxableAmount) only — never GST, freight, or other charges
-    const effectiveWonAmount = piTaxableAmount;
+    // Won Value: prioritize the user-edited value sent by the frontend.
+    // Fall back to the PI taxable amount only when the client did not provide a valid wonAmount.
+    const effectiveWonAmount = wonAmount !== undefined && wonAmount !== null && wonAmount !== "" && !isNaN(Number(wonAmount))
+      ? Number(wonAmount)
+      : piTaxableAmount;
 
     // Fetch proforma invoice items (if PI exists)
     let piItems: any[] = [];
