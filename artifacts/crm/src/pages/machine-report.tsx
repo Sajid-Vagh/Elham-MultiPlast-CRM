@@ -12,7 +12,7 @@ import { useUserUnits } from "@/lib/use-user-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 
 const MACHINE_TYPES = ["All", "250ml Machine", "1L Machine", "5L Machine"];
-const STATUS_OPTIONS = ["All", "Pending", "Accepted", "Planning", "In Production", "Packing"];
+const STATUS_OPTIONS = ["All", "Pending", "In Production"];
 
 interface ReportData {
   summary: { totalProducts: number; totalBottles: number; pending: number; inProduction: number; completed: number };
