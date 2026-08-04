@@ -579,6 +579,36 @@ router.post("/contacts/:id/read", async (req, res) => {
   }
 });
 
+// POST /contacts/mark-all-read — Bulk mark all leads as read in the current user's scope.
+// Sales users mark only their own leads; admins/support mark all unread leads within their
+// accessible units. Only touches rows that actually need updating (efficient single UPDATE).
+// Does NOT bump updatedAt so the Leads sort order is preserved.
+router.post("/contacts/mark-all-read", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const conditions: SQL[] = [eq(contactsTable.isRead, false)];
+
+    if (user.role === "sales") {
+      conditions.push(eq(contactsTable.salesOwnerId, user.id));
+    } else {
+      const units = getAccessibleUnits(user);
+      if (units) conditions.push(inArray(contactsTable.unit, units));
+    }
+
+    const result = await db
+      .update(contactsTable)
+      .set({ isRead: true, isRepeatEnquiry: false })
+      .where(and(...conditions));
+
+    res.json({ success: true, message: "All leads marked as read", updated: result.rowCount || 0 });
+  } catch (err) {
+    req.log.error({ err }, "Mark all read error");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
+
 // Get comment history for a contact
 router.get("/contacts/:id/comments", async (req, res) => {
   try {

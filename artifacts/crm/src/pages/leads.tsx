@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Trash2, MessageSquare, MoreVertical, XCircle } from "lucide-react";
+import { Plus, Search, Trash2, MessageSquare, MoreVertical, XCircle, CheckCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
@@ -95,6 +95,7 @@ export default function Leads() {
   // Bulk selection & delete
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [markAllReadSubmitting, setMarkAllReadSubmitting] = useState(false);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -168,6 +169,8 @@ export default function Leads() {
     staleTime: 10_000,
   });
   const { data: users } = useCustomerFacingUsers();
+
+  const unreadCount = contacts?.filter((c: any) => !c.isRead).length ?? 0;
 
   const allIds = contacts?.map(c => c.id) ?? [];
   const allSelected = allIds.length > 0 && allIds.every(id => selectedIds.has(id));
@@ -258,6 +261,34 @@ export default function Leads() {
     }).catch(() => {});
   };
 
+  const handleMarkAllRead = async () => {
+    setMarkAllReadSubmitting(true);
+    try {
+      const res = await fetch("/api/contacts/mark-all-read", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
+      });
+      if (!res.ok) throw new Error("Failed to mark all read");
+      const result = await res.json().catch(() => ({}));
+      // Optimistically clear dots in every cached leads list so they vanish instantly
+      queryClient.setQueriesData<any[]>(
+        { queryKey: ["leads-contacts"] },
+        (old) => old?.map((c) => ({ ...c, isRead: true, isRepeatEnquiry: false })) ?? old
+      );
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
+      toast({
+        title: "All leads marked as read",
+        description: result?.updated ? `${result.updated} lead${result.updated !== 1 ? "s" : ""} marked as read` : undefined,
+      });
+    } catch (err: any) {
+      toast({ title: "Failed to mark all read", description: err?.message || "Please try again", variant: "destructive" });
+    } finally {
+      setMarkAllReadSubmitting(false);
+    }
+  };
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex justify-between items-center">
@@ -266,6 +297,11 @@ export default function Leads() {
           <p className="text-muted-foreground mt-1">Manage and track your contacts.</p>
         </div>
         <div className="flex items-center gap-2">
+          {unreadCount > 0 && (
+            <Button variant="outline" onClick={handleMarkAllRead} disabled={markAllReadSubmitting}>
+              <CheckCheck className="mr-2 h-4 w-4" /> Mark All Read
+            </Button>
+          )}
           <ExportDropdown exportUrl="/api/exports/contacts" filename="Leads" />
           <Link href="/leads/new">
             <Button>
