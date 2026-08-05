@@ -933,12 +933,14 @@ export async function enrichProductionOrder(order: any, user?: { role: string })
     masterOrderId: masterOrder?.id ?? null,
     masterOrderNumber,
     customerCode: contact?.customerCode || null,
-    // Customer identity is sourced from the master orders row when available so
-    // the EXACT string rendered on the global Orders page is reproduced here:
-    //   companyName || customerName (+ customerCode appended client-side).
-    // Fallback to the contact/PI values only for orphan orders (no master row).
-    companyName: masterOrder?.companyName || contact?.companyName || contact?.name || invoice?.companyName || null,
-    customerName: masterOrder?.customerName || contact?.name || invoice?.customerName || null,
+    // Company Name = the official billing Trade Name from the linked Proforma
+    // Invoice ONLY — strictly no fallback (per display spec).
+    companyName: invoice?.tradeName || null,
+    // Customer = the client/lead identity resolved from the customers table
+    // (contacts): company_name first, individual name as fallback. The master
+    // order snapshot / PI customer name remain only as a last resort for
+    // orphan production orders that have no resolvable contact.
+    customerName: contact?.companyName || contact?.name || masterOrder?.customerName || invoice?.customerName || null,
     orderNumber: masterOrderNumber || order.formattedOrderId || (order.createdAt ? `EML_${getFinancialYear(new Date(order.createdAt))}_${order.id}` : `#${order.id}`),
   };
   // Mask customer identity for production-only users

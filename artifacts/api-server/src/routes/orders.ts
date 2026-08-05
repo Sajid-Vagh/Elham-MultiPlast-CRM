@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, ordersTable, orderItemsTable, usersTable, contactsTable, orderTimelineTable, orderRevisionsTable } from "@workspace/db";
-import { eq, and, or, ilike, desc, sql, inArray, gte, lte } from "drizzle-orm";
+import { db, ordersTable, orderItemsTable, usersTable, contactsTable, orderTimelineTable, orderRevisionsTable, proformaInvoicesTable } from "@workspace/db";
+import { eq, and, or, ilike, desc, sql, inArray, gte, lte, getTableColumns } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { generateId } from "../lib/id-generator";
@@ -256,17 +256,42 @@ router.get("/orders/global", async (req, res) => {
     const offset = (pageNum - 1) * limitNum;
 
     const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(ordersTable).where(and(...conditions));
-    const orders = await db.select().from(ordersTable).where(and(...conditions)).orderBy(desc(ordersTable.createdAt)).limit(limitNum).offset(offset);
+    // LEFT JOIN LATERAL the latest active Proforma Invoice linked via the deal
+    // (orders.deal_id -> proforma_invoices.deal_id). Its official billing
+    // trade_name is the authoritative Company Name shown on the Orders table;
+    // NULL when no PI is linked (e.g. directly-created orders).
+    const orders = await db
+      .select({
+        ...getTableColumns(ordersTable),
+        piTradeName: sql<string | null>`(
+          SELECT pi.trade_name
+          FROM proforma_invoices pi
+          WHERE pi.deal_id = ${ordersTable.dealId}
+            AND pi.is_active = true
+            AND pi.is_deleted = false
+          ORDER BY pi.created_at DESC
+          LIMIT 1
+        )`,
+      })
+      .from(ordersTable)
+      .where(and(...conditions))
+      .orderBy(desc(ordersTable.createdAt))
+      .limit(limitNum)
+      .offset(offset);
 
     // Enrich with items count, totals, production info, dispatch status
     const enriched = await Promise.all(orders.map(async (order) => {
       const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
       const salesOwner = order.salesOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, order.salesOwnerId)).then(r => r[0]) : null;
       const supportOwner = order.supportOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, order.supportOwnerId)).then(r => r[0]) : null;
-      let contactCustomerCode = null;
+      let contactInfo = null;
       if (order.contactId) {
-        const [c] = await db.select({ customerCode: contactsTable.customerCode }).from(contactsTable).where(eq(contactsTable.id, order.contactId));
-        if (c) contactCustomerCode = c.customerCode;
+        const [c] = await db.select({
+          customerCode: contactsTable.customerCode,
+          companyName: contactsTable.companyName,
+          name: contactsTable.name,
+        }).from(contactsTable).where(eq(contactsTable.id, order.contactId));
+        if (c) contactInfo = c;
       }
 
       const safe = (u: any) => u ? (({ passwordHash: _, ...rest }) => rest)(u) : null;
@@ -291,9 +316,14 @@ router.get("/orders/global", async (req, res) => {
       return {
         id: order.id,
         orderNumber: order.orderNumber,
-        customerName: order.customerName,
-        companyName: order.companyName,
-        customerCode: contactCustomerCode,
+        // Customer = the client/lead identity from the customers table
+        // (contacts): company_name first, individual name as fallback.
+        // order.customerName is only a last resort for orders with no contact.
+        customerName: contactInfo?.companyName || contactInfo?.name || order.customerName || null,
+        // Company Name = strictly the billing trade_name from the linked
+        // Proforma Invoice — no fallback.
+        companyName: order.piTradeName || null,
+        customerCode: contactInfo?.customerCode,
         mobile: order.mobile,
         status: order.status,
         grandTotal: order.grandTotal,
