@@ -40,17 +40,21 @@ async function enrichOrder(order: any) {
   };
 }
 
-// Helper: verify order access (unit isolation + role ownership)
+// Helper: verify order access (unit isolation + role ownership).
+// readOnly relaxes the per-role ownership checks: any internal role
+// (admin, sales, production, production_and_support) may VIEW any order
+// within their accessible units. Write operations keep strict ownership.
 async function verifyOrderAccess(
   user: { id: number; role: string; unit?: string | null },
-  orderId: number
+  orderId: number,
+  readOnly = false
 ): Promise<{ order: any; error?: string; status?: number }> {
   const accessibleUnits = getAccessibleUnits(user);
   const conds: any[] = [eq(ordersTable.id, orderId)];
   if (accessibleUnits) conds.push(inArray(ordersTable.productionUnit, accessibleUnits));
   const [order] = await db.select().from(ordersTable).where(and(...conds)).limit(1);
   if (!order) return { order: null, error: "Order not found", status: 404 };
-  if (user.role !== "admin") {
+  if (!readOnly && user.role !== "admin") {
     if (user.role === "sales" && order.salesOwnerId !== user.id) {
       return { order: null, error: "Forbidden", status: 403 };
     }
@@ -334,7 +338,7 @@ router.get("/orders/:id", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const id = Number(req.params.id);
-    const { order, error, status } = await verifyOrderAccess(user, id);
+    const { order, error, status } = await verifyOrderAccess(user, id, true);
     if (!order) { res.status(status!).json({ error }); return; }
 
     res.json(await enrichOrder(order));
@@ -644,7 +648,7 @@ router.get("/orders/:id/timeline", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const id = Number(req.params.id);
-    const { order, error, status } = await verifyOrderAccess(user, id);
+    const { order, error, status } = await verifyOrderAccess(user, id, true);
     if (!order) { res.status(status!).json({ error }); return; }
 
     const events = await db.select({
@@ -673,7 +677,7 @@ router.get("/orders/:id/revisions", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const id = Number(req.params.id);
-    const { order, error, status } = await verifyOrderAccess(user, id);
+    const { order, error, status } = await verifyOrderAccess(user, id, true);
     if (!order) { res.status(status!).json({ error }); return; }
 
     const revisions = await db.select({
