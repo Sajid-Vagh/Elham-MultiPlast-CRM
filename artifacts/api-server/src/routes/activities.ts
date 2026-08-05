@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, activitiesTable, usersTable, contactsTable, dealsTable, notificationsTable } from "@workspace/db";
-import { eq, and, or, gte, lte, isNull, SQL, desc } from "drizzle-orm";
+import { eq, and, or, gte, lte, isNull, SQL, sql, desc } from "drizzle-orm";
 import { CreateActivityBody, UpdateActivityBody, ListActivitiesQueryParams, UpdateActivityParams, DeleteActivityParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -131,6 +131,30 @@ router.get("/activities", async (req, res) => {
       if (params.data.dealId) conditions.push(eq(activitiesTable.dealId, params.data.dealId));
       if (params.data.contactId) conditions.push(eq(activitiesTable.contactId, params.data.contactId));
       if (params.data.userId) conditions.push(eq(activitiesTable.createdBy, params.data.userId));
+    }
+
+    // Sales-person filter: match the sales owner of the activity's contact,
+    // resolved either directly (activity.contactId) or via its deal
+    // (activity.dealId -> deal.contactId). This is distinct from `userId`,
+    // which filters by the activity creator (createdBy).
+    const salesPersonId = req.query.salesPersonId as string | undefined;
+    if (salesPersonId) {
+      const ownerId = Number(salesPersonId);
+      if (!Number.isNaN(ownerId)) {
+        conditions.push(sql`(
+          EXISTS (
+            SELECT 1 FROM contacts c
+            WHERE c.id = ${activitiesTable.contactId}
+              AND c.sales_owner_id = ${ownerId}
+          )
+          OR EXISTS (
+            SELECT 1 FROM deals d
+            JOIN contacts c ON c.id = d.contact_id
+            WHERE d.id = ${activitiesTable.dealId}
+              AND c.sales_owner_id = ${ownerId}
+          )
+        )`);
+      }
     }
 
     // Handle upcoming + date filters with proper support for extra query params

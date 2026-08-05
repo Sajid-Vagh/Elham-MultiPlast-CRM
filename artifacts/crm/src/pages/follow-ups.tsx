@@ -147,9 +147,9 @@ export default function FollowUps() {
       if (!isAdmin && me?.id) {
         params.set("userId", String(me.id));
       }
-      if (isAdmin && ownerFilter) {
-        params.set("userId", ownerFilter);
-      }
+    if (isAdmin && ownerFilter) {
+      params.set("salesPersonId", ownerFilter);
+    }
       const res = await fetch(`/api/activities?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
