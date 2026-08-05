@@ -46,6 +46,23 @@ const PRIORITY_COLORS: Record<string, string> = {
   "Urgent": "bg-red-100 text-red-700",
 };
 
+// Origin filter options. The `value` must match `production_orders.created_by_role`
+// exactly (the API filters with `eq(created_by_role, origin)`).
+const ORIGINS = [
+  { value: "all", label: "All Origins" },
+  { value: "admin", label: "Admin" },
+  { value: "production", label: "Production" },
+  { value: "sales", label: "Sales" },
+  { value: "production_and_support", label: "Support" },
+];
+
+const ORIGIN_BADGES: Record<string, { label: string; className: string }> = {
+  admin: { label: "ADMIN", className: "bg-amber-50 text-amber-700 border-amber-200" },
+  production: { label: "PRODUCTION", className: "bg-orange-50 text-orange-700 border-orange-200" },
+  sales: { label: "SALES", className: "bg-blue-50 text-blue-700 border-blue-200" },
+  production_and_support: { label: "SUPPORT", className: "bg-purple-50 text-purple-700 border-purple-200" },
+};
+
 const STATUSES = [
   "all", "Pending", "Production On Going",
   "Ready To Dispatch", "Completed", "Cancelled",
@@ -212,9 +229,7 @@ export default function ProductionOrders() {
         <Select value={origin} onValueChange={(v) => { setOrigin(v); setPage(1); }}>
           <SelectTrigger className="w-[140px]"><SelectValue placeholder="Origin" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Origins</SelectItem>
-            <SelectItem value="sales">Sales</SelectItem>
-            <SelectItem value="production_and_support">Support</SelectItem>
+            {ORIGINS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
           </SelectContent>
         </Select>
 
@@ -282,8 +297,8 @@ export default function ProductionOrders() {
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
                         {order.createdByRole ? (
-                          <Badge variant="outline" className={`text-[10px] ${order.createdByRole === "production_and_support" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-blue-50 text-blue-700 border-blue-200"}`}>
-                            {order.createdByRole === "production_and_support" ? "SUPPORT" : "SALES"}
+                          <Badge variant="outline" className={`text-[10px] ${ORIGIN_BADGES[order.createdByRole]?.className || "bg-gray-50 text-gray-600 border-gray-200"}`}>
+                            {ORIGIN_BADGES[order.createdByRole]?.label || order.createdByRole.toUpperCase()}
                           </Badge>
                         ) : "-"}
                       </td>
