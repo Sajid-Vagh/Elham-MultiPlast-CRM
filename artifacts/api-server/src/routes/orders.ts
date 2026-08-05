@@ -211,15 +211,13 @@ router.get("/orders/global", async (req, res) => {
     // Owner filters
     if (salesOwnerId && salesOwnerId !== "All") conditions.push(eq(ordersTable.salesOwnerId, Number(salesOwnerId)));
     if (supportOwnerId && supportOwnerId !== "All") conditions.push(eq(ordersTable.supportOwnerId, Number(supportOwnerId)));
-    // "All Owners" filter — matches the selected user as sales owner, support
-    // owner, or the order's creator (Created By).
+    // "All Owners" filter — strict match on the Sales Owner only. This MUST NOT
+    // match createdBy/supportOwnerId: an order created by the selected user but
+    // assigned to another sales owner would otherwise leak into the result (and
+    // show the wrong owner in the table). The condition is ANDed with every
+    // other active filter via `and(...conditions)` below.
     if (ownerId && ownerId !== "All") {
-      const ownerIdNum = Number(ownerId);
-      conditions.push(or(
-        eq(ordersTable.salesOwnerId, ownerIdNum),
-        eq(ordersTable.supportOwnerId, ownerIdNum),
-        eq(ordersTable.createdBy, ownerIdNum),
-      )!);
+      conditions.push(eq(ordersTable.salesOwnerId, Number(ownerId)));
     }
     if (productionUnit && productionUnit !== "All") conditions.push(eq(ordersTable.productionUnit, productionUnit));
 
