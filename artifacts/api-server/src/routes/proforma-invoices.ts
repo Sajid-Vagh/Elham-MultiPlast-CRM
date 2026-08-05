@@ -890,6 +890,7 @@ router.post("/proforma-invoices", async (req, res) => {
         type: "Note",
         notes: `Proforma Invoice Created — ${finalInvoiceNumber}${versionNote}\n\nAmount: ₹${Number(grandTotal || 0).toLocaleString("en-IN")}\nBy: ${user.name}\n${ts}`,
         createdBy: user.id,
+        callStatus: "Completed",
       });
     }
 
@@ -909,6 +910,7 @@ router.post("/proforma-invoices", async (req, res) => {
           type: "Note",
           notes: `Deal moved to PI Sent (Proforma Invoice ${finalInvoiceNumber} generated & sent)`,
           createdBy: user.id,
+          callStatus: "Completed",
         });
       }
     }
@@ -1420,6 +1422,7 @@ async function updateInvoiceHandler(req: any, res: any) {
           type: "Note",
           notes: `Proforma Invoice Revised — ${newInvoiceNumber} (Version ${nextVersion})\n\nModified from: ${existing.invoiceNumber} (Version ${existing.version || 1}, status: ${existing.status})${reasonNote}${diffNote}\nBy: ${user.name}\n${ts}`,
           createdBy: user.id,
+          callStatus: "Completed",
         });
       }
 
@@ -1451,6 +1454,7 @@ async function updateInvoiceHandler(req: any, res: any) {
                   type: "Note",
                   notes: `Won Value updated: ₹${prevWon.toLocaleString("en-IN")} → ₹${newTaxable.toLocaleString("en-IN")} (PI revision ${nextVersion})\nBy: ${user.name}\n${new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}`,
                   createdBy: user.id,
+                  callStatus: "Completed",
                 });
               }
             }
@@ -1538,6 +1542,7 @@ async function updateInvoiceHandler(req: any, res: any) {
           type: "Note",
           notes: `Proforma Invoice Updated — ${existing.invoiceNumber}\n\nChanged: ${changedFields.join(", ")}\nBy: ${user.name}\n${ts}`,
           createdBy: user.id,
+          callStatus: "Completed",
         });
       }
 
@@ -1560,6 +1565,7 @@ async function updateInvoiceHandler(req: any, res: any) {
                   type: "Note",
                   notes: `Won Value updated: ₹${prevWon.toLocaleString("en-IN")} → ₹${newTaxableAmount.toLocaleString("en-IN")} (PI edit)\nBy: ${user.name}\n${new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}`,
                   createdBy: user.id,
+                  callStatus: "Completed",
                 });
               }
             }
@@ -1588,6 +1594,7 @@ async function updateInvoiceHandler(req: any, res: any) {
           type: "Note",
           notes: `Deal moved to PI Sent (Proforma Invoice ${existing.invoiceNumber} generated & sent)`,
           createdBy: user.id,
+          callStatus: "Completed",
         });
       }
     }
@@ -1856,6 +1863,7 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
           type: "Note",
           notes: activityNote,
           createdBy: user.id,
+          callStatus: "Completed",
         });
       }
     }
@@ -1872,6 +1880,7 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
           type: "Note",
           notes: `Deal moved to PI Sent (Proforma Invoice ${invoice.invoiceNumber} sent to customer)`,
           createdBy: user.id,
+          callStatus: "Completed",
         });
       }
     }
@@ -2229,6 +2238,7 @@ router.post("/proforma-invoices/:id/duplicate", async (req, res) => {
         type: "Note",
         notes: `Proforma Invoice Revised — ${newInvoiceNumber} (Version ${nextVersion})\n\nCopied from: ${source.invoiceNumber} (Version ${source.version || 1})${reasonNote}\nBy: ${user.name}\n${ts}`,
         createdBy: user.id,
+        callStatus: "Completed",
       });
     }
 

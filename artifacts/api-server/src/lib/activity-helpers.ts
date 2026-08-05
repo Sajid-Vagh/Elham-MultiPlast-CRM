@@ -69,11 +69,14 @@ export async function completePendingActivitiesForDeal(
     hour: "2-digit",
     minute: "2-digit",
   });
+  // System-generated audit note — explicitly "Completed" so it never surfaces
+  // as a ghost "Upcoming" follow-up with a blank date (same fix as Sales).
   await exec.insert(activitiesTable).values({
     dealId,
     contactId: contactId ?? null,
     type: "Note",
     notes: `Pending Activities (${activityIds.length}) automatically completed because Deal was marked as ${stage}.\n\n${ts}`,
     createdBy: userId,
+    callStatus: "Completed",
   });
 }

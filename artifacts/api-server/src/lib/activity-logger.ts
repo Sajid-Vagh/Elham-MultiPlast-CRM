@@ -77,12 +77,17 @@ export async function logActivity(
   // Only insert if we have at least a dealId or contactId
   if (!dealId && !contactId) return;
 
+  // System-generated audit notes must never inherit the schema default
+  // call_status of "Pending" (with a NULL follow_up_date), which would surface
+  // them as ghost "Upcoming" follow-ups with a blank date. Mark them explicitly
+  // as "Completed" so they bypass the Upcoming filters (same fix as Sales).
   await exec.insert(activitiesTable).values({
     dealId: dealId ?? null,
     contactId: contactId ?? null,
     type: "Note",
     notes,
     createdBy,
+    callStatus: "Completed",
   });
 }
 

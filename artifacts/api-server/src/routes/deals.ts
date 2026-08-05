@@ -1011,6 +1011,7 @@ router.post("/deals/:id/mark-won", async (req, res) => {
             type: "Note",
             notes,
             createdBy: user.id,
+            callStatus: "Completed",
           }))
         );
       }

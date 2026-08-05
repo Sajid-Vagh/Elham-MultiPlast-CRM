@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useGetMe, useLogout, useListActivities, getListActivitiesQueryKey, useUpdateActivity } from "@workspace/api-client-react";
+import { onActivityChange } from "@/lib/query-invalidation";
 import { Link, useLocation } from "wouter";
 import { playFollowUpSound, showBrowserNotification } from "@/lib/notification-sound";
 import { NotificationProvider, useNotifications } from "@/lib/notification-context";
@@ -101,6 +103,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 function LayoutMain({ user, children }: { user: any; children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const logout = useLogout();
   const [bellOpen, setBellOpen] = useState(false);
   const [dismissedToday, setDismissedToday] = useState<Set<number>>(new Set());
@@ -219,9 +222,18 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     markAsSeenByRelated(activityId, "activity");
     updateActivity.mutate(
       { id: activityId, data: { callStatus: "Completed" } },
-      { onSuccess: () => setDismissedToday(prev => new Set(prev).add(activityId)) }
+      {
+        onSuccess: () => {
+          setDismissedToday(prev => new Set(prev).add(activityId));
+          queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey() });
+          queryClient.invalidateQueries({ queryKey: ["follow-up-activities"] });
+          queryClient.invalidateQueries({ queryKey: ["follow-ups"] });
+          queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+          onActivityChange(queryClient);
+        }
+      }
     );
-  }, [updateActivity, markAsSeenByRelated]);
+  }, [updateActivity, markAsSeenByRelated, queryClient]);
 
   const isProductionOnly = user.role === "production";
   const isSupport = user.role === "production_and_support";

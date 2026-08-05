@@ -75,6 +75,7 @@ router.post("/documents/upload", upload.single("file"), async (req: Request, res
       type: "Note",
       notes: `${documentType} Uploaded: ${docName}`,
       createdBy: user.id,
+      callStatus: "Completed",
     });
 
     res.json(doc);
@@ -137,7 +138,7 @@ router.post("/documents/upload-multiple", upload.array("files", 20), async (req:
     await db.insert(activitiesTable).values({
       contactId, dealId: dealId ?? 0, type: "Note",
       notes: `${results.length} document(s) uploaded`,
-      createdBy: user.id,
+      createdBy: user.id, callStatus: "Completed",
     });
 
     res.json(results);
@@ -283,7 +284,7 @@ router.get("/documents/:id/download", async (req: Request, res: Response) => {
     await db.insert(activitiesTable).values({
       contactId: doc.contactId, dealId: doc.dealId ?? 0, type: "Note",
       notes: `${doc.documentType} Downloaded: ${doc.name}`,
-      createdBy: user.id,
+      createdBy: user.id, callStatus: "Completed",
     });
 
     const url = store.getUrl(doc.storagePath);
@@ -413,7 +414,7 @@ router.post("/documents/:id/replace", upload.single("file"), async (req: Request
     await db.insert(activitiesTable).values({
       contactId: doc.contactId, dealId: doc.dealId ?? 0, type: "Note",
       notes: `${doc.documentType} Replaced: ${doc.name} (v${newVersion})`,
-      createdBy: user.id,
+      createdBy: user.id, callStatus: "Completed",
     });
 
     res.json({ message: "Document replaced", version: newVersion });
@@ -477,7 +478,7 @@ router.delete("/documents/:id", async (req: Request, res: Response) => {
     await db.insert(activitiesTable).values({
       contactId: doc.contactId, dealId: doc.dealId ?? 0, type: "Note",
       notes: `${doc.documentType} Deleted: ${doc.name}`,
-      createdBy: user.id,
+      createdBy: user.id, callStatus: "Completed",
     });
 
     res.json({ message: "Document deleted" });

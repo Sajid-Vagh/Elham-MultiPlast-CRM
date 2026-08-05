@@ -875,6 +875,7 @@ router.patch("/contacts/:id", async (req, res) => {
           type: "Note",
           notes: `${user.name} updated Lead\n\nChanged:\n${changes.join("\n\n")}\n\n${now}`,
           createdBy: user.id,
+          callStatus: "Completed",
         });
       }
     }
@@ -969,6 +970,7 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
       type: "Note",
       notes: `Lead marked as Lost\n\nLost Reason: ${displayReason}`,
       createdBy: user.id,
+      callStatus: "Completed",
     });
 
     res.json({ success: true });
