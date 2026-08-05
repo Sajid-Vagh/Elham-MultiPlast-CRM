@@ -8,7 +8,7 @@ import {
   VALID_DISPATCH_TRANSITIONS, PRODUCT_LINE_STATUSES,
   type ProductionStatus, type NoteType, type ProductLineStatus,
 } from "@workspace/db";
-import { eq, and, desc, sql, gte, lte, or, inArray, notInArray, ilike, type SQL } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte, or, inArray, notInArray, ilike, isNull, type SQL } from "drizzle-orm";
 import { getActivePiForDeal } from "./proforma-service";
 import { notifyProductionUsers, notifyDealEvent } from "./notification-service";
 import { createNotification } from "../routes/notifications";
@@ -2559,9 +2559,20 @@ export async function listOrders(
     status?: string; dispatchStatus?: string; priority?: string; search?: string;
     dateFrom?: string; dateTo?: string; createdBy?: string;
     unit?: string; origin?: string; page?: string; limit?: string;
+    hideDelivered?: boolean;
   }
 ) {
   const conditions = buildOrderConditions(user, filters);
+
+  // Default active view: exclude fully delivered orders from the list so the
+  // production team sees only work still in the pipeline. Skipped when the user
+  // explicitly filters by dispatch status (e.g. selecting "Delivered").
+  if (filters.hideDelivered && (!filters.dispatchStatus || filters.dispatchStatus === "all")) {
+    conditions.push(or(
+      isNull(productionOrdersTable.dispatchStatus),
+      notInArray(productionOrdersTable.dispatchStatus, ["Delivered"])
+    )!);
+  }
 
   if (filters.search) {
     // Case-insensitive search across every source that contributes to the enriched

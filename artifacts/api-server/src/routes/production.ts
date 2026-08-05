@@ -119,7 +119,7 @@ router.get("/production/orders", async (req, res) => {
     const user = await requireProductionUser(req, res);
     if (!user) return;
     const { status, dispatchStatus, priority, search, dateFrom, dateTo, createdBy, unit, origin, page, limit } = req.query as Record<string, string | undefined>;
-    res.json(await listOrders(user, { status, dispatchStatus, priority, search, dateFrom, dateTo, createdBy, unit, origin, page, limit }));
+    res.json(await listOrders(user, { status, dispatchStatus, priority, search, dateFrom, dateTo, createdBy, unit, origin, page, limit, hideDelivered: true }));
   } catch (err) {
     req.log.error({ err }, "List production orders error:");
     res.status(500).json({ success: false, error: "Internal Server Error" });
