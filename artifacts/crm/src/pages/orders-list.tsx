@@ -53,6 +53,21 @@ const DISPATCH_STATUSES = [
   "Delivered",
 ];
 
+// Convert a `<input type="date">` value (yyyy-MM-dd) into an explicit ISO
+// timestamp anchored to the local calendar day — 00:00:00.000 for the start,
+// 23:59:59.999 for the end. Sending full instants (instead of the bare date)
+// keeps the server from interpreting "yyyy-MM-dd" as UTC midnight, which
+// shifted the filter by one day.
+function toStartIso(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d, 0, 0, 0, 0).toISOString();
+}
+
+function toEndIso(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d, 23, 59, 59, 999).toISOString();
+}
+
 interface OrderRow {
   id: number;
   orderNumber: string;
@@ -93,8 +108,8 @@ export default function OrdersList() {
   const params = new URLSearchParams();
   if (search) params.set("search", search);
   if (datePreset !== "all") params.set("datePreset", datePreset);
-  if (datePreset === "custom" && customStartDate) params.set("startDate", customStartDate);
-  if (datePreset === "custom" && customEndDate) params.set("endDate", customEndDate);
+  if (datePreset === "custom" && customStartDate) params.set("startDate", toStartIso(customStartDate));
+  if (datePreset === "custom" && customEndDate) params.set("endDate", toEndIso(customEndDate));
   if (productionUnitFilter !== "All") params.set("productionUnit", productionUnitFilter);
   params.set("page", String(page));
   params.set("limit", "30");

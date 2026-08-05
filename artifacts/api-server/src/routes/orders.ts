@@ -8,7 +8,7 @@ import { generateOrderNumber } from "../lib/order-id-generator";
 import { logAudit } from "../middlewares/auth";
 import { promoteToExistingCustomer } from "./existing-customers";
 import { getAccessibleUnits } from "../lib/unit-filter";
-import { parseEndDate } from "../lib/parse-end-date";
+import { parseStartDate, parseEndDate, startOfTodayInBusinessTz, shiftDaysInBusinessTz, datePartsInBusinessTz, zonedMonthStart } from "../lib/date-range";
 import { cancelOrder } from "../lib/order-cancellation-service";
 
 const PRODUCTION_UNITS = ["Himatnagar", "Surat", "Rajkot"] as const;
@@ -110,7 +110,7 @@ router.get("/orders", async (req, res) => {
     }
 
     const { startDate, endDate } = req.query as Record<string, string>;
-    if (startDate) conditions.push(gte(ordersTable.createdAt, new Date(startDate)));
+    if (startDate) conditions.push(gte(ordersTable.createdAt, parseStartDate(startDate)));
     if (endDate) conditions.push(lte(ordersTable.createdAt, parseEndDate(endDate)));
 
     const pageNum = Math.max(1, Number(page));
@@ -169,32 +169,32 @@ router.get("/orders/global", async (req, res) => {
     // Status filters
     if (status && status !== "All") conditions.push(eq(ordersTable.status, status));
 
-    // Date presets
+    // Date presets — all boundaries are resolved in the business timezone
+    // (Asia/Kolkata) and converted to UTC instants, so the results are correct
+    // regardless of the API server's own timezone.
     const now = new Date();
     if (datePreset && datePreset !== "custom") {
       let presetStart: Date | null = null;
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const todayStart = startOfTodayInBusinessTz(now);
       switch (datePreset) {
         case "today":
           presetStart = todayStart;
           break;
         case "yesterday": {
-          const y = new Date(todayStart);
-          y.setDate(y.getDate() - 1);
+          const y = shiftDaysInBusinessTz(now, -1);
           presetStart = y;
           conditions.push(gte(ordersTable.createdAt, y));
-          const todayEnd = new Date(todayStart);
-          conditions.push(lte(ordersTable.createdAt, todayEnd));
+          conditions.push(lte(ordersTable.createdAt, todayStart));
           break;
         }
         case "this-week": {
-          const weekStart = new Date(todayStart);
-          weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-          presetStart = weekStart;
+          const { day } = datePartsInBusinessTz(now); // 0 = Sunday
+          presetStart = shiftDaysInBusinessTz(now, -day);
           break;
         }
         case "this-month": {
-          presetStart = new Date(now.getFullYear(), now.getMonth(), 1);
+          const { year, month } = datePartsInBusinessTz(now);
+          presetStart = zonedMonthStart(year, month);
           break;
         }
       }
@@ -202,7 +202,7 @@ router.get("/orders/global", async (req, res) => {
         conditions.push(gte(ordersTable.createdAt, presetStart));
       }
     } else if (startDate) {
-      conditions.push(gte(ordersTable.createdAt, new Date(startDate)));
+      conditions.push(gte(ordersTable.createdAt, parseStartDate(startDate)));
     }
     if (endDate) {
       conditions.push(lte(ordersTable.createdAt, parseEndDate(endDate)));
