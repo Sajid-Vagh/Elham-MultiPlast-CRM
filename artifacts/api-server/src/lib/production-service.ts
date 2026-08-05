@@ -298,27 +298,41 @@ export async function fastTrackReady(
     changedById: user.id, changedByName: user.name || "",
   });
 
-  const [invoice] = order.proformaInvoiceId
-    ? await db.select({ invoiceNumber: proformaInvoicesTable.invoiceNumber })
-        .from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, order.proformaInvoiceId))
-    : [];
+  const masterOrderNumber = await resolveMasterOrderNumber(order);
 
   await notifySupportOfReadyForDispatch({
     productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
     title: "Ready To Dispatch",
-    message: `Order #${invoice?.invoiceNumber || orderId} fast-tracked to Ready To Dispatch. Support action required.`,
+    message: `Order ${masterOrderNumber || orderId} fast-tracked to Ready To Dispatch. Support action required.`,
     excludeUserId: user.id,
   });
 
   await notifySalesOfProductionEvent({
     productionOrderId: orderId, invoiceId: order.proformaInvoiceId,
     title: "Ready To Dispatch",
-    message: `Order #${invoice?.invoiceNumber || orderId} fast-tracked to Ready To Dispatch. Support team has been notified.`,
+    message: `Order ${masterOrderNumber || orderId} fast-tracked to Ready To Dispatch. Support team has been notified.`,
     excludeUserId: user.id, createdByRole: order.createdByRole,
   });
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
   return { order: await enrichProductionOrder(updated!, user) };
+}
+
+// Resolve the canonical Master Order number for a production order. A production
+// order and its master "orders" row are created together when a deal/PI is
+// converted and share the same dealId, so we look the master up via that link.
+// Falls back to the production order's own formattedOrderId (legacy/unlinked).
+async function resolveMasterOrderNumber(order: { dealId?: number | null; formattedOrderId?: string | null }): Promise<string | null> {
+  if (order.dealId) {
+    const [mo] = await db
+      .select({ orderNumber: ordersTable.orderNumber })
+      .from(ordersTable)
+      .where(eq(ordersTable.dealId, order.dealId))
+      .orderBy(asc(ordersTable.createdAt))
+      .limit(1);
+    if (mo?.orderNumber) return mo.orderNumber;
+  }
+  return order.formattedOrderId || null;
 }
 
 async function resolveProductForPiItem(piItem: typeof proformaInvoiceItemsTable.$inferSelect): Promise<typeof productsTable.$inferSelect | undefined> {
