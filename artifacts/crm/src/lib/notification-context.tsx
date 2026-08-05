@@ -34,6 +34,7 @@ interface NotificationContextValue {
   markAsSeen: (id: number) => Promise<void>;
   markAsSeenByRelated: (relatedId: number, relatedType: string) => Promise<void>;
   deleteNotification: (id: number) => Promise<void>;
+  clearAllNotifications: () => Promise<void>;
   refetch: () => Promise<void>;
   panelNotification: Notification | null;
   openNotificationPanel: (notification: Notification) => void;
@@ -258,11 +259,30 @@ export function NotificationProvider({ userId, children }: { userId: number | un
     setPanelNotification(null);
   }, []);
 
+  const clearAllNotifications = useCallback(async () => {
+    // Optimistically clear local state so the Bell dropdown + History page
+    // update immediately, then persist the deletion server-side.
+    const prev = notifications;
+    setNotifications([]);
+    setTotal(0);
+
+    try {
+      const res = await fetch("/api/notifications/clear-all", { method: "DELETE", headers: getHeaders() });
+      if (!res.ok) throw new Error(`Clear failed (${res.status})`);
+      toast({ title: "All notifications cleared" });
+    } catch (err: any) {
+      // Roll back on failure so no notifications appear lost
+      setNotifications(prev);
+      setTotal(prev.length);
+      toast({ title: err?.message || "Failed to clear notifications", variant: "destructive" });
+    }
+  }, [getHeaders, notifications]);
+
   const value: NotificationContextValue = {
     notifications, total, unreadCount, latestNotification,
     loading, error,
     markAsRead, markAllAsRead, markAsSeen, markAsSeenByRelated,
-    deleteNotification, refetch: fetchAll,
+    deleteNotification, clearAllNotifications, refetch: fetchAll,
     panelNotification, openNotificationPanel, closeNotificationPanel,
   };
 

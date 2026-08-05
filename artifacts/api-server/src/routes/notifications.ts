@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, notificationsTable, usersTable, contactsTable } from "@workspace/db";
-import { eq, and, or, isNull, isNotNull, desc, sql, gte } from "drizzle-orm";
+import { eq, and, isNull, desc, sql } from "drizzle-orm";
 import { getUserFromRequest, getUserIdFromToken } from "./auth";
 import { notificationEmitter, NOTIFICATION_EVENT } from "../lib/notification-emitter";
 
@@ -126,9 +126,9 @@ router.get("/notifications/history", async (req: Request, res: Response) => {
   try {
     const conditions: any[] = [eq(notificationsTable.userId, user.id)];
 
-    // Exclude notifications that were read more than 24 hours ago (auto-expire read items)
-    const readCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    conditions.push(or(isNull(notificationsTable.readAt), gte(notificationsTable.readAt, readCutoff)));
+    // NOTIFICATIONS PERSIST INDEFINITELY. No auto-expiry filter on readAt here:
+    // read notifications stay visible in History until the user explicitly deletes
+    // them. This keeps entries from vanishing without a manual action.
 
     if (filter === "unread" || filter === "unseen") {
       conditions.push(isNull(notificationsTable.readAt));
@@ -451,9 +451,10 @@ export async function createNotification(params: {
   return n;
 }
 
-// Delete notifications read more than 24 hours ago. Unread notifications are NEVER deleted.
-// Triggered by cron (Vercel cron sends a GET with user-agent "vercel-cron/1.0",
-// or a CRON_SECRET query param, or an admin user).
+// Cron endpoint retained for backward compatibility (Vercel cron / CRON_SECRET
+// keep hitting it). AUTO-DELETION IS DISABLED: notifications must persist
+// indefinitely until a user manually deletes them, so nothing is ever removed
+// here automatically. Returns success so the scheduler never errors.
 router.all("/notifications/cleanup-expired", async (req: Request, res: Response) => {
   const cronSecret = process.env.CRON_SECRET;
   const hasCronAuth = !!cronSecret && req.query.key === cronSecret;
@@ -468,19 +469,24 @@ router.all("/notifications/cleanup-expired", async (req: Request, res: Response)
     }
   }
 
+  res.json({ success: true, deleted: 0 });
+});
+
+// Delete ALL notifications for the requesting user (bulk clear of history).
+// Registered BEFORE /notifications/:id so "clear-all" is not captured as an id.
+router.delete("/notifications/clear-all", async (req: Request, res: Response) => {
+  const user = await getUser(req, res);
+  if (!user) return;
+
   try {
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const deleted = await db
       .delete(notificationsTable)
-      .where(and(
-        isNotNull(notificationsTable.readAt),
-        sql`${notificationsTable.readAt} < ${cutoff}`
-      ))
+      .where(eq(notificationsTable.userId, user.id))
       .returning({ id: notificationsTable.id });
 
     res.json({ success: true, deleted: deleted.length });
   } catch (err) {
-    req.log.error({ err }, "Cleanup expired notifications error");
+    req.log.error({ err }, "Clear all notifications error");
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });

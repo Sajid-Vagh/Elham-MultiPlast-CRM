@@ -67,7 +67,13 @@ export default function NotificationsPage() {
   const [page, setPage] = useState(0);
   const limit = 50;
 
-  const { notifications, total, unreadCount, loading, error, markAsRead, markAllAsRead, deleteNotification, refetch, openNotificationPanel } = useNotifications();
+  const { notifications, total, unreadCount, loading, error, markAsRead, markAllAsRead, deleteNotification, clearAllNotifications, refetch, openNotificationPanel } = useNotifications();
+
+  const handleClearAll = () => {
+    if (total === 0) return;
+    if (!window.confirm(`Delete all ${total} notification${total !== 1 ? "s" : ""}? This cannot be undone.`)) return;
+    clearAllNotifications();
+  };
 
   const filtered = useMemo(() => {
     let list = [...notifications];
@@ -109,6 +115,11 @@ export default function NotificationsPage() {
         {unreadCount > 0 && (
           <Button variant="outline" size="sm" className="h-8 text-xs gap-1" onClick={markAllAsRead}>
             <CheckCheck className="h-3.5 w-3.5" /> Mark All Read
+          </Button>
+        )}
+        {total > 0 && (
+          <Button variant="destructive" size="sm" className="h-8 text-xs gap-1" onClick={handleClearAll}>
+            <Trash2 className="h-3.5 w-3.5" /> Clear All
           </Button>
         )}
       </div>

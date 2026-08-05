@@ -126,31 +126,32 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     showBrowserNotification(latestNotification.title, latestNotification.message, `crm-notif-${latestNotification.id}`);
   }, [latestNotification]);
 
-  const dismissPopup = useCallback((id: number) => {
+  const closePopup = useCallback((id: number) => {
     const timer = popupAutoDismissTimersRef.current.get(id);
     if (timer) {
       clearTimeout(timer);
       popupAutoDismissTimersRef.current.delete(id);
     }
     setActivePopups((prev) => { const next = new Set(prev); next.delete(id); return next; });
-    // Dismiss = mark read (keeps the entry in Notification History, stops it counting as unread)
-    markAsRead(id);
-  }, [markAsRead]);
+    // UI-ONLY close: dismissing the toast must NOT mark as read or delete the
+    // notification. The entry stays unread and remains visible in the bell
+    // dropdown and Notification History until the user manually reads/deletes it.
+  }, []);
 
   // Auto-dismiss each popup 5 seconds after it appears. Timers are tracked
   // per-notification so rapid arrivals during bulk imports never reset each
-  // other. Only the popup is dismissed; the notification stays in the DB and
-  // remains visible in the bell dropdown.
+  // other. The 5s timer ONLY closes the UI toast — it must not touch the
+  // persistent notification state (no mark-as-read, no delete).
   useEffect(() => {
     activePopups.forEach((id) => {
       if (popupAutoDismissTimersRef.current.has(id)) return;
       const timer = setTimeout(() => {
         popupAutoDismissTimersRef.current.delete(id);
-        dismissPopup(id);
+        closePopup(id);
       }, 5000);
       popupAutoDismissTimersRef.current.set(id, timer);
     });
-  }, [activePopups, dismissPopup]);
+  }, [activePopups, closePopup]);
 
   useEffect(() => {
     return () => {
@@ -627,8 +628,8 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
           message={n.message}
           link={n.link}
           type={n.type}
-          onDismiss={dismissPopup}
-          onOpen={() => { dismissPopup(n.id); openNotificationPanel(n); }}
+          onDismiss={closePopup}
+          onOpen={() => { closePopup(n.id); markAsRead(n.id); openNotificationPanel(n); }}
         />
       ))}
     </div>
