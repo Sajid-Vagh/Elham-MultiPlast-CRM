@@ -4,6 +4,7 @@ import { eq, inArray, and, desc, gte, lte } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 import { getAccessibleUnits } from "../lib/unit-filter";
+import { normalizeProfilePhotoUrl } from "../lib/storage";
 
 const router: IRouter = Router();
 
@@ -238,7 +239,7 @@ router.get("/dashboard/sales-performance", async (req, res) => {
         userName: u.name,
         username: u.username,
         colorCode: u.colorCode,
-        profilePhoto: u.profilePhoto,
+        profilePhoto: normalizeProfilePhotoUrl(u.profilePhoto),
         unit: u.unit,
         totalContacts,
         totalDeals,

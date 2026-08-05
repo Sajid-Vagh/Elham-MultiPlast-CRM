@@ -4,6 +4,7 @@ import { eq, or, and, desc } from "drizzle-orm";
 import { z } from "zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
+import { normalizeProfilePhotoUrl } from "../lib/storage";
 
 const router: IRouter = Router();
 
@@ -28,7 +29,7 @@ async function getDuplicateMetadata(existingContactId: number) {
     ownerId: existing.salesOwnerId,
     ownerName: owner?.name || "Unknown",
     ownerRole: owner?.role || "sales",
-    ownerProfilePhoto: owner?.profilePhoto || null,
+    ownerProfilePhoto: normalizeProfilePhotoUrl(owner?.profilePhoto),
     unit: existing.unit || null,
     category: existing.category,
     dealStage: latestDeal?.stage || null,

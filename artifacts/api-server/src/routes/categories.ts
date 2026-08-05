@@ -5,6 +5,7 @@ import { getUserFromRequest } from "./auth";
 import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import { parseEndDate } from "../lib/parse-end-date";
+import { normalizeProfilePhotoUrl } from "../lib/storage";
 
 const router: IRouter = Router();
 
@@ -156,7 +157,7 @@ router.get("/categories/:category/contacts", async (req, res) => {
     const users = await db.select().from(usersTable);
     const userMap = new Map(users.map(u => {
       const { passwordHash: _, ...safe } = u;
-      return [u.id, safe];
+      return [u.id, { ...safe, profilePhoto: normalizeProfilePhotoUrl(safe.profilePhoto) }];
     }));
 
     const deals = await db.select().from(dealsTable);
@@ -281,7 +282,7 @@ router.get("/categories/:category/contacts/search", async (req, res) => {
     const users = await db.select().from(usersTable);
     const userMap = new Map(users.map(u => {
       const { passwordHash: _, ...safe } = u;
-      return [u.id, safe];
+      return [u.id, { ...safe, profilePhoto: normalizeProfilePhotoUrl(safe.profilePhoto) }];
     }));
 
     const deals = await db.select().from(dealsTable);
@@ -432,7 +433,7 @@ router.get("/categories/history/:contactId", async (req, res) => {
     const users = await db.select().from(usersTable);
     const userMap = new Map(users.map(u => {
       const { passwordHash: _, ...safe } = u;
-      return [u.id, safe];
+      return [u.id, { ...safe, profilePhoto: normalizeProfilePhotoUrl(safe.profilePhoto) }];
     }));
 
     res.json(history.map(h => ({
@@ -512,7 +513,7 @@ router.get("/categories/report", async (req, res) => {
           userName: u.name,
           username: u.username,
           colorCode: u.colorCode,
-          profilePhoto: u.profilePhoto,
+          profilePhoto: normalizeProfilePhotoUrl(u.profilePhoto),
           conversions: convResult?.count ?? 0,
         });
       }

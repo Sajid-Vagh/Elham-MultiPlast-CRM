@@ -12,6 +12,7 @@ import { createNotification } from "./notifications";
 import { promoteDealToExistingCustomer } from "./existing-customers";
 import { generateId } from "../lib/id-generator";
 import { generateOrderNumber } from "../lib/order-id-generator";
+import { normalizeProfilePhotoUrl } from "../lib/storage";
 import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
 import { getActivePiForDeal, getActivePiSummary, validateActivePiForPiSent, deactivateActivePis } from "../lib/proforma-service";
 import { convertContactToMyClient, checkNoExistingOrder, getTodayWonCount, validateWonPrerequisites, validateProductionUnit, isPermanentClient } from "../lib/won-service";
@@ -91,7 +92,7 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
       let salesOwner = null;
       if (deal.salesOwnerId) {
         const [u] = await db.select().from(usersTable).where(eq(usersTable.id, deal.salesOwnerId));
-        if (u) { const { passwordHash: _, ...safe } = u; salesOwner = safe; }
+    if (u) { const { passwordHash: _, ...safe } = u; salesOwner = { ...safe, profilePhoto: normalizeProfilePhotoUrl(safe.profilePhoto) }; }
       }
       const activePI = await getActivePiSummary(db, deal.id);
       enrichedDeals.push({ ...deal, contact, salesOwner, activeProformaInvoice: activePI ?? null });
@@ -170,7 +171,7 @@ router.get("/deals", async (req, res) => {
     const contacts = await db.select().from(contactsTable);
     const users = await db.select().from(usersTable);
     const contactMap = new Map(contacts.map(c => [c.id, c]));
-    const userMap = new Map(users.map(u => { const { passwordHash: _, ...safe } = u; return [u.id, safe]; }));
+    const userMap = new Map(users.map(u => { const { passwordHash: _, ...safe } = u; return [u.id, { ...safe, profilePhoto: normalizeProfilePhotoUrl(safe.profilePhoto) }]; }));
 
     // Pipeline view: show deals for "Regular Follow up" contacts + all "My Client" contacts.
     // Completed (Won/Lost) deal visibility is controlled by the completedDealVisibility

@@ -140,6 +140,9 @@
 
 ### Note
 - The Reports "Performance by Sales Owner" table appears to show initials only when the users queried have `profilePhoto = null` in the database. The logged-in user's photo is visible via `useGetMe` (sidebar), but the by-owner endpoint queries *all* sales users. Once a photo is uploaded for each user in **Settings**, it displays correctly.
+- **Root cause of "photo works for admin but shows initials for non-admins":** legacy `profilePhoto` rows store a relative `/api/uploads/profile-photos/<file>` URL (uploaded while the local filesystem provider was active). Only `auth.ts` and `users.ts safeUser()` mapped these to working Supabase public URLs via `normalizeProfilePhotoUrl()`; every other endpoint returned the raw relative URL → 404 → initials fallback. Admin's photo worked because it was re-uploaded after the Supabase migration (absolute URL in DB).
+- **Fix:** added `normalizeProfilePhotoUrl()` to all remaining avatar-bearing responses: `dashboard.ts` (sales performance KPI), `reports.ts` (by-owner), `categories.ts` (topPerformers + salesOwner/changedByUser maps), `contacts.ts` (`withOwner`, duplicate payloads, list + duplicates userMap), `import.ts` (ownerProfilePhoto), `deals.ts` (list userMap + `enrichDeal` salesOwner), `activities.ts` (userMap). Relative URLs are remapped to `{SUPABASE_URL}/storage/v1/object/public/...`; absolute URLs pass through unchanged.
+- Users whose photos predate the Supabase migration and were only on the ephemeral local filesystem must re-upload once in Settings (the old files are unrecoverable); all new uploads persist in Supabase and now render in every module for every role.
 
 ---
 

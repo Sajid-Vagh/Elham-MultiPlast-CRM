@@ -9,6 +9,7 @@ import { getAccessibleUnits } from "../lib/unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 import { generateCustomerCode } from "../lib/customer-code-generator";
 import { parseEndDate } from "../lib/parse-end-date";
+import { normalizeProfilePhotoUrl } from "../lib/storage";
 
 const router: IRouter = Router();
 
@@ -40,7 +41,8 @@ async function withOwner(contact: typeof contactsTable.$inferSelect) {
     const [u] = await db.select().from(usersTable).where(eq(usersTable.id, contact.commentUpdatedBy));
     if (u) { const { passwordHash: _, ...safe } = u; commentUser = safe; }
   }
-  return { ...contact, salesOwner: owner ? safeOwner : null, commentUpdatedByUser: commentUser };
+  const normalizedOwner = owner ? { ...safeOwner, profilePhoto: normalizeProfilePhotoUrl(safeOwner.profilePhoto) } : null;
+  return { ...contact, salesOwner: normalizedOwner, commentUpdatedByUser: commentUser };
 }
 
 // Build the rich 409 duplicate payload shown by the "Customer Already Exists" dialog
@@ -67,7 +69,7 @@ async function buildDuplicatePayload(existing: typeof contactsTable.$inferSelect
     ownerId: existing.salesOwnerId,
     ownerName: safeOwner?.name || "Unknown",
     ownerRole: safeOwner?.role || "sales",
-    ownerProfilePhoto: safeOwner?.profilePhoto || null,
+    ownerProfilePhoto: normalizeProfilePhotoUrl(safeOwner?.profilePhoto),
     unit: existing.unit || null,
     category: existing.category,
     dealStage: latestDeal?.stage || null,
@@ -187,7 +189,7 @@ router.get("/contacts", async (req, res) => {
     const users = await db.select().from(usersTable);
     const userMap = new Map(users.map(u => {
       const { passwordHash: _, ...safe } = u;
-      return [u.id, safe];
+      return [u.id, { ...safe, profilePhoto: normalizeProfilePhotoUrl(safe.profilePhoto) }];
     }));
 
     const enriched = contacts.map(c => ({ ...c, salesOwner: userMap.get(c.salesOwnerId) ?? null }));
@@ -341,7 +343,7 @@ router.post("/contacts/check-duplicate", async (req, res) => {
       ownerId: existing.salesOwnerId,
       ownerName: safeOwner?.name || "Unknown",
       ownerRole: safeOwner?.role || "sales",
-      ownerProfilePhoto: safeOwner?.profilePhoto || null,
+      ownerProfilePhoto: normalizeProfilePhotoUrl(safeOwner?.profilePhoto),
       unit: existing.unit || null,
       category: existing.category,
       dealStage: latestDeal?.stage || null,
@@ -501,7 +503,7 @@ router.get("/contacts/duplicates", async (req, res) => {
     const users = await db.select().from(usersTable);
     const userMap = new Map(users.map(u => {
       const { passwordHash: _, ...safe } = u;
-      return [u.id, safe];
+      return [u.id, { ...safe, profilePhoto: normalizeProfilePhotoUrl(safe.profilePhoto) }];
     }));
 
     const mobileMap = new Map<string, typeof contacts>();

@@ -5,6 +5,7 @@ import { CreateActivityBody, UpdateActivityBody, ListActivitiesQueryParams, Upda
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { getAccessibleUnits } from "../lib/unit-filter";
+import { normalizeProfilePhotoUrl } from "../lib/storage";
 
 const router: IRouter = Router();
 
@@ -195,7 +196,7 @@ router.get("/activities", async (req, res) => {
     const dealMap = new Map(deals.map(d => [d.id, d]));
 
     const users = await db.select().from(usersTable);
-    const userMap = new Map(users.map(u => { const { passwordHash: _, ...safe } = u; return [u.id, safe]; }));
+    const userMap = new Map(users.map(u => { const { passwordHash: _, ...safe } = u; return [u.id, { ...safe, profilePhoto: normalizeProfilePhotoUrl(safe.profilePhoto) }]; }));
 
     // Enrich with contact data and display-ready notes
     let enriched = activities.map(a => {

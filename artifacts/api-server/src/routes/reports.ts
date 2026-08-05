@@ -4,6 +4,7 @@ import { eq, and, gte, lte, sql, inArray, or, isNull, type SQL } from "drizzle-o
 import { GetPipelineReportQueryParams, GetReportByOwnerQueryParams, GetReportByProductQueryParams, GetReportByCityQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
+import { normalizeProfilePhotoUrl } from "../lib/storage";
 
 const router: IRouter = Router();
 
@@ -222,7 +223,7 @@ router.get("/reports/by-owner", async (req, res) => {
         userName: u.name,
         username: u.username,
         colorCode: u.colorCode,
-        profilePhoto: u.profilePhoto,
+        profilePhoto: normalizeProfilePhotoUrl(u.profilePhoto),
         totalDeals: userDeals.length,
         wonDeals: userDeals.filter(d => d.stage === "Won").length,
         lostDeals: userDeals.filter(d => d.stage === "Lost").length,
