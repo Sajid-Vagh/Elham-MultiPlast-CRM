@@ -14,11 +14,17 @@ router.get("/categories/counts", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
     const isAdmin = user.role === "admin";
     const requestedUnit = req.query.unit as string | undefined;
+    const requestedOwnerId = req.query.ownerId as string | undefined;
+    const ownerId = requestedOwnerId ? Number(requestedOwnerId) : undefined;
+    const hasOwnerFilter = ownerId !== undefined && !Number.isNaN(ownerId) && isAdmin;
     const unit = (user.unit === "All" || user.role === "admin") ? requestedUnit : user.unit;
 
     let conditions: SQL[] = [];
     if (!isAdmin) {
       conditions.push(eq(contactsTable.salesOwnerId, user.id));
+    }
+    if (hasOwnerFilter) {
+      conditions.push(eq(contactsTable.salesOwnerId, ownerId!));
     }
     if (unit) {
       conditions.push(eq(contactsTable.unit, unit));
@@ -56,6 +62,9 @@ router.get("/categories/counts", async (req, res) => {
     if (user.role === "sales") {
       ecConditions.push(eq(contactsTable.salesOwnerId, user.id));
     }
+    if (hasOwnerFilter) {
+      ecConditions.push(eq(contactsTable.salesOwnerId, ownerId!));
+    }
     if (requestedUnit) {
       ecConditions.push(eq(contactsTable.unit, requestedUnit));
     }
@@ -81,6 +90,9 @@ router.get("/categories/:category/contacts", async (req, res) => {
     const isAdmin = user.role === "admin";
     const { category } = req.params;
     const requestedUnit = req.query.unit as string | undefined;
+    const requestedOwnerId = req.query.ownerId as string | undefined;
+    const ownerId = requestedOwnerId ? Number(requestedOwnerId) : undefined;
+    const hasOwnerFilter = ownerId !== undefined && !Number.isNaN(ownerId) && isAdmin;
     const isExistingClient = category === "Existing Client";
 
     // Accept "Existing Client" (virtual category) or any DB CATEGORY
@@ -94,6 +106,9 @@ router.get("/categories/:category/contacts", async (req, res) => {
       baseConditions.push(eq(contactsTable.salesOwnerId, user.id));
     } else if (!isAdmin && !isExistingClient) {
       baseConditions.push(eq(contactsTable.salesOwnerId, user.id));
+    }
+    if (hasOwnerFilter) {
+      baseConditions.push(eq(contactsTable.salesOwnerId, ownerId!));
     }
 
     // For Existing Client, unit filter comes from dropdown only (not user.unit)

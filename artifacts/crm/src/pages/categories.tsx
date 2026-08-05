@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation } from "wouter";
-import { useGetMe } from "@workspace/api-client-react";
+import { useGetMe, useListUsers } from "@workspace/api-client-react";
 import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
 import { CategoryBadge } from "@/components/category-badge";
 import { MoveCategoryDialog } from "@/components/move-category-dialog";
@@ -62,10 +62,14 @@ export default function CategoriesPage() {
   const isAdmin = me?.role === "admin";
   const activeUnit = unitFilter !== "All" ? unitFilter : undefined;
   const { units: activeUnits } = useActiveUnits();
+  const [ownerFilter, setOwnerFilter] = useState("All");
+  const { data: users } = useListUsers();
+  const ownerUsers = users?.filter(u => u.role === "admin" || u.role === "sales" || u.role === "production_and_support");
 
   useEffect(() => {
     const params = new URLSearchParams();
     if (activeUnit) params.set("unit", activeUnit);
+    if (ownerFilter !== "All") params.set("ownerId", ownerFilter);
 
     let cancelled = false;
 
@@ -86,7 +90,7 @@ export default function CategoriesPage() {
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
-  }, [activeUnit]);
+  }, [activeUnit, ownerFilter]);
 
   const contactsFetchRef = useRef(0);
 
@@ -99,6 +103,7 @@ export default function CategoriesPage() {
     try {
       const params = new URLSearchParams();
       if (activeUnit) params.set("unit", activeUnit);
+      if (ownerFilter !== "All") params.set("ownerId", ownerFilter);
 
       const res = await fetch(`/api/categories/${encodeURIComponent(category)}/contacts?${params}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
@@ -118,7 +123,7 @@ export default function CategoriesPage() {
     if (activeCategory) {
       selectCategory(activeCategory);
     }
-  }, [activeUnit]);
+  }, [activeUnit, ownerFilter]);
 
   const filteredContacts = useMemo(() => {
     if (!search) return contacts;
@@ -327,6 +332,17 @@ export default function CategoriesPage() {
             {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>
         </Select>
+        {isAdmin && (
+          <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="All Owners" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="All">All Owners</SelectItem>
+              {ownerUsers?.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
