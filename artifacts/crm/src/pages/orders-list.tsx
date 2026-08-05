@@ -43,20 +43,13 @@ const DATE_PRESETS = [
 
 const PRODUCTION_STATUSES = [
   "Pending",
-  "Accepted",
-  "Planning",
-  "In Production",
-  "Packing",
-  "Ready For Dispatch",
-  "In Transport",
-  "Completed",
-  "Cancelled",
+  "Production On Going",
+  "Ready To Dispatch",
 ];
 
 const DISPATCH_STATUSES = [
   "Pending Dispatch",
   "Load Vehicle",
-  "Dispatch",
   "Delivered",
 ];
 

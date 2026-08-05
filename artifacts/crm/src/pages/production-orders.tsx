@@ -47,7 +47,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 };
 
 const STATUSES = [
-  "all", "Pending", "Production On Going", "Packaging",
+  "all", "Pending", "Production On Going",
   "Ready To Dispatch", "Completed", "Cancelled",
 ];
 
