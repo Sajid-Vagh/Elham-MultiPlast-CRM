@@ -1,14 +1,14 @@
 import {
   db, productionOrdersTable, productionTimelineTable, productionNotesTable,
   productionMessagesTable, proformaInvoicesTable, proformaInvoiceItemsTable,
-  usersTable, contactsTable, dealsTable, activitiesTable,
+  usersTable, contactsTable, dealsTable, activitiesTable, ordersTable,
   productionAuditTrailTable, notificationsTable, productsTable,
   productionOrderItemsTable,
   PRODUCTION_STATUSES, VALID_STATUS_TRANSITIONS,
   VALID_DISPATCH_TRANSITIONS, PRODUCT_LINE_STATUSES,
   type ProductionStatus, type NoteType, type ProductLineStatus,
 } from "@workspace/db";
-import { eq, and, desc, sql, gte, lte, or, inArray, notInArray, ilike, isNull, type SQL } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte, or, inArray, notInArray, ilike, isNull, asc, type SQL } from "drizzle-orm";
 import { getActivePiForDeal } from "./proforma-service";
 import { notifyProductionUsers, notifyDealEvent } from "./notification-service";
 import { createNotification } from "../routes/notifications";
@@ -836,6 +836,23 @@ export async function enrichProductionOrder(order: any, user?: { role: string })
       : 0,
   }));
 
+  // Master order linkage: a production order and its master "orders" row are
+  // created together when a deal/PI is converted and share the same dealId.
+  // Prefer the master order's canonical number so the SAME code (e.g.
+  // EML_2627_35) is displayed on the global Orders page and all production views.
+  let masterOrder: { id: number; orderNumber: string } | null = null;
+  const masterDealId = order.dealId || invoice?.dealId || null;
+  if (masterDealId) {
+    const [mo] = await db
+      .select({ id: ordersTable.id, orderNumber: ordersTable.orderNumber })
+      .from(ordersTable)
+      .where(eq(ordersTable.dealId, masterDealId))
+      .orderBy(asc(ordersTable.createdAt))
+      .limit(1);
+    masterOrder = mo || null;
+  }
+  const masterOrderNumber = masterOrder?.orderNumber || null;
+
   const result = {
     ...order,
     invoice: invoice
@@ -868,11 +885,13 @@ export async function enrichProductionOrder(order: any, user?: { role: string })
     notes: notesWithUsers,
     validNextStatuses: getValidNextStatuses(order.status),
     validNextDispatchStatuses: getValidNextDispatchStatuses(order.dispatchStatus),
-    displayOrderId: order.formattedOrderId || (order.createdAt ? `EML_${getFinancialYear(new Date(order.createdAt))}_${order.id}` : `#${order.id}`),
+    displayOrderId: masterOrderNumber || order.formattedOrderId || (order.createdAt ? `EML_${getFinancialYear(new Date(order.createdAt))}_${order.id}` : `#${order.id}`),
+    masterOrderId: masterOrder?.id ?? null,
+    masterOrderNumber,
     customerCode: contact?.customerCode || null,
     companyName: contact?.companyName || contact?.name || invoice?.companyName || null,
     customerName: contact?.name || invoice?.customerName || null,
-    orderNumber: order.formattedOrderId || (order.createdAt ? `EML_${getFinancialYear(new Date(order.createdAt))}_${order.id}` : `#${order.id}`),
+    orderNumber: masterOrderNumber || order.formattedOrderId || (order.createdAt ? `EML_${getFinancialYear(new Date(order.createdAt))}_${order.id}` : `#${order.id}`),
   };
   // Mask customer identity for production-only users
   if (user && isProductionOnlyRole(user.role)) {

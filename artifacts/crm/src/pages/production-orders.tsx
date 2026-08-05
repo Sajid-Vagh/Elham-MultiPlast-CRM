@@ -269,7 +269,7 @@ export default function ProductionOrders() {
                       className="border-b last:border-0 hover:bg-muted/30 cursor-pointer transition-colors"
                       onClick={() => setLocation(`/production/orders/${order.id}`)}
                     >
-                      <td className="py-3 px-4 font-medium font-mono whitespace-nowrap">{order.displayOrderId || order.orderNumber}</td>
+                      <td className="py-3 px-4 font-medium font-mono whitespace-nowrap">{order.masterOrderNumber || order.displayOrderId || order.orderNumber}</td>
                       <td className="py-3 px-4 min-w-[200px]">
                         <p className="font-medium text-sm whitespace-normal break-words">{(() => { const n = order.companyName || order.customerName || "-"; const cc = order.customerCode; return cc && !n.includes(cc) ? `${n} (${cc})` : n; })()}</p>
                       </td>
