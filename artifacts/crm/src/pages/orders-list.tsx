@@ -209,6 +209,7 @@ export default function OrdersList() {
                     <TableHead className="w-8"></TableHead>
                     <TableHead>Order No</TableHead>
                     <TableHead>Customer</TableHead>
+                    <TableHead>Company Name</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Sales Owner</TableHead>
                     <TableHead>Production</TableHead>
@@ -234,7 +235,10 @@ export default function OrdersList() {
                           <span className="font-mono">{order.orderNumber}</span>
                         </TableCell>
                         <TableCell>
-                          <p className="font-medium text-sm">{(() => { const n = order.companyName || order.customerName || "-"; const cc = order.customerCode; return cc && !n.includes(cc) ? `${n} (${cc})` : n; })()}</p>
+                          <p className="font-medium text-sm">{(() => { const n = order.customerName || "-"; const cc = order.customerCode; return cc && !n.includes(cc) ? `${n} (${cc})` : n; })()}</p>
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-sm text-muted-foreground">{order.companyName || "-"}</p>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">{new Date(order.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</TableCell>
                         <TableCell className="text-sm">{order.salesOwner?.name || "-"}</TableCell>
@@ -255,7 +259,7 @@ export default function OrdersList() {
                       </TableRow>
                       {expandedRow === order.id && (
                         <TableRow key={`${order.id}-expanded`}>
-                          <TableCell colSpan={11} className="bg-muted/20 p-4">
+                          <TableCell colSpan={12} className="bg-muted/20 p-4">
                             <div className="space-y-3">
                               <div className="flex items-center gap-3 flex-wrap">
                                 <p className="text-xs font-semibold uppercase text-muted-foreground">Products ({order.products?.length || 0})</p>
