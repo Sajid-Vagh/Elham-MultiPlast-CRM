@@ -41,6 +41,25 @@ const DATE_PRESETS = [
   { value: "custom", label: "Custom" },
 ];
 
+const PRODUCTION_STATUSES = [
+  "Pending",
+  "Accepted",
+  "Planning",
+  "In Production",
+  "Packing",
+  "Ready For Dispatch",
+  "In Transport",
+  "Completed",
+  "Cancelled",
+];
+
+const DISPATCH_STATUSES = [
+  "Pending Dispatch",
+  "Load Vehicle",
+  "Dispatch",
+  "Delivered",
+];
+
 interface OrderRow {
   id: number;
   orderNumber: string;
@@ -71,7 +90,7 @@ export default function OrdersList() {
   const [datePreset, setDatePreset] = useState("all");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
-  const [dispatchStatusFilter, setDispatchStatusFilter] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("All");
   const [productionUnitFilter, setProductionUnitFilter] = useState("All");
   const [page, setPage] = useState(1);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
@@ -83,18 +102,21 @@ export default function OrdersList() {
   if (datePreset !== "all") params.set("datePreset", datePreset);
   if (datePreset === "custom" && customStartDate) params.set("startDate", customStartDate);
   if (datePreset === "custom" && customEndDate) params.set("endDate", customEndDate);
-  if (dispatchStatusFilter !== "All") params.set("dispatchStatus", dispatchStatusFilter);
   if (productionUnitFilter !== "All") params.set("productionUnit", productionUnitFilter);
   params.set("page", String(page));
   params.set("limit", "30");
 
   const { data, isLoading, isRefetching, refetch } = useQuery<{ data: OrderRow[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>({
-    queryKey: ["orders-global", search, datePreset, customStartDate, customEndDate, dispatchStatusFilter, productionUnitFilter, page],
+    queryKey: ["orders-global", search, datePreset, customStartDate, customEndDate, productionUnitFilter, page],
     queryFn: () => customFetch(`/orders/global?${params.toString()}`),
     refetchInterval: 30_000,
   });
 
-  const orders = data?.data || [];
+  const rawOrders = data?.data || [];
+  const orders = rawOrders.filter(order => {
+    if (!statusFilter || statusFilter === "All") return true;
+    return order.productionStatus === statusFilter || order.dispatchStatus === statusFilter;
+  });
   const pagination = data?.pagination;
 
   const toggleExpand = useCallback((id: number) => {
@@ -145,13 +167,12 @@ export default function OrdersList() {
               </>
             )}
 
-            <Select value={dispatchStatusFilter} onValueChange={v => { setDispatchStatusFilter(v); setPage(1); }}>
-              <SelectTrigger className="w-40"><SelectValue placeholder="Dispatch" /></SelectTrigger>
+            <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(1); }}>
+              <SelectTrigger className="w-44"><SelectValue placeholder="Status" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="All">All Dispatch</SelectItem>
-                <SelectItem value="Pending Dispatch">Pending Dispatch</SelectItem>
-                <SelectItem value="Load Vehicle">Load Vehicle</SelectItem>
-                <SelectItem value="Delivered">Delivered</SelectItem>
+                <SelectItem value="All">All</SelectItem>
+                {PRODUCTION_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                {DISPATCH_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
               </SelectContent>
             </Select>
 
@@ -165,8 +186,8 @@ export default function OrdersList() {
               </Select>
             )}
 
-            {(search || datePreset !== "all" || dispatchStatusFilter !== "All" || productionUnitFilter !== "All") && (
-              <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setDatePreset("all"); setDispatchStatusFilter("All"); setProductionUnitFilter("All"); setPage(1); }}>
+            {(search || datePreset !== "all" || statusFilter !== "All" || productionUnitFilter !== "All") && (
+              <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setDatePreset("all"); setStatusFilter("All"); setProductionUnitFilter("All"); setPage(1); }}>
                 <X className="h-3.5 w-3.5 mr-1" />Clear
               </Button>
             )}
