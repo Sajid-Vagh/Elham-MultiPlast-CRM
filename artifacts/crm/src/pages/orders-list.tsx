@@ -208,7 +208,7 @@ export default function OrdersList() {
                   <TableRow>
                     <TableHead className="w-8"></TableHead>
                     <TableHead>Order No</TableHead>
-                    <TableHead>Customer</TableHead>
+                    <TableHead>Company Name</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Sales Owner</TableHead>
                     <TableHead>Production</TableHead>
@@ -234,7 +234,7 @@ export default function OrdersList() {
                           <span className="font-mono">{order.orderNumber}</span>
                         </TableCell>
                         <TableCell>
-                          <p className="font-medium text-sm">{(() => { const n = order.companyName || order.customerName || "-"; const cc = order.customerCode; return cc && !n.includes(cc) ? `${n} (${cc})` : n; })()}</p>
+                          <p className="font-medium text-sm">{order.companyName || "-"}</p>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">{new Date(order.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</TableCell>
                         <TableCell className="text-sm">{order.salesOwner?.name || "-"}</TableCell>
