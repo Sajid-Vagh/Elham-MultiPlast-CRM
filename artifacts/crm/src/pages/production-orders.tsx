@@ -251,6 +251,7 @@ export default function ProductionOrders() {
                 <thead>
                   <tr className="border-b bg-muted/30">
                     <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">Order No</th>
+                    <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Customer</th>
                     <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Company Name</th>
                     <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground">Product</th>
                     <th className="text-left py-3 px-4 font-medium text-xs uppercase tracking-wider text-muted-foreground whitespace-nowrap">Origin</th>
@@ -270,8 +271,11 @@ export default function ProductionOrders() {
                       onClick={() => setLocation(`/production/orders/${order.id}`)}
                     >
                       <td className="py-3 px-4 font-medium font-mono whitespace-nowrap">{order.masterOrderNumber || order.displayOrderId || order.orderNumber}</td>
+                      <td className="py-3 px-4 min-w-[160px]">
+                        <p className="font-medium text-sm whitespace-normal break-words">{(() => { const n = order.customerName || "-"; const cc = order.customerCode; return cc && !n.includes(cc) ? `${n} (${cc})` : n; })()}</p>
+                      </td>
                       <td className="py-3 px-4 min-w-[160px] whitespace-normal break-words">
-                        <p className="font-medium text-sm">{order.companyName || "-"}</p>
+                        <p className="text-sm text-muted-foreground">{order.companyName || "-"}</p>
                       </td>
                       <td className="py-3 px-4 min-w-[160px] whitespace-normal break-words">
                         {order.items?.[0]?.productName || "-"}

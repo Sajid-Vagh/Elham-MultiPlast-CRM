@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, ordersTable, orderItemsTable, usersTable, contactsTable, orderTimelineTable, orderRevisionsTable, proformaInvoicesTable } from "@workspace/db";
-import { eq, and, or, ilike, desc, sql, inArray, gte, lte, getTableColumns } from "drizzle-orm";
+import { db, ordersTable, orderItemsTable, usersTable, contactsTable, orderTimelineTable, orderRevisionsTable } from "@workspace/db";
+import { eq, and, or, ilike, desc, sql, inArray, gte, lte } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { generateId } from "../lib/id-generator";
@@ -256,28 +256,7 @@ router.get("/orders/global", async (req, res) => {
     const offset = (pageNum - 1) * limitNum;
 
     const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(ordersTable).where(and(...conditions));
-    // LEFT JOIN LATERAL the latest active Proforma Invoice linked via the deal
-    // (orders.deal_id -> proforma_invoices.deal_id). Its official billing
-    // trade_name is the authoritative Company Name shown on the Orders table;
-    // NULL when no PI is linked (e.g. directly-created orders).
-    const orders = await db
-      .select({
-        ...getTableColumns(ordersTable),
-        piTradeName: sql<string | null>`(
-          SELECT pi.trade_name
-          FROM proforma_invoices pi
-          WHERE pi.deal_id = ${ordersTable.dealId}
-            AND pi.is_active = true
-            AND pi.is_deleted = false
-          ORDER BY pi.created_at DESC
-          LIMIT 1
-        )`,
-      })
-      .from(ordersTable)
-      .where(and(...conditions))
-      .orderBy(desc(ordersTable.createdAt))
-      .limit(limitNum)
-      .offset(offset);
+    const orders = await db.select().from(ordersTable).where(and(...conditions)).orderBy(desc(ordersTable.createdAt)).limit(limitNum).offset(offset);
 
     // Enrich with items count, totals, production info, dispatch status
     const enriched = await Promise.all(orders.map(async (order) => {
@@ -313,7 +292,7 @@ router.get("/orders/global", async (req, res) => {
         id: order.id,
         orderNumber: order.orderNumber,
         customerName: order.customerName,
-        companyName: order.piTradeName || order.companyName,
+        companyName: order.companyName,
         customerCode: contactCustomerCode,
         mobile: order.mobile,
         status: order.status,

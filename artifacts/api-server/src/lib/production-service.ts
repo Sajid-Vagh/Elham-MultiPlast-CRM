@@ -937,11 +937,7 @@ export async function enrichProductionOrder(order: any, user?: { role: string })
     // the EXACT string rendered on the global Orders page is reproduced here:
     //   companyName || customerName (+ customerCode appended client-side).
     // Fallback to the contact/PI values only for orphan orders (no master row).
-    // Company Name = the official billing Trade Name from the linked Proforma
-    // Invoice (the authoritative billing identity). Fall back to the PI's own
-    // company/customer names, then the master order / contact only for orders
-    // that have no linked PI (e.g. directly-created orders).
-    companyName: invoice?.tradeName || invoice?.companyName || invoice?.customerName || masterOrder?.companyName || contact?.companyName || null,
+    companyName: masterOrder?.companyName || contact?.companyName || contact?.name || invoice?.companyName || null,
     customerName: masterOrder?.customerName || contact?.name || invoice?.customerName || null,
     orderNumber: masterOrderNumber || order.formattedOrderId || (order.createdAt ? `EML_${getFinancialYear(new Date(order.createdAt))}_${order.id}` : `#${order.id}`),
   };
