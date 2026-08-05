@@ -256,24 +256,37 @@ router.get("/orders/global", async (req, res) => {
     const offset = (pageNum - 1) * limitNum;
 
     const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(ordersTable).where(and(...conditions));
-    // LEFT JOIN LATERAL the latest active Proforma Invoice linked via the deal
-    // (orders.deal_id -> proforma_invoices.deal_id). Its official billing
-    // trade_name is the authoritative Company Name shown on the Orders table;
-    // NULL when no PI is linked (e.g. directly-created orders).
+
+    // Latest active Proforma Invoice linked via the deal. The orders and
+    // proforma_invoices tables both reference deals (orders.deal_id and
+    // proforma_invoices.deal_id), so this is the precise FK relationship.
+    // IMPORTANT: use a LATERAL subquery, NOT a bare correlated scalar subquery.
+    // Drizzle renders a column reference inside a scalar subquery WITHOUT a table
+    // qualifier (e.g. `deal_id` instead of `orders.deal_id`), and PostgreSQL then
+    // resolves the unqualified column to the INNER table (proforma_invoices),
+    // turning the condition into `pi.deal_id = pi.deal_id` (always true) — which
+    // returns the SAME latest trade_name for every order row. The lateral join
+    // forces Drizzle to emit the fully-qualified comparison
+    // `"proforma_invoices"."deal_id" = "orders"."deal_id"`.
+    const latestPi = db
+      .select({ tradeName: proformaInvoicesTable.tradeName })
+      .from(proformaInvoicesTable)
+      .where(and(
+        eq(proformaInvoicesTable.dealId, ordersTable.dealId),
+        eq(proformaInvoicesTable.isActive, true),
+        eq(proformaInvoicesTable.isDeleted, false),
+      ))
+      .orderBy(desc(proformaInvoicesTable.createdAt))
+      .limit(1)
+      .as("pi_latest");
+
     const orders = await db
       .select({
         ...getTableColumns(ordersTable),
-        piTradeName: sql<string | null>`(
-          SELECT pi.trade_name
-          FROM proforma_invoices pi
-          WHERE pi.deal_id = ${ordersTable.dealId}
-            AND pi.is_active = true
-            AND pi.is_deleted = false
-          ORDER BY pi.created_at DESC
-          LIMIT 1
-        )`,
+        piTradeName: latestPi.tradeName,
       })
       .from(ordersTable)
+      .leftJoinLateral(latestPi, sql`true`)
       .where(and(...conditions))
       .orderBy(desc(ordersTable.createdAt))
       .limit(limitNum)
