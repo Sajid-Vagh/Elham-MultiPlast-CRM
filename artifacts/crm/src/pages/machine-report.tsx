@@ -12,7 +12,7 @@ import { useUserUnits } from "@/lib/use-user-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 
 const MACHINE_TYPES = ["All", "250ml Machine", "1L Machine", "5L Machine"];
-const STATUS_OPTIONS = ["All", "Pending", "In Production"];
+const STATUS_OPTIONS = ["All", "Pending", "Production On Going"];
 
 interface ReportData {
   summary: { totalProducts: number; totalBottles: number; pending: number; inProduction: number; completed: number };
@@ -52,7 +52,7 @@ export default function MachineReport() {
     { label: "Total Products", value: summary?.totalProducts ?? 0, icon: Package, color: "text-blue-600" },
     { label: "Total Bottles", value: (summary?.totalBottles ?? 0).toLocaleString(), icon: BarChart3, color: "text-purple-600" },
     { label: "Pending", value: summary?.pending ?? 0, icon: Clock, color: "text-gray-600" },
-    { label: "In Production", value: summary?.inProduction ?? 0, icon: Settings2, color: "text-orange-600" },
+    { label: "Production On Going", value: summary?.inProduction ?? 0, icon: Settings2, color: "text-orange-600" },
   ];
 
   const statusColor = (s: string) => {
@@ -142,7 +142,7 @@ export default function MachineReport() {
                           <p className="text-xs text-muted-foreground">Orders: <span className="font-medium text-foreground">{m.orderCount}</span></p>
                           <p className="text-xs text-muted-foreground">Total Qty: <span className="font-medium text-foreground">{m.totalBottles.toLocaleString()} PCS</span></p>
                           <p className="text-xs text-muted-foreground">Pending: <span className="font-medium text-gray-700">{m.pendingQty.toLocaleString()} PCS</span></p>
-                          <p className="text-xs text-muted-foreground">In Production: <span className="font-medium text-orange-700">{m.inProductionQty.toLocaleString()} PCS</span></p>
+                          <p className="text-xs text-muted-foreground">Production On Going: <span className="font-medium text-orange-700">{m.inProductionQty.toLocaleString()} PCS</span></p>
                         </div>
                       </div>
                     ))}
