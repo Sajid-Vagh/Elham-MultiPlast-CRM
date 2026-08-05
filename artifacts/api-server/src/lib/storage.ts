@@ -453,6 +453,23 @@ let provider: StorageProvider = createProvider();
 // ────────────────────────────────────────────
 export const profilePhotoStorage: StorageProvider = provider;
 
+// Some legacy rows store `profilePhoto` as a relative local path
+// (e.g. "/api/uploads/profile-photos/<file>.jpg") because they were uploaded
+// while the local filesystem provider was active. On Render/Vercel the local
+// filesystem is ephemeral, so those URLs 404 and the UI falls back to initials.
+// When Supabase Storage is configured, re-map such paths to the equivalent
+// public object URL so every user's photo loads regardless of role.
+export function normalizeProfilePhotoUrl(url: string | null | undefined): string | null {
+  if (!url) return url ?? null;
+  if (!url.startsWith("/")) return url; // already absolute (e.g. Supabase public URL)
+  const supabaseUrl = process.env.SUPABASE_URL;
+  if (supabaseUrl && url.startsWith("/api/uploads/")) {
+    const storagePath = url.replace(/^\/api\/uploads\//, "");
+    return `${supabaseUrl.replace(/\/+$/, "")}/storage/v1/object/public/${storagePath}`;
+  }
+  return url;
+}
+
 export function setStorageProvider(p: StorageProvider) {
   provider = p;
 }

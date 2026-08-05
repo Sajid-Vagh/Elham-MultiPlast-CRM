@@ -5,6 +5,7 @@ import { db, usersTable, sessionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { LoginBody } from "@workspace/api-zod";
 import { logger } from "../lib/logger";
+import { normalizeProfilePhotoUrl } from "../lib/storage";
 
 const router: IRouter = Router();
 
@@ -97,6 +98,8 @@ router.post("/auth/login", async (req, res) => {
 
     const { passwordHash: _, ...safeUser } = user;
 
+    if (safeUser.profilePhoto) safeUser.profilePhoto = normalizeProfilePhotoUrl(safeUser.profilePhoto);
+
     return res.json({
       user: safeUser,
       token,
@@ -146,6 +149,8 @@ router.get("/auth/me", async (req, res) => {
     }
 
     const { passwordHash: _, ...safeUser } = user;
+
+    if (safeUser.profilePhoto) safeUser.profilePhoto = normalizeProfilePhotoUrl(safeUser.profilePhoto);
 
     return res.json(safeUser);
   } catch (err) {

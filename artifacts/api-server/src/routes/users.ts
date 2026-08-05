@@ -7,7 +7,7 @@ import { eq, inArray } from "drizzle-orm";
 import { CreateUserBody, UpdateUserBody, GetUserParams, UpdateUserParams, DeleteUserParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
-import { storage } from "../lib/storage";
+import { storage, normalizeProfilePhotoUrl } from "../lib/storage";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -34,6 +34,7 @@ const router: IRouter = Router();
 
 function safeUser(u: typeof usersTable.$inferSelect) {
   const { passwordHash: _, ...rest } = u;
+  if (rest.profilePhoto) rest.profilePhoto = normalizeProfilePhotoUrl(rest.profilePhoto);
   return rest;
 }
 
