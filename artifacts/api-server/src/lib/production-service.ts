@@ -728,8 +728,49 @@ export async function enrichProductionOrder(order: any, user?: { role: string })
     };
   });
 
+  // ── Master order linkage (AUTHORITATIVE for customer identity) ──
+  // A production order and its master "orders" row are created together when a
+  // deal/PI is converted and share the same dealId. The master order is the
+  // CANONICAL source for BOTH the order number AND the customer:
+  //   production_orders -> orders (via dealId) -> contacts (via orders.contactId)
+  // The customer shown here MUST equal the global Orders page exactly, so the
+  // customer is resolved ONLY through the master orders row — never from the
+  // PI/deal's own contact, which can differ (e.g. orders.customerName is
+  // "Silky (EML_14)" while the PI/deal contact points at a different record).
+  let masterOrder: {
+    id: number;
+    orderNumber: string;
+    customerName: string | null;
+    companyName: string | null;
+    contactId: number | null;
+  } | null = null;
+  const masterDealId = order.dealId || invoice?.dealId || null;
+  if (masterDealId) {
+    const [mo] = await db
+      .select({
+        id: ordersTable.id,
+        orderNumber: ordersTable.orderNumber,
+        customerName: ordersTable.customerName,
+        companyName: ordersTable.companyName,
+        contactId: ordersTable.contactId,
+      })
+      .from(ordersTable)
+      .where(eq(ordersTable.dealId, masterDealId))
+      .orderBy(asc(ordersTable.createdAt))
+      .limit(1);
+    masterOrder = mo || null;
+  }
+  const masterOrderNumber = masterOrder?.orderNumber || null;
+
+  // Customer contact is resolved STRICTLY through the master orders row
+  // (orders.contactId -> contacts). The PI contact / deal contact are only
+  // fallbacks for orphan production orders that have no linked master order.
   let contact = null;
-  if (invoice?.contactId) {
+  if (masterOrder?.contactId) {
+    const [c] = await db.select().from(contactsTable).where(eq(contactsTable.id, masterOrder.contactId));
+    if (c) contact = c;
+  }
+  if (!contact && invoice?.contactId) {
     const [c] = await db.select().from(contactsTable).where(eq(contactsTable.id, invoice.contactId));
     if (c) contact = c;
   }
@@ -852,20 +893,9 @@ export async function enrichProductionOrder(order: any, user?: { role: string })
 
   // Master order linkage: a production order and its master "orders" row are
   // created together when a deal/PI is converted and share the same dealId.
-  // Prefer the master order's canonical number so the SAME code (e.g.
-  // EML_2627_35) is displayed on the global Orders page and all production views.
-  let masterOrder: { id: number; orderNumber: string } | null = null;
-  const masterDealId = order.dealId || invoice?.dealId || null;
-  if (masterDealId) {
-    const [mo] = await db
-      .select({ id: ordersTable.id, orderNumber: ordersTable.orderNumber })
-      .from(ordersTable)
-      .where(eq(ordersTable.dealId, masterDealId))
-      .orderBy(asc(ordersTable.createdAt))
-      .limit(1);
-    masterOrder = mo || null;
-  }
-  const masterOrderNumber = masterOrder?.orderNumber || null;
+  // The canonical master order (id + orderNumber) is resolved above and drives
+  // both the SAME order code (e.g. EML_2627_35) shown on the global Orders page
+  // AND the authoritative customer identity (customerName/companyName/contact).
 
   const result = {
     ...order,
@@ -903,8 +933,12 @@ export async function enrichProductionOrder(order: any, user?: { role: string })
     masterOrderId: masterOrder?.id ?? null,
     masterOrderNumber,
     customerCode: contact?.customerCode || null,
-    companyName: contact?.companyName || contact?.name || invoice?.companyName || null,
-    customerName: contact?.name || invoice?.customerName || null,
+    // Customer identity is sourced from the master orders row when available so
+    // the EXACT string rendered on the global Orders page is reproduced here:
+    //   companyName || customerName (+ customerCode appended client-side).
+    // Fallback to the contact/PI values only for orphan orders (no master row).
+    companyName: masterOrder?.companyName || contact?.companyName || contact?.name || invoice?.companyName || null,
+    customerName: masterOrder?.customerName || contact?.name || invoice?.customerName || null,
     orderNumber: masterOrderNumber || order.formattedOrderId || (order.createdAt ? `EML_${getFinancialYear(new Date(order.createdAt))}_${order.id}` : `#${order.id}`),
   };
   // Mask customer identity for production-only users
