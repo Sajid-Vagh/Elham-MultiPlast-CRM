@@ -9,9 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Package, Search, Calendar, ChevronDown, ChevronRight, Filter, X, RefreshCw } from "lucide-react";
+import { Package, Search, Calendar, ChevronDown, ChevronRight, Filter, X, RefreshCw, Users } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { useAllUsers } from "@/lib/use-all-users";
 
 const PROD_STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-600",
@@ -100,10 +101,13 @@ export default function OrdersList() {
   const [customEndDate, setCustomEndDate] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [productionUnitFilter, setProductionUnitFilter] = useState("All");
+  const [ownerFilter, setOwnerFilter] = useState("");
   const [page, setPage] = useState(1);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
 
   const showUnitFilter = user?.role === "admin" || user?.role === "production_and_support" || user?.unit === "All";
+  const isAdmin = user?.role === "admin";
+  const { data: users } = useAllUsers(isAdmin);
 
   const params = new URLSearchParams();
   if (search) params.set("search", search);
@@ -111,11 +115,12 @@ export default function OrdersList() {
   if (datePreset === "custom" && customStartDate) params.set("startDate", toStartIso(customStartDate));
   if (datePreset === "custom" && customEndDate) params.set("endDate", toEndIso(customEndDate));
   if (productionUnitFilter !== "All") params.set("productionUnit", productionUnitFilter);
+  if (ownerFilter) params.set("ownerId", ownerFilter);
   params.set("page", String(page));
   params.set("limit", "30");
 
   const { data, isLoading, isRefetching, refetch } = useQuery<{ data: OrderRow[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>({
-    queryKey: ["orders-global", search, datePreset, customStartDate, customEndDate, productionUnitFilter, page],
+    queryKey: ["orders-global", search, datePreset, customStartDate, customEndDate, productionUnitFilter, ownerFilter, page],
     queryFn: () => customFetch(`/orders/global?${params.toString()}`),
     refetchInterval: 30_000,
   });
@@ -194,8 +199,18 @@ export default function OrdersList() {
               </Select>
             )}
 
-            {(search || datePreset !== "all" || statusFilter !== "All" || productionUnitFilter !== "All") && (
-              <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setDatePreset("all"); setStatusFilter("All"); setProductionUnitFilter("All"); setPage(1); }}>
+            {isAdmin && users && (
+              <Select value={ownerFilter || "all"} onValueChange={v => { setOwnerFilter(v === "all" ? "" : v); setPage(1); }}>
+                <SelectTrigger className="w-40"><Users className="h-3.5 w-3.5 mr-1.5" /><SelectValue placeholder="All Owners" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Owners</SelectItem>
+                  {users.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+
+            {(search || datePreset !== "all" || statusFilter !== "All" || productionUnitFilter !== "All" || ownerFilter) && (
+              <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setDatePreset("all"); setStatusFilter("All"); setProductionUnitFilter("All"); setOwnerFilter(""); setPage(1); }}>
                 <X className="h-3.5 w-3.5 mr-1" />Clear
               </Button>
             )}

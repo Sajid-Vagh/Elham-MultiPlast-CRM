@@ -15,6 +15,7 @@ import { UserAvatar } from "@/components/user-avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
+import { useAllUsers } from "@/lib/use-all-users";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { usePrivacyMode } from "@/lib/use-privacy-mode";
 import { useDateFilter, getLabel } from "@/lib/use-date-filter";
@@ -149,16 +150,7 @@ export default function Dashboard() {
     staleTime: 30_000,
   });
 
-  const { data: users } = useQuery({
-    queryKey: ["users-customer-facing"],
-    queryFn: async () => {
-      const res = await fetch("/api/users?roles=admin,sales,production_and_support", { headers: authHeaders });
-      if (!res.ok) return [];
-      return res.json() as Promise<any[]>;
-    },
-    enabled: !!token && isAdmin,
-    staleTime: 300_000,
-  });
+  const { data: users } = useAllUsers(isAdmin);
 
   const unitStats = useMemo(() => {
     return kpi?.unitStats ?? {};

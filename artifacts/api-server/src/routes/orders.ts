@@ -145,7 +145,7 @@ router.get("/orders/global", async (req, res) => {
 
     const {
       status, dispatchStatus, search, salesOwnerId, supportOwnerId,
-      productionUnit, customer, startDate, endDate, datePreset,
+      productionUnit, customer, startDate, endDate, datePreset, ownerId,
       page = "1", limit = "50",
     } = req.query as Record<string, string>;
 
@@ -211,6 +211,16 @@ router.get("/orders/global", async (req, res) => {
     // Owner filters
     if (salesOwnerId && salesOwnerId !== "All") conditions.push(eq(ordersTable.salesOwnerId, Number(salesOwnerId)));
     if (supportOwnerId && supportOwnerId !== "All") conditions.push(eq(ordersTable.supportOwnerId, Number(supportOwnerId)));
+    // "All Owners" filter — matches the selected user as sales owner, support
+    // owner, or the order's creator (Created By).
+    if (ownerId && ownerId !== "All") {
+      const ownerIdNum = Number(ownerId);
+      conditions.push(or(
+        eq(ordersTable.salesOwnerId, ownerIdNum),
+        eq(ordersTable.supportOwnerId, ownerIdNum),
+        eq(ordersTable.createdBy, ownerIdNum),
+      )!);
+    }
     if (productionUnit && productionUnit !== "All") conditions.push(eq(ordersTable.productionUnit, productionUnit));
 
     // Dispatch status filter — dispatch status lives on the production order

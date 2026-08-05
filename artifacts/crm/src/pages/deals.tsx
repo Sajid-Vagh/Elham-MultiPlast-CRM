@@ -82,7 +82,7 @@ export default function Deals() {
   const params = new URLSearchParams(searchStr);
   const stageFilter = params.get("stage") || "";
   const ownerFilter = params.get("owner") || "";
-  const unitFilter = params.get("unit") || localStorage.getItem("crm_unit_filter") || "Himatnagar";
+  const unitFilter = params.get("unit") || "All";
 
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
