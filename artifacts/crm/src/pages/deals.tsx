@@ -347,7 +347,7 @@ export default function Deals() {
           }
           setMarkWonDeal({ deal, oldStage });
           const piTaxable = result.pi?.taxableAmount;
-          setWonAmount(piTaxable ? String(piTaxable) : deal.totalValue ? String(deal.totalValue) : "");
+          setWonAmount(piTaxable ? String(Math.round(Number(piTaxable))) : deal.totalValue ? String(Math.round(Number(deal.totalValue))) : "");
           setWonProductionUnit(deal.productionUnit || "");
           setWonProductionNotes("");
           setWonSalesNotes("");
