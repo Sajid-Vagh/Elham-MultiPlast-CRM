@@ -323,9 +323,10 @@ export default function FollowUps() {
       const q = searchQuery.toLowerCase();
       list = list.filter(a => {
         const name = (a.contact?.name || a.deal?.contact?.name || "").toLowerCase();
+        const code = (a.contact?.customerCode || a.deal?.contact?.customerCode || "").toLowerCase();
         const mobile = (a.contact?.mobile || a.deal?.contact?.mobile || "");
         const company = (a.contact?.companyName || a.deal?.contact?.companyName || "").toLowerCase();
-        return name.includes(q) || mobile.includes(q) || company.includes(q);
+        return name.includes(q) || code.includes(q) || mobile.includes(q) || company.includes(q);
       });
     }
 
@@ -431,7 +432,7 @@ export default function FollowUps() {
             <div className="relative flex-1 min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name, phone, company..."
+                placeholder="Search by name, code, phone, company..."
                 value={searchQuery}
                 onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
                 className="pl-9 h-9"

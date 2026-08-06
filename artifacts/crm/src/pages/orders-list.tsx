@@ -157,7 +157,7 @@ export default function OrdersList() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search by order #, customer, company, mobile..."
+                  placeholder="Search by order #, code, customer, company..."
                   value={search}
                   onChange={e => { setSearch(e.target.value); setPage(1); }}
                   className="pl-9"

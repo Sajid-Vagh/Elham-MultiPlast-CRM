@@ -1710,6 +1710,23 @@ export async function listDispatchOrders(
       matchingOrders.push(eq(productionOrdersTable.id, orderIdMatch));
     }
 
+    // Search by production order number (PO-2026-XXX / formattedOrderId)
+    const lowerQ = q.toLowerCase();
+    matchingOrders.push(sql`LOWER(${productionOrdersTable.formattedOrderId}) LIKE ${`%${lowerQ}%`}`);
+
+    // Search by linked Sales Order number (orders.formattedOrderId/orderNumber via dealId)
+    const matchingSalesOrders = await db.select({ dealId: ordersTable.dealId }).from(ordersTable).where(and(
+      or(
+        ilike(ordersTable.formattedOrderId, `%${q}%`),
+        ilike(ordersTable.orderNumber, `%${q}%`)
+      ),
+      eq(ordersTable.isDeleted, false),
+      isNotNull(ordersTable.dealId)
+    ));
+    if (matchingSalesOrders.length > 0) {
+      matchingOrders.push(inArray(productionOrdersTable.dealId, matchingSalesOrders.map(o => o.dealId!)));
+    }
+
     // Search by customerCode from contacts table (via invoice → contactId)
     const matchingContacts = await db.select({ id: contactsTable.id }).from(contactsTable).where(
       sql`LOWER(${contactsTable.customerCode}) LIKE ${`%${q.toLowerCase()}%`}`

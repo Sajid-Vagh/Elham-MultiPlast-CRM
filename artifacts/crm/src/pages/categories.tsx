@@ -133,6 +133,7 @@ export default function CategoriesPage() {
       (c) =>
         c.name?.toLowerCase().includes(s) ||
         c.companyName?.toLowerCase().includes(s) ||
+        c.customerCode?.toLowerCase().includes(s) ||
         c.mobile?.includes(s) ||
         c.city?.toLowerCase().includes(s)
     );
@@ -383,7 +384,7 @@ export default function CategoriesPage() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search by name, company, phone, city..."
+                  placeholder="Search by name, code, company, phone, city..."
                   value={search}
                   onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                   className="pl-9"

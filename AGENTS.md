@@ -766,3 +766,25 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `artifacts/api-server/src/routes/deals.ts`: `normalizeMobile` + rewritten `GET /deals/by-mobile/:mobile` (normalized SQL match + LEFT JOIN)
 - `artifacts/crm/src/pages/proforma-invoices.tsx`: `hydratedFromUrlRef`, hydration `useEffect`, debounced-search gate, `resetForm` + mobile-input gate clears
 - `artifacts/crm/src/pages/deal-detail.tsx`: Create PI link now passes `dealId`
+
+---
+
+# Global Search by Customer Code + Order Number (Completed Audit)
+
+## Goal
+Every search bar in the CRM that filters Contacts/Leads must match by `customerCode`, and every search bar for Orders/Proformas must match by order number (`formattedOrderId`/`orderNumber`/`orderNo`/`invoiceNumber`). Previously the Categories page search by Customer Code (e.g. `EML_20`) silently failed.
+
+## Progress
+### Done
+- **Categories page (`categories.tsx`):** frontend `filteredContacts` filter now includes `c.customerCode?.toLowerCase().includes(s)`; placeholder → "Search by name, code, company, phone, city...".
+- **Follow-ups page (`follow-ups.tsx`):** frontend search filter now also matches `a.contact?.customerCode` / `a.deal?.contact?.customerCode`; placeholder → "Search by name, code, phone, company...".
+- **Production Orders (`production-service.ts` `listOrders`):** search now additionally matches the production order's own `formattedOrderId` (PO number) and the linked Sales Order number (`orders.formattedOrderId`/`orderNumber` via `orders.dealId` → `productionOrders.dealId`, `isDeleted=false`). It already matched customer code, invoice number, product name, transport, LR, PO id.
+- **Placeholders updated:** `leads.tsx` ("Search by name, code, company, phone..."), `existing-customers.tsx` ("Search by name, code, company, mobile..."), `orders-list.tsx` ("Search by order #, code, customer, company..."), `production-orders.tsx` ("Search by order #, code, company, invoice..."), `proforma-invoices.tsx` ("Search by order #, invoice #, code, customer...").
+- **Verified already covered (no change needed):** backend `GET /contacts?search=` includes `ilike(contactsTable.customerCode, s)` (contacts.ts:145); `orders.ts` `/orders` + `/orders/global` search includes `orderNumber` + `formattedOrderId` + customer-code subquery; `proforma-invoices.tsx` frontend filter already matches `inv.orderNo` + `inv.contact.customerCode` + `inv.invoiceNumber`; `existing-customers.ts` backend search includes `customerCode` + `lastOrder.orderNumber`; `search.ts` global search covers customer code, order number, PO number, invoice number. `dashboard.tsx`/`deals.tsx` have no text search bar (date/stage/owner filters only).
+- **Build verified:** CRM typecheck = 0 errors; API server = 32 errors (pre-existing baseline, 0 new).
+
+## Relevant Files
+- `artifacts/crm/src/pages/categories.tsx`: code filter + placeholder
+- `artifacts/crm/src/pages/follow-ups.tsx`: code filter + placeholder
+- `artifacts/crm/src/pages/leads.tsx`, `existing-customers.tsx`, `orders-list.tsx`, `production-orders.tsx`, `proforma-invoices.tsx`: placeholders
+- `artifacts/api-server/src/lib/production-service.ts`: `listOrders` search — PO number + linked Sales Order number
