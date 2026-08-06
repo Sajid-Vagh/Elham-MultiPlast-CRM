@@ -23,26 +23,38 @@ import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 
 const router: IRouter = Router();
 
+// Normalize a mobile number to its last 10 digits so matches are robust against
+// formatting differences: "+91 98765 43210", "98765-43210", "09876543210" and
+// "9876543210" all collapse to "9876543210". A 10-digit Indian mobile is never
+// longer than this, so the trailing slice is a safe canonical form.
+function normalizeMobile(input: string): string {
+  const digits = (input || "").replace(/\D/g, "");
+  return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
 // GET /deals/by-mobile/:mobile — search active deals by contact mobile number
 router.get("/deals/by-mobile/:mobile", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const mobile = req.params.mobile?.replace(/\s/g, "");
-    if (!mobile || mobile.length < 10) {
+    const mobile = normalizeMobile(req.params.mobile || "");
+    if (mobile.length < 10) {
       res.status(400).json({ error: "Valid mobile number required (min 10 digits)" });
       return;
     }
 
-    // Find contacts with this mobile or otherPhone
+    // Phase 1 — find contacts whose mobile / otherPhone matches the NORMALIZED
+    // number. The SQL applies the same transformation the input went through
+    // (strip non-digits, keep last 10) so a match happens regardless of how the
+    // number was stored: "+91 98765 43210", "98765-43210", "09876543210", etc.
     const contacts = await db
       .select({ id: contactsTable.id, name: contactsTable.name, companyName: contactsTable.companyName, mobile: contactsTable.mobile, unit: contactsTable.unit, category: contactsTable.category, salesOwnerId: contactsTable.salesOwnerId })
       .from(contactsTable)
       .where(
         or(
-          eq(contactsTable.mobile, mobile),
-          eq(contactsTable.otherPhone, mobile)
+          sql`right(regexp_replace(${contactsTable.mobile}, '[^0-9]', '', 'g'), 10) = ${mobile}`,
+          sql`right(regexp_replace(${contactsTable.otherPhone}, '[^0-9]', '', 'g'), 10) = ${mobile}`
         )
       );
 
@@ -53,6 +65,7 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
 
     const contactIds = contacts.map(c => c.id);
     const accessibleUnits = getAccessibleUnits(user);
+    const contactById = new Map(contacts.map(c => [c.id, c]));
 
     // Filter contacts by unit accessibility
     let allowedContactIds = contactIds;
@@ -67,10 +80,13 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
       return;
     }
 
-    // Fetch active deals for allowed contacts (not Won, not Lost)
-    let allDeals = await db
+    // Phase 2 — fetch active deals (not Won, not Lost) for the allowed contacts.
+    // LEFT JOIN the contacts table so the deal rows carry their contact payload
+    // in a single query; the response still returns full deal rows.
+    const rows = await db
       .select()
       .from(dealsTable)
+      .leftJoin(contactsTable, eq(dealsTable.contactId, contactsTable.id))
       .where(
         and(
           inArray(dealsTable.contactId, allowedContactIds),
@@ -78,6 +94,8 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
         )
       )
       .orderBy(desc(dealsTable.createdAt));
+
+    let allDeals = rows.map(r => r.deals);
 
     // Role-based deal isolation: non-admin users see deals they own OR deals on contacts they own
     if (user.role !== "admin") {
@@ -88,7 +106,7 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
     // Enrich deals with contact info and active PI summary
     const enrichedDeals = [];
     for (const deal of allDeals) {
-      const contact = contacts.find(c => c.id === deal.contactId) || null;
+      const contact = contactById.get(deal.contactId) || null;
       let salesOwner = null;
       if (deal.salesOwnerId) {
         const [u] = await db.select().from(usersTable).where(eq(usersTable.id, deal.salesOwnerId));

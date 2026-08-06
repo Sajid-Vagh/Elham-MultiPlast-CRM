@@ -122,6 +122,12 @@ export default function ProformaInvoicesPage() {
     return null;
   })();
 
+  // True while the form is being hydrated from ?dealId= / ?contactId= URL params.
+  // Gates the debounced mobile-search effect so it never overwrites the deal we
+  // were explicitly pointed at. Reset to false when the user edits the mobile
+  // input manually (then the normal search takes over again).
+  const hydratedFromUrlRef = useRef(false);
+
   const preventSpinHandlers = {
     onKeyDown: (e: React.KeyboardEvent) => {
       if (e.key === "ArrowUp" || e.key === "ArrowDown") e.preventDefault();
@@ -385,6 +391,7 @@ export default function ProformaInvoicesPage() {
     setAttachQuery("");
     setAttachResults([]);
     setAttachingId(null);
+    hydratedFromUrlRef.current = false;
   };
 
   // Product search autocomplete
@@ -528,7 +535,10 @@ export default function ProformaInvoicesPage() {
   // 2. Select Deal → internal linking only (no auto-fill of billing fields)
   // 3. Search GST Profiles by mobile → selected profile auto-fills ONLY billing fields
   // Lead/Contact data NEVER auto-fills billing fields.
+  // NOTE: skipped while hydratedFromUrlRef is set — a ?dealId= hydration owns
+  // the deal/contact state until the user edits the mobile input.
   useEffect(() => {
+    if (hydratedFromUrlRef.current) return;
     const m = mobile.replace(/\s/g, "");
     if (m.length < 10) {
       setSelectedLead(null);
@@ -666,6 +676,63 @@ export default function ProformaInvoicesPage() {
         .catch(() => {});
     });
   }, [urlContactId, urlRepeat, token]);
+
+  // Auto-hydrate from URL params: navigating from an existing Deal
+  // (?dealId=Y&contactId=X) should fetch the deal, populate the Mobile Number
+  // input with the contact's mobile, and set the selected deal/lead state so
+  // creating a Proforma Invoice needs NO manual mobile search. Runs once on
+  // mount; the hydratedFromUrlRef gate keeps the debounced mobile-search effect
+  // from overwriting the deal we were explicitly pointed at.
+  useEffect(() => {
+    if (!urlDealId && !urlContactId) {
+      hydratedFromUrlRef.current = false;
+      return;
+    }
+    let cancelled = false;
+    // Only a ?dealId= hydration owns the deal selection. Contact-only hydration
+    // (?contactId=X, e.g. from a lead) leaves the gate open so the debounced
+    // mobile-search effect auto-attaches the active deal once mobile is set.
+    if (urlDealId) hydratedFromUrlRef.current = true;
+
+    const hydrateFromContact = async (contactId: number) => {
+      hydratedFromUrlRef.current = false;
+      try {
+        const res = await fetch(`/api/contacts/${contactId}`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return;
+        const contact = await res.json();
+        if (cancelled) return;
+        setSelectedLead(contact);
+        if (contact.mobile) setMobile(String(contact.mobile).trim());
+        await loadCustomerGstProfile(contactId);
+      } catch { /* leave the form untouched on failure */ }
+    };
+
+    (async () => {
+      if (urlDealId) {
+        try {
+          const res = await fetch(`/api/deals/${urlDealId}`, { headers: { Authorization: `Bearer ${token}` } });
+          if (res.ok) {
+            const deal = await res.json();
+            if (cancelled) return;
+            setSelectedDeal(deal);
+            setActiveDeals([deal]);
+            if (deal.contact) {
+              setSelectedLead(deal.contact);
+              if (deal.contact.mobile) setMobile(String(deal.contact.mobile).trim());
+              await loadCustomerGstProfile(deal.contact.id);
+            } else if (urlContactId) {
+              await hydrateFromContact(urlContactId);
+            }
+            return;
+          }
+        } catch { /* fall through to contact-only hydration */ }
+      }
+      if (urlContactId) await hydrateFromContact(urlContactId);
+    })();
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlDealId, urlContactId, token]);
 
   const MATERIAL_HSN: Record<string, string> = {
     PET: "39233090",
@@ -2027,7 +2094,7 @@ ${pagesHtml}
               <div className="sm:col-span-2">
                 <Label>Mobile Number <span className="text-destructive">*</span></Label>
                 <div className="relative">
-                  <Input value={mobile} onChange={(e) => { setMobile(e.target.value); setMobileError(""); setMobileFetchError(""); }} placeholder="Enter 10-digit mobile to search Deal & GST Profile" className={mobileError || mobileFetchError ? "border-destructive" : ""} />
+                  <Input value={mobile} onChange={(e) => { hydratedFromUrlRef.current = false; setMobile(e.target.value); setMobileError(""); setMobileFetchError(""); }} placeholder="Enter 10-digit mobile to search Deal & GST Profile" className={mobileError || mobileFetchError ? "border-destructive" : ""} />
                   {mobileFetchLoading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />}
                 </div>
                 {mobileError && <p className="text-xs text-destructive mt-1">{mobileError}</p>}

@@ -731,3 +731,37 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `artifacts/crm/src/components/layout.tsx`: bell dropdown grouping (`groupedUnread`)
 - `artifacts/crm/src/components/notification-side-panel.tsx`: ChatPanel header uses company/orderNumber
 - `artifacts/crm/src/pages/order-detail-global.tsx`, `production-order-detail.tsx`, `lead-detail.tsx`: chat cards use enriched messages response + header context
+
+---
+
+# Create Proforma Invoice — URL Param Hydration + Mobile Search Fix
+
+## Goal
+- When navigating from an existing Deal (`?contactId=XX&dealId=YY`), the Create Proforma Invoice page must auto-fetch the deal and populate the form (Mobile Number + selected deal) with NO manual mobile search.
+- Fix the backend mobile-number search so formatted numbers (`+91 98765 43210`, `98765-43210`, `09876543210`) match reliably instead of returning "No active Deal found."
+
+## Progress
+### Done
+- **Backend `deals.ts` (`GET /deals/by-mobile/:mobile`):**
+  - Added `normalizeMobile(input)` — strips non-digits and keeps the last 10 digits as the canonical form.
+  - Phase 1 contact lookup now matches the NORMALIZED number on both `mobile` and `otherPhone` using SQL `right(regexp_replace(col, '[^0-9]', '', 'g'), 10) = ${mobile}` — the same transformation applied to the input — so a match succeeds regardless of stored formatting.
+  - Phase 2 deal query rewritten to `LEFT JOIN` contacts (`eq(dealsTable.contactId, contactsTable.id)`) so deal rows carry their contact payload in one query; response shape `{ contacts, deals }` unchanged (full deal rows + `contact`, `salesOwner`, `activeProformaInvoice`).
+  - Active-stage filter unchanged (`stage NOT IN ('Won','Lost')`) — covers New, CL Sent, Price Given, Samples Sent, Samples Received, PI Sent.
+  - Role isolation + unit accessibility preserved.
+- **Frontend `proforma-invoices.tsx`:**
+  - New `hydratedFromUrlRef` gates the debounced mobile-search effect.
+  - Hydration `useEffect` (runs when URL has `dealId`/`contactId`): fetches `GET /deals/:id`, sets `selectedDeal` + `activeDeals=[deal]`, populates `selectedLead` + the Mobile Number input from `deal.contact.mobile`, and loads GST profiles + previous PIs via `loadCustomerGstProfile`.
+  - Deal hydration owns the deal selection (gate ON) so the auto-search can't overwrite it; contact-only hydration (`?contactId=X`, e.g. lead-detail) leaves the gate OFF so the debounced mobile search auto-attaches the active deal after mobile is filled.
+  - Gate cleared in `resetForm()`, on manual mobile input edit, and when no URL params present.
+- **Frontend `deal-detail.tsx`:** "Create" Proforma Invoice link now includes `dealId` (`?contactId=X&dealId=Y`) so the deal is carried into the page.
+- **Build verified:** CRM typecheck = 0 errors; API server = 32 errors (pre-existing baseline, 0 new).
+
+## Key Decisions
+- Canonical mobile form = last 10 digits, applied identically in JS (`normalizeMobile`) and SQL (`right(regexp_replace(...), 10)`), so input and DB column always compare like-for-like.
+- Response contract preserved — the LEFT JOIN only replaces the two separate deal/contact lookups, the payload `{ contacts, deals: enrichedDeals }` is byte-for-byte compatible.
+- Gate is ref-based (not state) to avoid extra re-renders; only `?dealId=` hydration engages it so the existing lead-detail (`?contactId=X`) flow keeps working.
+
+## Relevant Files
+- `artifacts/api-server/src/routes/deals.ts`: `normalizeMobile` + rewritten `GET /deals/by-mobile/:mobile` (normalized SQL match + LEFT JOIN)
+- `artifacts/crm/src/pages/proforma-invoices.tsx`: `hydratedFromUrlRef`, hydration `useEffect`, debounced-search gate, `resetForm` + mobile-input gate clears
+- `artifacts/crm/src/pages/deal-detail.tsx`: Create PI link now passes `dealId`

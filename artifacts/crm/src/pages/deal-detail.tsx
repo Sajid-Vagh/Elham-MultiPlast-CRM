@@ -563,7 +563,7 @@ export default function DealDetail() {
             <Card className="border-dashed border-gray-300">
               <CardContent className="py-4 text-center">
                 <p className="text-xs text-muted-foreground">No active Proforma Invoice</p>
-                <Link href={`/proforma-invoices${contact?.id ? `?contactId=${contact.id}` : ""}`}>
+                <Link href={`/proforma-invoices?contactId=${contact?.id ?? ""}${deal?.id ? `&dealId=${deal.id}` : ""}`}>
                   <Button size="sm" variant="ghost" className="mt-1 text-primary h-7 text-xs">
                     <Plus className="h-3 w-3 mr-1" /> Create
                   </Button>
