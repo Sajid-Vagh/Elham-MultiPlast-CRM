@@ -53,8 +53,8 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
       .from(contactsTable)
       .where(
         or(
-          sql`right(regexp_replace(${contactsTable.mobile}, '[^0-9]', '', 'g'), 10) = ${mobile}`,
-          sql`right(regexp_replace(${contactsTable.otherPhone}, '[^0-9]', '', 'g'), 10) = ${mobile}`
+          sql`right(regexp_replace(COALESCE(${contactsTable.mobile}, ''), '[^0-9]', '', 'g'), 10) = ${mobile}`,
+          sql`right(regexp_replace(COALESCE(${contactsTable.otherPhone}, ''), '[^0-9]', '', 'g'), 10) = ${mobile}`
         )
       );
 
@@ -83,8 +83,10 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
     // Phase 2 — fetch active deals (not Won, not Lost) for the allowed contacts.
     // LEFT JOIN the contacts table so the deal rows carry their contact payload
     // in a single query; the response still returns full deal rows.
+    // NOTE: the joined result is keyed explicitly as { deals: ... } so the row
+    // mapping never depends on Drizzle's internal table-name keying behavior.
     const rows = await db
-      .select()
+      .select({ deals: dealsTable })
       .from(dealsTable)
       .leftJoin(contactsTable, eq(dealsTable.contactId, contactsTable.id))
       .where(
@@ -95,7 +97,7 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
       )
       .orderBy(desc(dealsTable.createdAt));
 
-    let allDeals = rows.map(r => r.deals);
+    let allDeals = rows.map(r => r.deals).filter((d): d is typeof dealsTable.$inferSelect => !!d);
 
     // Role-based deal isolation: non-admin users see deals they own OR deals on contacts they own
     if (user.role !== "admin") {
