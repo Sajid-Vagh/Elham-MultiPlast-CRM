@@ -562,8 +562,16 @@ export default function ProformaInvoicesPage() {
         // URL + attaches the auth token; throws ApiError on non-2xx)
         const data = await customFetch<any>(`/deals/by-mobile/${encodeURIComponent(m)}`);
 
-        if (data.contacts && data.contacts.length > 0) {
-          const firstContact = data.contacts[0];
+        const hasContacts = data.contacts && data.contacts.length > 0;
+        const hasDeals = data.deals && data.deals.length > 0;
+
+        if (hasContacts || hasDeals) {
+          // Lead selection: prefer the direct contact match, but fall back to the
+          // deal's own contact/lead so older records whose mobile only lives on the
+          // PI (empty contacts array) still populate the form.
+          const firstContact = hasContacts
+            ? data.contacts[0]
+            : (data.deals[0]?.contact || data.deals[0]?.lead || null);
           setSelectedLead(firstContact);
 
           // Set active deals
@@ -571,6 +579,7 @@ export default function ProformaInvoicesPage() {
           if (data.deals && data.deals.length === 1) {
             setSelectedDeal(data.deals[0]);
             setDealSelectOpen(false);
+            if (!firstContact) setSelectedLead(data.deals[0].contact || data.deals[0].lead || null);
           } else if (data.deals && data.deals.length > 1) {
             setSelectedDeal(null);
             setDealSelectOpen(true);
@@ -598,15 +607,17 @@ export default function ProformaInvoicesPage() {
           } catch { }
 
           // Step 3: Fetch previous PIs for repeat order support
-          try {
-            const prevRes = await fetch(`/api/proforma-invoices/previous-by-contact/${firstContact.id}`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (prevRes.ok) {
-              const prev = await prevRes.json();
-              setPreviousInvoices(Array.isArray(prev) ? prev : []);
-            }
-          } catch { }
+          if (firstContact) {
+            try {
+              const prevRes = await fetch(`/api/proforma-invoices/previous-by-contact/${firstContact.id}`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              if (prevRes.ok) {
+                const prev = await prevRes.json();
+                setPreviousInvoices(Array.isArray(prev) ? prev : []);
+              }
+            } catch { }
+          }
         } else {
           setSelectedLead(null);
           setSelectedDeal(null);
@@ -711,10 +722,11 @@ export default function ProformaInvoicesPage() {
           if (cancelled) return;
           setSelectedDeal(deal);
           setActiveDeals([deal]);
-          if (deal.contact) {
-            setSelectedLead(deal.contact);
-            if (deal.contact.mobile) setMobile(String(deal.contact.mobile).trim());
-            await loadCustomerGstProfile(deal.contact.id);
+          const dealContact = deal.contact || deal.lead || null;
+          if (dealContact) {
+            setSelectedLead(dealContact);
+            if (dealContact.mobile) setMobile(String(dealContact.mobile).trim());
+            await loadCustomerGstProfile(dealContact.id);
           } else if (urlContactId) {
             await hydrateFromContact(urlContactId);
           }
@@ -2108,7 +2120,7 @@ ${pagesHtml}
                   <p className="text-xs text-muted-foreground mt-0.5">Multiple active deals found for this contact. Select one to attach the Proforma Invoice.</p>
                   <div className="space-y-2 mt-1">
                     {activeDeals.map((d: any) => (
-                      <div key={d.id} className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${selectedDeal?.id === d.id ? "border-blue-500 bg-blue-50" : "hover:bg-muted/50"}`} onClick={() => { setSelectedDeal(d); setDealSelectOpen(false); }}>
+                      <div key={d.id} className={`flex items-center justify-between p-3 border rounded-md cursor-pointer transition-colors ${selectedDeal?.id === d.id ? "border-blue-500 bg-blue-50" : "hover:bg-muted/50"}`} onClick={() => { setSelectedDeal(d); setDealSelectOpen(false); if (d.contact || d.lead) setSelectedLead(d.contact || d.lead); }}>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium">Deal #{d.id}</span>

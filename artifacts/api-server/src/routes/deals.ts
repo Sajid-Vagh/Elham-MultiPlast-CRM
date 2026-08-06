@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable, unitHistoryTable, activitiesTable, DEAL_STAGES, STAGE_PROBS, ordersTable, orderItemsTable, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable, existingCustomersTable, PRIORITY_LEVELS } from "@workspace/db";
-import { eq, and, or, inArray, SQL, sql, desc, gte, lte, between, isNull } from "drizzle-orm";
+import { eq, and, or, inArray, SQL, SQLWrapper, sql, desc, gte, lte, between, isNull, isNotNull } from "drizzle-orm";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import { parseEndDate } from "../lib/parse-end-date";
 import {
@@ -32,7 +32,16 @@ function normalizeMobile(input: string): string {
   return digits.length > 10 ? digits.slice(-10) : digits;
 }
 
-// GET /deals/by-mobile/:mobile — search active deals by contact mobile number
+// GET /deals/by-mobile/:mobile — search active deals by contact mobile number.
+// Bulletproofed against historical data inconsistencies:
+//  1. Case-insensitive stage filter — older deals may store the stage in
+//     lowercase ('won'/'lost') which used to bypass the exact-match exclusion.
+//  2. Searches BOTH relational sources — this CRM has no separate leads table
+//     (leads ARE contacts), so Phase 1a covers the lead + contact path; Phase 1b
+//     also matches the number against Proforma Invoices, catching older records
+//     where the mobile only lives on the PI (contact mobile blank/different).
+//  3. A deal matches when EITHER its contactId is in the allowed set OR it owns
+//     a Proforma Invoice that matched the mobile.
 router.get("/deals/by-mobile/:mobile", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
@@ -44,68 +53,126 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
       return;
     }
 
-    // Phase 1 — find contacts whose mobile / otherPhone matches the NORMALIZED
-    // number. The SQL applies the same transformation the input went through
-    // (strip non-digits, keep last 10) so a match happens regardless of how the
-    // number was stored: "+91 98765 43210", "98765-43210", "09876543210", etc.
+    // SQL predicate that normalizes a column the exact same way the input was
+    // normalized (strip non-digits, keep last 10) so "+91 98765 43210",
+    // "98765-43210", "09876543210" and "9876543210" all match regardless of how
+    // the number was stored historically.
+    const normalizeColumn = (col: SQLWrapper) =>
+      sql`right(regexp_replace(COALESCE(${col}::text, ''), '[^0-9]', '', 'g'), 10) = ${mobile}`;
+
+    // Phase 1a — find contacts whose mobile / otherPhone matches the NORMALIZED
+    // number. In this CRM leads ARE contacts (no separate leads table), so this
+    // single query covers both the lead and the contact path.
     const contacts = await db
       .select({ id: contactsTable.id, name: contactsTable.name, companyName: contactsTable.companyName, mobile: contactsTable.mobile, unit: contactsTable.unit, category: contactsTable.category, salesOwnerId: contactsTable.salesOwnerId })
       .from(contactsTable)
       .where(
         or(
-          sql`right(regexp_replace(COALESCE(${contactsTable.mobile}::text, ''), '[^0-9]', '', 'g'), 10) = ${mobile}`,
-          sql`right(regexp_replace(COALESCE(${contactsTable.otherPhone}::text, ''), '[^0-9]', '', 'g'), 10) = ${mobile}`
+          normalizeColumn(contactsTable.mobile),
+          normalizeColumn(contactsTable.otherPhone)
         )
       );
 
-    if (contacts.length === 0) {
-      res.json({ contacts: [], deals: [], message: "No contact found with this mobile number" });
-      return;
+    // Phase 1b — older records sometimes carry the number ONLY on the Proforma
+    // Invoice (the contact's mobile is blank or a different number) while the
+    // deal is still active. Match those too so the search never misses a deal.
+    const piMatches = await db
+      .select({ dealId: proformaInvoicesTable.dealId, contactId: proformaInvoicesTable.contactId })
+      .from(proformaInvoicesTable)
+      .where(
+        and(
+          eq(proformaInvoicesTable.isDeleted, false),
+          isNotNull(proformaInvoicesTable.dealId),
+          normalizeColumn(proformaInvoicesTable.mobile)
+        )
+      );
+
+    const piDealIds = [...new Set(piMatches.filter(r => r.dealId != null).map(r => r.dealId!))];
+    const piContactIds = [...new Set(piMatches.filter(r => r.contactId != null).map(r => r.contactId!))];
+
+    // Union the direct mobile matches with PI-derived contacts so the frontend
+    // still receives a contact to populate the form for older PI-only records.
+    let matchedContacts = contacts;
+    if (piContactIds.length > 0) {
+      const piContacts = await db
+        .select({ id: contactsTable.id, name: contactsTable.name, companyName: contactsTable.companyName, mobile: contactsTable.mobile, unit: contactsTable.unit, category: contactsTable.category, salesOwnerId: contactsTable.salesOwnerId })
+        .from(contactsTable)
+        .where(inArray(contactsTable.id, piContactIds));
+      const existing = new Set(contacts.map(c => c.id));
+      matchedContacts = [...contacts, ...piContacts.filter(c => !existing.has(c.id))];
     }
 
-    const contactIds = contacts.map(c => c.id);
+    const allCandidateContactIds = [...new Set(matchedContacts.map(c => c.id))];
     const accessibleUnits = getAccessibleUnits(user);
-    const contactById = new Map(contacts.map(c => [c.id, c]));
-
-    // Filter contacts by unit accessibility
-    let allowedContactIds = contactIds;
-    if (accessibleUnits) {
-      allowedContactIds = contacts
-        .filter(c => accessibleUnits.includes(c.unit))
-        .map(c => c.id);
+    let allowedContactIds: number[] = [];
+    if (allCandidateContactIds.length > 0) {
+      if (!accessibleUnits) {
+        allowedContactIds = allCandidateContactIds;
+      } else {
+        const unitRows = await db
+          .select({ id: contactsTable.id, unit: contactsTable.unit })
+          .from(contactsTable)
+          .where(inArray(contactsTable.id, allCandidateContactIds));
+        allowedContactIds = unitRows
+          .filter(r => accessibleUnits.includes(r.unit))
+          .map(r => r.id);
+      }
     }
 
-    if (allowedContactIds.length === 0) {
-      res.json({ contacts: [], deals: [], message: "No accessible contacts found" });
+    // Phase 2 — fetch active deals. A deal matches when EITHER its contactId is
+    // in the allowed set OR it owns a Proforma Invoice that matched the mobile.
+    // The stage filter is case-insensitive so legacy lowercase stages
+    // ('won'/'lost') are excluded just like the canonical 'Won'/'Lost'.
+    const dealIdClauses: SQL[] = [];
+    if (allowedContactIds.length > 0) dealIdClauses.push(inArray(dealsTable.contactId, allowedContactIds));
+    if (piDealIds.length > 0) dealIdClauses.push(inArray(dealsTable.id, piDealIds));
+
+    if (dealIdClauses.length === 0) {
+      res.json({ contacts: matchedContacts, deals: [], message: "No accessible contacts found" });
       return;
     }
 
-    // Phase 2 — fetch active deals (not Won, not Lost) for the allowed contacts.
-    // LEFT JOIN the contacts table so the deal rows carry their contact payload
-    // in a single query; the response still returns full deal rows.
-    // NOTE: the joined result is keyed explicitly as { deals: ... } so the row
-    // mapping never depends on Drizzle's internal table-name keying behavior.
+    // LEFT JOIN the contacts table so deal rows carry their contact payload in a
+    // single query. NOTE: the joined result is keyed explicitly as { deals: ... }
+    // so the row mapping never depends on Drizzle's internal table-name keying.
     const rows = await db
       .select({ deals: dealsTable })
       .from(dealsTable)
       .leftJoin(contactsTable, eq(dealsTable.contactId, contactsTable.id))
       .where(
         and(
-          inArray(dealsTable.contactId, allowedContactIds),
-          sql`${dealsTable.stage} NOT IN ('Won', 'Lost')`
+          or(...dealIdClauses),
+          sql`LOWER(${dealsTable.stage}) NOT IN ('won', 'lost')`
         )
       )
       .orderBy(desc(dealsTable.createdAt));
 
     let allDeals = rows.map(r => r.deals).filter((d): d is typeof dealsTable.$inferSelect => !!d);
 
+    // Unit isolation for ALL returned deals — including PI-derived deals whose
+    // contactId may differ from the mobile-matched contacts. A single-unit user
+    // must never see a deal whose own contact belongs to another unit.
+    if (accessibleUnits) {
+      const dealContactIds = [...new Set(allDeals.map(d => d.contactId))];
+      const unitRows = await db
+        .select({ id: contactsTable.id, unit: contactsTable.unit })
+        .from(contactsTable)
+        .where(inArray(contactsTable.id, dealContactIds));
+      const unitById = new Map(unitRows.map(u => [u.id, u.unit]));
+      allDeals = allDeals.filter(d => {
+        const u = unitById.get(d.contactId);
+        return u != null && accessibleUnits.includes(u);
+      });
+    }
+
     // Role-based deal isolation: non-admin users see deals they own OR deals on contacts they own
     if (user.role !== "admin") {
-      const ownedContactIds = new Set(contacts.filter(c => c.salesOwnerId === user.id).map(c => c.id));
+      const ownedContactIds = new Set(matchedContacts.filter(c => c.salesOwnerId === user.id).map(c => c.id));
       allDeals = allDeals.filter(d => d.salesOwnerId === user.id || ownedContactIds.has(d.contactId));
     }
 
     // Enrich deals with contact info and active PI summary
+    const contactById = new Map(matchedContacts.map(c => [c.id, c]));
     const enrichedDeals = [];
     for (const deal of allDeals) {
       const contact = contactById.get(deal.contactId) || null;
@@ -118,7 +185,7 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
       enrichedDeals.push({ ...deal, contact, salesOwner, activeProformaInvoice: activePI ?? null });
     }
 
-    res.json({ contacts, deals: enrichedDeals });
+    res.json({ contacts: matchedContacts, deals: enrichedDeals });
   } catch (err) {
     req.log.error({ err }, "Search deals by mobile error");
     res.status(500).json({ success: false, error: "Internal Server Error" });
