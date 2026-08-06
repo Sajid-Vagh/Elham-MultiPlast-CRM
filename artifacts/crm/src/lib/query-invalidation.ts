@@ -96,8 +96,16 @@ export function onUserChange(queryClient: QueryClient) {
 // profile photo) into the global "me" query so the Header, Sidebar and every
 // UserAvatar re-render instantly instead of waiting for a refetch.
 export function syncMe(queryClient: QueryClient, data: unknown) {
-  const updated = (data as { user?: unknown })?.user ?? data;
-  if (!updated) return;
+  const d = data as { user?: Record<string, unknown>; profilePhoto?: string | null };
+  const base = d?.user ?? data;
+  if (!base) return;
+  // Prefer the explicit profilePhoto returned by the upload/remove endpoint so
+  // the global "me" state always reflects the exact permanent URL the backend
+  // persisted (never a stale or absent field nested inside the user object).
+  const updated =
+    d?.profilePhoto !== undefined
+      ? { ...(base as Record<string, unknown>), profilePhoto: d.profilePhoto }
+      : base;
   queryClient.setQueryData(getGetMeQueryKey(), updated);
   onUserChange(queryClient);
 }

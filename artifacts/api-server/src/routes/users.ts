@@ -196,7 +196,13 @@ router.post("/users/:id/photo", uploadProfilePhoto, async (req, res) => {
       return;
     }
     const storagePath = await storage.save(req.file.originalname || "photo.png", req.file.buffer, "profile-photos");
-    const photoUrl = storage.getUrl(storagePath);
+    // Persist the SAME normalized public URL that GET /auth/me and GET /users
+    // return on the next page load. Storing the raw provider URL (a relative
+    // "/api/uploads/..." when the local filesystem provider is active) makes
+    // the photo render right after upload but revert to initials on refresh,
+    // because the read path normalizes the relative path to a different
+    // (Supabase) URL where the object was never uploaded.
+    const photoUrl = normalizeProfilePhotoUrl(storage.getUrl(storagePath));
     const [user] = await db.update(usersTable).set({ profilePhoto: photoUrl }).where(eq(usersTable.id, userId)).returning();
     if (!user) { res.status(404).json({ error: "User not found" }); return; }
     res.json({ profilePhoto: photoUrl, user: safeUser(user) });

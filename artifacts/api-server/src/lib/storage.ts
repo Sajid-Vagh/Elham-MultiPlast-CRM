@@ -506,6 +506,19 @@ export const profilePhotoStorage: StorageProvider = provider;
 // public object URL so every user's photo loads regardless of role.
 export function normalizeProfilePhotoUrl(url: string | null | undefined): string | null {
   if (!url) return url ?? null;
+
+  // Legacy absolute URLs that point at the API server's OWN /api/uploads/...
+  // path (e.g. "https://<api-host>/api/uploads/profile-photos/x.jpg" stored
+  // while the local filesystem provider was active). Those files are ephemeral
+  // on Render/Vercel, so remap them to the equivalent Supabase public object
+  // URL exactly like the relative-path case below.
+  if (/^https?:\/\/[^/]+\/api\/uploads\//.test(url)) {
+    const storagePath = url.replace(/^https?:\/\/[^/]+\/api\/uploads\//, "");
+    const supabaseUrl = process.env.SUPABASE_URL;
+    if (supabaseUrl) return `${supabaseUrl.replace(/\/+$/, "")}/storage/v1/object/public/${storagePath}`;
+    return `/api/uploads/${storagePath}`;
+  }
+
   if (!url.startsWith("/")) return url; // already absolute (e.g. Supabase public URL)
   const supabaseUrl = process.env.SUPABASE_URL;
   if (supabaseUrl && url.startsWith("/api/uploads/")) {

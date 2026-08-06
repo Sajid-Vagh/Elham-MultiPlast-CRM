@@ -13,6 +13,18 @@ function generateToken(): string {
   return crypto.randomBytes(32).toString("hex");
 }
 
+// Strip the password hash and ALWAYS normalize the stored profile photo URL to
+// its permanent public form before sending the user to the frontend. Both
+// /auth/login and /auth/me must run this so the photo returned on every page
+// load / login is byte-for-byte identical to the URL persisted at upload time
+// (see POST /users/:id/photo). The full Drizzle row is selected (including the
+// profile_photo column) so it can never be dropped before res.json().
+function serializeUser(user: typeof usersTable.$inferSelect) {
+  const { passwordHash: _, ...safeUser } = user;
+  if (safeUser.profilePhoto) safeUser.profilePhoto = normalizeProfilePhotoUrl(safeUser.profilePhoto);
+  return safeUser;
+}
+
 export async function getUserIdFromToken(token: string): Promise<number | null> {
   try {
     const [session] = await db
@@ -96,12 +108,8 @@ router.post("/auth/login", async (req, res) => {
       userId: user.id,
     });
 
-    const { passwordHash: _, ...safeUser } = user;
-
-    if (safeUser.profilePhoto) safeUser.profilePhoto = normalizeProfilePhotoUrl(safeUser.profilePhoto);
-
     return res.json({
-      user: safeUser,
+      user: serializeUser(user),
       token,
     });
   } catch (err) {
@@ -148,11 +156,7 @@ router.get("/auth/me", async (req, res) => {
       });
     }
 
-    const { passwordHash: _, ...safeUser } = user;
-
-    if (safeUser.profilePhoto) safeUser.profilePhoto = normalizeProfilePhotoUrl(safeUser.profilePhoto);
-
-    return res.json(safeUser);
+    return res.json(serializeUser(user));
   } catch (err) {
     logger.error({ err }, "Auth/me error");
 
