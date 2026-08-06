@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Search, MapPin, Package, Truck, Star, Plus, Upload, CheckCircle, FileSpreadsheet, AlertTriangle } from "lucide-react";
+import { Search, MapPin, Package, Truck, Star, Plus, Upload, CheckCircle, FileSpreadsheet, AlertTriangle, Trash2 } from "lucide-react";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useToast } from "@/hooks/use-toast";
 import { useGetMe } from "@workspace/api-client-react";
@@ -19,12 +19,15 @@ const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("crm_
 // Roles allowed to add records / upload sheets (Admin, Support, Production). Sales is view-only.
 const EDIT_ROLES = ["admin", "production", "production_and_support"];
 
+// Roles allowed to delete records / clear all (Admin, Support only).
+const DELETE_ROLES = ["admin", "support"];
+
 // ── Add Record form types ──
 type TransportForm = { state: string; city: string; pinCode: string; transportCompany: string; tciBora: string; normalBora: string; productionUnit: string; remarks: string };
 const EMPTY_TRANSPORT_FORM: TransportForm = { state: "", city: "", pinCode: "", transportCompany: "", tciBora: "", normalBora: "", productionUnit: "all", remarks: "" };
 
-type BundleForm = { productName: string; bundleSize: string; linerPackingQty: string; tciBoraQty: string; normalBoraQty: string; productionUnit: string; remarks: string };
-const EMPTY_BUNDLE_FORM: BundleForm = { productName: "", bundleSize: "", linerPackingQty: "", tciBoraQty: "", normalBoraQty: "", productionUnit: "all", remarks: "" };
+type BundleForm = { productName: string; bundleSize: string; linerPackingQty: string; bora: string; productionUnit: string; remarks: string };
+const EMPTY_BUNDLE_FORM: BundleForm = { productName: "", bundleSize: "", linerPackingQty: "", bora: "", productionUnit: "all", remarks: "" };
 
 // ── Import parser detection (flexible column mapping) ──
 type DetectedParser = "transport" | "liner" | "bora";
@@ -87,8 +90,7 @@ const LINER_ALIASES: Record<string, string[]> = {
 
 const BORA_ALIASES: Record<string, string[]> = {
   productName: ["product name", "product", "item", "item name", "description"],
-  tciBoraQty: ["tci bora qty", "tci bora", "tci"],
-  normalBoraQty: ["normal bora qty", "normal bora", "normal"],
+  bora: ["bora qty", "bora quantity", "bora", "normal bora qty", "normal bora", "normal"],
   bundleSize: ["bundle size", "bundle", "pack size", "pack"],
   productionUnit: ["production unit", "factory unit", "unit"],
 };
@@ -155,6 +157,7 @@ export default function TransportLogisticsLookup() {
   const { units: activeUnits } = useActiveUnits();
 
   const canEdit = EDIT_ROLES.includes(user?.role || "");
+  const canDelete = DELETE_ROLES.includes(user?.role || "");
 
   // Add Record state
   const [addOpen, setAddOpen] = useState(false);
@@ -207,6 +210,47 @@ export default function TransportLogisticsLookup() {
     // Trigger lookup based on whichever field has data
   }, []);
 
+  const deleteTransportMut = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/transport-masters/destinations/${id}`, { method: "DELETE", headers: authHeaders() });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Failed"); }
+      return id;
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["transport-lookup"] }); toast({ title: "Transport record deleted" }); },
+    onError: (e: any) => toast({ title: e.message || "Error", variant: "destructive" }),
+  });
+
+  const deleteBundleMut = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/transport-masters/bundles/${id}`, { method: "DELETE", headers: authHeaders() });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Failed"); }
+      return id;
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["product-bundles-lookup"] }); toast({ title: "Packing record deleted" }); },
+    onError: (e: any) => toast({ title: e.message || "Error", variant: "destructive" }),
+  });
+
+  const clearAllMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/transport-masters/clear-all", { method: "DELETE", headers: authHeaders() });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Failed"); }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["transport-lookup"] });
+      queryClient.invalidateQueries({ queryKey: ["product-bundles-lookup"] });
+      const d = data?.deleted || {};
+      toast({ title: `Cleared ${d.destinations || 0} transport & ${d.bundles || 0} packing records` });
+    },
+    onError: (e: any) => toast({ title: e.message || "Error", variant: "destructive" }),
+  });
+
+  const confirmClearAll = useCallback(() => {
+    if (window.confirm("Are you sure you want to delete all freight and packing records? This cannot be undone.")) {
+      clearAllMut.mutate();
+    }
+  }, [clearAllMut]);
+
   const openAdd = useCallback(() => {
     setTransportForm({ ...EMPTY_TRANSPORT_FORM, productionUnit: unitFilter });
     setBundleForm({ ...EMPTY_BUNDLE_FORM, productionUnit: unitFilter });
@@ -241,8 +285,7 @@ export default function TransportLogisticsLookup() {
           productName: form.productName,
           bundleSize: Number(form.bundleSize || form.linerPackingQty || 80),
           linerPackingQty: Number(form.linerPackingQty || 0),
-          tciBoraQty: Number(form.tciBoraQty || 0),
-          normalBoraQty: Number(form.normalBoraQty || 0),
+          bora: Number(form.bora || 0),
           productionUnit: form.productionUnit === "all" ? null : form.productionUnit,
           remarks: form.remarks || undefined,
         }),
@@ -342,10 +385,9 @@ export default function TransportLogisticsLookup() {
   const renderBundleForm = (form: BundleForm, setForm: React.Dispatch<React.SetStateAction<BundleForm>>) => (
     <div className="grid gap-3 pt-2">
       <div><Label>Product Name *</Label><Input value={form.productName} onChange={e => setForm(p => ({ ...p, productName: e.target.value }))} placeholder="e.g. 500ml Bottle" /></div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <div><Label>Liner Packing Qty</Label><Input type="number" min={0} value={form.linerPackingQty} onChange={e => setForm(p => ({ ...p, linerPackingQty: e.target.value }))} placeholder="0" /></div>
-        <div><Label>TCI Bora Qty</Label><Input type="number" min={0} value={form.tciBoraQty} onChange={e => setForm(p => ({ ...p, tciBoraQty: e.target.value }))} placeholder="0" /></div>
-        <div><Label>Normal Bora Qty</Label><Input type="number" min={0} value={form.normalBoraQty} onChange={e => setForm(p => ({ ...p, normalBoraQty: e.target.value }))} placeholder="0" /></div>
+        <div><Label>Bora Qty</Label><Input type="number" min={0} value={form.bora} onChange={e => setForm(p => ({ ...p, bora: e.target.value }))} placeholder="0" /></div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -383,6 +425,11 @@ export default function TransportLogisticsLookup() {
               <Plus className="h-4 w-4 mr-1" /> Add Record
             </Button>
           </div>
+        )}
+        {canDelete && (
+          <Button size="sm" variant="destructive" disabled={clearAllMut.isPending} onClick={confirmClearAll}>
+            <Trash2 className="h-4 w-4 mr-1" /> {clearAllMut.isPending ? "Clearing..." : "Clear All Records"}
+          </Button>
         )}
       </div>
 
@@ -446,13 +493,14 @@ export default function TransportLogisticsLookup() {
                     <TableHead>Transport Company</TableHead>
                     <TableHead className="text-right">TCI Bora (₹)</TableHead>
                     <TableHead className="text-right">Normal Bora (₹)</TableHead>
+                    {canDelete && <TableHead className="text-right">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {lookupLoading ? (
-                    <TableRow><TableCell colSpan={6} className="text-center py-8">Searching...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={canDelete ? 7 : 6} className="text-center py-8">Searching...</TableCell></TableRow>
                   ) : !lookupData?.data?.length ? (
-                    <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableRow><TableCell colSpan={canDelete ? 7 : 6} className="text-center py-8 text-muted-foreground">
                       {pinCode || city || state ? "No transport routes found for this destination" : "No transport records found"}
                     </TableCell></TableRow>
                   ) : (
@@ -467,6 +515,17 @@ export default function TransportLogisticsLookup() {
                         </TableCell>
                         <TableCell className="text-right font-bold text-green-700">{formatRate(item.tciBora)}</TableCell>
                         <TableCell className="text-right font-bold">{formatRate(item.normalBora)}</TableCell>
+                        {canDelete && (
+                          <TableCell className="text-right">
+                            <Button
+                              size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive"
+                              disabled={deleteTransportMut.isPending}
+                              onClick={() => window.confirm(`Delete transport record for ${item.city}, ${item.state}?`) && deleteTransportMut.mutate(item.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))
                   )}
@@ -488,25 +547,35 @@ export default function TransportLogisticsLookup() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product Name</TableHead>
-                    <TableHead className="text-right">TCI Bora</TableHead>
-                    <TableHead className="text-right">Normal Bora</TableHead>
+                    <TableHead className="text-right">Bora</TableHead>
                     <TableHead className="text-right">Liner Packing</TableHead>
+                    {canDelete && <TableHead className="text-right">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {bundleLoading ? (
-                    <TableRow><TableCell colSpan={4} className="text-center py-8">Loading...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={canDelete ? 4 : 3} className="text-center py-8">Loading...</TableCell></TableRow>
                   ) : bundleData?.data?.length === 0 ? (
-                    <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                    <TableRow><TableCell colSpan={canDelete ? 4 : 3} className="text-center py-8 text-muted-foreground">
                       {debouncedSearch ? "No products found" : "No packing records found"}
                     </TableCell></TableRow>
                   ) : (
                     bundleData?.data?.map((item: any) => (
                       <TableRow key={item.id}>
                         <TableCell className="font-medium">{item.productName}</TableCell>
-                        <TableCell className="text-right">{item.tciBoraQty ?? "—"}</TableCell>
-                        <TableCell className="text-right">{item.normalBoraQty ?? "—"}</TableCell>
+                        <TableCell className="text-right">{item.bora ?? "—"}</TableCell>
                         <TableCell className="text-right font-bold">{item.linerPacking ?? item.linerPackingQty ?? "—"}</TableCell>
+                        {canDelete && (
+                          <TableCell className="text-right">
+                            <Button
+                              size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive"
+                              disabled={deleteBundleMut.isPending}
+                              onClick={() => window.confirm(`Delete packing record for ${item.productName}?`) && deleteBundleMut.mutate(item.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))
                   )}
@@ -644,8 +713,7 @@ export default function TransportLogisticsLookup() {
                     )}
                     {preview.parser === "bora" && (
                       <>
-                        <TableHead>Product</TableHead><TableHead className="text-right">TCI Bora</TableHead>
-                        <TableHead className="text-right">Normal Bora</TableHead>
+                        <TableHead>Product</TableHead><TableHead className="text-right">Bora</TableHead>
                       </>
                     )}
                     <TableHead>Status</TableHead>
@@ -678,8 +746,7 @@ export default function TransportLogisticsLookup() {
                         {preview.parser === "bora" && (
                           <>
                             <TableCell className="text-xs">{row.productName}</TableCell>
-                            <TableCell className="text-xs text-right">{row.tciBoraQty || 0}</TableCell>
-                            <TableCell className="text-xs text-right">{row.normalBoraQty || 0}</TableCell>
+                            <TableCell className="text-xs text-right">{row.bora || 0}</TableCell>
                           </>
                         )}
                         <TableCell>

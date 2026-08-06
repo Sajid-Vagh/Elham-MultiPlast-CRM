@@ -28,7 +28,7 @@ type TransportDest = {
 
 type Bundle = {
   id: number; productName: string; productId: number | null; bundleSize: number;
-  linerPackingQty: number; tciBoraQty: number; normalBoraQty: number;
+  linerPackingQty: number; bora: number;
   productionUnit: string | null; remarks: string | null; isActive: boolean;
   createdBy: number | null; updatedBy: number | null;
   createdAt: string; updatedAt: string;
@@ -51,7 +51,7 @@ type ImportPreview = {
 };
 
 const EMPTY_TRANSPORT_FORM = { state: "", city: "", pinCode: "", transportCompany: "", transportType: "Bundle Wise", transportCharge: "", transitDays: "", productionUnit: "all", remarks: "" };
-const EMPTY_BUNDLE_FORM = { productName: "", bundleSize: "", linerPackingQty: "", tciBoraQty: "", normalBoraQty: "", productionUnit: "all", remarks: "" };
+const EMPTY_BUNDLE_FORM = { productName: "", bundleSize: "", linerPackingQty: "", bora: "", productionUnit: "all", remarks: "" };
 
 // ── Flexible Column Mapping (3 dedicated parsers) ──
 type DetectedParser = "transport" | "liner" | "bora";
@@ -89,8 +89,7 @@ const LINER_ALIASES: Record<string, string[]> = {
 
 const BORA_ALIASES: Record<string, string[]> = {
   productName: ["product name", "product", "item", "item name", "description"],
-  tciBoraQty: ["tci bora qty", "tci bora", "tci"],
-  normalBoraQty: ["normal bora qty", "normal bora", "normal"],
+  bora: ["bora qty", "bora quantity", "bora", "normal bora qty", "normal bora", "normal"],
   bundleSize: ["bundle size", "bundle", "pack size", "pack"],
   productionUnit: ["production unit", "factory unit", "unit"],
 };
@@ -444,8 +443,7 @@ function PackingMasterTab({ canManage }: { canManage: boolean }) {
           productName: form.productName,
           bundleSize: Number(form.bundleSize || form.linerPackingQty || 80),
           linerPackingQty: Number(form.linerPackingQty || 0),
-          tciBoraQty: Number(form.tciBoraQty || 0),
-          normalBoraQty: Number(form.normalBoraQty || 0),
+          bora: Number(form.bora || 0),
           productionUnit: form.productionUnit === "all" ? null : form.productionUnit,
           remarks: form.remarks || undefined,
         }),
@@ -465,8 +463,7 @@ function PackingMasterTab({ canManage }: { canManage: boolean }) {
           productName: form.productName,
           bundleSize: Number(form.bundleSize || form.linerPackingQty || 80),
           linerPackingQty: Number(form.linerPackingQty || 0),
-          tciBoraQty: Number(form.tciBoraQty || 0),
-          normalBoraQty: Number(form.normalBoraQty || 0),
+          bora: Number(form.bora || 0),
           productionUnit: form.productionUnit === "all" ? null : form.productionUnit,
           remarks: form.remarks || null,
         }),
@@ -489,18 +486,17 @@ function PackingMasterTab({ canManage }: { canManage: boolean }) {
 
   const toForm = (item: Bundle) => ({
     productName: item.productName, bundleSize: String(item.bundleSize),
-    linerPackingQty: String(item.linerPackingQty), tciBoraQty: String(item.tciBoraQty),
-    normalBoraQty: String(item.normalBoraQty), productionUnit: item.productionUnit || "all",
+    linerPackingQty: String(item.linerPackingQty), bora: String(item.bora),
+    productionUnit: item.productionUnit || "all",
     remarks: item.remarks || "",
   });
 
   const renderForm = (form: typeof EMPTY_BUNDLE_FORM, setForm: React.Dispatch<React.SetStateAction<typeof EMPTY_BUNDLE_FORM>>) => (
     <div className="grid gap-3 pt-2">
       <div><Label>Product Name *</Label><Input value={form.productName} onChange={e => setForm(p => ({ ...p, productName: e.target.value }))} placeholder="e.g. 500ml Bottle" /></div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <div><Label>Liner Packing Qty</Label><Input type="number" min={0} value={form.linerPackingQty} onChange={e => setForm(p => ({ ...p, linerPackingQty: e.target.value }))} placeholder="0" /></div>
-        <div><Label>TCI Bora Qty</Label><Input type="number" min={0} value={form.tciBoraQty} onChange={e => setForm(p => ({ ...p, tciBoraQty: e.target.value }))} placeholder="0" /></div>
-        <div><Label>Normal Bora Qty</Label><Input type="number" min={0} value={form.normalBoraQty} onChange={e => setForm(p => ({ ...p, normalBoraQty: e.target.value }))} placeholder="0" /></div>
+        <div><Label>Bora Qty</Label><Input type="number" min={0} value={form.bora} onChange={e => setForm(p => ({ ...p, bora: e.target.value }))} placeholder="0" /></div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -521,7 +517,7 @@ function PackingMasterTab({ canManage }: { canManage: boolean }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">Packing quantities per product (Liner / TCI Bora / Normal Bora)</p>
+        <p className="text-sm text-muted-foreground">Packing quantities per product (Liner / Bora)</p>
         {canManage && (
           <Button size="sm" onClick={() => { setCreateForm(EMPTY_BUNDLE_FORM); setCreateOpen(true); }}>
             <Plus className="h-4 w-4 mr-1" /> Add Packing
@@ -551,25 +547,23 @@ function PackingMasterTab({ canManage }: { canManage: boolean }) {
                 <TableHead>Product</TableHead>
                 <TableHead>Unit</TableHead>
                 <TableHead className="text-right">Liner Qty</TableHead>
-                <TableHead className="text-right">TCI Bora</TableHead>
-                <TableHead className="text-right">Normal Bora</TableHead>
+                <TableHead className="text-right">Bora</TableHead>
                 <TableHead className="text-right">Bundle Size</TableHead>
                 <TableHead className="w-20" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center py-8">Loading...</TableCell></TableRow>
               ) : data?.data?.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No packing records found</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No packing records found</TableCell></TableRow>
               ) : (
                 data?.data?.map((item: Bundle) => (
                   <TableRow key={item.id}>
                     <TableCell className="font-medium">{item.productName}</TableCell>
                     <TableCell><Badge variant="outline">{item.productionUnit || "All"}</Badge></TableCell>
                     <TableCell className="text-right">{item.linerPackingQty}</TableCell>
-                    <TableCell className="text-right">{item.tciBoraQty}</TableCell>
-                    <TableCell className="text-right">{item.normalBoraQty}</TableCell>
+                    <TableCell className="text-right">{item.bora}</TableCell>
                     <TableCell className="text-right font-bold">{item.bundleSize}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
@@ -845,8 +839,7 @@ function ImportTab({ canImport, canUndo }: { canImport: boolean; canUndo: boolea
                     )}
                     {preview.parser === "bora" && (
                       <>
-                        <TableHead>Product</TableHead><TableHead className="text-right">TCI Bora</TableHead>
-                        <TableHead className="text-right">Normal Bora</TableHead>
+                        <TableHead>Product</TableHead><TableHead className="text-right">Bora</TableHead>
                       </>
                     )}
                     <TableHead>Status</TableHead>
@@ -880,8 +873,7 @@ function ImportTab({ canImport, canUndo }: { canImport: boolean; canUndo: boolea
                         {preview.parser === "bora" && (
                           <>
                             <TableCell className="text-xs">{row.productName}</TableCell>
-                            <TableCell className="text-xs text-right">{row.tciBoraQty || 0}</TableCell>
-                            <TableCell className="text-xs text-right">{row.normalBoraQty || 0}</TableCell>
+                            <TableCell className="text-xs text-right">{row.bora || 0}</TableCell>
                           </>
                         )}
                         <TableCell>

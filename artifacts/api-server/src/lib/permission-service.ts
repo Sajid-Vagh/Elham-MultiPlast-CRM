@@ -180,3 +180,11 @@ export function canImportTransportLookup(user: PermissionUser): boolean {
 export function canUndoImport(user: PermissionUser): boolean {
   return user.role === "admin";
 }
+
+/**
+ * Check if a user can delete freight & packing lookup records.
+ * Admin and Support roles only.
+ */
+export function canDeleteTransportLookup(user: PermissionUser): boolean {
+  return user.role === "admin" || user.role === "support";
+}

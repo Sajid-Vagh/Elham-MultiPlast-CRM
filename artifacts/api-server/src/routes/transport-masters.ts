@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, productBundleMasterTable, transportDestinationMasterTable, importBatchesTable, auditLogsTable, ordersTable, orderItemsTable } from "@workspace/db";
 import { eq, and, sql, ilike, or, isNull, desc } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
-import { canManageMaster, canManageTransportLookup, canImportTransportLookup, canUndoImport, type PermissionUser } from "../lib/permission-service";
+import { canManageMaster, canManageTransportLookup, canImportTransportLookup, canUndoImport, canDeleteTransportLookup, type PermissionUser } from "../lib/permission-service";
 
 const router: IRouter = Router();
 
@@ -276,12 +276,12 @@ router.patch("/transport-masters/destinations/:id", async (req, res) => {
   }
 });
 
-// Delete destination (admin only)
+// Delete destination (admin/support only)
 router.delete("/transport-masters/destinations/:id", async (req, res) => {
   try {
     const user = await authUser(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (user.role !== "admin") { res.status(403).json({ error: "Admin only" }); return; }
+    if (!canDeleteTransportLookup(user)) { res.status(403).json({ error: "Admin or Support only" }); return; }
 
     const id = Number(req.params.id);
     const [existing] = await db.select().from(transportDestinationMasterTable).where(eq(transportDestinationMasterTable.id, id));
@@ -643,7 +643,7 @@ router.post("/transport-masters/bundles", async (req, res) => {
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
     if (!canManageTransportLookup(user)) { res.status(403).json({ error: "Forbidden" }); return; }
 
-    const { productName, productId, bundleSize, linerPackingQty, tciBoraQty, normalBoraQty, productionUnit, remarks } = req.body;
+    const { productName, productId, bundleSize, linerPackingQty, bora, productionUnit, remarks } = req.body;
     if (!productName) {
       res.status(400).json({ error: "Product name is required" }); return;
     }
@@ -653,8 +653,7 @@ router.post("/transport-masters/bundles", async (req, res) => {
       productId: productId || null,
       bundleSize: Number(bundleSize || 80),
       linerPackingQty: Number(linerPackingQty || 0),
-      tciBoraQty: Number(tciBoraQty || 0),
-      normalBoraQty: Number(normalBoraQty || 0),
+      bora: Number(bora || 0),
       productionUnit: productionUnit && productionUnit !== "all" ? productionUnit : null,
       remarks: remarks?.trim() || null,
       createdBy: user.id,
@@ -683,8 +682,7 @@ router.patch("/transport-masters/bundles/:id", async (req, res) => {
     if (req.body.productName !== undefined) updateData.product_name = req.body.productName.trim();
     if (req.body.bundleSize !== undefined) updateData.bundle_size = Number(req.body.bundleSize);
     if (req.body.linerPackingQty !== undefined) updateData.liner_packing_qty = Number(req.body.linerPackingQty);
-    if (req.body.tciBoraQty !== undefined) updateData.tci_bora_qty = Number(req.body.tciBoraQty);
-    if (req.body.normalBoraQty !== undefined) updateData.normal_bora_qty = Number(req.body.normalBoraQty);
+    if (req.body.bora !== undefined) updateData.bora = Number(req.body.bora);
     if (req.body.isActive !== undefined) updateData.is_active = req.body.isActive;
     if (req.body.productionUnit !== undefined) updateData.production_unit = req.body.productionUnit && req.body.productionUnit !== "all" ? req.body.productionUnit : null;
     if (req.body.remarks !== undefined) updateData.remarks = req.body.remarks?.trim() || null;
@@ -700,12 +698,12 @@ router.patch("/transport-masters/bundles/:id", async (req, res) => {
   }
 });
 
-// Delete bundle (admin only)
+// Delete bundle (admin/support only)
 router.delete("/transport-masters/bundles/:id", async (req, res) => {
   try {
     const user = await authUser(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (user.role !== "admin") { res.status(403).json({ error: "Admin only" }); return; }
+    if (!canDeleteTransportLookup(user)) { res.status(403).json({ error: "Admin or Support only" }); return; }
 
     const id = Number(req.params.id);
     const [existing] = await db.select().from(productBundleMasterTable).where(eq(productBundleMasterTable.id, id));
@@ -773,11 +771,8 @@ router.post("/transport-masters/bundles/import/preview", async (req, res) => {
       if (row.linerPackingQty !== undefined && row.linerPackingQty !== "" && isNaN(Number(row.linerPackingQty))) {
         errors.push({ row: rowNum, field: "linerPackingQty", message: "Invalid quantity" }); rowValid = false;
       }
-      if (row.tciBoraQty !== undefined && row.tciBoraQty !== "" && isNaN(Number(row.tciBoraQty))) {
-        errors.push({ row: rowNum, field: "tciBoraQty", message: "Invalid quantity" }); rowValid = false;
-      }
-      if (row.normalBoraQty !== undefined && row.normalBoraQty !== "" && isNaN(Number(row.normalBoraQty))) {
-        errors.push({ row: rowNum, field: "normalBoraQty", message: "Invalid quantity" }); rowValid = false;
+      if (row.bora !== undefined && row.bora !== "" && isNaN(Number(row.bora))) {
+        errors.push({ row: rowNum, field: "bora", message: "Invalid quantity" }); rowValid = false;
       }
       if (rowValid) {
         if (row.productName) {
@@ -839,8 +834,7 @@ router.post("/transport-masters/bundles/import/execute", async (req, res) => {
           productId: row.productId ? Number(row.productId) : null,
           bundleSize: Number(row.bundleSize || row.linerPackingQty || 80),
           linerPackingQty: Number(row.linerPackingQty || 0),
-          tciBoraQty: Number(row.tciBoraQty || 0),
-          normalBoraQty: Number(row.normalBoraQty || 0),
+          bora: Number(row.bora || 0),
           productionUnit: tagUnit ?? (row.productionUnit && row.productionUnit !== "all" ? row.productionUnit.trim() : null),
           remarks: row.remarks?.trim() || null,
           createdBy: user.id,
@@ -1020,8 +1014,7 @@ router.post("/transport-masters/bundles/import/liner/execute", async (req, res) 
             productName,
             bundleSize: bundleSize ?? 80,
             linerPackingQty: linerQty,
-            tciBoraQty: 0,
-            normalBoraQty: 0,
+            bora: 0,
             productionUnit,
             createdBy: user.id,
             updatedBy: user.id,
@@ -1085,7 +1078,7 @@ router.post("/transport-masters/bundles/import/liner/undo", async (req, res) => 
 });
 
 // ══════════════════════════════════════════════════════════════
-// BORA PACKING IMPORT (upsert: update tciBoraQty + normalBoraQty only)
+// BORA PACKING IMPORT (upsert: update bora only)
 // ══════════════════════════════════════════════════════════════
 
 router.post("/transport-masters/bundles/import/bora/preview", async (req, res) => {
@@ -1112,16 +1105,12 @@ router.post("/transport-masters/bundles/import/bora/preview", async (req, res) =
       let rowValid = true;
 
       if (!row.productName?.trim()) { errors.push({ row: rowNum, field: "productName", message: "Product name is required" }); rowValid = false; }
-      const hasTci = row.tciBoraQty !== undefined && row.tciBoraQty !== "" && !isNaN(Number(row.tciBoraQty));
-      const hasNormal = row.normalBoraQty !== undefined && row.normalBoraQty !== "" && !isNaN(Number(row.normalBoraQty));
-      if (!hasTci && !hasNormal) {
-        errors.push({ row: rowNum, field: "boraQty", message: "At least one of TCI Bora or Normal Bora is required" }); rowValid = false;
+      const hasBora = row.bora !== undefined && row.bora !== "" && !isNaN(Number(row.bora));
+      if (!hasBora) {
+        errors.push({ row: rowNum, field: "bora", message: "Bora quantity is required" }); rowValid = false;
       }
-      if (hasTci && isNaN(Number(row.tciBoraQty))) {
-        errors.push({ row: rowNum, field: "tciBoraQty", message: "Invalid TCI Bora quantity" }); rowValid = false;
-      }
-      if (hasNormal && isNaN(Number(row.normalBoraQty))) {
-        errors.push({ row: rowNum, field: "normalBoraQty", message: "Invalid Normal Bora quantity" }); rowValid = false;
+      if (hasBora && isNaN(Number(row.bora))) {
+        errors.push({ row: rowNum, field: "bora", message: "Invalid Bora quantity" }); rowValid = false;
       }
       if (rowValid) valid.push({ ...row, _rowNum: rowNum });
     }
@@ -1169,8 +1158,7 @@ router.post("/transport-masters/bundles/import/bora/execute", async (req, res) =
       try {
         const productName = (row.productName || "").trim();
         const productionUnit = tagUnit ?? (row.productionUnit && row.productionUnit !== "all" ? row.productionUnit.trim() : null);
-        const tciBora = row.tciBoraQty !== undefined && row.tciBoraQty !== "" ? Number(row.tciBoraQty) : 0;
-        const normalBora = row.normalBoraQty !== undefined && row.normalBoraQty !== "" ? Number(row.normalBoraQty) : 0;
+        const bora = row.bora !== undefined && row.bora !== "" ? Number(row.bora) : 0;
         const bundleSize = row.bundleSize ? Number(row.bundleSize) : undefined;
 
         // Upsert: find existing product by name
@@ -1186,7 +1174,7 @@ router.post("/transport-masters/bundles/import/bora/execute", async (req, res) =
         const [existing] = await db.select().from(productBundleMasterTable).where(and(...conditions)).limit(1);
 
         if (existing) {
-          const updateData: any = { tci_bora_qty: tciBora, normal_bora_qty: normalBora, updatedAt: new Date(), updatedBy: user.id, importBatchId: batch.id };
+          const updateData: any = { bora, updatedAt: new Date(), updatedBy: user.id, importBatchId: batch.id };
           if (bundleSize !== undefined) updateData.bundle_size = bundleSize;
           await db.update(productBundleMasterTable).set(updateData).where(eq(productBundleMasterTable.id, existing.id));
         } else {
@@ -1194,8 +1182,7 @@ router.post("/transport-masters/bundles/import/bora/execute", async (req, res) =
             productName,
             bundleSize: bundleSize ?? 80,
             linerPackingQty: 0,
-            tciBoraQty: tciBora,
-            normalBoraQty: normalBora,
+            bora,
             productionUnit,
             createdBy: user.id,
             updatedBy: user.id,
@@ -1331,8 +1318,7 @@ router.post("/transport-masters/calculate", async (req, res) => {
         quantity,
         bundleSize,
         linerPackingQty: bundle?.linerPackingQty || 0,
-        tciBoraQty: bundle?.tciBoraQty || 0,
-        normalBoraQty: bundle?.normalBoraQty || 0,
+        bora: bundle?.bora || 0,
         numBundles,
         transportType: dest.transportType,
         transportCostPerBundle,
@@ -1357,6 +1343,29 @@ router.post("/transport-masters/calculate", async (req, res) => {
     });
   } catch (err) {
     console.error("Transport calculation error:", err);
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
+
+// Delete all freight & packing lookup records (admin/support only)
+router.delete("/transport-masters/clear-all", async (req, res) => {
+  try {
+    const user = await authUser(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!canDeleteTransportLookup(user)) { res.status(403).json({ error: "Admin or Support only" }); return; }
+
+    const deletedDestinations = await db.delete(transportDestinationMasterTable).returning({ id: transportDestinationMasterTable.id });
+    const deletedBundles = await db.delete(productBundleMasterTable).returning({ id: productBundleMasterTable.id });
+
+    const destinationsDeleted = deletedDestinations?.length ?? 0;
+    const bundlesDeleted = deletedBundles?.length ?? 0;
+
+    await logAudit("transport_master", 0, "clear_all", null, { destinations: destinationsDeleted, bundles: bundlesDeleted }, user.id);
+    await logAudit("packing_master", 0, "clear_all", null, { destinations: destinationsDeleted, bundles: bundlesDeleted }, user.id);
+
+    res.json({ success: true, deleted: { destinations: destinationsDeleted, bundles: bundlesDeleted } });
+  } catch (err) {
+    console.error("Clear all error:", err);
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });

@@ -788,3 +788,82 @@ Every search bar in the CRM that filters Contacts/Leads must match by `customerC
 - `artifacts/crm/src/pages/follow-ups.tsx`: code filter + placeholder
 - `artifacts/crm/src/pages/leads.tsx`, `existing-customers.tsx`, `orders-list.tsx`, `production-orders.tsx`, `proforma-invoices.tsx`: placeholders
 - `artifacts/api-server/src/lib/production-service.ts`: `listOrders` search — PO number + linked Sales Order number
+
+---
+
+# Freight & Packing Lookup — Delete (Single + Clear All)
+
+## Goal
+Add delete functionality to the "Freight & Packing Lookup" page (`transport-logistics-readonly.tsx` — Transport Rates + Packing Quantities tabs): a "Clear All Records" bulk-delete button in the header and per-row single-delete action columns in both tabs. Restricted to `admin` and `support` roles on both frontend and backend.
+
+## Constraints
+- Uses a NEW delete role check (`admin` OR `support`) — does NOT reuse `EDIT_ROLES` (admin/production/production_and_support) for add/upload.
+- Backend re-verifies the role before executing any SQL delete.
+
+## Progress
+### Done
+- **Permission helper** (`permission-service.ts`): added `canDeleteTransportLookup(user)` = `admin` || `support`.
+- **Backend `transport-masters.ts`:**
+  - `DELETE /transport-masters/destinations/:id` role check changed from `admin` only → `canDeleteTransportLookup` (admin/support).
+  - `DELETE /transport-masters/bundles/:id` role check changed from `admin` only → `canDeleteTransportLookup` (admin/support).
+  - New `DELETE /transport-masters/clear-all` — deletes all rows in both `transportDestinationMasterTable` and `productBundleMasterTable` via `returning({ id })` to count deleted rows; writes audit logs (`transport_master` + `packing_master`, action `clear_all`); returns `{ success, deleted: { destinations, bundles } }`.
+- **Frontend `transport-logistics-readonly.tsx`:**
+  - Added `DELETE_ROLES = ["admin", "support"]` + `canDelete` flag (computed from `useGetMe`).
+  - Header: destructive "Clear All Records" button (only when `canDelete`) with `window.confirm` confirmation; shows "Clearing..." while pending.
+  - Transport Rates tab: "Actions" column with per-row trash button (`window.confirm` → `DELETE /transport-masters/destinations/:id`); colSpan adjusted (6→7) for loading/empty states when `canDelete`.
+  - Packing Quantities tab: "Actions" column with per-row trash button (`window.confirm` → `DELETE /transport-masters/bundles/:id`); colSpan adjusted (4→5).
+  - All three delete mutations invalidate the relevant React Query keys (`transport-lookup`, `product-bundles-lookup`) on success.
+- **Build verified:** CRM typecheck = 0 errors; API server = 32 errors (pre-existing baseline, 0 new).
+
+## Key Decisions
+- Clear-all returns per-table deleted counts from `db.delete().returning()` (Drizzle returns an array — no `as any[]` cast needed).
+- Deletion is a hard delete, matching the pre-existing single-row DELETE endpoints; audit logs record who cleared and how many rows.
+- No DB migration required (no schema changes).
+
+## Relevant Files
+- `artifacts/crm/src/pages/transport-logistics-readonly.tsx`: Clear All button + per-row delete actions in both tabs
+- `artifacts/api-server/src/routes/transport-masters.ts`: `DELETE .../destinations/:id`, `DELETE .../bundles/:id`, `DELETE /transport-masters/clear-all`
+- `artifacts/api-server/src/lib/permission-service.ts`: `canDeleteTransportLookup`
+
+---
+
+# Packing Quantities — Merge TCI Bora + Normal Bora into single "Bora"
+
+## Goal
+Simplify the "Packing Quantities" data on the Freight & Packing Lookup page (and the `/masters` admin page): replace the two `TCI Bora` / `Normal Bora` columns with one `Bora` column across DB schema, migrations, API routes, Excel import mapping, and frontend UI.
+
+## Scope
+- Touches only `product_bundle_master` (packing quantities) — `bundle_size`, `liner_packing_qty`, `bora`.
+- Does NOT touch `transport_destination_master.tci_bora` / `normal_bora` (transport RATE columns in ₹, migration 068) — those stay.
+- Does NOT touch `order_items.tci_bora_qty` / `normal_bora_qty` (order-line snapshot columns from migration 042) — those stay.
+
+## Progress
+### Done
+- **Schema** (`lib/db/src/schema/product_bundle_master.ts`): removed `tciBoraQty`/`normalBoraQty`, added `bora: integer("bora").notNull().default(0)`.
+- **Migration `073_merge_bora_in_packing_master.sql`**: `ADD COLUMN bora`, backfills `bora = GREATEST(COALESCE(normal_bora_qty,0), COALESCE(tci_bora_qty,0))`, sets NOT NULL, drops the two old columns.
+- **Backend `transport-masters.ts`:**
+  - POST /bundles + PATCH /bundles/:id now accept/update `bora`.
+  - Packing import preview validates `row.bora`; execute inserts `bora`.
+  - Liner import upsert insert defaults `bora: 0`.
+  - Bora import preview requires a `bora` quantity (single field); execute upserts `bora` only.
+  - `/transport-masters/calculate` output now returns `bora` instead of `tciBoraQty`/`normalBoraQty`.
+- **Frontend `transport-logistics-readonly.tsx`** (Freight & Packing Lookup):
+  - `BundleForm`/`EMPTY_BUNDLE_FORM` → single `bora` string field.
+  - `BORA_ALIASES`: `bora: ["bora qty", "bora quantity", "bora", "normal bora qty", "normal bora", "normal"]` (no TCI mapping).
+  - Add Record dialog: grid `grid-cols-3`→`grid-cols-2` with `Liner Packing Qty` + `Bora Qty` inputs.
+  - Packing Quantities table: single `Bora` `<th>`/`<td>` (`item.bora`); colSpan adjusted (4→3, 5→4 with Actions).
+  - Import preview (bora parser): single `Bora` column.
+- **Frontend `masters.tsx`** (admin `/masters` Packing tab): same changes — Bundle type, form, table header/cells (colSpan 7→6), import preview.
+- **Build verified:** CRM typecheck = 0 errors; API server = 32 errors (pre-existing baseline, 0 new); `typecheck:libs` clean.
+
+## Key Decisions
+- Backfill uses `GREATEST(normal, tci)` so a product that historically had only TCI quantities keeps a non-zero value after the merge.
+- Excel header "Bora" (or "normal bora") maps straight to the new `bora` column; TCI-only mapping removed.
+- `order_items` snapshot columns intentionally kept (historical order records); only the packing master is simplified.
+
+## Relevant Files
+- `lib/db/src/schema/product_bundle_master.ts`: `bora` column replaces `tci_bora_qty`/`normal_bora_qty`
+- `lib/db/migrations/073_merge_bora_in_packing_master.sql`: add/backfill/drop migration (must be applied before deploy)
+- `artifacts/api-server/src/routes/transport-masters.ts`: CRUD + 3 import flows + calculate now use `bora`
+- `artifacts/crm/src/pages/transport-logistics-readonly.tsx`: Packing Quantities UI + import mapping
+- `artifacts/crm/src/pages/masters.tsx`: admin Packing tab UI + import mapping
