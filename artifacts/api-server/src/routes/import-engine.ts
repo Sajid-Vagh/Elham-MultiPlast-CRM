@@ -212,6 +212,7 @@ router.post("/import/confirm", async (req, res) => {
 
     // Notification
     await createNotification({
+      createdById: currentUser.id,
       userId: ownerId,
       type: "assignment",
       title: "New IndiaMART Enquiry Assigned",

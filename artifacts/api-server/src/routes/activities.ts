@@ -397,6 +397,7 @@ router.post("/activities", async (req, res) => {
         if (contactCategory === "Regular Follow up" || parsed.data.type !== "FollowUp") {
           const displayNotes = notesToDisplay(activity.notes).slice(0, 150);
           await createNotification({
+            createdById: currentUser.id,
             userId: contactOwnerId,
             type: "follow_up",
             title: "Follow-up Scheduled",
@@ -521,6 +522,7 @@ router.patch("/activities/:id", async (req, res) => {
           }
           if (contactOwnerId && contactOwnerId !== user.id) {
             await createNotification({
+              createdById: user.id,
               userId: contactOwnerId,
               type: "follow_up_completed",
               title: "Follow-up Completed",

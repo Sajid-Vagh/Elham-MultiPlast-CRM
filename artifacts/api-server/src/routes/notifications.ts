@@ -31,6 +31,7 @@ function formatNotification(row: any) {
   return {
     id: row.id,
     userId: row.userId,
+    createdById: row.createdById ?? null,
     type: row.type,
     title: row.title,
     message: row.message,
@@ -402,6 +403,7 @@ router.post("/notifications/read-all", async (req: Request, res: Response) => {
 // (same userId, type, relatedId, relatedType, and still unread)
 export async function createNotification(params: {
   userId: number;
+  createdById?: number | null;
   type: string;
   title: string;
   message: string;

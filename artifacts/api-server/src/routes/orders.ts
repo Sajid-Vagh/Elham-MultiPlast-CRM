@@ -505,6 +505,7 @@ router.post("/orders", async (req, res) => {
 
     for (const uid of notifyUsers) {
       await createNotification({
+        createdById: user.id,
         userId: uid,
         type: "order_created",
         title: "New Order Created",
@@ -556,6 +557,7 @@ router.patch("/orders/:id", async (req, res) => {
 
       for (const uid of notifyUsers) {
         await createNotification({
+          createdById: user.id,
           userId: uid,
           type: "order_status_changed",
           title: "Order Status Updated",
@@ -801,6 +803,7 @@ router.post("/orders/:id/revisions", async (req, res) => {
       const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
       for (const admin of admins) {
         await createNotification({
+          createdById: user.id,
           userId: admin.id,
           type: "revision_approval_required",
           title: "Order Revision Needs Approval",

@@ -98,6 +98,7 @@ router.post("/products", async (req, res) => {
     for (const admin of admins) {
       if (admin.id !== user.id) {
         await createNotification({
+          createdById: user.id,
           userId: admin.id,
           type: "product_added",
           title: "New Product Added",

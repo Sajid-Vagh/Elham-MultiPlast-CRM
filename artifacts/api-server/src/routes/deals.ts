@@ -337,6 +337,7 @@ router.post("/deals", async (req, res) => {
     const dealOwnerId = deal!.salesOwnerId || contact?.salesOwnerId;
     if (dealOwnerId && dealOwnerId !== user.id) {
       await createNotification({
+        createdById: user.id,
         userId: dealOwnerId,
         type: "deal_created",
         title: "New Deal Created",
@@ -645,6 +646,7 @@ router.patch("/deals/:id", async (req, res) => {
       const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, newOwnerId));
       if (owner) {
         await createNotification({
+          createdById: user.id,
           userId: newOwnerId,
           type: "assignment",
           title: "Deal Assigned",
@@ -688,6 +690,7 @@ router.patch("/deals/:id", async (req, res) => {
 
       if (stage === "Won" && notifyUserId) {
         await createNotification({
+          createdById: user.id,
           userId: notifyUserId,
           type: "deal_won",
           title: "Deal Won! 🎉",
@@ -701,6 +704,7 @@ router.patch("/deals/:id", async (req, res) => {
         for (const admin of admins) {
           if (admin.id !== user.id && admin.id !== notifyUserId) {
             await createNotification({
+              createdById: user.id,
               userId: admin.id,
               type: "deal_won",
               title: "Deal Won",
@@ -713,6 +717,7 @@ router.patch("/deals/:id", async (req, res) => {
         }
       } else if (stage === "Lost" && notifyUserId) {
         await createNotification({
+          createdById: user.id,
           userId: notifyUserId,
           type: "deal_lost",
           title: "Deal Lost",
@@ -723,6 +728,7 @@ router.patch("/deals/:id", async (req, res) => {
         });
       } else if (isReopened && notifyUserId) {
         await createNotification({
+          createdById: user.id,
           userId: notifyUserId,
           type: "deal_reopened",
           title: "Deal Reopened",
@@ -734,6 +740,7 @@ router.patch("/deals/:id", async (req, res) => {
       } else if (notifyUserId && notifyUserId !== user.id) {
         // General stage change notification
         await createNotification({
+          createdById: user.id,
           userId: notifyUserId,
           type: "deal_stage_changed",
           title: "Deal Stage Updated",

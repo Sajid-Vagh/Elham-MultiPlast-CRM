@@ -249,6 +249,7 @@ router.post("/contacts", async (req, res) => {
       if (owner) {
         const assignmentTime = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
         await createNotification({
+          createdById: user.id,
           userId: values.salesOwnerId,
           type: "enquiry_assigned",
           title: "New Lead Assigned",
@@ -373,6 +374,7 @@ router.post("/contacts/:id/request-transfer", async (req, res) => {
     // Notify current owner
     if (currentOwner && currentOwner.id !== user.id) {
       await createNotification({
+        createdById: user.id,
         userId: currentOwner.id,
         type: "lead_transfer_requested",
         title: "Transfer Requested",
@@ -388,6 +390,7 @@ router.post("/contacts/:id/request-transfer", async (req, res) => {
     for (const admin of admins) {
       if (admin.id !== user.id && admin.id !== contact.salesOwnerId) {
         await createNotification({
+          createdById: user.id,
           userId: admin.id,
           type: "lead_transfer_requested",
           title: "Transfer Requested",
@@ -465,6 +468,7 @@ router.post("/contacts/:id/repeat-enquiry", async (req, res) => {
           ? "Customer remains a permanent client. Active repeat deal will show in Regular Follow up while pending."
           : "Category updated to Regular Follow up.";
         await createNotification({
+          createdById: user.id,
           userId: currentOwner.id,
           type: "repeat_enquiry",
           title: "Repeat Enquiry",
@@ -721,6 +725,7 @@ router.patch("/contacts/:id", async (req, res) => {
       if (owner) {
         const assignmentTime = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
         await createNotification({
+          createdById: user?.id ?? null,
           userId: newOwnerId,
           type: "enquiry_assigned",
           title: "New Lead Assigned",
@@ -734,6 +739,7 @@ router.patch("/contacts/:id", async (req, res) => {
         for (const admin of admins) {
           if (admin.id !== user.id) {
             await createNotification({
+              createdById: user?.id ?? null,
               userId: admin.id,
               type: "enquiry_assigned",
               title: "Lead Assigned",
@@ -1050,6 +1056,7 @@ router.delete("/contacts/:id", async (req, res) => {
     const deleteTime = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
     if (contactToDelete.salesOwnerId && contactToDelete.salesOwnerId !== user.id) {
       await createNotification({
+        createdById: user.id,
         userId: contactToDelete.salesOwnerId,
         type: "lead_deleted",
         title: "Lead Deleted",
@@ -1063,6 +1070,7 @@ router.delete("/contacts/:id", async (req, res) => {
     for (const admin of admins) {
       if (admin.id !== user.id && admin.id !== contactToDelete.salesOwnerId) {
         await createNotification({
+          createdById: user.id,
           userId: admin.id,
           type: "lead_deleted",
           title: "Lead Deleted",

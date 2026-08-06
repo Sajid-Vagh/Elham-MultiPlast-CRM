@@ -82,6 +82,7 @@ router.post("/users", async (req, res) => {
     for (const admin of admins) {
       if (admin.id !== me.id) {
         await createNotification({
+          createdById: me.id,
           userId: admin.id,
           type: "user_created",
           title: "New User Created",

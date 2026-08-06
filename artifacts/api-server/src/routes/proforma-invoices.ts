@@ -918,6 +918,7 @@ router.post("/proforma-invoices", async (req, res) => {
     // Notify sales owner and admins about new invoice
     if (resolvedSalesOwnerId && resolvedSalesOwnerId !== user.id) {
       await createNotification({
+        createdById: user.id,
         userId: resolvedSalesOwnerId,
         type: "invoice_created",
         title: "New Invoice Created",
@@ -2113,6 +2114,7 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
         ? `Invoice #${invoice.invoiceNumber} has been converted to Production.\nChanged By: ${user.name}`
         : `Invoice #${invoice.invoiceNumber} status changed from "${prevStatus}" to "${status}".\nChanged By: ${user.name}`;
       await createNotification({
+        createdById: user.id,
         userId: notifyUserId,
         type: "invoice_updated",
         title: isConverted ? "Invoice Converted to Production" : "Invoice Status Updated",
@@ -2285,6 +2287,7 @@ router.delete("/proforma-invoices/:id", async (req, res) => {
     const notifyUserId = invoice.salesOwnerId || invoice.createdBy;
     if (notifyUserId && notifyUserId !== user.id) {
       await createNotification({
+        createdById: user.id,
         userId: notifyUserId,
         type: "invoice_deleted",
         title: "Invoice Deleted",

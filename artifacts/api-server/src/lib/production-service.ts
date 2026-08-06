@@ -2223,6 +2223,7 @@ export async function sendMessage(
 
   for (const uid of notifyUserIds) {
     await createNotification({
+      createdById: user.id,
       userId: uid,
       type: "production_message",
       title: chatTitle,

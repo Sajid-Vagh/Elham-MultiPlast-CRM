@@ -294,6 +294,7 @@ export async function cancelOrder(
 
   for (const uid of notifyUsers) {
     await createNotification({
+      createdById: user.id,
       userId: uid,
       type: "order_cancelled",
       title: "Order Cancelled",

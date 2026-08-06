@@ -150,6 +150,7 @@ router.post("/voice-notes", upload.single("file"), async (req: Request, res: Res
         const userUnit = pu.unit || "All";
         if (pu.role === "admin" || userUnit === "All" || userUnit === orderUnit || orderUnit === "Himatnagar") {
           await createNotification({
+            createdById: user.id,
             userId: pu.id,
             type: "voice_note",
             title: "Voice Note from Sales",
@@ -169,6 +170,7 @@ router.post("/voice-notes", upload.single("file"), async (req: Request, res: Res
       const [uploader] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, user.id));
       if (deal?.salesOwnerId && String(deal.salesOwnerId) !== String(user.id)) {
         await createNotification({
+          createdById: user.id,
           userId: deal.salesOwnerId,
           type: "voice_note",
           title: "Voice Note from Production",

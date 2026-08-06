@@ -1,10 +1,11 @@
-import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { playNotificationSoundForType, showBrowserNotification } from "./notification-sound";
 import { toast } from "@/hooks/use-toast";
 
 interface Notification {
   id: number;
   userId: number;
+  createdById?: number | null;
   type: string;
   title: string;
   message: string;
@@ -29,6 +30,9 @@ interface NotificationContextValue {
   latestNotification: Notification | null;
   loading: boolean;
   error: string | null;
+  ownerFilter: string;
+  setOwnerFilter: (ownerId: string) => void;
+  visibleNotifications: Notification[];
   markAsRead: (id: number) => Promise<void>;
   markAllAsRead: () => Promise<void>;
   markAsSeen: (id: number) => Promise<void>;
@@ -60,6 +64,25 @@ function addSoundPlayedId(id: number) {
 
 const MAX_NOTIFICATIONS = 500;
 
+// Persistent global "Owners" filter for the Admin. Acts as a master gatekeeper
+// across ALL notification surfaces (toasts, bell dropdown, history). Survives
+// page reloads, logouts and browser restarts via localStorage.
+const OWNER_FILTER_KEY = "admin_notification_filter";
+const OWNER_FILTER_ALL = "ALL";
+
+function matchesOwnerFilter(n: Notification, filter: string): boolean {
+  if (!filter || filter === OWNER_FILTER_ALL) return true;
+  return String(n.createdById ?? "") === String(filter);
+}
+
+function loadOwnerFilter(): string {
+  try {
+    return localStorage.getItem(OWNER_FILTER_KEY) || OWNER_FILTER_ALL;
+  } catch {
+    return OWNER_FILTER_ALL;
+  }
+}
+
 export function NotificationProvider({ userId, children }: { userId: number | undefined; children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [total, setTotal] = useState(0);
@@ -71,6 +94,23 @@ export function NotificationProvider({ userId, children }: { userId: number | un
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const mountedRef = useRef(true);
   const lastKnownMaxIdRef = useRef<number | null>(null);
+  const [ownerFilter, setOwnerFilterState] = useState<string>(loadOwnerFilter);
+  const ownerFilterRef = useRef(ownerFilter);
+
+  // Keep a ref in sync so the SSE handler + polling callbacks (both stable)
+  // always read the latest filter without being re-created on every change.
+  useEffect(() => {
+    ownerFilterRef.current = ownerFilter;
+  }, [ownerFilter]);
+
+  const setOwnerFilter = useCallback((ownerId: string) => {
+    setOwnerFilterState(ownerId);
+    try {
+      localStorage.setItem(OWNER_FILTER_KEY, ownerId);
+    } catch {
+      /* localStorage unavailable — ignore */
+    }
+  }, []);
 
   const getHeaders = useCallback((): Record<string, string> => {
     const t = localStorage.getItem("crm_token");
@@ -94,9 +134,12 @@ export function NotificationProvider({ userId, children }: { userId: number | un
           // Only surface a NEW unread + unseen notification via popup/browser.
           // Seen/read items must never re-trigger popups (prevents the glitch where
           // dismissed notifications fired repeatedly on every poll/refetch).
+          // The persistent "Owners" filter also blocks toasts for actors that do
+          // not match the selected owner — the raw list still stores them so they
+          // appear in History when the filter is changed back to All.
           if (!isInitial && maxId > (lastKnownMaxIdRef.current ?? 0)) {
             const newest = fetched.find(n => n.id === maxId);
-            if (newest && !newest.readAt && !newest.notificationSeen) setLatestNotification(newest);
+            if (newest && !newest.readAt && !newest.notificationSeen && matchesOwnerFilter(newest, ownerFilterRef.current)) setLatestNotification(newest);
           }
           lastKnownMaxIdRef.current = maxId;
         }
@@ -143,8 +186,14 @@ export function NotificationProvider({ userId, children }: { userId: number | un
             return [n, ...prev].slice(0, MAX_NOTIFICATIONS);
           });
           setTotal((prev) => prev + 1);
-          setLatestNotification(n);
           lastKnownMaxIdRef.current = Math.max(lastKnownMaxIdRef.current ?? 0, n.id);
+
+          // Global "Owners" gatekeeper: when a specific owner is selected, skip
+          // the toast (popup + sound) for notifications caused by anyone else.
+          // The notification is still stored so it is visible under "All".
+          if (!matchesOwnerFilter(n, ownerFilterRef.current)) return;
+
+          setLatestNotification(n);
 
           // Play sound with dedup via sessionStorage
           const playedSet = getSoundPlayedSet();
@@ -182,6 +231,14 @@ export function NotificationProvider({ userId, children }: { userId: number | un
   }, [userId, fetchAll]);
 
   const unreadCount = notifications.filter(n => !n.readAt).length;
+
+  // The persistent "Owners" filter applies to everything the user SEES: the
+  // bell dropdown, the bell badge count and the History page all consume this
+  // derived array so the gatekeeper stays in sync everywhere.
+  const visibleNotifications = useMemo(
+    () => (ownerFilter === OWNER_FILTER_ALL ? notifications : notifications.filter((n) => matchesOwnerFilter(n, ownerFilter))),
+    [notifications, ownerFilter]
+  );
 
   const markAsRead = useCallback(async (id: number) => {
     try {
@@ -281,6 +338,7 @@ export function NotificationProvider({ userId, children }: { userId: number | un
   const value: NotificationContextValue = {
     notifications, total, unreadCount, latestNotification,
     loading, error,
+    ownerFilter, setOwnerFilter, visibleNotifications,
     markAsRead, markAllAsRead, markAsSeen, markAsSeenByRelated,
     deleteNotification, clearAllNotifications, refetch: fetchAll,
     panelNotification, openNotificationPanel, closeNotificationPanel,

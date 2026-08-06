@@ -725,6 +725,7 @@ router.post("/existing-customers/:id/follow-ups", async (req, res) => {
     if (ec.salesOwnerId && ec.salesOwnerId !== user.id) {
       const contact = await db.select().from(contactsTable).where(eq(contactsTable.id, ec.contactId)).then(r => r[0]);
       await createNotification({
+        createdById: user.id,
         userId: ec.salesOwnerId,
         type: "follow_up_created",
         title: "Follow-up Scheduled",
@@ -857,6 +858,7 @@ router.post("/existing-customers/:id/repeat-order", async (req, res) => {
 
     for (const uid of notifyUsers) {
       await createNotification({
+        createdById: user.id,
         userId: uid,
         type: "repeat_order_created",
         title: "Repeat Order Created",

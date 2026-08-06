@@ -150,7 +150,7 @@ router.post("/dispatch", async (req, res) => {
 
       const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, dispatch.orderId));
       if (order?.salesOwnerId) {
-        await createNotification({ userId: order.salesOwnerId, type: "dispatch_created", title: "Dispatch Created", message: `Dispatch ${dispatchNumber} created for Order ${order.orderNumber}`, link: `/orders/${order.id}`, relatedId: order.id, relatedType: "order" });
+        await createNotification({ userId: order.salesOwnerId, createdById: user.id, type: "dispatch_created", title: "Dispatch Created", message: `Dispatch ${dispatchNumber} created for Order ${order.orderNumber}`, link: `/orders/${order.id}`, relatedId: order.id, relatedType: "order" });
       }
     }
 
@@ -212,7 +212,7 @@ router.patch("/dispatch/:id", async (req, res) => {
 
         const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, existing.orderId));
         if (order?.salesOwnerId) {
-          await createNotification({ userId: order.salesOwnerId, type: "dispatch_status_changed", title: "Dispatch Status Updated", message: `Dispatch ${existing.dispatchNumber}: ${existing.status} → ${status}`, link: `/orders/${order.id}`, relatedId: order.id, relatedType: "order" });
+          await createNotification({ userId: order.salesOwnerId, createdById: user.id, type: "dispatch_status_changed", title: "Dispatch Status Updated", message: `Dispatch ${existing.dispatchNumber}: ${existing.status} → ${status}`, link: `/orders/${order.id}`, relatedId: order.id, relatedType: "order" });
         }
       }
 

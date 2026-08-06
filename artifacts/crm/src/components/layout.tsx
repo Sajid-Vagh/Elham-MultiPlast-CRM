@@ -113,7 +113,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   const bellRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const { unreadCount: sseUnreadCount, notifications: sseNotifications, latestNotification, markAsRead, markAllAsRead, markAsSeenByRelated, openNotificationPanel } = useNotifications();
+  const { unreadCount: sseUnreadCount, visibleNotifications, latestNotification, markAsRead, markAllAsRead, markAsSeenByRelated, openNotificationPanel } = useNotifications();
 
   const [activePopups, setActivePopups] = useState<Set<number>>(new Set());
   const popupShownRef = useRef<Set<number>>(new Set());
@@ -483,13 +483,13 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
               </Button>
             </div>
           </div>
-          {sseNotifications.filter(n => !n.readAt).length > 0 && (
+          {visibleNotifications.filter(n => !n.readAt).length > 0 && (
             <>
               <div className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider bg-muted/20">
                 New
               </div>
               <div className="divide-y">
-                {sseNotifications.filter(n => !n.readAt).slice(0, 10).map(n => (
+                {visibleNotifications.filter(n => !n.readAt).slice(0, 10).map(n => (
                   <div key={n.id} className="flex items-start gap-1.5 group">
                     <div
                       className="flex-1 min-w-0 p-3 hover:bg-muted/30 cursor-pointer"
@@ -569,7 +569,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
               </div>
             </>
           )}
-          {sseNotifications.filter(n => !n.readAt).length === 0 && todayActivities.length === 0 && (
+          {visibleNotifications.filter(n => !n.readAt).length === 0 && todayActivities.length === 0 && (
             <div className="p-8 text-center text-sm text-muted-foreground">No notifications</div>
           )}
           <div className="border-t">
@@ -620,7 +620,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
       </AlertDialog>
 
       {/* Notification popups */}
-      {sseNotifications.filter(n => activePopups.has(n.id)).slice(0, 3).map(n => (
+      {visibleNotifications.filter(n => activePopups.has(n.id)).slice(0, 3).map(n => (
         <NotificationPopup
           key={n.id}
           id={n.id}

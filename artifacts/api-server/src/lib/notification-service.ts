@@ -76,6 +76,7 @@ export async function notifyProductionUsers(params: ProductionNotificationParams
     if (!shouldNotify) continue;
 
     await createNotification({
+      createdById: excludeUserId ?? null,
       userId: pu.id,
       type,
       title,
@@ -108,6 +109,7 @@ export async function notifyDealEvent(params: {
   const notifyUserId = salesOwnerId || Number(actionUserId);
   if (notifyUserId && String(notifyUserId) !== actionUserId) {
     await createNotification({
+      createdById: actionUserId ? Number(actionUserId) || null : null,
       userId: notifyUserId,
       type,
       title,
@@ -123,6 +125,7 @@ export async function notifyDealEvent(params: {
   for (const admin of admins) {
     if (String(admin.id) !== actionUserId && admin.id !== notifyUserId) {
       await createNotification({
+        createdById: actionUserId ? Number(actionUserId) || null : null,
         userId: admin.id,
         type,
         title: title.replace("! 🎉", ""),
