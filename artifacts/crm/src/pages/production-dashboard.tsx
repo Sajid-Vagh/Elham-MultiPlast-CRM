@@ -7,16 +7,15 @@ import { useUserUnits } from "@/lib/use-user-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 import { useDateFilter } from "@/lib/use-date-filter";
 import { DateRangeFilter } from "@/components/date-range-filter";
-import { Clock, AlertTriangle, Truck } from "lucide-react";
+import { Clock, AlertTriangle, Truck, BarChart3 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { ManufacturingSummary } from "@/components/manufacturing-summary";
 
 const KPI_CONFIG = [
+  { key: "totalBottles", label: "Total Bottles", color: "bg-purple-100 text-purple-700 border-purple-300", hoverStatus: null as string | null, icon: BarChart3 },
   { key: "pendingCount", label: "Pending PCS", color: "bg-gray-100 text-gray-700 border-gray-300", hoverStatus: "Pending", icon: Clock },
   { key: "productionOnGoingCount", label: "In Production PCS", color: "bg-orange-100 text-orange-700 border-orange-300", hoverStatus: "Production On Going", icon: Clock },
-  { key: "readyToDispatchCount", label: "Ready PCS", color: "bg-green-100 text-green-700 border-green-300", hoverStatus: "Ready To Dispatch", icon: Truck },
-  { key: "delayedOrders", label: "Delayed Orders", color: "bg-red-100 text-red-700 border-red-300", hoverStatus: "delayed", icon: AlertTriangle },
 ];
 
 const QUICK_ACTIONS = [
@@ -51,8 +50,8 @@ export default function ProductionDashboard() {
     return (
       <div className="p-6 space-y-6">
         <Skeleton className="h-8 w-48" />
-        <div className="grid grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24" />)}
+        <div className="grid grid-cols-3 gap-4">
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-24" />)}
         </div>
       </div>
     );
@@ -81,19 +80,23 @@ export default function ProductionDashboard() {
         </div>
       </div>
 
-      {/* Status Count Cards — Product Line Based */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* Status Count Cards — Total Bottles = Pending + In Production */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {KPI_CONFIG.map((kpi) => {
           const Icon = kpi.icon;
+          const value = kpi.key === "totalBottles"
+            ? (dashboard?.pendingCount ?? 0) + (dashboard?.productionOnGoingCount ?? 0)
+            : (dashboard?.[kpi.key] ?? 0);
+          const clickable = kpi.hoverStatus;
           return (
-            <Card key={kpi.key} className="cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
-              onClick={() => setLocation(kpi.hoverStatus === "delayed" ? "/production/orders?status=delayed" : `/production/orders?status=${encodeURIComponent(kpi.hoverStatus)}`)}>
+            <Card key={kpi.key} className={clickable ? "cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all duration-200" : ""}
+              onClick={clickable ? () => setLocation(`/production/orders?status=${encodeURIComponent(clickable)}`) : undefined}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className={`text-[10px] font-semibold uppercase tracking-wider ${kpi.color.split(" ")[1]}`}>{kpi.label}</span>
                   <Icon className={`h-3.5 w-3.5 ${kpi.color.split(" ")[1]}`} />
                 </div>
-                <p className="text-xl font-bold">{dashboard?.[kpi.key] ?? 0}</p>
+                <p className="text-xl font-bold">{value}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">pieces</p>
               </CardContent>
             </Card>

@@ -48,11 +48,23 @@ export default function MachineReport() {
   const materialBreakdown = data?.materialBreakdown || [];
   const orders = data?.orders || [];
 
+  // Sum of pieces (remaining quantities) per status bucket for the current
+  // filters — derived from the backend's materialBreakdown so the same
+  // status-bucket logic as the dashboard drives the totals.
+  const pendingPcs = materialBreakdown.reduce(
+    (s, g) => s + g.machines.reduce((m, x) => m + (Number(x.pendingQty) || 0), 0),
+    0
+  );
+  const inProductionPcs = materialBreakdown.reduce(
+    (s, g) => s + g.machines.reduce((m, x) => m + (Number(x.inProductionQty) || 0), 0),
+    0
+  );
+
   const SUMMARY_CARDS = [
     { label: "Total Products", value: summary?.totalProducts ?? 0, icon: Package, color: "text-blue-600" },
     { label: "Total Bottles", value: (summary?.totalBottles ?? 0).toLocaleString(), icon: BarChart3, color: "text-purple-600" },
-    { label: "Pending", value: summary?.pending ?? 0, icon: Clock, color: "text-gray-600" },
-    { label: "Production On Going", value: summary?.inProduction ?? 0, icon: Settings2, color: "text-orange-600" },
+    { label: "Pending PCS", value: pendingPcs.toLocaleString(), icon: Clock, color: "text-gray-600" },
+    { label: "In Production PCS", value: inProductionPcs.toLocaleString(), icon: Settings2, color: "text-orange-600" },
   ];
 
   const statusColor = (s: string) => {
@@ -78,24 +90,24 @@ export default function MachineReport() {
         {showUnitFilter && (
           <div className="flex items-center gap-2">
             <Select value={unitFilter} onValueChange={setUnitFilter} disabled={unitLocked}>
-              <SelectTrigger className="w-44"><SelectValue placeholder="Unit" /></SelectTrigger>
+              <SelectTrigger className="w-44"><SelectValue placeholder="All Units" /></SelectTrigger>
               <SelectContent>
-                {accessibleUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                {accessibleUnits.map(u => <SelectItem key={u} value={u}>{u === "All" ? "All Units" : u}</SelectItem>)}
               </SelectContent>
             </Select>
             {unitLocked && <span className="text-xs text-muted-foreground">Locked</span>}
           </div>
         )}
         <Select value={machineFilter} onValueChange={setMachineFilter}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Machine Type" /></SelectTrigger>
+          <SelectTrigger className="w-44"><SelectValue placeholder="All Machines" /></SelectTrigger>
           <SelectContent>
-            {MACHINE_TYPES.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+            {MACHINE_TYPES.map(m => <SelectItem key={m} value={m}>{m === "All" ? "All Machines" : m}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectTrigger className="w-44"><SelectValue placeholder="All Order Status" /></SelectTrigger>
           <SelectContent>
-            {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+            {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s === "All" ? "All Order Status" : s}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
