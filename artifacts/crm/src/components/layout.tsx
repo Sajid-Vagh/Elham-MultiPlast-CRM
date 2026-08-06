@@ -323,6 +323,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
                 src="/images/logo1.png"
                 alt="Elham MultiPlast LLP"
                 className="max-w-[160px] w-full h-auto"
+                style={{ objectFit: 'contain', imageRendering: '-webkit-optimize-contrast' }}
               />
             </div>
             <div className="relative flex-shrink-0">
