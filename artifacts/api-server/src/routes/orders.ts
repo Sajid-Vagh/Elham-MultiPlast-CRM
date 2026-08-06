@@ -96,11 +96,15 @@ router.get("/orders", async (req, res) => {
     if (salesOwnerId && user.role === "admin") conditions.push(eq(ordersTable.salesOwnerId, Number(salesOwnerId)));
     if (search) {
       const s = `%${search}%`;
+      // Order ID is the primary identifier: match both the raw order number and
+      // the formatted Order ID. Customer Code lives on the linked contact.
       conditions.push(or(
         ilike(ordersTable.orderNumber, s),
+        ilike(ordersTable.formattedOrderId, s),
         ilike(ordersTable.customerName, s),
         ilike(ordersTable.companyName, s),
         ilike(ordersTable.mobile, s),
+        inArray(ordersTable.contactId, db.select({ id: contactsTable.id }).from(contactsTable).where(ilike(contactsTable.customerCode, s))),
       )!);
     }
 
@@ -239,17 +243,21 @@ router.get("/orders/global", async (req, res) => {
       conditions.push(or(
         ilike(ordersTable.customerName, s),
         ilike(ordersTable.companyName, s),
+        inArray(ordersTable.contactId, db.select({ id: contactsTable.id }).from(contactsTable).where(ilike(contactsTable.customerCode, s))),
       )!);
     }
 
-    // General search
+    // General search — Order ID (orderNumber + formattedOrderId) takes priority,
+    // then customer name/company/mobile, then the linked contact's Customer Code.
     if (search) {
       const s = `%${search}%`;
       conditions.push(or(
         ilike(ordersTable.orderNumber, s),
+        ilike(ordersTable.formattedOrderId, s),
         ilike(ordersTable.customerName, s),
         ilike(ordersTable.companyName, s),
         ilike(ordersTable.mobile, s),
+        inArray(ordersTable.contactId, db.select({ id: contactsTable.id }).from(contactsTable).where(ilike(contactsTable.customerCode, s))),
       )!);
     }
 

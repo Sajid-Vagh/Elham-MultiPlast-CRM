@@ -27,6 +27,7 @@ import { CategoryBadge } from "@/components/category-badge";
 import { MoveCategoryDialog } from "@/components/move-category-dialog";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { DEAL_STAGES, STAGE_PROBS, STAGE_BADGE_COLORS } from "@/lib/deal-stages";
+import { customerLabel } from "@/lib/customer-label";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { Link as LinkIcon } from "lucide-react";
@@ -473,7 +474,7 @@ export default function DealDetail() {
               {(deal as any).activeProformaInvoice?.version > 1 ? ` v${(deal as any).activeProformaInvoice.version}` : ""}
             </span>
           </div>
-          {contact && <p className="text-muted-foreground text-sm">{contact.name}{contact.companyName ? ` — ${contact.companyName}` : ""}</p>}
+          {contact && <p className="text-muted-foreground text-sm">{customerLabel(contact.name, (contact as any).customerCode)}{contact.companyName ? ` — ${contact.companyName}` : ""}</p>}
         </div>
       </div>
 

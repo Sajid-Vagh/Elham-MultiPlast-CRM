@@ -28,6 +28,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { ProductionProgressSection } from "@/components/production-progress";
 import { onPIChange, onDealChange } from "@/lib/query-invalidation";
+import { customerLabel } from "@/lib/customer-label";
 const STATUS_COLORS: Record<string, string> = {
   "Draft": "bg-gray-100 text-gray-700",
   "Sent": "bg-blue-100 text-blue-700",
@@ -289,7 +290,10 @@ export default function ProformaInvoicesPage() {
         inv.customerName?.toLowerCase().includes(s) ||
         inv.invoiceNumber?.toLowerCase().includes(s) ||
         inv.companyName?.toLowerCase().includes(s) ||
-        inv.mobile?.includes(s)
+        inv.mobile?.includes(s) ||
+        inv.orderNo?.toLowerCase().includes(s) ||
+        inv.contact?.name?.toLowerCase().includes(s) ||
+        inv.contact?.customerCode?.toLowerCase().includes(s)
     );
   }, [invoices, search]);
 
@@ -3037,6 +3041,7 @@ ${pagesHtml}
               <TableRow>
                 <TableHead>Company Name</TableHead>
                 <TableHead>Invoice #</TableHead>
+                <TableHead>Order #</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Status</TableHead>
@@ -3048,7 +3053,7 @@ ${pagesHtml}
             <TableBody>
               {paginatedInvoices.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                     {fetchError ? "Invoices could not be loaded. See the error above." : "No invoices found"}
                   </TableCell>
                 </TableRow>
@@ -3062,10 +3067,17 @@ ${pagesHtml}
                       {inv.invoiceNumber}
                       {inv.version && inv.version > 1 && <span className="ml-1 text-[10px] bg-blue-100 text-blue-600 px-1 py-0.5 rounded">v{inv.version}</span>}
                     </TableCell>
+                    <TableCell className="text-muted-foreground text-xs">
+                      {inv.orderNo ? (
+                        <span className="font-medium text-foreground">{inv.orderNo}</span>
+                      ) : (
+                        <span>-</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       {inv.contact?.name ? (
                         <div className="min-w-0">
-                          <span className="font-medium">{inv.contact.name}</span>
+                          <span className="font-medium">{customerLabel(inv.contact.name, inv.contact.customerCode)}</span>
                           {inv.contact.mobile && <span className="block text-xs text-muted-foreground">{inv.contact.mobile}</span>}
                         </div>
                       ) : (

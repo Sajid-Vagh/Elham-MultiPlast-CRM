@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation } from "wouter";
 import { useGetMe, useListUsers } from "@workspace/api-client-react";
 import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
+import { customerLabel } from "@/lib/customer-label";
 import { CategoryBadge } from "@/components/category-badge";
 import { MoveCategoryDialog } from "@/components/move-category-dialog";
 import { Button } from "@/components/ui/button";
@@ -434,7 +435,7 @@ export default function CategoriesPage() {
                             onCheckedChange={() => toggleSelect(c.id)}
                           />
                         </TableCell>
-                        <TableCell className="font-medium">{c.name}</TableCell>
+                        <TableCell className="font-medium">{customerLabel(c.name, c.customerCode)}</TableCell>
                         <TableCell>{c.companyName || "-"}</TableCell>
                         <TableCell>{c.mobile}</TableCell>
                         <TableCell>{c.city || "-"}</TableCell>

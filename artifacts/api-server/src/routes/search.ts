@@ -29,8 +29,8 @@ router.get("/search", async (req, res) => {
     const orderSalesOwnCond = user.role === "sales" ? eq(ordersTable.salesOwnerId, user.id) : undefined;
 
     const [contacts, orders, products, deals, productionOrders, proformaInvoices, activities] = await Promise.all([
-      // Contacts — search by name, company, primary mobile, secondary mobile, email
-      db.select({ id: contactsTable.id, name: contactsTable.name, companyName: contactsTable.companyName, mobile: contactsTable.mobile, type: contactsTable.category })
+      // Contacts — search by name, company, primary mobile, secondary mobile, email, customer code
+      db.select({ id: contactsTable.id, name: contactsTable.name, companyName: contactsTable.companyName, mobile: contactsTable.mobile, customerCode: contactsTable.customerCode, type: contactsTable.category })
         .from(contactsTable)
         .where(and(
           or(
@@ -39,6 +39,7 @@ router.get("/search", async (req, res) => {
             ilike(contactsTable.mobile, s),
             ilike(contactsTable.email, s),
             ilike(contactsTable.otherPhone, s),
+            ilike(contactsTable.customerCode, s),
           ),
           contactUnitCond,
           salesOwnCond,
@@ -46,15 +47,17 @@ router.get("/search", async (req, res) => {
         .orderBy(desc(contactsTable.createdAt))
         .limit(10),
 
-      // Orders — search by order number, customer name, company, mobile
-      db.select({ id: ordersTable.id, orderNumber: ordersTable.orderNumber, customerName: ordersTable.customerName, status: ordersTable.status })
+      // Orders — search by order number (raw + formatted Order ID), customer name, company, mobile, customer code
+      db.select({ id: ordersTable.id, orderNumber: ordersTable.orderNumber, formattedOrderId: ordersTable.formattedOrderId, customerName: ordersTable.customerName, status: ordersTable.status })
         .from(ordersTable)
         .where(and(isDeleted,
           or(
             ilike(ordersTable.orderNumber, s),
+            ilike(ordersTable.formattedOrderId, s),
             ilike(ordersTable.customerName, s),
             ilike(ordersTable.companyName, s),
             ilike(ordersTable.mobile, s),
+            inArray(ordersTable.contactId, db.select({ id: contactsTable.id }).from(contactsTable).where(ilike(contactsTable.customerCode, s))),
           ),
           orderUnitCond,
           orderSalesOwnCond,
@@ -111,7 +114,8 @@ router.get("/search", async (req, res) => {
         return enriched;
       })(),
 
-      // Production Orders — search via proforma invoice (PI) linked to production order
+      // Production Orders — search via proforma invoice (PI) linked to production order,
+      // the production order number itself, or the linked Sales Order number (via dealId)
       db.select({
         id: productionOrdersTable.id,
         orderNumber: proformaInvoicesTable.invoiceNumber,
@@ -126,6 +130,12 @@ router.get("/search", async (req, res) => {
             ilike(proformaInvoicesTable.invoiceNumber, s),
             ilike(proformaInvoicesTable.customerName, s),
             ilike(proformaInvoicesTable.companyName, s),
+            ilike(productionOrdersTable.formattedOrderId, s),
+            sql`${productionOrdersTable.dealId} IN (
+              SELECT ${ordersTable.dealId} FROM ${ordersTable}
+              WHERE ${ordersTable.isDeleted} = false AND ${ordersTable.dealId} IS NOT NULL
+                AND (${ordersTable.formattedOrderId} ILIKE ${s} OR ${ordersTable.orderNumber} ILIKE ${s})
+            )`,
           ),
           accessibleUnits ? eq(productionOrdersTable.productionUnit, accessibleUnits[0]) : undefined,
         ))
@@ -137,6 +147,14 @@ router.get("/search", async (req, res) => {
           or(
             ilike(proformaInvoicesTable.invoiceNumber, s),
             ilike(proformaInvoicesTable.customerName, s),
+            ilike(proformaInvoicesTable.companyName, s),
+            ilike(proformaInvoicesTable.mobile, s),
+            sql`EXISTS (
+              SELECT 1 FROM ${ordersTable}
+              WHERE ${ordersTable.dealId} = ${proformaInvoicesTable.dealId}
+                AND ${ordersTable.isDeleted} = false
+                AND (${ordersTable.formattedOrderId} ILIKE ${s} OR ${ordersTable.orderNumber} ILIKE ${s})
+            )`,
           ),
         ];
         if (user.role === "sales") {

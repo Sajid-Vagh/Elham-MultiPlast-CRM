@@ -8,7 +8,7 @@ import {
   VALID_DISPATCH_TRANSITIONS, PRODUCT_LINE_STATUSES,
   type ProductionStatus, type NoteType, type ProductLineStatus,
 } from "@workspace/db";
-import { eq, and, desc, sql, gte, lte, or, inArray, notInArray, ilike, isNull, asc, type SQL } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte, or, inArray, notInArray, ilike, isNull, isNotNull, asc, type SQL } from "drizzle-orm";
 import { getActivePiForDeal } from "./proforma-service";
 import { notifyProductionUsers, notifyDealEvent } from "./notification-service";
 import { createNotification } from "../routes/notifications";
@@ -2700,13 +2700,14 @@ export async function listOrders(
     // Case-insensitive search across every source that contributes to the enriched
     // order display: the proforma invoice (customerName, companyName, invoiceNumber,
     // mobile), the parent contact reachable via PI.contactId or deal.contactId
-    // (name, companyName, customerCode, mobile), and the order number stored on the
-    // production order itself (formattedOrderId). Combined with `or()` and appended
-    // to the shared `and()` conditions so it stacks with status/origin/unit/priority.
+    // (name, companyName, customerCode, mobile), the production order number itself
+    // (formattedOrderId), and the linked Sales Order number (via dealId). Combined
+    // with `or()` and appended to the shared `and()` conditions so it stacks with
+    // status/origin/unit/priority.
     const searchPattern = `%${filters.search}%`;
     const lowerPattern = `%${filters.search.toLowerCase()}%`;
 
-    const [matchingInvoices, matchingContacts] = await Promise.all([
+    const [matchingInvoices, matchingContacts, matchingSalesOrders] = await Promise.all([
       db.select({ id: proformaInvoicesTable.id }).from(proformaInvoicesTable).where(
         or(
           sql`LOWER(${proformaInvoicesTable.customerName}) LIKE ${lowerPattern}`,
@@ -2723,12 +2724,35 @@ export async function listOrders(
           sql`LOWER(${contactsTable.mobile}) LIKE ${lowerPattern}`
         )
       ),
+      // Sales Order number — orders link to the production order via dealId
+      db.select({ dealId: ordersTable.dealId }).from(ordersTable).where(
+        and(
+          eq(ordersTable.isDeleted, false),
+          isNotNull(ordersTable.dealId),
+          or(
+            ilike(ordersTable.formattedOrderId, searchPattern),
+            ilike(ordersTable.orderNumber, searchPattern)
+          )
+        )
+      ),
     ]);
 
     const searchConditions: SQL[] = [
       // Order number stored directly on the production order
       ilike(productionOrdersTable.formattedOrderId, searchPattern),
     ];
+
+    if (matchingSalesOrders.length > 0) {
+      // Match the linked Sales Order's dealId
+      const salesOrderDealIds = matchingSalesOrders
+        .map(o => o.dealId)
+        .filter((id): id is number => id != null);
+      if (salesOrderDealIds.length > 0) {
+        searchConditions.push(
+          inArray(productionOrdersTable.dealId, salesOrderDealIds)
+        );
+      }
+    }
 
     if (matchingInvoices.length > 0) {
       searchConditions.push(

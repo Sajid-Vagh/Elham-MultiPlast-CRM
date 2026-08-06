@@ -366,6 +366,18 @@ async function enrichInvoice(invoice: typeof proformaInvoicesTable.$inferSelect)
     if (d) deal = d;
   }
 
+  // Sales Order lookup — orders link to the PI via the shared dealId.
+  // Order ID shown on the invoice/table is the formatted Order ID (fallback: raw orderNumber).
+  let orderNo = null;
+  if (invoice.dealId) {
+    const [o] = await db
+      .select({ formattedOrderId: ordersTable.formattedOrderId, orderNumber: ordersTable.orderNumber })
+      .from(ordersTable)
+      .where(and(eq(ordersTable.dealId, invoice.dealId), eq(ordersTable.isDeleted, false)))
+      .limit(1);
+    if (o) orderNo = o.formattedOrderId || o.orderNumber || null;
+  }
+
   let productionOrder = null;
   const [po] = await db
     .select()
@@ -447,6 +459,7 @@ async function enrichInvoice(invoice: typeof proformaInvoicesTable.$inferSelect)
     createdByUser,
     contact,
     deal,
+    orderNo,
     productionOrder,
   };
 }
@@ -668,7 +681,13 @@ router.get("/proforma-invoices", async (req, res) => {
         ${proformaInvoicesTable.invoiceNumber} ILIKE ${`%${search}%`} OR
         ${proformaInvoicesTable.customerName} ILIKE ${`%${search}%`} OR
         ${proformaInvoicesTable.companyName} ILIKE ${`%${search}%`} OR
-        ${proformaInvoicesTable.mobile} ILIKE ${`%${search}%`}
+        ${proformaInvoicesTable.mobile} ILIKE ${`%${search}%`} OR
+        EXISTS (
+          SELECT 1 FROM ${ordersTable}
+          WHERE ${ordersTable.dealId} = ${proformaInvoicesTable.dealId}
+            AND ${ordersTable.isDeleted} = false
+            AND (${ordersTable.formattedOrderId} ILIKE ${`%${search}%`} OR ${ordersTable.orderNumber} ILIKE ${`%${search}%`})
+        )
       )`);
     }
     if (dateFrom) conditions.push(gte(proformaInvoicesTable.createdAt, new Date(dateFrom)));
@@ -743,7 +762,13 @@ router.get("/proforma-invoices/all", async (req, res) => {
         ${proformaInvoicesTable.invoiceNumber} ILIKE ${`%${search}%`} OR
         ${proformaInvoicesTable.customerName} ILIKE ${`%${search}%`} OR
         ${proformaInvoicesTable.companyName} ILIKE ${`%${search}%`} OR
-        ${proformaInvoicesTable.mobile} ILIKE ${`%${search}%`}
+        ${proformaInvoicesTable.mobile} ILIKE ${`%${search}%`} OR
+        EXISTS (
+          SELECT 1 FROM ${ordersTable}
+          WHERE ${ordersTable.dealId} = ${proformaInvoicesTable.dealId}
+            AND ${ordersTable.isDeleted} = false
+            AND (${ordersTable.formattedOrderId} ILIKE ${`%${search}%`} OR ${ordersTable.orderNumber} ILIKE ${`%${search}%`})
+        )
       )`);
     }
     if (dateFrom) conditions.push(gte(proformaInvoicesTable.createdAt, new Date(dateFrom)));

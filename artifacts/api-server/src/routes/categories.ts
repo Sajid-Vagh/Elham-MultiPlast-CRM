@@ -246,7 +246,7 @@ router.get("/categories/:category/contacts/search", async (req, res) => {
     if (q) {
       const s = `%${q}%`;
       schConditions.push(
-        sql`(${contactsTable.name} ILIKE ${s} OR ${contactsTable.mobile} ILIKE ${s} OR ${contactsTable.companyName} ILIKE ${s} OR ${contactsTable.city} ILIKE ${s})`
+        sql`(${contactsTable.name} ILIKE ${s} OR ${contactsTable.mobile} ILIKE ${s} OR ${contactsTable.companyName} ILIKE ${s} OR ${contactsTable.city} ILIKE ${s} OR ${contactsTable.customerCode} ILIKE ${s})`
       );
     }
     if (ownerId) schConditions.push(eq(contactsTable.salesOwnerId, Number(ownerId)));

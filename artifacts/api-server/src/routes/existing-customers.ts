@@ -301,6 +301,7 @@ router.get("/existing-customers", async (req, res) => {
         c.contact?.email?.toLowerCase().includes(s) ||
         c.contact?.city?.toLowerCase().includes(s) ||
         c.contact?.gstNumber?.toLowerCase().includes(s) ||
+        c.contact?.customerCode?.toLowerCase().includes(s) ||
         c.salesOwner?.name?.toLowerCase().includes(s) ||
         c.supportOwner?.name?.toLowerCase().includes(s) ||
         c.lastProductName?.toLowerCase().includes(s) ||

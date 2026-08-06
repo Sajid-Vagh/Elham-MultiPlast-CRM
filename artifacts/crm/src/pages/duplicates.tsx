@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { Phone, Mail, AlertTriangle } from "lucide-react";
 import { UserAvatar } from "@/components/user-avatar";
+import { customerLabel } from "@/lib/customer-label";
 
 export default function Duplicates() {
   const { data: groups, isLoading } = useListDuplicateContacts();
@@ -57,7 +58,7 @@ export default function Duplicates() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <Link href={`/leads/${contact.id}`} className="font-medium hover:underline text-primary text-sm">
-                        {contact.name}
+                        {customerLabel(contact.name, contact.customerCode)}
                       </Link>
                       {contact.companyName && <p className="text-xs text-muted-foreground truncate">{contact.companyName}</p>}
                       <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">

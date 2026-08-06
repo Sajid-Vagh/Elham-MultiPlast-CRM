@@ -22,6 +22,7 @@ import { useActiveUnits } from "@/lib/use-active-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 import { PENDING_UNIT_ASSIGNMENT, isPendingUnit } from "@/lib/unit-constants";
 import { useDateFilter } from "@/lib/use-date-filter";
+import { customerLabel } from "@/lib/customer-label";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import ActivityDetailDrawer from "@/components/activity-detail-drawer";
 import CustomerProfileDrawer from "@/components/customer-profile-drawer";
@@ -133,8 +134,8 @@ export default function FollowUps() {
     followUpType?: string | null; priority?: string | null;
     dealId: number; contactId?: number | null;
     user?: { id: number; name: string } | null;
-    deal?: { id: number; contactId?: number; contact?: { id?: number; name?: string; mobile?: string; companyName?: string; unit?: string; category?: string; customerComments?: string | null; salesOwnerId?: number | null; salesOwner?: { name: string } | null } | null } | null;
-    contact?: { id?: number; name?: string; mobile?: string; companyName?: string; unit?: string; category?: string; customerComments?: string | null; salesOwnerId?: number | null; salesOwner?: { name: string } | null } | null;
+    deal?: { id: number; contactId?: number; contact?: { id?: number; name?: string; mobile?: string; companyName?: string; unit?: string; category?: string; customerCode?: string | null; customerComments?: string | null; salesOwnerId?: number | null; salesOwner?: { name: string } | null } | null } | null;
+    contact?: { id?: number; name?: string; mobile?: string; companyName?: string; unit?: string; category?: string; customerCode?: string | null; customerComments?: string | null; salesOwnerId?: number | null; salesOwner?: { name: string } | null } | null;
   };
 
   const { data: activities, isLoading, refetch } = useQuery<FollowUpActivity[]>({
@@ -538,6 +539,7 @@ export default function FollowUps() {
                 <TableBody>
                   {paginatedActivities.map((activity) => {
                     const contactName = activity.contact?.name || activity.deal?.contact?.name || "-";
+                    const contactCode = activity.contact?.customerCode || activity.deal?.contact?.customerCode || null;
                     const contactMobile = activity.contact?.mobile || activity.deal?.contact?.mobile || "-";
                     const companyName = activity.contact?.companyName || activity.deal?.contact?.companyName || "-";
                     const salesPerson = activity.user?.name || (activity.contact?.salesOwner?.name) || "-";
@@ -554,7 +556,7 @@ export default function FollowUps() {
                       >
                         <TableCell>
                           <div className="flex flex-col">
-                            <span className="font-medium text-sm">{contactName}</span>
+                            <span className="font-medium text-sm">{customerLabel(contactName, contactCode)}</span>
                             <span className="text-xs text-muted-foreground">{contactMobile}</span>
                             <span className="text-xs text-muted-foreground md:hidden">{companyName}</span>
                           </div>

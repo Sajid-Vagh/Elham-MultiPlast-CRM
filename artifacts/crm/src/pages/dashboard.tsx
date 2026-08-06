@@ -18,6 +18,7 @@ import { useUnitFilter } from "@/lib/use-unit-filter";
 import { useAllUsers } from "@/lib/use-all-users";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { usePrivacyMode } from "@/lib/use-privacy-mode";
+import { customerLabel } from "@/lib/customer-label";
 import { useDateFilter, getLabel } from "@/lib/use-date-filter";
 import { DateRangeFilter } from "@/components/date-range-filter";
 
@@ -472,7 +473,7 @@ export default function Dashboard() {
                         <PhoneCall className="h-4 w-4 text-red-600" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{contact.name}</p>
+                        <p className="font-medium text-sm truncate">{customerLabel(contact.name, (contact as any).customerCode)}</p>
                         {contact.salesOwner && (
                           <div className="flex items-center gap-1">
                             <UserAvatar profilePhoto={contact.salesOwner.profilePhoto} name={contact.salesOwner.name} className="w-2 h-2" />
@@ -671,7 +672,7 @@ export default function Dashboard() {
                           <PhoneCall className={`h-4 w-4 ${isOverdue ? "text-red-600" : "text-orange-600"}`} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">{contact.name}</p>
+                          <p className="font-medium text-sm truncate">{customerLabel(contact.name, (contact as any).customerCode)}</p>
                           {contact.salesOwner && (
                             <div className="flex items-center gap-1">
                               <UserAvatar profilePhoto={contact.salesOwner.profilePhoto} name={contact.salesOwner.name} className="w-2 h-2" />

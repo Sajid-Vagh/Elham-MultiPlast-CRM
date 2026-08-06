@@ -22,6 +22,7 @@ import { X, GripVertical, Loader2 } from "lucide-react";
 import { CategoryBadge } from "@/components/category-badge";
 import { useToast } from "@/hooks/use-toast";
 import { DEAL_STAGES } from "@/lib/deal-stages";
+import { customerLabel } from "@/lib/customer-label";
 import DealDetailDrawer from "@/components/deal-detail-drawer";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
 import { DealWonCelebration } from "@/components/deal-won-celebration";
@@ -498,8 +499,8 @@ export default function Deals() {
                           <div className="font-semibold text-sm line-clamp-1 mb-1" title={dealTitle}>
                             {dealTitle}
                           </div>
-                          <div className="text-xs text-muted-foreground line-clamp-1 mb-0.5" title={deal.contact?.name || ''}>
-                            {deal.contact?.name || 'Unknown Customer'}
+                          <div className="text-xs text-muted-foreground line-clamp-1 mb-0.5" title={customerLabel(deal.contact?.name, deal.contact?.customerCode) || 'Unknown Customer'}>
+                            {customerLabel(deal.contact?.name, deal.contact?.customerCode) || 'Unknown Customer'}
                           </div>
                           {deal.contact?.companyName && (
                             <div className="text-xs text-muted-foreground line-clamp-1 mb-1.5" title={deal.contact.companyName}>
@@ -536,8 +537,8 @@ export default function Deals() {
                 <div className="font-semibold text-sm line-clamp-1 mb-1" title={adTitle}>
                   {adTitle}
                 </div>
-                <div className="text-xs text-muted-foreground line-clamp-1 mb-0.5" title={ad.contact?.name || ''}>
-                  {ad.contact?.name || 'Unknown Customer'}
+                <div className="text-xs text-muted-foreground line-clamp-1 mb-0.5" title={customerLabel(ad.contact?.name, ad.contact?.customerCode) || 'Unknown Customer'}>
+                  {customerLabel(ad.contact?.name, ad.contact?.customerCode) || 'Unknown Customer'}
                 </div>
                 {ad.contact?.companyName && (
                   <div className="text-xs text-muted-foreground line-clamp-1 mb-1.5" title={ad.contact.companyName}>
