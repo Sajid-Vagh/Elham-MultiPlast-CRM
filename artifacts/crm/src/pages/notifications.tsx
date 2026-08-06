@@ -3,7 +3,7 @@ import { Bell, CheckCheck, Loader2, ArrowLeft, Trash2, X, Volume2, VolumeX, User
 import { isNotificationSoundMuted, setNotificationSoundMuted } from "@/lib/notification-sound";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
-import { useNotifications } from "@/lib/notification-context";
+import { useNotifications, groupConversations, conversationMessageCount } from "@/lib/notification-context";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAllUsers } from "@/lib/use-all-users";
 import { useGetMe } from "@workspace/api-client-react";
@@ -129,8 +129,16 @@ export default function NotificationsPage() {
         return d ? !isThisWeek(d) : false;
       });
     }
+    // Collapse production_message notifications into per-order conversation
+    // threads so multiple messages from the same order show as one row with
+    // the NEWEST message as its representative.
+    const grouped = groupConversations(list);
     const offset = page * limit;
-    return { items: list.slice(offset, offset + limit), total: list.length };
+    return {
+      items: grouped.notifications.slice(offset, offset + limit),
+      total: grouped.notifications.length,
+      all: list,
+    };
   }, [visibleNotifications, filter, page]);
 
   return (
@@ -222,6 +230,8 @@ export default function NotificationsPage() {
             const createdDate = parseUtcDate(n.createdAt);
             const dateStr = createdDate?.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) ?? "—";
             const timeStr = createdDate?.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) ?? "";
+            const isConversation = n.type === "production_message";
+            const msgCount = isConversation ? conversationMessageCount(filtered.all, n) : 0;
 
             return (
               <div
@@ -241,6 +251,9 @@ export default function NotificationsPage() {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground whitespace-pre-line mt-0.5">{n.message}</p>
+                  {isConversation && msgCount > 1 && (
+                    <p className="text-[10px] font-medium text-violet-600 mt-0.5">{msgCount} messages in this conversation</p>
+                  )}
                   <p className="text-[10px] text-muted-foreground mt-1">{dateStr} at {timeStr}</p>
                 </div>
                 <div className="flex gap-1 flex-shrink-0 mt-0.5" onClick={(e) => e.stopPropagation()}>

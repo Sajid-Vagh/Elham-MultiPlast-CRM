@@ -238,11 +238,12 @@ export default function ProductionOrderDetail() {
   });
 
   // ── Order Conversation ──
-  const { data: productionMessages, refetch: refetchMessages } = useQuery({
+  const { data: productionChat, refetch: refetchMessages } = useQuery({
     queryKey: ["production-messages", id],
-    queryFn: () => customFetch<any[]>(`/production/orders/${id}/messages`),
+    queryFn: () => customFetch(`/production/orders/${id}/messages`),
     enabled: !!id, staleTime: 3_000, refetchInterval: id ? 5_000 : false,
   });
+  const productionMessages = (productionChat as any)?.messages;
 
   const sendMessage = useMutation({
     mutationFn: (msg: string) =>
@@ -953,7 +954,7 @@ export default function ProductionOrderDetail() {
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-1.5"><MessageSquare className="h-4 w-4" /> Order Conversation</CardTitle>
+                  <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-1.5"><MessageSquare className="h-4 w-4" /> Order Conversation{(productionChat as any)?.companyName ? <span className="text-[11px] font-normal text-muted-foreground">· {(productionChat as any).companyName}{(productionChat as any).orderNumber ? ` (${(productionChat as any).orderNumber})` : ""}</span> : null}</CardTitle>
                   <span className="inline-flex items-center gap-1 text-[10px] text-green-600 font-medium bg-green-50 border border-green-200 rounded-full px-2 py-0.5"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />Realtime</span>
                 </div>
                 {productionMessages && productionMessages.length > 0 && <span className="text-[10px] text-muted-foreground">{productionMessages.length} message{productionMessages.length !== 1 ? "s" : ""}</span>}

@@ -75,6 +75,71 @@ function matchesOwnerFilter(n: Notification, filter: string): boolean {
   return String(n.createdById ?? "") === String(filter);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Conversation grouping — production_message notifications all belong to an
+// order conversation. Instead of spamming the Notification History with one
+// row per message, we collapse them into a single thread per order and show the
+// NEWEST message of that conversation as the representative. The group key is
+// derived from the notification's role-aware link (/production/orders/:poId for
+// production/support, /orders/:salesOrderId for sales) so each workspace groups
+// by its own order id while staying independent of any DB schema change.
+// ─────────────────────────────────────────────────────────────────────────────
+function getConversationKey(n: Notification): string | null {
+  if (n.type !== "production_message" || !n.link) return null;
+  const parts = n.link.split("/").filter(Boolean);
+  if (parts.length < 2) return null;
+  const last = Number(parts[parts.length - 1]);
+  if (!Number.isFinite(last) || last <= 0) return null;
+  return `${parts[0]}:${last}`;
+}
+
+/**
+ * Collapse production_message notifications into per-conversation threads.
+ * Returns the flattened list (representative = newest message of each thread,
+ * sorted newest-first) plus a per-key message count so UIs can show "3 messages".
+ */
+export function groupConversations(list: Notification[]): {
+  notifications: Notification[];
+  countByKey: Record<string, number>;
+} {
+  const representatives = new Map<string, Notification>();
+  const countByKey: Record<string, number> = {};
+
+  for (const n of list) {
+    const key = getConversationKey(n);
+    if (!key) {
+      // Skip the empty default key so non-conversation notifications pass through untouched.
+      continue;
+    }
+    countByKey[key] = (countByKey[key] || 0) + 1;
+    const prev = representatives.get(key);
+    if (!prev || new Date(n.createdAt).getTime() > new Date(prev.createdAt).getTime()) {
+      representatives.set(key, n);
+    }
+  }
+
+  if (representatives.size === 0) {
+    return { notifications: list, countByKey: {} };
+  }
+
+  const conversationItems = [...representatives.values()];
+  const others = list.filter((n) => !getConversationKey(n));
+  const merged = [...conversationItems, ...others].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+  return { notifications: merged, countByKey };
+}
+
+export function conversationMessageCount(list: Notification[], representative: Notification): number {
+  const key = getConversationKey(representative);
+  if (!key) return 0;
+  let count = 0;
+  for (const n of list) {
+    if (getConversationKey(n) === key) count += 1;
+  }
+  return count;
+}
+
 function loadOwnerFilter(): string {
   try {
     return localStorage.getItem(OWNER_FILTER_KEY) || OWNER_FILTER_ALL;

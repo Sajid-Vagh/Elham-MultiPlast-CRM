@@ -249,7 +249,13 @@ function ChatPanel({ notification, onClose }: { notification: any; onClose: () =
     staleTime: 60_000,
   });
 
-  const { data: messages, refetch } = useQuery({
+  const { data: chatData, refetch } = useQuery<{
+    orderId: number;
+    orderNumber: string | null;
+    companyName: string | null;
+    customerName: string | null;
+    messages: any[];
+  }>({
     queryKey: ["notification-chat-messages", productionOrderId],
     queryFn: async () => {
       const res = await fetch(`/api/production/orders/${productionOrderId}/messages`, { headers: authHeaders() });
@@ -260,6 +266,8 @@ function ChatPanel({ notification, onClose }: { notification: any; onClose: () =
     refetchInterval: 5_000,
     staleTime: 3_000,
   });
+
+  const messages = chatData?.messages;
 
   const sendMutation = useMutation({
     mutationFn: async (msg: string) => {
@@ -314,7 +322,8 @@ function ChatPanel({ notification, onClose }: { notification: any; onClose: () =
           </span>
         </SheetTitle>
         <SheetDescription>
-          {notification.title} · Order #{productionOrderId}
+          {chatData?.companyName || notification.title}
+          {chatData?.orderNumber ? ` · ${chatData.orderNumber}` : ` · Order #${productionOrderId}`}
         </SheetDescription>
       </SheetHeader>
 

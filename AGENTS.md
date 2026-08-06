@@ -685,3 +685,49 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `artifacts/crm/src/pages/leads.tsx`, `lead-detail.tsx`, `leads-new.tsx`: dots, sort, duplicate modal + scroll fix
 - `artifacts/crm/src/components/lead-form.tsx`, `duplicate-warning-dialog.tsx`, `layout.tsx`, `notification-popup.tsx`: auth header fix, invalidation, notification dots/styling
 - `artifacts/crm/src/pages/notifications.tsx`: color-coded unread dots + `repeat_enquiry` icon
+
+---
+
+# Production Order Chat — Conversation Threading & Order Context
+
+## Goal
+- Stop production_message notifications from spamming the Notification History with one row per message.
+- Group all messages from the same order/conversation into a single thread (with "N messages" count) in both the Notification History page and the bell dropdown "New" section.
+- Explicitly prefix the sender's role + name in the notification header/preview (e.g. `[Production] Shakir: ...`).
+- Show Company Name + Order Number in every chat surface header (notification modal, sales order page, production order page, lead page) without extra API calls.
+- Backend 403-enforcement + input sanitization on the send-message endpoint.
+
+## Progress
+### Done
+- **Backend `production-service.ts`:**
+  - `getMessages(orderId)` now returns an enriched object `{ orderId, orderNumber, companyName, customerName, messages }` (was a bare array). It looks up the production order + its proforma invoice (`tradeName` → companyName) so all chat surfaces get context from ONE call. Consumers updated in all 4 frontend surfaces.
+  - `sendMessage` notification body is now role-tagged: `[${senderDept}] ${user.name}: ${message}` (dept = Admin/Production/Support/Sales).
+  - `buildContactResponse` (by-contact) now also returns `companyName` (PI tradeName).
+- **Frontend chat consumers updated** to read `data.messages` and render `Company Name (Order #)` in headers:
+  - `notification-side-panel.tsx` (ChatPanel modal)
+  - `order-detail-global.tsx` (Sales order chat card)
+  - `production-order-detail.tsx` (Production order chat card)
+  - `lead-detail.tsx` (Lead 360 Order Conversation card)
+- **UI conversation grouping (`notification-context.tsx`):**
+  - `getConversationKey(n)` derives a group key from the notification's role-aware link (`production:<poId>` for production/support, `orders:<salesOrderId>` for sales) — each workspace groups by its own order id; no DB schema change.
+  - `groupConversations(list)` collapses `production_message` notifications into one representative per thread (the NEWEST message), keeps all other notification types untouched, and returns newest-first. Exported.
+  - `conversationMessageCount(list, representative)` returns how many messages are in a thread.
+  - NOTE: Per-message notification ROWS are kept in the DB (needed for per-message toast popups + sounds via the existing `popupShownRef` dedup by id). Grouping is purely presentational.
+- **Notification History page (`notifications.tsx`):** filters → groups conversations → paginates; conversation rows show a violet "N messages in this conversation" badge; clicking a row still navigates to the order (pre-existing behavior).
+- **Bell dropdown (`layout.tsx`):** "New" section now renders `groupedUnread` (unread + grouped) so a conversation shows one row; empty-state condition updated.
+- **Build verified:** CRM typecheck = 0 errors; API server = 32 errors (within the known 34-35 pre-existing baseline, 0 new).
+
+## Key Decisions
+- Grouping is UI-side, not DB-side: updating one notification row per conversation would break the existing popup/sound dedup (`popupShownRef` keyed by notification id → subsequent messages in the same thread would never toast). Keeping one row per message preserves per-message toasts while the UI collapses them into a single thread.
+- Group key derived from `link` (already role-aware) rather than adding an `orderId` column — works for both sales (`/orders/:salesOrderId`) and production (`/production/orders/:poId`) workspaces with zero migration.
+- `getMessages` enrichment keeps a single source of truth for the chat header (company + order number) across all 4 surfaces.
+- Message body prefix `[Role] Name:` satisfies the "explicit sender role in notification preview" requirement without touching notification title semantics.
+
+## Relevant Files
+- `artifacts/api-server/src/lib/production-service.ts`: `getMessages` enrichment, role-tagged `sendMessage`, `buildContactResponse.companyName`
+- `artifacts/api-server/src/routes/production.ts`: GET/POST `/production/orders/:id/messages` (unchanged routes, pass through)
+- `artifacts/crm/src/lib/notification-context.tsx`: `getConversationKey`, `groupConversations`, `conversationMessageCount`
+- `artifacts/crm/src/pages/notifications.tsx`: history grouping + message count badge
+- `artifacts/crm/src/components/layout.tsx`: bell dropdown grouping (`groupedUnread`)
+- `artifacts/crm/src/components/notification-side-panel.tsx`: ChatPanel header uses company/orderNumber
+- `artifacts/crm/src/pages/order-detail-global.tsx`, `production-order-detail.tsx`, `lead-detail.tsx`: chat cards use enriched messages response + header context

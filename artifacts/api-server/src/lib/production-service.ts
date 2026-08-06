@@ -2157,9 +2157,34 @@ export async function checkDelayedOrders(): Promise<{ checked: number; markedDel
 }
 
 export async function getMessages(orderId: number) {
-  return db.select().from(productionMessagesTable)
+  const messages = await db.select().from(productionMessagesTable)
     .where(eq(productionMessagesTable.productionOrderId, orderId))
     .orderBy(productionMessagesTable.createdAt);
+
+  // Enrich the conversation with the order context so every chat surface
+  // (notification modal, sales order page, production order page, lead page)
+  // can render the Company Name + Order Number in the header without extra calls.
+  const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
+  let orderNumber: string | null = null;
+  let companyName: string | null = null;
+  let customerName: string | null = null;
+  if (order) {
+    orderNumber = order.formattedOrderId || `#${order.id}`;
+    if (order.proformaInvoiceId) {
+      const [inv] = await db.select({
+        tradeName: proformaInvoicesTable.tradeName,
+        customerName: proformaInvoicesTable.customerName,
+        invoiceNumber: proformaInvoicesTable.invoiceNumber,
+      }).from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, order.proformaInvoiceId));
+      if (inv) {
+        companyName = inv.tradeName || null;
+        customerName = inv.customerName || null;
+        orderNumber = orderNumber || inv.invoiceNumber || null;
+      }
+    }
+  }
+
+  return { orderId, orderNumber, companyName, customerName, messages };
 }
 
 export async function sendMessage(
@@ -2254,7 +2279,7 @@ export async function sendMessage(
       userId: uid,
       type: "production_message",
       title: chatTitle,
-      message: `${user.name}: ${message.trim().slice(0, 200)}`,
+      message: `[${senderDept}] ${user.name}: ${message.trim().slice(0, 200)}`,
       link,
       relatedId: newMessage.id,
       relatedType: "production_message",
@@ -3029,6 +3054,7 @@ async function buildContactResponse(po: any, invoice: any) {
     productionRemarks: po.productionRemarks, updatedAt: po.updatedAt, createdAt: po.createdAt,
     lastUpdatedBy, assignedManager, createdByName: po.createdByName, createdByRole: po.createdByRole,
     timeline, invoiceId: invoice?.id, invoiceNumber: invoice?.invoiceNumber,
+    companyName: invoice?.tradeName || null,
     isFrozen: po.isFrozen, isDelayed: po.isDelayed,
     plannedMachine: po.plannedMachine, productionMachine: po.productionMachine,
     expectedStartDate: po.expectedStartDate, expectedCompletionDate: po.expectedCompletionDate,

@@ -231,23 +231,33 @@ export default function LeadDetail() {
 
   // Production Messages (Order Conversation)
   const [messageText, setMessageText] = useState("");
-  const { data: productionMessages, refetch: refetchMessages } = useQuery({
+  type ProductionChatMessage = {
+    id: number; productionOrderId: number; senderId: number | null;
+    senderName: string; senderRole: string; message: string; createdAt: string;
+  };
+  const { data: productionChat, refetch: refetchMessages } = useQuery<{
+    orderId: number;
+    orderNumber: string | null;
+    companyName: string | null;
+    customerName: string | null;
+    messages: ProductionChatMessage[];
+  }>({
     queryKey: ["production-messages", productionOrder?.id],
     queryFn: async () => {
       const token = localStorage.getItem("crm_token");
       const res = await fetch(`/api/production/orders/${productionOrder!.id}/messages`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) return [];
-      return res.json() as Promise<Array<{
-        id: number; productionOrderId: number; senderId: number | null;
-        senderName: string; senderRole: string; message: string; createdAt: string;
-      }>>;
+      if (!res.ok) return { messages: [] };
+      return res.json();
     },
     enabled: !!productionOrder?.id,
     staleTime: 3_000,
     refetchInterval: productionOrder?.id ? 5_000 : false,
   });
+  const productionMessages = productionChat?.messages;
+  const productionChatCompany = productionChat?.companyName;
+  const productionChatOrderNumber = productionChat?.orderNumber;
 
   const sendMessage = useMutation({
     mutationFn: async (msg: string) => {
@@ -1353,6 +1363,11 @@ export default function LeadDetail() {
                 <div className="flex items-center gap-2">
                   <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-1.5">
                     💬 Order Conversation
+                    {productionChatCompany && (
+                      <span className="text-[11px] font-normal text-muted-foreground">
+                        · {productionChatCompany}{productionChatOrderNumber ? ` (${productionChatOrderNumber})` : ""}
+                      </span>
+                    )}
                   </CardTitle>
                   {productionOrder && (
                     <span className="inline-flex items-center gap-1 text-[10px] text-green-600 font-medium bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
