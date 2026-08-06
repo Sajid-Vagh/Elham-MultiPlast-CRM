@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
-import { Bell, CheckCheck, Loader2, ArrowLeft, Trash2, X } from "lucide-react";
+import { Bell, CheckCheck, Loader2, ArrowLeft, Trash2, X, Volume2, VolumeX } from "lucide-react";
+import { isNotificationSoundMuted, setNotificationSoundMuted } from "@/lib/notification-sound";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { useNotifications } from "@/lib/notification-context";
@@ -66,6 +67,7 @@ export default function NotificationsPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [page, setPage] = useState(0);
   const limit = 50;
+  const [soundMuted, setSoundMuted] = useState<boolean>(() => isNotificationSoundMuted());
 
   const { notifications, total, unreadCount, loading, error, markAsRead, markAllAsRead, deleteNotification, clearAllNotifications, refetch, openNotificationPanel } = useNotifications();
 
@@ -73,6 +75,14 @@ export default function NotificationsPage() {
     if (total === 0) return;
     if (!window.confirm(`Delete all ${total} notification${total !== 1 ? "s" : ""}? This cannot be undone.`)) return;
     clearAllNotifications();
+  };
+
+  const toggleSound = () => {
+    setSoundMuted((prev) => {
+      const next = !prev;
+      setNotificationSoundMuted(next);
+      return next;
+    });
   };
 
   const filtered = useMemo(() => {
@@ -112,6 +122,16 @@ export default function NotificationsPage() {
           </h1>
           <p className="text-xs text-muted-foreground">{total} notification{total !== 1 ? "s" : ""}</p>
         </div>
+        <Button
+          variant={soundMuted ? "outline" : "default"}
+          size="sm"
+          className="h-8 text-xs gap-1"
+          onClick={toggleSound}
+          title={soundMuted ? "Unmute notification sound" : "Mute notification sound"}
+        >
+          {soundMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+          {soundMuted ? "Unmute Sound" : "Mute Sound"}
+        </Button>
         {unreadCount > 0 && (
           <Button variant="outline" size="sm" className="h-8 text-xs gap-1" onClick={markAllAsRead}>
             <CheckCheck className="h-3.5 w-3.5" /> Mark All Read

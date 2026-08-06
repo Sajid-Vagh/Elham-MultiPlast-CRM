@@ -1,4 +1,5 @@
 export function playNotificationSoundForType(type: string) {
+  if (isNotificationSoundMuted()) return;
   const soundMap: Record<string, string> = {
     enquiry_assigned: "https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3",
     lead_assigned: "https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3",
@@ -27,6 +28,24 @@ export function playNotificationSoundForType(type: string) {
     audio.play().catch(() => {});
   } catch {
     // Audio not supported
+  }
+}
+
+export const NOTIFICATION_MUTED_KEY = "notification_muted";
+
+export function isNotificationSoundMuted(): boolean {
+  try {
+    return localStorage.getItem(NOTIFICATION_MUTED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function setNotificationSoundMuted(muted: boolean) {
+  try {
+    localStorage.setItem(NOTIFICATION_MUTED_KEY, String(muted));
+  } catch {
+    /* localStorage unavailable — ignore */
   }
 }
 
