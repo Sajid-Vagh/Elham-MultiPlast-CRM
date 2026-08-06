@@ -119,35 +119,24 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
       }
     }
 
-    // Phase 2 — fetch active deals. A deal matches when EITHER its contactId is
-    // in the allowed set OR it owns a Proforma Invoice that matched the mobile.
+    // Phase 2 — fetch active deals. Simple 2-step select (no JOINs, no object
+    // mapping) that matches deals whose contactId is in the allowed set.
     // The stage filter is case-insensitive so legacy lowercase stages
     // ('won'/'lost') are excluded just like the canonical 'Won'/'Lost'.
-    const dealIdClauses: SQL[] = [];
-    if (allowedContactIds.length > 0) dealIdClauses.push(inArray(dealsTable.contactId, allowedContactIds));
-    if (piDealIds.length > 0) dealIdClauses.push(inArray(dealsTable.id, piDealIds));
-
-    if (dealIdClauses.length === 0) {
+    if (allowedContactIds.length === 0) {
       res.json({ contacts: matchedContacts, deals: [], message: "No accessible contacts found" });
       return;
     }
 
-    // LEFT JOIN the contacts table so deal rows carry their contact payload in a
-    // single query. NOTE: the joined result is keyed explicitly as { deals: ... }
-    // so the row mapping never depends on Drizzle's internal table-name keying.
-    const rows = await db
-      .select({ deals: dealsTable })
+    let allDeals = await db.select()
       .from(dealsTable)
-      .leftJoin(contactsTable, eq(dealsTable.contactId, contactsTable.id))
       .where(
         and(
-          or(...dealIdClauses),
+          inArray(dealsTable.contactId, allowedContactIds),
           sql`LOWER(${dealsTable.stage}) NOT IN ('won', 'lost')`
         )
       )
       .orderBy(desc(dealsTable.createdAt));
-
-    let allDeals = rows.map(r => r.deals).filter((d): d is typeof dealsTable.$inferSelect => !!d);
 
     // Unit isolation for ALL returned deals — including PI-derived deals whose
     // contactId may differ from the mobile-matched contacts. A single-unit user
