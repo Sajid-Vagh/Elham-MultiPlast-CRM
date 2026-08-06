@@ -541,11 +541,19 @@ export default function ProformaInvoicesPage() {
   // 3. Search GST Profiles by mobile → selected profile auto-fills ONLY billing fields
   // Lead/Contact data NEVER auto-fills billing fields.
   // NOTE: skipped while hydratedFromUrlRef is set — a ?dealId= hydration owns
-  // the deal/contact state until the user edits the mobile input.
+  // the deal/contact state until the user edits the mobile input. As a final
+  // safety net, every wipe path below also guards against overwriting the
+  // URL-hydrated deal (see the urlDealId guard before each setSelectedDeal(null)).
   useEffect(() => {
+    // HARD LOCK #1: while a ?dealId= hydration owns the form (and the user has
+    // NOT edited the mobile input), never run the search at all — the URL-owned
+    // deal must not be re-fetched or wiped by the debounced lookup.
     if (hydratedFromUrlRef.current) return;
     const m = mobile.replace(/\s/g, "");
     if (m.length < 10) {
+      // HARD GUARD #2: never wipe the URL-hydrated deal, even when the mobile is
+      // cleared. Only the mobile input onChange / resetForm can release it.
+      if (selectedDeal?.id?.toString() === urlDealId?.toString()) return;
       setSelectedLead(null);
       setSelectedDeal(null);
       setActiveDeals([]);
@@ -588,6 +596,10 @@ export default function ProformaInvoicesPage() {
             setSelectedDeal(null);
             setDealSelectOpen(true);
           } else {
+            // HARD GUARD #3: this is the exact "No active Deal found" wipe that
+            // was destroying the URL-hydrated deal. If the selected deal is the
+            // URL-hydrated one, stop — never clear it based on a failing lookup.
+            if (selectedDeal?.id?.toString() === urlDealId?.toString()) return;
             setSelectedDeal(null);
             setDealSelectOpen(false);
             setMobileFetchError("No active Deal found. Please create a Deal first.");
@@ -623,6 +635,9 @@ export default function ProformaInvoicesPage() {
             } catch { }
           }
         } else {
+          // HARD GUARD #4: never clear the URL-hydrated deal when the lookup
+          // comes back empty.
+          if (selectedDeal?.id?.toString() === urlDealId?.toString()) return;
           setSelectedLead(null);
           setSelectedDeal(null);
           setActiveDeals([]);
@@ -632,6 +647,8 @@ export default function ProformaInvoicesPage() {
           setMobileFetchError("No contact found with this mobile number");
         }
       } catch (err: any) {
+        // HARD GUARD #5: never clear the URL-hydrated deal on an API error either.
+        if (selectedDeal?.id?.toString() === urlDealId?.toString()) return;
         setSelectedLead(null);
         setSelectedDeal(null);
         setActiveDeals([]);
@@ -694,7 +711,6 @@ export default function ProformaInvoicesPage() {
   // from overwriting the deal we were explicitly pointed at.
   useEffect(() => {
     if (!urlDealId && !urlContactId) {
-      hydratedFromUrlRef.current = false;
       return;
     }
     let cancelled = false;
@@ -704,7 +720,6 @@ export default function ProformaInvoicesPage() {
     if (urlDealId) hydratedFromUrlRef.current = true;
 
     const hydrateFromContact = async (contactId: number) => {
-      hydratedFromUrlRef.current = false;
       try {
         const contact = await customFetch<any>(`/contacts/${contactId}`);
         if (cancelled) return;
