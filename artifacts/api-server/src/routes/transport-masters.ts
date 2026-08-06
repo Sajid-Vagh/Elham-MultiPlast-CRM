@@ -1112,6 +1112,9 @@ router.post("/transport-masters/bundles/import/bora/preview", async (req, res) =
       if (hasBora && isNaN(Number(row.bora))) {
         errors.push({ row: rowNum, field: "bora", message: "Invalid Bora quantity" }); rowValid = false;
       }
+      if (row.linerPackingQty !== undefined && row.linerPackingQty !== "" && isNaN(Number(row.linerPackingQty))) {
+        errors.push({ row: rowNum, field: "linerPackingQty", message: "Invalid Liner Packing quantity" }); rowValid = false;
+      }
       if (rowValid) valid.push({ ...row, _rowNum: rowNum });
     }
 
@@ -1160,6 +1163,7 @@ router.post("/transport-masters/bundles/import/bora/execute", async (req, res) =
         const productionUnit = tagUnit ?? (row.productionUnit && row.productionUnit !== "all" ? row.productionUnit.trim() : null);
         const bora = row.bora !== undefined && row.bora !== "" ? Number(row.bora) : 0;
         const bundleSize = row.bundleSize ? Number(row.bundleSize) : undefined;
+        const linerPackingQty = row.linerPackingQty !== undefined && row.linerPackingQty !== "" ? Number(row.linerPackingQty) : 0;
 
         // Upsert: find existing product by name
         const conditions: any[] = [
@@ -1176,12 +1180,13 @@ router.post("/transport-masters/bundles/import/bora/execute", async (req, res) =
         if (existing) {
           const updateData: any = { bora, updatedAt: new Date(), updatedBy: user.id, importBatchId: batch.id };
           if (bundleSize !== undefined) updateData.bundle_size = bundleSize;
+          if (!isNaN(linerPackingQty) && linerPackingQty > 0) updateData.liner_packing_qty = linerPackingQty;
           await db.update(productBundleMasterTable).set(updateData).where(eq(productBundleMasterTable.id, existing.id));
         } else {
           await db.insert(productBundleMasterTable).values({
             productName,
             bundleSize: bundleSize ?? 80,
-            linerPackingQty: 0,
+            linerPackingQty: isNaN(linerPackingQty) ? 0 : linerPackingQty,
             bora,
             productionUnit,
             createdBy: user.id,

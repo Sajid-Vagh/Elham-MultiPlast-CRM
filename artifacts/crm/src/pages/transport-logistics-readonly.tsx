@@ -93,6 +93,7 @@ const BORA_ALIASES: Record<string, string[]> = {
   bora: ["bora qty", "bora quantity", "bora", "normal bora qty", "normal bora", "normal"],
   bundleSize: ["bundle size", "bundle", "pack size", "pack"],
   productionUnit: ["production unit", "factory unit", "unit"],
+  linerPackingQty: ["liner packing qty", "liner packing", "liner qty", "liner"],
 };
 
 function detectParser(headers: string[]): DetectedParser {
@@ -713,7 +714,7 @@ export default function TransportLogisticsLookup() {
                     )}
                     {preview.parser === "bora" && (
                       <>
-                        <TableHead>Product</TableHead><TableHead className="text-right">Bora</TableHead>
+                        <TableHead>Product</TableHead><TableHead className="text-right">Bora</TableHead><TableHead className="text-right">Liner Packing</TableHead>
                       </>
                     )}
                     <TableHead>Status</TableHead>
@@ -747,6 +748,7 @@ export default function TransportLogisticsLookup() {
                           <>
                             <TableCell className="text-xs">{row.productName}</TableCell>
                             <TableCell className="text-xs text-right">{row.bora || 0}</TableCell>
+                            <TableCell className="text-xs text-right">{row.linerPackingQty || 0}</TableCell>
                           </>
                         )}
                         <TableCell>
