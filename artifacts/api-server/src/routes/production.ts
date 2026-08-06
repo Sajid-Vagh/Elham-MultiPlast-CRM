@@ -701,7 +701,6 @@ router.get("/production/sheet", async (req, res) => {
     const priorityFilter = (req.query.priority as string) || undefined;
     const dispatchStatusFilter = (req.query.dispatchStatus as string) || undefined;
     const originFilter = (req.query.origin as string) || undefined;
-    const statusFilter = (req.query.status as string) || undefined;
 
     // ── 1. Resolve date range for date-based modes ──
     // Local date helper (YYYY-MM-DD in server timezone, matching createdAt local-midnight semantics)
@@ -747,8 +746,9 @@ router.get("/production/sheet", async (req, res) => {
     let matchedOrderIds: number[];
 
     if (mode === "updated") {
-      // Updated Sheet: ONLY orders that need a reprint OR were never generated
+      // Updated Sheet: ONLY Pending orders that need a reprint OR were never generated
       const updatedConditions: any[] = [
+        eq(productionOrdersTable.status, "Pending"),
         or(
           eq(productionOrdersTable.needsReprint, true),
           eq(productionOrdersTable.productionSheetVersion, 0)
@@ -769,7 +769,8 @@ router.get("/production/sheet", async (req, res) => {
       matchedOrderIds = updatedRows.map((o: any) => o.id);
     } else {
       const listResult = await listOrders(user, {
-        status: statusFilter || "all",
+        // Sheet export is strictly Pending-only in every date-range scope
+        status: "Pending",
         unit: unitFilter || "all",
         search: searchFilter,
         priority: priorityFilter,
