@@ -53,8 +53,8 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
       .from(contactsTable)
       .where(
         or(
-          sql`right(regexp_replace(COALESCE(${contactsTable.mobile}, ''), '[^0-9]', '', 'g'), 10) = ${mobile}`,
-          sql`right(regexp_replace(COALESCE(${contactsTable.otherPhone}, ''), '[^0-9]', '', 'g'), 10) = ${mobile}`
+          sql`right(regexp_replace(COALESCE(${contactsTable.mobile}::text, ''), '[^0-9]', '', 'g'), 10) = ${mobile}`,
+          sql`right(regexp_replace(COALESCE(${contactsTable.otherPhone}::text, ''), '[^0-9]', '', 'g'), 10) = ${mobile}`
         )
       );
 

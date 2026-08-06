@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
+import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -557,16 +558,9 @@ export default function ProformaInvoicesPage() {
       setMobileFetchError("");
       setAddingNewProfile(false);
       try {
-        // Step 1: Search deals by mobile
-        const dealsRes = await fetch(`/api/deals/by-mobile/${encodeURIComponent(m)}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!dealsRes.ok) {
-          setMobileFetchError("Search failed. Please try again.");
-          setMobileFetchLoading(false);
-          return;
-        }
-        const data = await dealsRes.json();
+        // Step 1: Search deals by mobile (customFetch resolves the API base
+        // URL + attaches the auth token; throws ApiError on non-2xx)
+        const data = await customFetch<any>(`/deals/by-mobile/${encodeURIComponent(m)}`);
 
         if (data.contacts && data.contacts.length > 0) {
           const firstContact = data.contacts[0];
@@ -697,9 +691,7 @@ export default function ProformaInvoicesPage() {
     const hydrateFromContact = async (contactId: number) => {
       hydratedFromUrlRef.current = false;
       try {
-        const res = await fetch(`/api/contacts/${contactId}`, { headers: { Authorization: `Bearer ${token}` } });
-        if (!res.ok) return;
-        const contact = await res.json();
+        const contact = await customFetch<any>(`/contacts/${contactId}`);
         if (cancelled) return;
         setSelectedLead(contact);
         if (contact.mobile) setMobile(String(contact.mobile).trim());
@@ -709,23 +701,25 @@ export default function ProformaInvoicesPage() {
 
     (async () => {
       if (urlDealId) {
+        let deal;
         try {
-          const res = await fetch(`/api/deals/${urlDealId}`, { headers: { Authorization: `Bearer ${token}` } });
-          if (res.ok) {
-            const deal = await res.json();
-            if (cancelled) return;
-            setSelectedDeal(deal);
-            setActiveDeals([deal]);
-            if (deal.contact) {
-              setSelectedLead(deal.contact);
-              if (deal.contact.mobile) setMobile(String(deal.contact.mobile).trim());
-              await loadCustomerGstProfile(deal.contact.id);
-            } else if (urlContactId) {
-              await hydrateFromContact(urlContactId);
-            }
-            return;
+          deal = await customFetch<any>(`/deals/${urlDealId}`);
+        } catch {
+          // fall through to contact-only hydration
+        }
+        if (deal) {
+          if (cancelled) return;
+          setSelectedDeal(deal);
+          setActiveDeals([deal]);
+          if (deal.contact) {
+            setSelectedLead(deal.contact);
+            if (deal.contact.mobile) setMobile(String(deal.contact.mobile).trim());
+            await loadCustomerGstProfile(deal.contact.id);
+          } else if (urlContactId) {
+            await hydrateFromContact(urlContactId);
           }
-        } catch { /* fall through to contact-only hydration */ }
+          return;
+        }
       }
       if (urlContactId) await hydrateFromContact(urlContactId);
     })();
