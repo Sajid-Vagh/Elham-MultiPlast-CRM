@@ -493,7 +493,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
                   <div key={n.id} className="flex items-start gap-1.5 group">
                     <div
                       className="flex-1 min-w-0 p-3 hover:bg-muted/30 cursor-pointer"
-                      onClick={() => { markAsRead(n.id); setBellOpen(false); openNotificationPanel(n); }}
+                      onClick={() => { markAsRead(n.id); setBellOpen(false); if (n.link) setLocation(n.link); else openNotificationPanel(n); }}
                     >
                       <p className="text-sm font-medium truncate flex items-center gap-1.5">
                         <span
@@ -629,7 +629,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
           link={n.link}
           type={n.type}
           onDismiss={closePopup}
-          onOpen={() => { closePopup(n.id); markAsRead(n.id); openNotificationPanel(n); }}
+          onOpen={() => { closePopup(n.id); markAsRead(n.id); if (n.link) setLocation(n.link); else openNotificationPanel(n); }}
         />
       ))}
     </div>

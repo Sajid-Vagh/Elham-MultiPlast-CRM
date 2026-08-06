@@ -2,12 +2,18 @@ import { useState, useMemo } from "react";
 import { Bell, CheckCheck, Loader2, ArrowLeft, Trash2, X, Volume2, VolumeX, Users } from "lucide-react";
 import { isNotificationSoundMuted, setNotificationSoundMuted } from "@/lib/notification-sound";
 import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useNotifications } from "@/lib/notification-context";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAllUsers } from "@/lib/use-all-users";
+import { useGetMe } from "@workspace/api-client-react";
 
 type Filter = "all" | "unread" | "today" | "this_week" | "older";
+
+// The persistent "Owners" filter is an admin/management tool — it must only be
+// visible to Admin, Production and Support. Sales users see all their own
+// notifications and this dropdown is completely removed from the DOM.
+const OWNER_FILTER_ROLES = ["admin", "production", "production_and_support", "support"];
 
 const FILTER_OPTIONS: { value: Filter; label: string }[] = [
   { value: "all", label: "All" },
@@ -70,10 +76,14 @@ export default function NotificationsPage() {
   const [page, setPage] = useState(0);
   const limit = 50;
   const [soundMuted, setSoundMuted] = useState<boolean>(() => isNotificationSoundMuted());
+  const [, setLocation] = useLocation();
 
   const { total, unreadCount, loading, error, markAsRead, markAllAsRead, deleteNotification, clearAllNotifications, refetch, openNotificationPanel, ownerFilter, setOwnerFilter, visibleNotifications } = useNotifications();
 
   const { data: allUsers } = useAllUsers();
+  const { data: currentUser } = useGetMe();
+
+  const canFilterByOwner = OWNER_FILTER_ROLES.includes((currentUser?.role || "").toLowerCase());
 
   const ownerOptions = useMemo(() => {
     const users = [...(allUsers || [])];
@@ -136,17 +146,19 @@ export default function NotificationsPage() {
           </h1>
           <p className="text-xs text-muted-foreground">{visibleNotifications.length} notification{visibleNotifications.length !== 1 ? "s" : ""}</p>
         </div>
-        <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-          <SelectTrigger className="h-8 w-[170px] text-xs gap-1" title="Filter notifications by owner">
-            <Users className="h-3.5 w-3.5" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {ownerOptions.map((o) => (
-              <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {canFilterByOwner && (
+          <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+            <SelectTrigger className="h-8 w-[170px] text-xs gap-1" title="Filter notifications by owner">
+              <Users className="h-3.5 w-3.5" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ownerOptions.map((o) => (
+                <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Button
           variant={soundMuted ? "outline" : "default"}
           size="sm"
@@ -215,7 +227,7 @@ export default function NotificationsPage() {
               <div
                 key={n.id}
                 className={`flex items-start gap-3 p-3 rounded-lg transition-colors cursor-pointer ${isUnread ? "bg-blue-50 border border-blue-100" : "hover:bg-muted/30"}`}
-                onClick={() => { markAsRead(n.id); openNotificationPanel(n); }}
+                onClick={() => { markAsRead(n.id); if (n.link) setLocation(n.link); else openNotificationPanel(n); }}
               >
                 <span className="text-lg mt-0.5">{icon}</span>
                 <div className="flex-1 min-w-0">

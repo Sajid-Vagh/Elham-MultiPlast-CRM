@@ -2179,34 +2179,56 @@ export async function sendMessage(
   }).returning();
 
   const notifyUserIds: number[] = [];
+  const pushRecipient = (id?: number | null) => {
+    if (id && id !== user.id && !notifyUserIds.includes(id)) notifyUserIds.push(id);
+  };
 
-  if (order.assignedProductionManagerId && order.assignedProductionManagerId !== user.id) {
-    notifyUserIds.push(order.assignedProductionManagerId);
+  // Production-side recipient: the assigned production manager (if not the sender).
+  pushRecipient(order.assignedProductionManagerId);
+  pushRecipient(order.createdById);
+
+  // Sales-side recipients: the sales order owner / creator (when a sales order is
+  // linked via the deal), the PI creator, and the contact's sales owner. This
+  // guarantees the Sales Owner always receives the chat notification even when the
+  // production order was created from a deal with no proforma invoice yet.
+  let salesOrderId: number | null = null;
+  if (order.dealId) {
+    const [salesOrder] = await db.select({ id: ordersTable.id, salesOwnerId: ordersTable.salesOwnerId, createdBy: ordersTable.createdBy })
+      .from(ordersTable)
+      .where(and(eq(ordersTable.dealId, order.dealId), eq(ordersTable.isDeleted, false)))
+      .limit(1);
+    if (salesOrder) {
+      salesOrderId = salesOrder.id;
+      pushRecipient(salesOrder.salesOwnerId);
+      pushRecipient(salesOrder.createdBy);
+    }
   }
 
-  if (user.role === "production") {
-    // Production → notify order creator and invoice creator
-    if (order.createdById && order.createdById !== user.id) notifyUserIds.push(order.createdById);
-    if (order.proformaInvoiceId) {
-      const [inv] = await db.select({ createdBy: proformaInvoicesTable.createdBy, contactId: proformaInvoicesTable.contactId })
-        .from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, order.proformaInvoiceId));
-      if (inv?.createdBy && inv.createdBy !== user.id && !notifyUserIds.includes(inv.createdBy)) notifyUserIds.push(inv.createdBy);
-      // Also notify sales owner of the contact
-      if (inv?.contactId) {
+  if (order.proformaInvoiceId) {
+    const [inv] = await db.select({ createdBy: proformaInvoicesTable.createdBy, contactId: proformaInvoicesTable.contactId })
+      .from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, order.proformaInvoiceId));
+    if (inv) {
+      pushRecipient(inv.createdBy);
+      if (inv.contactId) {
         const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId }).from(contactsTable).where(eq(contactsTable.id, inv.contactId));
-        if (contact?.salesOwnerId && contact.salesOwnerId !== user.id && !notifyUserIds.includes(contact.salesOwnerId)) {
-          notifyUserIds.push(contact.salesOwnerId);
-        }
+        pushRecipient(contact?.salesOwnerId);
       }
     }
-  } else {
-    // Sales/Support/Admin → notify all production managers + admins + sales owner
+  }
+
+  if (user.role !== "production") {
+    // Sales/Support/Admin → notify all production managers + admins
     const productionUsers = await db.select({ id: usersTable.id }).from(usersTable)
       .where(or(eq(usersTable.role, "production"), eq(usersTable.role, "admin")));
-    for (const u of productionUsers) {
-      if (u.id !== user.id && !notifyUserIds.includes(u.id)) notifyUserIds.push(u.id);
-    }
+    for (const u of productionUsers) pushRecipient(u.id);
   }
+
+  // Resolve recipient roles so each notification link targets the recipient's
+  // workspace (the "conversation" lives in both workspaces).
+  const recipientRows = notifyUserIds.length
+    ? await db.select({ id: usersTable.id, role: usersTable.role }).from(usersTable).where(inArray(usersTable.id, notifyUserIds))
+    : [];
+  const roleById = new Map(recipientRows.map((u) => [u.id, u.role]));
 
   // Use createNotification for SSE emission; use message ID as relatedId to avoid dedup suppression
   // Heading explicitly states the department the message came from; body holds the snippet.
@@ -2222,13 +2244,18 @@ export async function sendMessage(
         : `Message from ${senderDept}`;
 
   for (const uid of notifyUserIds) {
+    // CRITICAL: the routing link respects the recipient's workspace — Sales users
+    // land on /orders/:salesOrderId, everyone else on /production/orders/:orderId.
+    const link = roleById.get(uid) === "sales" && salesOrderId
+      ? `/orders/${salesOrderId}`
+      : `/production/orders/${orderId}`;
     await createNotification({
       createdById: user.id,
       userId: uid,
       type: "production_message",
       title: chatTitle,
       message: `${user.name}: ${message.trim().slice(0, 200)}`,
-      link: `/production/orders/${orderId}`,
+      link,
       relatedId: newMessage.id,
       relatedType: "production_message",
     });

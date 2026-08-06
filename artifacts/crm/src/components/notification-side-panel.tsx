@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Loader2, Send, ExternalLink, MessageSquare, User, ArrowRight } from "lucide-react";
@@ -215,33 +215,55 @@ function EnquiryPanel({ notification, onClose }: { notification: any; onClose: (
 // Chat panel — reply to a production/support conversation without navigating
 // ─────────────────────────────────────────────────────────────────────────────
 function ChatPanel({ notification, onClose }: { notification: any; onClose: () => void }) {
-  const orderId = useMemo(() => {
-    if (!notification.link) return null;
-    const parts = notification.link.split("/").filter(Boolean);
-    return Number(parts[parts.length - 1]) || null;
-  }, [notification.link]);
-
   const { data: user } = useGetMe();
   const [messageText, setMessageText] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const prevCountRef = useRef(0);
 
-  const { data: messages, refetch } = useQuery({
-    queryKey: ["notification-chat-messages", orderId],
+  // The conversation lives on the production order. The notification link is
+  // role-aware: production/support users get /production/orders/:productionOrderId,
+  // sales users get /orders/:salesOrderId. Resolve the production order id from
+  // either link so the messages fetch always targets the right order.
+  const { data: productionOrderId } = useQuery({
+    queryKey: ["chat-production-order", notification.link],
     queryFn: async () => {
-      const res = await fetch(`/api/production/orders/${orderId}/messages`, { headers: authHeaders() });
+      if (!notification.link) return null;
+      const parts = notification.link.split("/").filter(Boolean);
+      const last = Number(parts[parts.length - 1]);
+      if (!last) return null;
+      if (parts[0] === "production") return last;
+      if (parts[0] === "orders") {
+        const orderRes = await fetch(`/api/orders/${last}`, { headers: authHeaders() });
+        if (!orderRes.ok) return null;
+        const order = await orderRes.json();
+        if (!order?.proformaInvoiceId) return null;
+        const poRes = await fetch(`/api/production/by-invoice/${order.proformaInvoiceId}`, { headers: authHeaders() });
+        if (!poRes.ok) return null;
+        const po = await poRes.json();
+        return po?.id ?? null;
+      }
+      return last;
+    },
+    enabled: !!notification.link,
+    staleTime: 60_000,
+  });
+
+  const { data: messages, refetch } = useQuery({
+    queryKey: ["notification-chat-messages", productionOrderId],
+    queryFn: async () => {
+      const res = await fetch(`/api/production/orders/${productionOrderId}/messages`, { headers: authHeaders() });
       if (!res.ok) throw new Error("Failed to load conversation");
       return res.json();
     },
-    enabled: !!orderId,
+    enabled: !!productionOrderId,
     refetchInterval: 5_000,
     staleTime: 3_000,
   });
 
   const sendMutation = useMutation({
     mutationFn: async (msg: string) => {
-      const res = await fetch(`/api/production/orders/${orderId}/messages`, {
+      const res = await fetch(`/api/production/orders/${productionOrderId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ message: msg }),
@@ -270,11 +292,11 @@ function ChatPanel({ notification, onClose }: { notification: any; onClose: () =
   }, [messages]);
 
   const handleSend = () => {
-    if (!messageText.trim() || sendMutation.isPending || !orderId) return;
+    if (!messageText.trim() || sendMutation.isPending || !productionOrderId) return;
     sendMutation.mutate(messageText.trim());
   };
 
-  if (!orderId) {
+  if (!productionOrderId) {
     return (
       <div className="p-6">
         <p className="text-sm text-muted-foreground">Conversation is not linked to a production order.</p>
@@ -292,7 +314,7 @@ function ChatPanel({ notification, onClose }: { notification: any; onClose: () =
           </span>
         </SheetTitle>
         <SheetDescription>
-          {notification.title} · Order #{orderId}
+          {notification.title} · Order #{productionOrderId}
         </SheetDescription>
       </SheetHeader>
 

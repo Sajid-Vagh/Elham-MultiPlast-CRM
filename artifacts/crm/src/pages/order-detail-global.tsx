@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRoute, useLocation } from "wouter";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,9 +11,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Package, User, Truck, Calendar, Clock, CheckCircle2, Circle, Loader2, AlertTriangle, MessageSquare } from "lucide-react";
+import { ArrowLeft, Package, User, Truck, Calendar, Clock, CheckCircle2, Circle, Loader2, AlertTriangle, MessageSquare, Send } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { ProductionProgressSection } from "@/components/production-progress";
+import { toast } from "@/hooks/use-toast";
 
 const ORDER_STATUS_COLORS: Record<string, string> = {
   "Draft": "bg-gray-100 text-gray-600",
@@ -55,11 +56,56 @@ export default function OrderDetailGlobal() {
   const [cancelReason, setCancelReason] = useState("");
   const [cancelOther, setCancelOther] = useState("");
 
+  // ── Order Conversation (Sales workspace) ──
+  const [messageText, setMessageText] = useState("");
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const prevMsgCountRef = useRef(0);
+
   const { data: order, isLoading } = useQuery<any>({
     queryKey: ["order", id],
     queryFn: () => customFetch(`/orders/${id}`),
     enabled: !!id,
   });
+
+  // The chat lives on the production order — resolve it from this sales order's
+  // proforma invoice so Sales users can reply right here.
+  const { data: productionOrder } = useQuery<any>({
+    queryKey: ["production-by-invoice", order?.proformaInvoiceId],
+    queryFn: () => customFetch(`/production/by-invoice/${order?.proformaInvoiceId}`),
+    enabled: !!order?.proformaInvoiceId,
+  });
+  const productionOrderId = productionOrder?.id;
+
+  const { data: productionMessages, refetch: refetchMessages } = useQuery<any[]>({
+    queryKey: ["production-messages", productionOrderId],
+    queryFn: () => customFetch(`/production/orders/${productionOrderId}/messages`),
+    enabled: !!productionOrderId, staleTime: 3_000, refetchInterval: productionOrderId ? 5_000 : false,
+  });
+
+  const sendMessage = useMutation({
+    mutationFn: (msg: string) =>
+      customFetch<any>(`/production/orders/${productionOrderId}/messages`, {
+        method: "POST", body: JSON.stringify({ message: msg }), headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => { setMessageText(""); refetchMessages(); },
+    onError: () => toast({ title: "Failed to send message", variant: "destructive" }),
+  });
+
+  const handleSendMessage = () => {
+    if (!messageText.trim() || sendMessage.isPending || !productionOrderId) return;
+    sendMessage.mutate(messageText.trim());
+  };
+
+  useEffect(() => {
+    if (!productionMessages) return;
+    const container = chatContainerRef.current;
+    const isAtBottom = container ? container.scrollHeight - container.scrollTop - container.clientHeight < 80 : true;
+    if (isAtBottom) { container?.scrollTo({ top: container.scrollHeight, behavior: "smooth" }); setUnreadCount(0); }
+    else if (productionMessages.length > prevMsgCountRef.current) { setUnreadCount(c => c + (productionMessages.length - prevMsgCountRef.current)); }
+    prevMsgCountRef.current = productionMessages.length;
+  }, [productionMessages]);
 
   const { data: timeline = [] } = useQuery<any[]>({
     queryKey: ["order-timeline", id],
@@ -194,6 +240,75 @@ export default function OrderDetailGlobal() {
       {/* Production Progress (for Sales users - read only) */}
       {canViewProduction && order.dealId && (
         <ProductionProgressSection invoiceId={order.proformaInvoiceId || 0} />
+      )}
+
+      {/* Order Conversation (Sales workspace — reply to Production directly) */}
+      {order.proformaInvoiceId && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-1.5"><MessageSquare className="h-4 w-4" /> Order Conversation</CardTitle>
+                <span className="inline-flex items-center gap-1 text-[10px] text-green-600 font-medium bg-green-50 border border-green-200 rounded-full px-2 py-0.5"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />Realtime</span>
+              </div>
+              {productionMessages && productionMessages.length > 0 && <span className="text-[10px] text-muted-foreground">{productionMessages.length} message{productionMessages.length !== 1 ? "s" : ""}</span>}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div ref={chatContainerRef} className="relative rounded-xl border bg-[#fafafa] overflow-hidden" style={{ height: 300 }}>
+              <div className="h-full overflow-y-auto px-3 py-3 space-y-3">
+                {!productionOrderId ? (
+                  <div className="flex items-center justify-center h-full text-center">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : !productionMessages || productionMessages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center">
+                    <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3"><MessageSquare className="h-5 w-5 text-muted-foreground/50" /></div>
+                    <p className="text-sm font-medium text-muted-foreground">No conversation yet.</p>
+                  </div>
+                ) : (
+                  <>
+                    {productionMessages.map((msg: any, idx: number) => {
+                      const isMe = user && msg.senderId === user.id;
+                      const showAvatar = idx === 0 || productionMessages[idx - 1].senderId !== msg.senderId;
+                      const isLastInGroup = idx === productionMessages.length - 1 || productionMessages[idx + 1].senderId !== msg.senderId;
+                      const timeStr = new Date(msg.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) === new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+                        ? new Date(msg.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
+                        : new Date(msg.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) + " · " + new Date(msg.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+                      return (
+                        <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
+                          {showAvatar && !isMe && <div className="flex items-center gap-1.5 mb-1 ml-1"><span className="text-[11px] font-semibold text-foreground">{msg.senderName}</span><span className="text-[9px] font-medium text-violet-600 bg-violet-50 border border-violet-200 rounded px-1.5 py-px leading-none">{msg.senderRole}</span></div>}
+                          <div className={`max-w-[75%] px-3 py-2 text-[12.5px] leading-relaxed ${isMe ? "bg-violet-600 text-white rounded-2xl rounded-br-md shadow-sm" : "bg-white text-foreground border border-gray-200 rounded-2xl rounded-bl-md shadow-sm"}`}>
+                            <p className="whitespace-pre-wrap break-words">{msg.message}</p>
+                          </div>
+                          {isLastInGroup && <span className={`text-[9px] text-muted-foreground/60 mt-1 ${isMe ? "mr-1" : "ml-1"}`}>{timeStr}</span>}
+                        </div>
+                      );
+                    })}
+                    <div ref={chatEndRef} />
+                  </>
+                )}
+              </div>
+              {unreadCount > 0 && (
+                <button onClick={() => { chatContainerRef.current?.scrollTo({ top: chatContainerRef.current.scrollHeight, behavior: "smooth" }); setUnreadCount(0); }}
+                  className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 bg-violet-600 text-white text-[11px] font-medium rounded-full px-3 py-1.5 shadow-lg hover:bg-violet-700 transition-colors cursor-pointer">
+                  {unreadCount} new message{unreadCount !== 1 ? "s" : ""}
+                </button>
+              )}
+            </div>
+            <div className="flex items-end gap-2 mt-2">
+              <div className="flex-1">
+                <textarea value={messageText} onChange={e => setMessageText(e.target.value)} placeholder="Type your message..." rows={1}
+                  className="w-full min-h-[40px] max-h-24 text-[13px] resize-none rounded-xl border-gray-200 bg-white px-3 py-2 focus-visible:ring-violet-500 focus-visible:border-violet-400 placeholder:text-muted-foreground/50"
+                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }} />
+              </div>
+              <button onClick={handleSendMessage} disabled={!messageText.trim() || sendMessage.isPending}
+                className="shrink-0 w-10 h-10 rounded-full bg-violet-600 text-white flex items-center justify-center hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm">
+                <Send className="h-4 w-4" />
+              </button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Order Status Timeline */}
