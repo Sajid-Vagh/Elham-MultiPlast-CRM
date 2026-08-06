@@ -341,6 +341,10 @@ class SupabaseStorageProvider implements StorageProvider {
     // 4. Ensure public via database so it doesn't depend on API key privileges
     if (this.buckets.has("voice-notes")) {
       await this.setBucketPublicViaDb("voice-notes");
+      // Heal the missing storage.objects RLS policy (migration 072) even when
+      // no file is uploaded yet — keeps existing deployments working without a
+      // manual SQL step.
+      await this.ensurePublicReadPolicies();
       return true;
     }
 
@@ -411,6 +415,47 @@ class SupabaseStorageProvider implements StorageProvider {
       if (await this.setBucketPublicViaDb(bucket)) {
         console.log(`[storage] Bucket "${bucket}" set to public via database`);
       }
+    }
+
+    // Setting public=true is NOT enough: buckets created via direct SQL
+    // (createBucketViaDb) bypass the Storage API, so no anon SELECT policy is
+    // auto-created on storage.objects. Without one, anonymous public-URL loads
+    // (<img src>, <audio src>) return 403. Ensure the policy on every
+    // make-public event so the fix self-heals (idempotent, runs once/process).
+    await this.ensurePublicReadPolicies();
+  }
+
+  // ────────────────────────────────────────
+  // Storage RLS policies
+  // ────────────────────────────────────────
+  // Root cause of "profile photo 403 / initials fallback for non-admin users":
+  // buckets are created by INSERTing into storage.buckets directly (bypassing
+  // the Storage REST API), so Supabase never generates the standard public-read
+  // SELECT policy on storage.objects. The bucket flag public=true alone does not
+  // let the browser's anonymous request download the object — storage.objects
+  // RLS still denies -> HTTP 403. This grants SELECT to PUBLIC (anon +
+  // authenticated) for every bucket flagged public, mirroring migration
+  // 072_add_storage_public_read_policies.sql. One generic policy covers
+  // profile-photos, voice-notes, documents, builty and future public buckets.
+  private policiesEnsured = false;
+
+  private async ensurePublicReadPolicies(): Promise<void> {
+    if (this.policiesEnsured) return;
+    try {
+      const { db } = await import("@workspace/db");
+      await db.execute(sql`DROP POLICY IF EXISTS "Public read access (all public buckets)" ON storage.objects`);
+      await db.execute(sql`
+        CREATE POLICY "Public read access (all public buckets)"
+          ON storage.objects
+          FOR SELECT
+          TO public
+          USING (bucket_id IN (SELECT id FROM storage.buckets WHERE public = true))
+      `);
+      this.policiesEnsured = true;
+      console.log(`[storage] Public read policy ensured on storage.objects (anon SELECT for all public buckets)`);
+    } catch (err: any) {
+      console.warn(`[storage] Could not ensure public read policy on storage.objects:`, err?.message);
+      console.warn(`[storage] Apply migration lib/db/migrations/072_add_storage_public_read_policies.sql in Supabase SQL Editor.`);
     }
   }
 }
