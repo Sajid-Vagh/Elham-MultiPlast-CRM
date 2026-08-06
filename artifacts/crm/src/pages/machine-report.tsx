@@ -13,6 +13,7 @@ import { useUnitFilter } from "@/lib/use-unit-filter";
 
 const MACHINE_TYPES = ["All", "250ml Machine", "1L Machine", "5L Machine"];
 const STATUS_OPTIONS = ["All", "Pending", "Production On Going"];
+const MATERIAL_OPTIONS = ["All", "HDPE", "PET", "PP"];
 
 interface ReportData {
   summary: { totalProducts: number; totalBottles: number; pending: number; inProduction: number; completed: number };
@@ -29,6 +30,7 @@ export default function MachineReport() {
   const [unitFilter, setUnitFilter] = useUnitFilter();
   const [machineFilter, setMachineFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [materialFilter, setMaterialFilter] = useState("All");
 
   const showUnitFilter = user?.role === "admin" || user?.role === "production_and_support" || user?.unit === "All";
 
@@ -44,25 +46,37 @@ export default function MachineReport() {
     enabled: !!user,
   });
 
-  const summary = data?.summary;
   const materialBreakdown = data?.materialBreakdown || [];
   const orders = data?.orders || [];
+
+  // Material filter is applied client-side so the KPI cards, the Material-wise
+  // Breakdown and the Product Lines table all narrow to the selected material
+  // (HDPE / PET / PP) without an extra backend round-trip.
+  const filteredOrders = materialFilter === "All"
+    ? orders
+    : orders.filter(o => o.materialType === materialFilter);
+  const filteredBreakdown = materialFilter === "All"
+    ? materialBreakdown
+    : materialBreakdown.filter(g => g.materialType === materialFilter);
+
+  const totalProducts = filteredOrders.length;
+  const totalBottles = filteredOrders.reduce((s, o) => s + (o.quantity - (o.readyQuantity || 0)), 0);
 
   // Sum of pieces (remaining quantities) per status bucket for the current
   // filters — derived from the backend's materialBreakdown so the same
   // status-bucket logic as the dashboard drives the totals.
-  const pendingPcs = materialBreakdown.reduce(
+  const pendingPcs = filteredBreakdown.reduce(
     (s, g) => s + g.machines.reduce((m, x) => m + (Number(x.pendingQty) || 0), 0),
     0
   );
-  const inProductionPcs = materialBreakdown.reduce(
+  const inProductionPcs = filteredBreakdown.reduce(
     (s, g) => s + g.machines.reduce((m, x) => m + (Number(x.inProductionQty) || 0), 0),
     0
   );
 
   const SUMMARY_CARDS = [
-    { label: "Total Products", value: summary?.totalProducts ?? 0, icon: Package, color: "text-blue-600" },
-    { label: "Total Bottles", value: (summary?.totalBottles ?? 0).toLocaleString(), icon: BarChart3, color: "text-purple-600" },
+    { label: "Total Products", value: totalProducts, icon: Package, color: "text-blue-600" },
+    { label: "Total Bottles", value: totalBottles.toLocaleString(), icon: BarChart3, color: "text-purple-600" },
     { label: "Pending PCS", value: pendingPcs.toLocaleString(), icon: Clock, color: "text-gray-600" },
     { label: "In Production PCS", value: inProductionPcs.toLocaleString(), icon: Settings2, color: "text-orange-600" },
   ];
@@ -110,6 +124,12 @@ export default function MachineReport() {
             {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s === "All" ? "All Order Status" : s}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Select value={materialFilter} onValueChange={setMaterialFilter}>
+          <SelectTrigger className="w-44"><SelectValue placeholder="All Products" /></SelectTrigger>
+          <SelectContent>
+            {MATERIAL_OPTIONS.map(m => <SelectItem key={m} value={m}>{m === "All" ? "All Products" : m}</SelectItem>)}
+          </SelectContent>
+        </Select>
       </div>
 
       {isLoading ? (
@@ -135,11 +155,11 @@ export default function MachineReport() {
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><Factory className="h-5 w-5" /> Material-wise Breakdown</CardTitle></CardHeader>
         <CardContent>
-          {isLoading ? <Skeleton className="h-32" /> : materialBreakdown.length === 0 ? (
+          {isLoading ? <Skeleton className="h-32" /> : filteredBreakdown.length === 0 ? (
             <p className="text-muted-foreground text-sm py-4">No data available for selected filters.</p>
           ) : (
             <div className="space-y-6">
-              {materialBreakdown.map(group => (
+              {filteredBreakdown.map(group => (
                 <div key={group.materialType}>
                   <div className="flex items-center gap-2 mb-3">
                     <h3 className="text-base font-bold text-foreground">{group.materialType}</h3>
@@ -167,7 +187,7 @@ export default function MachineReport() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Product Lines ({orders.length})</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Product Lines ({filteredOrders.length})</CardTitle></CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <Table>
@@ -191,10 +211,10 @@ export default function MachineReport() {
               <TableBody>
                 {isLoading ? (
                   <TableRow><TableCell colSpan={13}><Skeleton className="h-20" /></TableCell></TableRow>
-                ) : orders.length === 0 ? (
+                ) : filteredOrders.length === 0 ? (
                   <TableRow><TableCell colSpan={13} className="text-center py-8 text-muted-foreground">No product lines found.</TableCell></TableRow>
                 ) : (
-                  orders.map((o, idx) => (
+                  filteredOrders.map((o, idx) => (
                     <TableRow key={`${o.orderId}-${idx}`}>
                       <TableCell className="font-mono text-sm">{o.orderNumber || `#${o.orderId}`}</TableCell>
                       <TableCell className="font-medium">{o.productName}</TableCell>
