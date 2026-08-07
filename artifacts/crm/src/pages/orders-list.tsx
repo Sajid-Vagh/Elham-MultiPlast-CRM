@@ -13,6 +13,7 @@ import { Package, Search, Calendar, ChevronDown, ChevronRight, Filter, X, Refres
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useAllUsers } from "@/lib/use-all-users";
+import { CancelOrderModal } from "@/components/cancel-order-modal";
 
 const PROD_STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-600",
@@ -108,6 +109,7 @@ export default function OrdersList() {
   const [ownerFilter, setOwnerFilter] = useState("");
   const [page, setPage] = useState(1);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
+  const [cancelOrder, setCancelOrder] = useState<OrderRow | null>(null);
 
   const showUnitFilter = user?.role === "admin" || user?.role === "production_and_support" || user?.unit === "All";
   const isAdmin = user?.role === "admin";
@@ -313,6 +315,11 @@ export default function OrdersList() {
                                 <Button variant="link" size="sm" className="text-xs h-6" onClick={(e) => { e.stopPropagation(); setLocation(`/orders/${order.id}`); }}>
                                   View Full Details
                                 </Button>
+                                {order.status !== "Cancelled" && order.status !== "Completed" && (
+                                  <Button variant="destructive" size="sm" className="text-xs h-6" onClick={(e) => { e.stopPropagation(); setCancelOrder(order); }}>
+                                    Cancel Order
+                                  </Button>
+                                )}
                               </div>
                               {order.products && order.products.length > 0 ? (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -371,6 +378,14 @@ export default function OrdersList() {
           </div>
         </div>
       )}
+
+      <CancelOrderModal
+        open={!!cancelOrder}
+        onOpenChange={(open) => { if (!open) setCancelOrder(null); }}
+        orderId={cancelOrder?.id || 0}
+        orderNumber={cancelOrder?.orderNumber}
+        customerName={cancelOrder?.customerName}
+      />
     </div>
   );
 }

@@ -23,10 +23,11 @@ import {
   Plus, Download, Printer, Share2, Mail, Eye, FileText, Save, ArrowLeft, Trash2, Search,
   ChevronLeft, ChevronRight, Send, Loader2, CheckCircle2, RefreshCw, Building2, Calendar, Clock,
   Shield, Store, MapPin, Verified, History, GitBranch, ArrowRight, Link as LinkIcon, Copy,
-  AlertTriangle,
+  AlertTriangle, XCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ProductionProgressSection } from "@/components/production-progress";
+import { CancelOrderModal } from "@/components/cancel-order-modal";
 import { onPIChange, onDealChange } from "@/lib/query-invalidation";
 import { customerLabel } from "@/lib/customer-label";
 const STATUS_COLORS: Record<string, string> = {
@@ -150,6 +151,7 @@ export default function ProformaInvoicesPage() {
 
   const [mode, setMode] = useState<"list" | "create" | "detail">("list");
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  const [cancelInvoice, setCancelInvoice] = useState<any>(null);
   const [versionHistory, setVersionHistory] = useState<any[]>([]);
   const [versionLoading, setVersionLoading] = useState(false);
   const [revisionReason, setRevisionReason] = useState("");
@@ -2787,6 +2789,11 @@ ${pagesHtml}
           <Button variant="outline" size="sm" onClick={() => setStatusDialog({ open: true, invoice: inv })} disabled={!!inv.productionOrder}>
             {inv.productionOrder ? "Production Active" : "Update Status"}
           </Button>
+          {inv.orderId && (
+            <Button variant="destructive" size="sm" onClick={() => setCancelInvoice(inv)}>
+              <XCircle className="h-4 w-4 mr-1" /> Cancel Order
+            </Button>
+          )}
         </div>
         {editMode && (
           <div className="w-full text-sm text-muted-foreground bg-blue-50 border border-blue-200 rounded-md px-4 py-2">
@@ -2970,6 +2977,16 @@ ${pagesHtml}
 
         {deleteDialogEl}
 
+        <CancelOrderModal
+          open={!!cancelInvoice}
+          onOpenChange={(o) => { if (!o) setCancelInvoice(null); }}
+          orderId={cancelInvoice?.orderId || 0}
+          orderNumber={cancelInvoice?.orderNo}
+          customerName={cancelInvoice?.customerName}
+          contactId={cancelInvoice?.contactId}
+          dealId={cancelInvoice?.dealId}
+        />
+
         <Dialog open={statusDialog.open} onOpenChange={(o) => setStatusDialog({ ...statusDialog, open: o })}>
           <DialogContent className="sm:max-w-sm">
             <DialogHeader><DialogTitle>Update Status</DialogTitle></DialogHeader>
@@ -3113,6 +3130,11 @@ ${pagesHtml}
                     <TableCell>{new Date(inv.createdAt).toLocaleDateString("en-IN")}</TableCell>
                     <TableCell>
                       <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                        {inv.orderId && (
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setCancelInvoice(inv)} title="Cancel Order">
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDownloadPdf(inv)} title="Download PDF">
                           <Download className="h-4 w-4" />
                         </Button>
@@ -3148,6 +3170,15 @@ ${pagesHtml}
       )}
     </div>
     {deleteDialogEl}
+    <CancelOrderModal
+      open={!!cancelInvoice}
+      onOpenChange={(o) => { if (!o) setCancelInvoice(null); }}
+      orderId={cancelInvoice?.orderId || 0}
+      orderNumber={cancelInvoice?.orderNo}
+      customerName={cancelInvoice?.customerName}
+      contactId={cancelInvoice?.contactId}
+      dealId={cancelInvoice?.dealId}
+    />
     </>
   );
 }

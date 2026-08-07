@@ -1,19 +1,16 @@
 import { useState, useRef, useEffect } from "react";
 import { useRoute, useLocation } from "wouter";
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Package, User, Truck, Calendar, Clock, CheckCircle2, Circle, Loader2, AlertTriangle, MessageSquare, Send } from "lucide-react";
+import { ArrowLeft, Package, User, Truck, Calendar, Clock, CheckCircle2, Circle, Loader2, AlertTriangle, MessageSquare, Send, XCircle } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { ProductionProgressSection } from "@/components/production-progress";
+import { CancelOrderModal } from "@/components/cancel-order-modal";
 import { toast } from "@/hooks/use-toast";
 
 const ORDER_STATUS_COLORS: Record<string, string> = {
@@ -49,12 +46,9 @@ export default function OrderDetailGlobal() {
   const [, params] = useRoute("/orders/:id");
   const [, setLocation] = useLocation();
   const { data: user } = useGetMe();
-  const queryClient = useQueryClient();
   const id = Number(params?.id);
 
   const [cancelDialog, setCancelDialog] = useState(false);
-  const [cancelReason, setCancelReason] = useState("");
-  const [cancelOther, setCancelOther] = useState("");
 
   // ── Order Conversation (Sales workspace) ──
   const [messageText, setMessageText] = useState("");
@@ -145,6 +139,11 @@ export default function OrderDetailGlobal() {
           </div>
           <p className="text-sm text-muted-foreground">{(() => { const n = order.companyName || order.customerName || "-"; const cc = order.customerCode; return cc && !n.includes(cc) ? `${n} (${cc})` : n; })()}</p>
         </div>
+        {order.status !== "Cancelled" && order.status !== "Completed" && (
+          <Button variant="destructive" size="sm" onClick={() => setCancelDialog(true)}>
+            <XCircle className="h-4 w-4 mr-1.5" /> Cancel Order
+          </Button>
+        )}
       </div>
 
       {/* Order Info Grid */}
@@ -348,59 +347,16 @@ export default function OrderDetailGlobal() {
         </CardContent>
       </Card>
 
-      {/* Cancel Dialog */}
-      <Dialog open={cancelDialog} onOpenChange={setCancelDialog}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Cancel Order</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label>Reason *</Label>
-              <Select value={cancelReason} onValueChange={setCancelReason}>
-                <SelectTrigger><SelectValue placeholder="Select reason" /></SelectTrigger>
-                <SelectContent>
-                  {["Customer Cancelled", "Price Issue", "Quality Concern", "Duplicate Order", "Wrong Product", "Production Delay", "Payment Issue", "Other"].map(r => (
-                    <SelectItem key={r} value={r}>{r}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {cancelReason === "Other" && (
-              <div className="space-y-1">
-                <Label>Details *</Label>
-                <Textarea value={cancelOther} onChange={e => setCancelOther(e.target.value)} rows={2} />
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCancelDialog(false)}>Keep Order</Button>
-            <Button
-              variant="destructive"
-              disabled={!cancelReason || (cancelReason === "Other" && !cancelOther)}
-              onClick={async () => {
-                try {
-                  await customFetch(`/orders/${id}/cancel`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      cancellationReason: cancelReason === "Other" ? "Other" : cancelReason,
-                      cancellationOtherReason: cancelReason === "Other" ? cancelOther : undefined,
-                    }),
-                  });
-                  queryClient.invalidateQueries({ queryKey: ["order", id] });
-                  queryClient.invalidateQueries({ queryKey: ["order-timeline", id] });
-                } catch (e) {
-                  console.error("Cancel failed", e);
-                }
-                setCancelDialog(false);
-                setCancelReason("");
-                setCancelOther("");
-              }}
-            >
-              Cancel Order
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Cancel Order Modal */}
+      <CancelOrderModal
+        open={cancelDialog}
+        onOpenChange={setCancelDialog}
+        orderId={id}
+        orderNumber={order.orderNumber}
+        customerName={order.customerName}
+        contactId={order.contactId}
+        dealId={order.dealId}
+      />
     </div>
   );
 }

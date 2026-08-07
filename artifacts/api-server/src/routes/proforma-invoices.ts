@@ -369,14 +369,18 @@ async function enrichInvoice(invoice: typeof proformaInvoicesTable.$inferSelect)
 
   // Sales Order lookup — orders link to the PI via the shared dealId.
   // Order ID shown on the invoice/table is the formatted Order ID (fallback: raw orderNumber).
+  let orderId = null;
   let orderNo = null;
   if (invoice.dealId) {
     const [o] = await db
-      .select({ formattedOrderId: ordersTable.formattedOrderId, orderNumber: ordersTable.orderNumber })
+      .select({ id: ordersTable.id, formattedOrderId: ordersTable.formattedOrderId, orderNumber: ordersTable.orderNumber })
       .from(ordersTable)
       .where(and(eq(ordersTable.dealId, invoice.dealId), eq(ordersTable.isDeleted, false)))
       .limit(1);
-    if (o) orderNo = o.formattedOrderId || o.orderNumber || null;
+    if (o) {
+      orderId = o.id;
+      orderNo = o.formattedOrderId || o.orderNumber || null;
+    }
   }
 
   let productionOrder = null;
@@ -480,6 +484,7 @@ async function enrichInvoice(invoice: typeof proformaInvoicesTable.$inferSelect)
     createdByUser,
     contact,
     deal,
+    orderId,
     orderNo,
     productionOrder,
   };

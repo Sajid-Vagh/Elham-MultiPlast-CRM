@@ -867,3 +867,46 @@ Simplify the "Packing Quantities" data on the Freight & Packing Lookup page (and
 - `artifacts/api-server/src/routes/transport-masters.ts`: CRUD + 3 import flows + calculate now use `bora`
 - `artifacts/crm/src/pages/transport-logistics-readonly.tsx`: Packing Quantities UI + import mapping
 - `artifacts/crm/src/pages/masters.tsx`: admin Packing tab UI + import mapping
+
+---
+
+# Order Cancellation Flow
+
+## Goal
+- Full order cancellation flow: mandatory reason + cascading updates (deal → Lost, production order → Cancelled, first-order category reversion), red "Cancelled" badges, "Cancel Order" buttons on the proforma/order detail + sales list, and a production-side acknowledge workflow so cancelled production orders drop off the default list only after being acknowledged.
+
+## Constraints
+- Cancellation reason is mandatory; "Other" requires free text (validated server-side).
+- Completed orders cannot be cancelled (suggest Return Process).
+- Production must acknowledge a cancellation before the cancelled order disappears from the default production list.
+- Never delete historical data — everything is tracked via timeline, activity log, and audit trail.
+
+## Progress
+### Done
+- **DB:** `cancellation_acknowledged` (boolean, default false, partial index on unacknowledged rows) on `production_orders` (schema `lib/db/src/schema/production_orders.ts`, migration `lib/db/migrations/075_add_cancellation_acknowledged.sql`).
+- **Backend `order-cancellation-service.ts`:** single source of truth — `validateCancellationPermission` (permission matrix: Sales before production + must own, Production before "In Production", Production & Support anytime, Admin anytime, Completed blocked), `validateCancellationReason` (mandatory + whitelist + "Other" free text), `cancelOrder` cascade (order → Cancelled, timeline entry, linked PO → Cancelled + `cancellationAcknowledged: false`, Won deal → Lost, first-order Scenario A category reversion + `category_history` record + Existing Customers deactivated, audit trail, activity log, notifications). `POST /orders/:id/cancel` in `routes/orders.ts` delegates to it.
+- **Backend production acknowledge:** `acknowledgeCancellation()` in `production-service.ts` (idempotent, requires status "Cancelled", writes timeline + activity + audit trail, returns enriched order); `POST /production/orders/:id/acknowledge-cancellation` in `routes/production.ts`. `listOrders` accepts `hideAcknowledgedCancellations` (default-active filter `status <> 'Cancelled' OR cancellation_acknowledged = false`; explicit status filter still shows full history). `production-service.ts` `cancelOrder` also resets the flag on the PO.
+- **Frontend production-side:** `production-order-detail.tsx` — "Not Acknowledged" badge + red "OK / Acknowledge Cancellation" button + mutation; `production-orders.tsx` — "Unacknowledged" pill badge. (committed `61e2cb9`)
+- **Frontend shared `CancelOrderModal`** (`artifacts/crm/src/components/cancel-order-modal.tsx`): reason dropdown (same `CANCELLATION_REASONS` list as backend), free text when "Other", optional note, amber reversion warning, submit via `POST /orders/:id/cancel` with `{ reason, otherReason, note }`, full React Query invalidation on success.
+- **Sales-side Cancel placements:**
+  - `order-detail-global.tsx`: destructive "Cancel Order" button in the header (hidden for Cancelled/Completed), inline broken dialog replaced with the shared modal. **Fixed body field bug** — the old dialog sent `cancellationReason`/`cancellationOtherReason` which the route ignores (it expects `reason`/`otherReason`), so cancels silently did nothing.
+  - `orders-list.tsx`: "Cancel Order" button in the expanded row (hidden for Cancelled/Completed) wired to the shared modal.
+  - `proforma-invoices.tsx`: "Cancel Order" icon in the list Actions column + destructive button in the detail header, both shown only when the PI has a linked sales order (`inv.orderId`). `enrichInvoice` now returns `orderId` alongside `orderNo`.
+- **Build verified:** CRM typecheck = 0 errors; API server = 29 errors (pre-existing baseline, 0 new — none in `proforma-invoices.ts`).
+
+## Key Decisions
+- Shared `CancelOrderModal` is the single cancel UI across all surfaces; it owns invalidation (orders, order detail, timeline, dashboard, global-search, existing-customers, PI, production, deal, contact).
+- Category reversion is handled server-side (Scenario A/B) — the modal only shows an informational warning, it does not take a category input.
+- PI→order cancel requires the linked order `id`; added `orderId` to `enrichInvoice` (covers list + detail + `/all`) with the existing `orderNo` lookup, no extra API call.
+- Cancel-from-PI is gated on `inv.orderId` existing (i.e., the PI has been converted to a sales order).
+
+## Relevant Files
+- `lib/db/src/schema/production_orders.ts` + `lib/db/migrations/075_add_cancellation_acknowledged.sql`: acknowledge column
+- `artifacts/api-server/src/lib/order-cancellation-service.ts`: cancel business logic + permission/reason validation
+- `artifacts/api-server/src/lib/production-service.ts`: `acknowledgeCancellation`, `cancelOrder` flag reset, `hideAcknowledgedCancellations` list filter
+- `artifacts/api-server/src/routes/production.ts`: `POST /production/orders/:id/acknowledge-cancellation`
+- `artifacts/api-server/src/routes/orders.ts` (~714): `POST /orders/:id/cancel`
+- `artifacts/api-server/src/routes/proforma-invoices.ts`: `enrichInvoice` returns `orderId`
+- `artifacts/crm/src/components/cancel-order-modal.tsx`: shared cancel modal
+- `artifacts/crm/src/pages/order-detail-global.tsx`, `orders-list.tsx`, `proforma-invoices.tsx`: Cancel buttons
+- `artifacts/crm/src/pages/production-order-detail.tsx`, `production-orders.tsx`: acknowledge button/pill + unacknowledged filter
