@@ -132,7 +132,7 @@ export function ScheduleFollowUpDialog({ open, onOpenChange, contactId, dealId }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto pb-8">
         <DialogHeader className="pb-0">
           <DialogTitle className="text-xl font-semibold flex items-center gap-2">
             <CalendarIcon className="h-5 w-5 text-primary" />
@@ -190,14 +190,14 @@ export function ScheduleFollowUpDialog({ open, onOpenChange, contactId, dealId }
                     key={ft.value}
                     type="button"
                     onClick={() => { setFollowUpType(ft.value); setErrors(prev => ({ ...prev, followUpType: "" })); }}
-                    className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm transition-all ${
+                    className={`flex items-center gap-2 px-3 py-2.5 min-w-0 flex-wrap rounded-lg border text-sm transition-all ${
                       isSelected
                         ? "border-primary bg-primary/5 text-primary font-medium ring-1 ring-primary/20"
                         : "border-border hover:border-muted-foreground/30 hover:bg-muted/30"
                     }`}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
-                    <span>{ft.label}</span>
+                    <span className="min-w-0 break-words">{ft.label}</span>
                   </button>
                 );
               })}
