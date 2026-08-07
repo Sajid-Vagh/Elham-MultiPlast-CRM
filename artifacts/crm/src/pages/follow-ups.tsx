@@ -81,9 +81,6 @@ const STATUS_OPTIONS = [
   { value: "Today", label: "Today" },
   { value: "Overdue", label: "Overdue" },
   { value: "Pending", label: "Pending" },
-  { value: "Completed", label: "Completed" },
-  { value: "Cancelled", label: "Cancelled" },
-  { value: "No Response", label: "No Response" },
 ];
 
 const TYPE_OPTIONS = [
@@ -114,7 +111,7 @@ export default function FollowUps() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
-  const [sortBy, setSortBy] = useState("date-desc");
+  const [sortBy, setSortBy] = useState("date-asc");
   const [page, setPage] = useState(1);
   const [modalActivity, setModalActivity] = useState<FollowUpActivity | null>(null);
   const [customerDrawerContactId, setCustomerDrawerContactId] = useState<number | null>(null);
