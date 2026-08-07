@@ -1793,6 +1793,46 @@ export async function listDispatchOrders(
   return { data: enriched, total: count, page: pageNum, totalPages: Math.ceil(count / pageSize), summary };
 }
 
+// ── PI modification gate (based on linked Production Order status) ──
+// A Proforma Invoice can be edited only while its production order is still
+// pre-dispatch (Pending / Accepted / Planning / In Production / Packing /
+// Ready For Dispatch). Once goods are loaded onto a vehicle (In Transport) or
+// the order is Completed, the invoice is locked and edits must be rejected.
+export const PI_LOCKED_STATUSES = ["In Transport", "Completed"] as const;
+
+export const PI_LOCKED_ERROR =
+  "Goods have already been dispatched for this order. You cannot modify this invoice. Please create a new deal/order for new items.";
+
+// Resolve the production order linked to a PI. Tries the direct
+// proformaInvoiceId link first, then falls back to the deal link (covers
+// versioned PIs where the order points at the newest active invoice).
+export async function findLinkedProductionOrder(
+  piId: number,
+  dealId: number | null | undefined
+): Promise<typeof productionOrdersTable.$inferSelect | null> {
+  if (dealId) {
+    const [byDeal] = await db
+      .select()
+      .from(productionOrdersTable)
+      .where(eq(productionOrdersTable.dealId, dealId))
+      .orderBy(desc(productionOrdersTable.createdAt))
+      .limit(1);
+    if (byDeal) return byDeal;
+  }
+  const [byPi] = await db
+    .select()
+    .from(productionOrdersTable)
+    .where(eq(productionOrdersTable.proformaInvoiceId, piId))
+    .limit(1);
+  return byPi || null;
+}
+
+// True when a PI edit is permitted for the given production order status.
+export function canModifyPiForProductionStatus(status: string | null | undefined): boolean {
+  if (!status) return true;
+  return !(PI_LOCKED_STATUSES as readonly string[]).includes(status);
+}
+
 export async function handlePiModification(
   user: PermissionUser,
   productionOrderId: number,

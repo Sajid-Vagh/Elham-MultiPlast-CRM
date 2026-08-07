@@ -15,6 +15,7 @@ import { canModifyInvoice } from "../lib/permission-service";
 import { convertContactToMyClient } from "../lib/won-service";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
+import { findLinkedProductionOrder, canModifyPiForProductionStatus, PI_LOCKED_ERROR } from "../lib/production-service";
 
 const router: IRouter = Router();
 
@@ -1269,6 +1270,14 @@ async function updateInvoiceHandler(req: any, res: any) {
 
     if (!canModifyInvoice(user, existing.createdBy)) {
       res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    // ── PI modification gate: block edits once the linked production order
+    // has left the dispatchable stages (In Transport / Completed). ──
+    const linkedProductionOrder = await findLinkedProductionOrder(id, existing.dealId);
+    if (linkedProductionOrder && !canModifyPiForProductionStatus(linkedProductionOrder.status)) {
+      res.status(400).json({ error: PI_LOCKED_ERROR, productionOrderStatus: linkedProductionOrder.status });
       return;
     }
 
