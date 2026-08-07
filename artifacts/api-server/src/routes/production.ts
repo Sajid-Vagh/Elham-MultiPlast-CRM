@@ -16,7 +16,7 @@ import { buildWorkbook, sendWorkbook, type SheetDef, todayStr, safeStr } from ".
 import {
   enrichProductionOrder, acceptOrder, updatePlanning, startProduction,
   completePacking, markReadyForDispatch, bookTransport, completeOrder,
-  cancelOrder, addNote, getMessages, sendMessage,
+  cancelOrder, acknowledgeCancellation, addNote, getMessages, sendMessage,
   getDashboard, listOrders, getOrderDetail, getAuditTrail,
   getPendingSummary, getPendingRequirements, getReports,
   getProgressByDeal, getProductionByContact, getModifiedSince,
@@ -119,7 +119,7 @@ router.get("/production/orders", async (req, res) => {
     const user = await requireProductionUser(req, res);
     if (!user) return;
     const { status, dispatchStatus, priority, search, dateFrom, dateTo, createdBy, unit, origin, page, limit } = req.query as Record<string, string | undefined>;
-    res.json(await listOrders(user, { status, dispatchStatus, priority, search, dateFrom, dateTo, createdBy, unit, origin, page, limit, hideDelivered: true }));
+    res.json(await listOrders(user, { status, dispatchStatus, priority, search, dateFrom, dateTo, createdBy, unit, origin, page, limit, hideDelivered: true, hideAcknowledgedCancellations: true }));
   } catch (err) {
     req.log.error({ err }, "List production orders error:");
     res.status(500).json({ success: false, error: "Internal Server Error" });
@@ -362,6 +362,24 @@ router.post("/production/orders/:id/cancel", async (req, res) => {
     res.json(result.order);
   } catch (err) {
     req.log.error({ err }, "Cancel production order error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
+
+// ── Acknowledge Cancellation ──
+// A production user confirms a cancelled order has been reviewed. Unacknowledged
+// cancellations stay on the default list; acknowledged ones drop off it.
+router.post("/production/orders/:id/acknowledge-cancellation", async (req, res) => {
+  try {
+    const user = await requireProductionUser(req, res);
+    if (!user) return;
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    const result = await acknowledgeCancellation(user, id);
+    if (result.error) { res.status(result.status).json({ error: result.error }); return; }
+    res.json(result.order);
+  } catch (err) {
+    req.log.error({ err }, "Acknowledge cancellation error:");
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });

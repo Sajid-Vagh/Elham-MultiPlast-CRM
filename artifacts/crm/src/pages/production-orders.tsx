@@ -320,9 +320,16 @@ export default function ProductionOrders() {
                         </Badge>
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
-                        <Badge variant="outline" className={`text-xs ${STATUS_COLORS[order.status] || "bg-gray-100"} border`}>
-                          {order.status}
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="outline" className={`text-xs ${STATUS_COLORS[order.status] || "bg-gray-100"} border`}>
+                            {order.status}
+                          </Badge>
+                          {order.status === "Cancelled" && !order.cancellationAcknowledged && (
+                            <span className="text-[10px] font-medium text-red-600 bg-red-50 border border-red-200 rounded-full px-2 py-0.5 whitespace-nowrap" title="Cancellation not yet acknowledged by production">
+                              Unacknowledged
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
                         {order.dispatchStatus ? (

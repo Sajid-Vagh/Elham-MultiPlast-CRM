@@ -196,6 +196,21 @@ export default function ProductionOrderDetail() {
     onError: (err: any) => toast({ title: err?.message || "Failed", variant: "destructive" }),
   });
 
+  // ── Acknowledge Cancellation ──
+  // Confirms a cancelled order has been reviewed; drops it from the default
+  // orders list (unacknowledged cancellations stay visible until this happens).
+  const acknowledgeCancellationMutation = useMutation({
+    mutationFn: () => customFetch<any>(`/production/orders/${id}/acknowledge-cancellation`, {
+      method: "POST", body: JSON.stringify({}), headers: { "Content-Type": "application/json" },
+    }),
+    onSuccess: () => {
+      onProductionChange(queryClient, id);
+      queryClient.invalidateQueries({ queryKey: PRODUCTION_ORDER_QUERY_KEY(id) });
+      toast({ title: "Cancellation acknowledged" });
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed", variant: "destructive" }),
+  });
+
   const addNote = useMutation({
     mutationFn: (data: { note: string; noteType?: string }) =>
       customFetch<any>(`/production/orders/${id}/notes`, {
@@ -1032,6 +1047,14 @@ export default function ProductionOrderDetail() {
             <CardHeader><CardTitle>Status Info</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
               <div className="flex items-center justify-between"><span className="text-muted-foreground">Status</span><Badge className={`${STATUS_COLORS[order.status]} border text-xs`} variant="outline">{order.status}</Badge></div>
+              {order.status === "Cancelled" && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Acknowledged</span>
+                  <Badge className={`${order.cancellationAcknowledged ? "bg-green-100 text-green-700 border-green-300" : "bg-amber-100 text-amber-700 border-amber-300"} border text-xs`} variant="outline">
+                    {order.cancellationAcknowledged ? "Acknowledged" : "Not Acknowledged"}
+                  </Badge>
+                </div>
+              )}
               {ds && <div className="flex items-center justify-between"><span className="text-muted-foreground">Dispatch</span><Badge className={`${DISPATCH_STATUS_COLORS[ds]} border text-xs`} variant="outline">{ds}</Badge></div>}
               {order.expectedCompletionDate && <div className="flex items-center justify-between"><span className="text-muted-foreground">Expected Completion</span><span className="font-medium">{new Date(order.expectedCompletionDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span></div>}
               <div className="flex items-center justify-between"><span className="text-muted-foreground">Priority</span><span className="font-medium">{order.priority}</span></div>
@@ -1039,6 +1062,17 @@ export default function ProductionOrderDetail() {
               {order.lastUpdatedBy && <div className="flex items-center justify-between"><span className="text-muted-foreground">Updated By</span><span className="font-medium">{order.lastUpdatedBy.name}</span></div>}
               {order.updatedAt && <div className="flex items-center justify-between"><span className="text-muted-foreground">Last Updated</span><span className="font-medium">{new Date(order.updatedAt).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span></div>}
               {order.productionRemarks && <div className="pt-2 border-t"><span className="text-muted-foreground text-xs">Remarks</span><p className="font-medium mt-1">{order.productionRemarks}</p></div>}
+              {order.status === "Cancelled" && !order.cancellationAcknowledged && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full mt-2 border-red-300 bg-red-50 text-red-700 hover:bg-red-100"
+                  disabled={acknowledgeCancellationMutation.isPending}
+                  onClick={() => acknowledgeCancellationMutation.mutate()}
+                >
+                  {acknowledgeCancellationMutation.isPending ? "Acknowledging..." : "OK / Acknowledge Cancellation"}
+                </Button>
+              )}
             </CardContent>
           </Card>
         </div>

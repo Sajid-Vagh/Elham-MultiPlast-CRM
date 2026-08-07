@@ -46,6 +46,7 @@ const PRODUCTION_STATUSES = [
   "Pending",
   "Production On Going",
   "Ready To Dispatch",
+  "Cancelled",
 ];
 
 const DISPATCH_STATUSES = [
@@ -78,6 +79,7 @@ interface OrderRow {
   grandTotal: number;
   createdAt: string;
   productionUnit: string;
+  status: string;
   isRepeatOrder: boolean;
   salesOwner: { name: string } | null;
   supportOwner: { name: string } | null;
@@ -281,9 +283,11 @@ export default function OrdersList() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {order.dispatchStatus && (
+                          {order.status === "Cancelled" ? (
+                            <Badge className={`text-[10px] ${PROD_STATUS_COLORS["Cancelled"] || "bg-red-100 text-red-600"}`}>Cancelled</Badge>
+                          ) : order.dispatchStatus ? (
                             <Badge className={`text-[10px] ${DISPATCH_STATUS_COLORS[order.dispatchStatus] || "bg-gray-100"}`}>{order.dispatchStatus}</Badge>
-                          )}
+                          ) : null}
                         </TableCell>
                         <TableCell>
                           {order.transportName ? (

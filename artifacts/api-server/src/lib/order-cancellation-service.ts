@@ -186,6 +186,9 @@ export async function cancelOrder(
     if (productionOrder && productionOrder.status !== "Completed") {
       await tx.update(productionOrdersTable).set({
         status: "Cancelled",
+        // Fresh cancellation → production must acknowledge before it drops off
+        // the default orders list.
+        cancellationAcknowledged: false,
         updatedAt: now,
         updatedBy: user.id,
       }).where(eq(productionOrdersTable.id, productionOrder.id));

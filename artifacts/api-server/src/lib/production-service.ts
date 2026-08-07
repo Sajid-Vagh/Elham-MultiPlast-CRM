@@ -2123,6 +2123,9 @@ export async function cancelOrder(
   const now = new Date();
   await db.update(productionOrdersTable).set({
     status: "Cancelled", cancelledById: user.id, cancelledAt: now, cancelReason: reason,
+    // Fresh cancellation → production must acknowledge before it drops off
+    // the default orders list.
+    cancellationAcknowledged: false,
     updatedBy: user.id, updatedAt: now,
   }).where(eq(productionOrdersTable.id, orderId));
 
@@ -2143,6 +2146,49 @@ export async function cancelOrder(
     title: "Production Order Cancelled",
     message: `Order #${orderId} has been cancelled. Reason: ${reason}`,
     excludeUserId: user.id, createdByRole: order.createdByRole,
+  });
+
+  const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
+  return { order: await enrichProductionOrder(updated!, user) };
+}
+
+/**
+ * Acknowledge an order cancellation.
+ * A production user confirms they have seen a cancelled order, which removes it
+ * from the default active orders list (only unacknowledged cancellations stay
+ * visible). Idempotent: acknowledging an already-acknowledged order is a
+ * no-op success.
+ */
+export async function acknowledgeCancellation(
+  user: PermissionUser,
+  orderId: number,
+): Promise<any> {
+  const [order] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
+  if (!order) return { error: "Production order not found", status: 404 };
+  if (order.status !== "Cancelled") {
+    return { error: `Only cancelled orders can be acknowledged. Current status: ${order.status}`, status: 400 };
+  }
+  if (order.cancellationAcknowledged) {
+    return { order: await enrichProductionOrder(order, user) };
+  }
+
+  const now = new Date();
+  await db.update(productionOrdersTable).set({
+    cancellationAcknowledged: true,
+    updatedBy: user.id,
+    updatedAt: now,
+  }).where(eq(productionOrdersTable.id, orderId));
+
+  await addTimelineEntry(db, orderId, "Cancelled", `Cancellation acknowledged by ${user.name}.`, user.id);
+  await logProductionActivity(db, {
+    dealId: order.dealId, contactId: null, eventName: "Cancellation Acknowledged",
+    orderId, userName: user.name || "", createdBy: user.id,
+  });
+
+  await writeAuditTrail(db, {
+    productionOrderId: orderId, action: "cancellation_acknowledged",
+    oldValue: "false", newValue: "true",
+    changedById: user.id, changedByName: user.name || "",
   });
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
@@ -2761,6 +2807,7 @@ export async function listOrders(
     dateFrom?: string; dateTo?: string; createdBy?: string;
     unit?: string; origin?: string; page?: string; limit?: string;
     hideDelivered?: boolean;
+    hideAcknowledgedCancellations?: boolean;
   }
 ) {
   const conditions = buildOrderConditions(user, filters);
@@ -2772,6 +2819,17 @@ export async function listOrders(
     conditions.push(or(
       isNull(productionOrdersTable.dispatchStatus),
       notInArray(productionOrdersTable.dispatchStatus, ["Delivered"])
+    )!);
+  }
+
+  // Default active view: keep unacknowledged cancelled orders visible so
+  // production can see and acknowledge them; drop off acknowledged ones. Skipped
+  // when the user explicitly filters by status (e.g. selecting "Cancelled"
+  // shows the full cancellation history).
+  if (filters.hideAcknowledgedCancellations && (!filters.status || filters.status === "all")) {
+    conditions.push(or(
+      sql`${productionOrdersTable.status} <> 'Cancelled'`,
+      eq(productionOrdersTable.cancellationAcknowledged, false)
     )!);
   }
 

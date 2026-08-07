@@ -127,6 +127,10 @@ export const productionOrdersTable = pgTable("production_orders", {
   needsReprint: boolean("needs_reprint").notNull().default(false),
   // Read tracking: true once the order has been viewed on its detail page (new-order dot)
   isRead: boolean("is_read").notNull().default(false),
+  // Cancellation acknowledgment: false when an order is cancelled; true once a
+  // production user confirms the cancellation on the detail page. Unacknowledged
+  // cancellations stay on the default orders list; acknowledged ones drop off.
+  cancellationAcknowledged: boolean("cancellation_acknowledged").notNull().default(false),
   // Ready To Dispatch timestamp
   readyAt: timestamp("ready_at", { withTimezone: true }),
 });
