@@ -1032,7 +1032,10 @@ router.post("/deals/:id/mark-won", async (req, res) => {
         ? await tx.select().from(productionOrdersTable).where(eq(productionOrdersTable.proformaInvoiceId, latestPI.id)).limit(1)
         : [];
       if (!existingPO) {
-        const poFormattedOrderId = await generateOrderNumber();
+        // Production Orders inherit the parent Sales Order number — they must
+        // NEVER consume a new number from the shared order counter (that caused
+        // gaps like 23, 25, 27 in the Sales Orders list). Same number = EML_2627_24.
+        const poFormattedOrderId = orderNumber;
         const [po] = await tx.insert(productionOrdersTable).values({
           formattedOrderId: poFormattedOrderId,
           proformaInvoiceId: latestPI?.id || null,

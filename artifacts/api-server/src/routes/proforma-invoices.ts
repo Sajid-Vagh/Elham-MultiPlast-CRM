@@ -2089,7 +2089,18 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
           }
         }
 
-        const poFormattedOrderId = await generateOrderNumber();
+        // Production Orders inherit the parent Sales Order number — they must
+        // NEVER consume a new number from the shared order counter (that caused
+        // gaps like 23, 25, 27 in the Sales Orders list). Same number = EML_2627_24.
+        const [linkedOrder] = invoice.dealId
+          ? await db
+              .select({ orderNumber: ordersTable.orderNumber })
+              .from(ordersTable)
+              .where(eq(ordersTable.dealId, invoice.dealId))
+              .orderBy(desc(ordersTable.id))
+              .limit(1)
+          : [];
+        const poFormattedOrderId = linkedOrder?.orderNumber || null;
         await db.insert(productionOrdersTable).values({
           formattedOrderId: poFormattedOrderId,
           proformaInvoiceId: id,
