@@ -150,8 +150,19 @@ router.get("/production/by-invoice/:invoiceId", async (req, res) => {
     const invoiceId = Number(req.params.invoiceId);
     if (isNaN(invoiceId)) { res.status(400).json({ error: "Invalid invoice id" }); return; }
 
-    const [order] = await db.select().from(productionOrdersTable)
+    let [order] = await db.select().from(productionOrdersTable)
       .where(eq(productionOrdersTable.proformaInvoiceId, invoiceId));
+    // Fall back to the latest production order on the invoice's dealId so PIs
+    // whose order was created via the deal flow still surface their progress.
+    if (!order) {
+      const [inv] = await db.select({ dealId: proformaInvoicesTable.dealId }).from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, invoiceId));
+      if (inv?.dealId) {
+        [order] = await db.select().from(productionOrdersTable)
+          .where(eq(productionOrdersTable.dealId, inv.dealId))
+          .orderBy(desc(productionOrdersTable.createdAt))
+          .limit(1);
+      }
+    }
     if (!order) { res.json(null); return; }
 
     const result = await getOrderDetail(user, order.id);

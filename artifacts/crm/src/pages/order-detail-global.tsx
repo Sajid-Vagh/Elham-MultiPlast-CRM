@@ -183,6 +183,8 @@ export default function OrderDetailGlobal() {
           {order.deliveryTerms && <div><span className="text-muted-foreground">Delivery Terms:</span> <span className="font-medium">{order.deliveryTerms}</span></div>}
           {order.freight && <div><span className="text-muted-foreground">Freight:</span> <span className="font-medium">₹{Number(order.freight).toLocaleString("en-IN")}</span></div>}
           {order.transportCompany && <div><span className="text-muted-foreground">Transport:</span> <span className="font-medium">{order.transportCompany}</span></div>}
+          {order.productionOrder?.transportName && <div><span className="text-muted-foreground">Loaded Vehicle:</span> <span className="font-medium">{order.productionOrder.transportName}</span></div>}
+          {order.productionOrder?.transportDetails && <div><span className="text-muted-foreground">LR / Transport Details:</span> <span className="font-medium">{order.productionOrder.transportDetails}</span></div>}
           {order.dispatchAddress && <div className="col-span-2"><span className="text-muted-foreground">Dispatch Address:</span> <span className="font-medium">{order.dispatchAddress}</span></div>}
           {order.remarks && <div className="col-span-2"><span className="text-muted-foreground">Remarks:</span> <span className="font-medium">{order.remarks}</span></div>}
         </CardContent>

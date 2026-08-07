@@ -83,6 +83,8 @@ interface OrderRow {
   supportOwner: { name: string } | null;
   productionStatus: string | null;
   dispatchStatus: string | null;
+  transportName: string | null;
+  transportDetails: string | null;
   itemsCount: number;
   totalQuantity: number;
   formattedOrderId: string | null;
@@ -244,6 +246,7 @@ export default function OrdersList() {
                     <TableHead>Sales Owner</TableHead>
                     <TableHead>Production</TableHead>
                     <TableHead>Dispatch</TableHead>
+                    <TableHead>Transport</TableHead>
                     <TableHead className="text-right">Value</TableHead>
                     <TableHead className="text-center">Products</TableHead>
                     <TableHead className="text-right">Qty</TableHead>
@@ -282,6 +285,16 @@ export default function OrdersList() {
                             <Badge className={`text-[10px] ${DISPATCH_STATUS_COLORS[order.dispatchStatus] || "bg-gray-100"}`}>{order.dispatchStatus}</Badge>
                           )}
                         </TableCell>
+                        <TableCell>
+                          {order.transportName ? (
+                            <div>
+                              <p className="text-sm font-medium">{order.transportName}</p>
+                              {order.transportDetails && <p className="text-[11px] text-muted-foreground">LR: {order.transportDetails}</p>}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-right font-medium">₹{Number(order.grandTotal || 0).toLocaleString("en-IN")}</TableCell>
                         <TableCell className="text-center text-sm">{order.itemsCount}</TableCell>
                         <TableCell className="text-right text-sm">{order.totalQuantity.toLocaleString()}</TableCell>
@@ -289,7 +302,7 @@ export default function OrdersList() {
                       </TableRow>
                       {expandedRow === order.id && (
                         <TableRow key={`${order.id}-expanded`}>
-                          <TableCell colSpan={12} className="bg-muted/20 p-4">
+                          <TableCell colSpan={13} className="bg-muted/20 p-4">
                             <div className="space-y-3">
                               <div className="flex items-center gap-3 flex-wrap">
                                 <p className="text-xs font-semibold uppercase text-muted-foreground">Products ({order.products?.length || 0})</p>
@@ -322,6 +335,12 @@ export default function OrdersList() {
                                 {order.supportOwner && <span>Support: <span className="font-medium text-foreground">{order.supportOwner.name}</span></span>}
                                 {order.isRepeatOrder && <Badge className="bg-amber-100 text-amber-700 text-[10px]">Repeat Order</Badge>}
                               </div>
+                              {(order.transportName || order.transportDetails) && (
+                                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                  <span>Transport: <span className="font-medium text-foreground">{order.transportName || "-"}</span></span>
+                                  {order.transportDetails && <span>LR / Transport Details: <span className="font-medium text-foreground">{order.transportDetails}</span></span>}
+                                </div>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>

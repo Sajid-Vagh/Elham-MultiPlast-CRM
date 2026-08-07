@@ -380,10 +380,26 @@ async function enrichInvoice(invoice: typeof proformaInvoicesTable.$inferSelect)
   }
 
   let productionOrder = null;
-  const [po] = await db
+  // Prefer the exact PI link (production_orders.proforma_invoice_id); fall back
+  // to the latest production order on the shared dealId so PIs whose order was
+  // created via the deal flow (or revisions) still surface their progress.
+  let po: typeof productionOrdersTable.$inferSelect | null = null;
+  const [poByPi] = await db
     .select()
     .from(productionOrdersTable)
-    .where(eq(productionOrdersTable.proformaInvoiceId, invoice.id));
+    .where(eq(productionOrdersTable.proformaInvoiceId, invoice.id))
+    .limit(1);
+  if (poByPi) {
+    po = poByPi;
+  } else if (invoice.dealId) {
+    const [poByDeal] = await db
+      .select()
+      .from(productionOrdersTable)
+      .where(eq(productionOrdersTable.dealId, invoice.dealId))
+      .orderBy(desc(productionOrdersTable.createdAt))
+      .limit(1);
+    if (poByDeal) po = poByDeal;
+  }
   if (po) {
     let assignedManager = null;
     if (po.assignedProductionManagerId) {
@@ -431,6 +447,10 @@ async function enrichInvoice(invoice: typeof proformaInvoicesTable.$inferSelect)
       productionRemarks: po.productionRemarks,
       updatedAt: po.updatedAt,
       lastUpdatedBy,
+      dispatchStatus: po.dispatchStatus,
+      transportName: po.transportName,
+      transportDetails: po.transportDetails,
+      lrNumber: po.lrNumber,
       timeline,
       notes,
     };

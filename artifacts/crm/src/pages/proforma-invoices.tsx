@@ -2915,7 +2915,7 @@ ${pagesHtml}
           </Card>
         )}
 
-        {(inv.status === "Converted to Order" || inv.status === "Converted to Production") && (
+        {inv.productionOrder && (
           <ProductionProgressSection invoiceId={inv.id} />
         )}
 

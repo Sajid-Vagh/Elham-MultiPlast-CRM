@@ -27,6 +27,31 @@ async function enrichOrder(order: any) {
     if (c) contactCustomerCode = c.customerCode;
   }
 
+  // Production order info — the production team records the loaded vehicle
+  // (transportName) and LR / transport details (transportDetails) here, linked
+  // via the shared dealId. Surface it on the order so Sales can see dispatch
+  // without hunting across modules.
+  let productionOrder = null;
+  if (order.dealId) {
+    try {
+      const { productionOrdersTable } = await import("@workspace/db");
+      const [po] = await db.select().from(productionOrdersTable)
+        .where(eq(productionOrdersTable.dealId, order.dealId))
+        .orderBy(desc(productionOrdersTable.createdAt))
+        .limit(1);
+      if (po) {
+        productionOrder = {
+          id: po.id,
+          status: po.status,
+          dispatchStatus: po.dispatchStatus,
+          transportName: po.transportName,
+          transportDetails: po.transportDetails,
+          lrNumber: po.lrNumber,
+        };
+      }
+    } catch { /* production_orders may not exist */ }
+  }
+
   const safe = (u: any) => u ? (({ passwordHash: _, ...rest }) => rest)(u) : null;
 
   return {
@@ -37,6 +62,7 @@ async function enrichOrder(order: any) {
     supportOwner: safe(supportOwner),
     productionOwner: safe(productionOwner),
     createdByUser: safe(creator),
+    productionOrder,
   };
 }
 
@@ -325,9 +351,11 @@ router.get("/orders/global", async (req, res) => {
 
       const safe = (u: any) => u ? (({ passwordHash: _, ...rest }) => rest)(u) : null;
 
-      // Get production order status and dispatch status
+      // Get production order status, dispatch status and transport details
       let productionStatus = null;
       let dispatchStatusVal = null;
+      let transportName = null;
+      let transportDetails = null;
       try {
         const { productionOrdersTable } = await import("@workspace/db");
         const [prodOrder] = await db.select().from(productionOrdersTable)
@@ -337,6 +365,8 @@ router.get("/orders/global", async (req, res) => {
         if (prodOrder) {
           productionStatus = prodOrder.status;
           dispatchStatusVal = prodOrder.dispatchStatus;
+          transportName = prodOrder.transportName;
+          transportDetails = prodOrder.transportDetails;
         }
       } catch { /* production_orders may not exist */ }
 
@@ -363,6 +393,8 @@ router.get("/orders/global", async (req, res) => {
         supportOwner: safe(supportOwner),
         productionStatus,
         dispatchStatus: dispatchStatusVal,
+        transportName,
+        transportDetails,
         itemsCount: items.length,
         totalQuantity,
         products: items.slice(0, 5).map(i => ({
