@@ -287,12 +287,11 @@ export default function ProductionOrders() {
                     >
                       <td className="py-3 px-4 font-medium font-mono whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
-                          {order.status === "Pending" && !order.isRead && (
-                            <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0" title="New order — not viewed yet" />
-                          )}
-                          {order.needsReprint && (
+                          {order.needsReprint ? (
                             <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" title="Order updated — needs attention" />
-                          )}
+                          ) : order.status === "Pending" && !order.isRead ? (
+                            <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0" title="New order — not viewed yet" />
+                          ) : null}
                           <span>{order.masterOrderNumber || order.displayOrderId || order.orderNumber}</span>
                         </div>
                       </td>

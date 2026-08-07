@@ -1851,7 +1851,7 @@ export async function handlePiModification(
 
     await d.update(productionOrdersTable).set({
       piVersionAtCreation: newPiVersion, updatedAt: new Date(), updatedBy: user.id,
-      needsReprint: order.productionSheetVersion > 0,
+      needsReprint: true,
     }).where(eq(productionOrdersTable.id, productionOrderId));
 
     const syncMsg = `PI updated to Version ${newPiVersion}. Auto-synced (${syncResult.added} added, ${syncResult.updated} updated, ${syncResult.deleted} removed).`;
