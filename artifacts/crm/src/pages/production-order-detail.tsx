@@ -561,7 +561,7 @@ export default function ProductionOrderDetail() {
 
                 {order.isFrozen && !isReadyToDispatch && (
                   <div className="p-2 bg-orange-50 border border-orange-200 rounded text-xs text-orange-700">
-                    Production is ongoing — PI modifications require approval.
+                    Production is ongoing — PI changes are auto-synced and will revert this order to Pending.
                   </div>
                 )}
               </CardContent>

@@ -585,7 +585,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - **Backend `GET /production/sheet`** endpoint in `production.ts`: Generates Excel with filter modes (all/pending/today/week/month/reprint/selected/date-range/new). One product = one row with order info + product info + blank operator section. Updates tracking fields after download.
 - **Backend `GET /production/sheet/stats`** endpoint: Returns counts for dashboard widget (totalPending, needsReprint, neverGenerated, outdated).
 - **Backend `POST /production/orders/:id/mark-reprint`** endpoint: Toggles `needsReprint` flag on an order.
-- **Auto-set `needsReprint`**: Modified `handlePiModification` in `production-service.ts` to set `needsReprint: true` unconditionally when a PI is modified — for pre-production (Pending/Accepted/Planning), in-production (In Production/Packing), and Ready For Dispatch orders. Previously pre-production orders only got the flag when `productionSheetVersion > 0`, so a revised PI on an order with no sheet yet never surfaced the Amber dot.
+- **Auto-set `needsReprint` + strict PI→production sync**: `handlePiModification` in `production-service.ts` now ALWAYS runs `resyncProductionOrderItems` regardless of the linked production order's status (inserting new PI items into `production_order_items`, updating matched rows, removing leftover Pending-only rows). If new items were added (`syncResult.added > 0`), the order is unconditionally reverted to `Pending` and all workflow progress flags are reset (`isFrozen`, `dispatchStatus`, `readyAt`, started/accepted/packing/transport/dispatch/delivered fields, `isDelayed`), so the production team sees the new work. Previously the sync was gated by status — pre-production (Pending/Accepted/Planning) auto-synced, in-production required approval, Ready For Dispatch / later statuses never inserted new items (the bug).
 - **Frontend `production-orders.tsx`**: Added "Production Sheet" dropdown with 7 download options (All Pending, Pre-Production, Created Today, This Week, This Month, Updated/Reprint, Current Filter). Added `needsReprint` badge on each order row. Added sheet stats summary in header.
 - **Frontend `production-dashboard.tsx`**: Added "Updated Production Sheet Required" widget card with amber styling, showing needsReprint + neverGenerated counts, with "Reprint Updated" and "Full Sheet" download buttons.
 - **Build verified**: CRM clean (0 errors), API server pre-existing Drizzle errors only (zero new errors).
@@ -597,7 +597,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - (none)
 
 ## Key Decisions
-- `needsReprint` auto-set in `handlePiModification` covers all 3 PI modification paths (Pending auto-sync, in-production approval-required, Ready To Dispatch review).
+- `needsReprint` auto-set in `handlePiModification` on every PI modification; the order is reverted to `Pending` (progress flags reset) whenever new items are added — regardless of the order's prior status.
 - Filter mode `reprint` queries orders where `needsReprint = true OR productionSheetVersion = 0` (never generated).
 - Excel uses `buildWorkbook`/`sendWorkbook` from existing `lib/exporter.ts` for consistency.
 - After download, all orders in the result set get `needsReprint = false` and `productionSheetVersion` incremented.

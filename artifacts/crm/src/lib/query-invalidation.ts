@@ -147,6 +147,14 @@ export function onPIChange(queryClient: QueryClient, dealId?: number, contactId?
   queryClient.invalidateQueries({ queryKey: ["reports-by-owner"] });
   queryClient.invalidateQueries({ queryKey: ["reports-pipeline"] });
   queryClient.invalidateQueries({ queryKey: ["reports-by-city"] });
+  // PI revisions can add items to / revert the status of linked production
+  // orders — invalidate all production surfaces so the Order Items list and
+  // the production dashboard reflect the synced items immediately.
+  queryClient.invalidateQueries({ queryKey: ["production-order"] });
+  queryClient.invalidateQueries({ queryKey: ["production-orders"] });
+  queryClient.invalidateQueries({ queryKey: ["production-dashboard"] });
+  queryClient.invalidateQueries({ queryKey: ["production-pending-summary"] });
+  queryClient.invalidateQueries({ queryKey: ["production-progress-by-deal"] });
   if (dealId) {
     queryClient.invalidateQueries({ queryKey: getGetDealQueryKey(dealId) });
     queryClient.invalidateQueries({ queryKey: getListDealsQueryKey() });

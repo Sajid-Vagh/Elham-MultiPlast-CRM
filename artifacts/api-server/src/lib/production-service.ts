@@ -1843,74 +1843,103 @@ export async function handlePiModification(
   const [order] = await d.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, productionOrderId));
   if (!order) return { error: "Production order not found", status: 404 };
 
-  const preProductionStatuses = ["Pending", "Accepted", "Planning"];
-  const inProductionStatuses = ["In Production", "Packing"];
+  const now = new Date();
 
-  if (preProductionStatuses.includes(order.status)) {
-    const syncResult = await resyncProductionOrderItems(productionOrderId, order.proformaInvoiceId, txDb);
+  // 1. ALWAYS sync PI items into production_order_items, regardless of the
+  //    production order's current status. resyncProductionOrderItems inserts any
+  //    PI item without a matching production_order_items row (new items are
+  //    always created with productionStatus "Pending" and readyQuantity 0),
+  //    updates matched rows, and removes leftover Pending-only rows.
+  const syncResult = await resyncProductionOrderItems(productionOrderId, order.proformaInvoiceId, txDb);
 
+  // 2. New items were added → unconditionally revert the order to "Pending" and
+  //    reset workflow progress flags so the production team knows there is new
+  //    work to do. This applies regardless of prior status (e.g. an order that
+  //    was Ready For Dispatch / In Transport / Completed with new items added).
+  if (syncResult.added > 0) {
     await d.update(productionOrdersTable).set({
-      piVersionAtCreation: newPiVersion, updatedAt: new Date(), updatedBy: user.id,
+      status: "Pending",
+      isFrozen: false,
+      dispatchStatus: null,
+      readyAt: null,
+      startedAt: null,
+      startedById: null,
+      acceptedAt: null,
+      acceptedById: null,
+      packingCompletedAt: null,
+      packingCompletedById: null,
+      transportBookedAt: null,
+      transportBookedById: null,
+      dispatchedAt: null,
+      dispatchedById: null,
+      dispatchCompletedAt: null,
+      dispatchCompletedBy: null,
+      deliveredAt: null,
+      deliveredById: null,
+      deliveryDate: null,
+      lrNumber: null,
+      isDelayed: false,
+      delayedAt: null,
+      delayReason: null,
       needsReprint: true,
-    }).where(eq(productionOrdersTable.id, productionOrderId));
-
-    const syncMsg = `PI updated to Version ${newPiVersion}. Auto-synced (${syncResult.added} added, ${syncResult.updated} updated, ${syncResult.deleted} removed).`;
-    await addTimelineEntry(d, productionOrderId, order.status, syncMsg, user.id);
-    await logProductionActivity(d, {
-      dealId: order.dealId, contactId: null, eventName: `PI Modified — Auto-synced (${syncResult.added} added, ${syncResult.updated} updated, ${syncResult.deleted} removed)`,
-      orderId: productionOrderId, userName: user.name || "", createdBy: user.id,
-    });
-    return { action: "auto_synced", order: await enrichProductionOrder(order, user) };
-  }
-
-  if (inProductionStatuses.includes(order.status)) {
-    await d.update(productionOrdersTable).set({
-      piVersionAtCreation: newPiVersion, updatedAt: new Date(), updatedBy: user.id,
-      needsReprint: true,
-    }).where(eq(productionOrdersTable.id, productionOrderId));
-    await addTimelineEntry(d, productionOrderId, order.status, `PI modified to Version ${newPiVersion}. Awaiting production approval.`, user.id);
-    await logProductionActivity(d, {
-      dealId: order.dealId, contactId: null, eventName: `PI Modified — Approval Required (Version ${newPiVersion})`,
-      orderId: productionOrderId, userName: user.name || "", createdBy: user.id,
-    });
-
-    await notifyProductionUsers({
-      productionUnit: order.productionUnit || "Himatnagar",
-      title: "PI Modified — Approval Required",
-      message: `Order #${order.id}: PI has been modified by Sales. Version ${newPiVersion}. Review and accept/reject.`,
-      link: `/production/orders/${order.id}`,
-      relatedId: order.id, relatedType: "production_order",
-      type: "production_pi_modified", excludeUserId: user.id,
-    });
-
-    return { action: "approval_required", order: await enrichProductionOrder(order, user) };
-  }
-
-  if (order.status === "Completed" || order.status === "In Transport") {
-    const label = order.status === "Completed" ? "production completion" : "in-transport stage";
-    await addTimelineEntry(d, productionOrderId, order.status, `PI modified after ${label}. No auto-sync.`, user.id);
-    return { action: "rejected", message: `Production already ${label}. Suggest creating a new deal.` };
-  }
-
-  if (order.status === "Ready For Dispatch") {
-    await d.update(productionOrdersTable).set({
-      needsReprint: true,
-      updatedAt: new Date(),
+      piVersionAtCreation: newPiVersion,
+      updatedAt: now,
       updatedBy: user.id,
     }).where(eq(productionOrdersTable.id, productionOrderId));
-    await addTimelineEntry(d, productionOrderId, order.status, `PI modified to Version ${newPiVersion}. Dispatch stage — review required.`, user.id);
+
+    const reverted = order.status !== "Pending";
+
+    await addTimelineEntry(d, productionOrderId, "Pending",
+      reverted
+        ? `PI updated to Version ${newPiVersion}: ${syncResult.added} new item(s) added. Order reverted from ${order.status} → Pending.`
+        : `PI updated to Version ${newPiVersion}: ${syncResult.added} new item(s) added.`,
+      user.id);
+
+    await logProductionActivity(d, {
+      dealId: order.dealId, contactId: null,
+      eventName: `PI Modified — ${syncResult.added} New Item(s) Added${reverted ? " — Order reverted to Pending" : ""}`,
+      orderId: productionOrderId, userName: user.name || "", createdBy: user.id,
+    });
+
+    await writeAuditTrail(d, {
+      productionOrderId, action: "pi_modified_items_added",
+      oldValue: reverted ? order.status : null, newValue: reverted ? "Pending" : null,
+      changedById: user.id, changedByName: user.name || "",
+      reason: `PI Version ${newPiVersion} — ${syncResult.added} item(s) added${reverted ? `; status reverted ${order.status} → Pending` : ""}`,
+    });
+
     await notifyProductionUsers({
       productionUnit: order.productionUnit || "Himatnagar",
-      title: "PI Modified — Dispatch Review",
-      message: `Order #${order.id}: PI has been modified by Sales at dispatch stage. Version ${newPiVersion}. Review changes.`,
+      title: "PI Modified — New Items Added",
+      message: `Order #${order.id}: ${syncResult.added} new item(s) added to PI Version ${newPiVersion}${reverted ? `; order reverted from ${order.status} → Pending` : ""}. New production required.`,
       link: `/production/orders/${order.id}`,
       relatedId: order.id, relatedType: "production_order",
       type: "production_pi_modified", excludeUserId: user.id,
     });
-    return { action: "dispatch_review", order: await enrichProductionOrder(order, user) };
+
+    const [updatedOrder] = await d.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, productionOrderId));
+    return { action: "reverted_to_pending", order: await enrichProductionOrder(updatedOrder!, user) };
   }
 
-  return { action: "no_action" };
+  // 3. No new items — bump PI version + reprint flag (existing rows re-synced
+  //    above; the order's workflow status/progress is left untouched).
+  await d.update(productionOrdersTable).set({
+    piVersionAtCreation: newPiVersion,
+    needsReprint: true,
+    updatedAt: now,
+    updatedBy: user.id,
+  }).where(eq(productionOrdersTable.id, productionOrderId));
+
+  await addTimelineEntry(d, productionOrderId, order.status,
+    `PI updated to Version ${newPiVersion}. Synced (${syncResult.updated} updated, ${syncResult.deleted} removed).`,
+    user.id);
+  await logProductionActivity(d, {
+    dealId: order.dealId, contactId: null,
+    eventName: `PI Modified — Synced (${syncResult.added} added, ${syncResult.updated} updated, ${syncResult.deleted} removed)`,
+    orderId: productionOrderId, userName: user.name || "", createdBy: user.id,
+  });
+
+  return { action: "synced", order: await enrichProductionOrder(order, user) };
 }
 
 export async function approveModification(
