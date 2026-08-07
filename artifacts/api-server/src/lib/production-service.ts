@@ -2346,6 +2346,132 @@ export async function sendMessage(
   return { message: newMessage };
 }
 
+// ── Shared Machine-wise Production Report core ──
+// Both the Machine-wise Production Report page and the Production Dashboard KPI
+// cards derive their totals from this single source so they can NEVER diverge.
+// The status buckets, row-building SQL and material source are identical.
+
+const PENDING_ST = ["Pending", "Pending Verification", "Confirmed", "Production Pending", "Accepted", "Planning"];
+const IN_PROD_ST = ["In Production", "Production On Going", "Production Started", "Production Running"];
+const DORMANT_ST = ["Ready", "Completed", "Ready For Dispatch", "In Transport", "Delivered", "Cancelled"];
+
+type MachineReportRow = {
+  orderId: number; orderNumber: string | null; status: string; productionUnit: string | null; createdAt: Date | null;
+  productName: string; machineType: string | null; materialType: string | null;
+  bottleColour: string | null; bottleWeight: string | null; productCode: string | null;
+  quantity: number; readyQuantity: number; productionStatus: string;
+};
+
+// Production statuses that require active machine work. A row is bucketed by its
+// LINE productionStatus first, then falls back to the ORDER status. Anything not
+// pending or in-production is "dormant" (Ready, Completed, RTD, In Transport, ...).
+function statusBucket(row: MachineReportRow): "pending" | "inProduction" | "dormant" {
+  const ps = row.productionStatus;
+  if (PENDING_ST.includes(ps)) return "pending";
+  if (IN_PROD_ST.includes(ps)) return "inProduction";
+  if (DORMANT_ST.includes(ps)) return "dormant";
+  const os = row.status;
+  if (PENDING_ST.includes(os)) return "pending";
+  if (IN_PROD_ST.includes(os)) return "inProduction";
+  return "dormant";
+}
+
+/**
+ * Builds the raw product-line rows shared by the Machine Report and the
+ * Dashboard. Orders are excluded when Completed / Delivered / Cancelled (unless
+ * an explicit status filter is given). Line material comes from
+ * production_order_items.material_type — the single source the Machine Report
+ * uses for its client-side material filter — so server-side material filtering
+ * here matches it exactly.
+ */
+async function buildMachineReportRows(
+  user: PermissionUser,
+  filters: { unit?: string; status?: string; dateFrom?: string; dateTo?: string; origin?: string; material?: string }
+): Promise<MachineReportRow[]> {
+  const conditions = buildOrderConditions(user, {
+    status: filters.status,
+    unit: filters.unit,
+    dateFrom: filters.dateFrom,
+    dateTo: filters.dateTo,
+    origin: filters.origin,
+  });
+
+  // Default: exclude completed/cancelled/delivered orders unless explicit status filter is set
+  if (!filters.status || filters.status === "All") {
+    conditions.push(
+      notInArray(productionOrdersTable.status, ["Completed", "Delivered", "Cancelled"])
+    );
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const orders = await db
+    .select({
+      id: productionOrdersTable.id,
+      status: productionOrdersTable.status,
+      productionUnit: productionOrdersTable.productionUnit,
+      createdAt: productionOrdersTable.createdAt,
+      proformaInvoiceId: productionOrdersTable.proformaInvoiceId,
+      orderNumber: productionOrdersTable.formattedOrderId,
+    })
+    .from(productionOrdersTable)
+    .where(whereClause);
+
+  if (orders.length === 0) return [];
+
+  const orderIds = orders.map(o => o.id);
+  const productLines = await db.select().from(productionOrderItemsTable)
+    .where(inArray(productionOrderItemsTable.productionOrderId, orderIds));
+
+  const invoiceToOrder = new Map(orders.map(o => [o.proformaInvoiceId, o]));
+
+  const productRows: MachineReportRow[] = [];
+
+  for (const line of productLines) {
+    const order = orders.find(o => o.id === line.productionOrderId);
+    if (!order) continue;
+
+    productRows.push({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      status: order.status,
+      productionUnit: order.productionUnit,
+      createdAt: order.createdAt,
+      productName: line.productName,
+      machineType: line.machineType || null,
+      materialType: line.materialType || null,
+      bottleColour: line.bottleColour || null,
+      bottleWeight: line.bottleWeight || null,
+      productCode: null,
+      quantity: Number(line.orderedQuantity),
+      readyQuantity: Number(line.readyQuantity),
+      productionStatus: line.productionStatus,
+    });
+  }
+
+  if (productRows.length === 0) {
+    for (const item of await db.select().from(proformaInvoiceItemsTable)
+      .where(inArray(proformaInvoiceItemsTable.invoiceId, orders.map(o => o.proformaInvoiceId).filter(Boolean) as number[]))) {
+      const order = invoiceToOrder.get(item.invoiceId);
+      if (!order) continue;
+      productRows.push({
+        orderId: order.id, orderNumber: order.orderNumber, status: order.status, productionUnit: order.productionUnit,
+        createdAt: order.createdAt, productName: item.productName, machineType: null,
+        materialType: null, bottleColour: item.bottleColour || null, bottleWeight: null, productCode: null,
+        quantity: Number(item.quantity), readyQuantity: 0, productionStatus: order.status === "Completed" ? "Ready" : "Pending",
+      });
+    }
+  }
+
+  // Material filter — applied on production_order_items.material_type (the exact
+  // source the Machine Report page filters client-side on), keeping both pages
+  // consistent for HDPE / PET / PP.
+  if (filters.material && filters.material !== "All" && filters.material !== "all") {
+    return productRows.filter(r => r.materialType === filters.material);
+  }
+  return productRows;
+}
+
 export async function getDashboard(user: PermissionUser, unitFilter?: string, originFilter?: string, startDate?: string, endDate?: string, materialFilter?: string) {
   const conditions: SQL[] = [];
   if (user.role !== "admin") {
@@ -2367,22 +2493,8 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
   if (startDate) conditions.push(gte(productionOrdersTable.createdAt, new Date(startDate)));
   if (endDate) conditions.push(lte(productionOrdersTable.createdAt, new Date(endDate + "T23:59:59")));
 
-  // Material filter — keep only production order line items whose linked product
-  // material matches (product resolved via PI item productId, with name fallback).
   const materialActive = !!materialFilter && materialFilter !== "All" && materialFilter !== "all";
-  const materialCondition: SQL | undefined = materialActive
-    ? sql`EXISTS (
-        SELECT 1
-        FROM proforma_invoice_items pii
-        JOIN products p ON p.id = COALESCE(pii.product_id, (
-          SELECT p2.id FROM products p2
-          WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(pii.product_name))
-          LIMIT 1
-        ))
-        WHERE pii.id = ${productionOrderItemsTable.piItemId}
-          AND lower(COALESCE(p.material_type, '')) = lower(${materialFilter})
-      )`
-    : undefined;
+  // Material filter for the order-level "Completed today" KPI only (products join).
   const materialCompletedCondition: SQL | undefined = materialActive
     ? sql`EXISTS (
         SELECT 1
@@ -2398,7 +2510,6 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
       )`
     : undefined;
 
-
   // Active (non-terminal) order statuses — excludes Completed / Cancelled / Delivered
   const activeStatuses = [
     "Pending", "Accepted", "Planning",
@@ -2407,99 +2518,64 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
     "Ready To Dispatch", "Ready For Dispatch", "In Transport",
   ];
 
-  // Single query: fetch all active orders + their product line items in one pass,
-  // joined with proforma_invoices to skip soft-deleted invoices.
+  // ── Order-level KPIs (Active Orders / Delayed / Pending Dispatch) ──
+  // Single query over active orders joined to their (soft-deletable) PI so the
+  // counts only include orders whose invoice still exists. Deduplicated by order.
   const allRows = await db
     .select({
       orderId: productionOrdersTable.id,
       orderStatus: productionOrdersTable.status,
       piIsDeleted: proformaInvoicesTable.isDeleted,
       orderIsDelayed: productionOrdersTable.isDelayed,
-      lineId: productionOrderItemsTable.id,
-      lineStatus: productionOrderItemsTable.productionStatus,
-      orderedQty: productionOrderItemsTable.orderedQuantity,
-      readyQty: productionOrderItemsTable.readyQuantity,
     })
     .from(productionOrdersTable)
     .leftJoin(proformaInvoicesTable, eq(proformaInvoicesTable.id, productionOrdersTable.proformaInvoiceId))
-    .leftJoin(productionOrderItemsTable, eq(productionOrderItemsTable.productionOrderId, productionOrdersTable.id))
-    .where(and(...conditions, materialCondition, inArray(productionOrdersTable.status, activeStatuses)));
+    .where(and(...conditions, inArray(productionOrdersTable.status, activeStatuses)));
 
-  // Group rows by order
-  const orderMap = new Map<number, {
-    status: string; piIsDeleted: boolean | null; isDelayed: boolean;
-    items: { lineStatus: string; orderedQty: string; readyQty: string }[];
-  }>();
+  let delayedOrders = 0;
+  let activeOrders = 0;
+  let dispatchPendingCount = 0;
+  const seenOrders = new Set<number>();
   for (const row of allRows) {
-    if (!orderMap.has(row.orderId)) {
-      orderMap.set(row.orderId, {
-        status: row.orderStatus,
-        piIsDeleted: row.piIsDeleted,
-        isDelayed: row.orderIsDelayed ?? false,
-        items: [],
-      });
-    }
-    if (row.lineId) {
-      orderMap.get(row.orderId)!.items.push({
-        lineStatus: row.lineStatus,
-        orderedQty: row.orderedQty,
-        readyQty: row.readyQty,
-      });
-    }
+    // Exclude orders linked to soft-deleted proforma invoices
+    if (row.piIsDeleted) continue;
+    if (seenOrders.has(row.orderId)) continue;
+    seenOrders.add(row.orderId);
+    activeOrders++;
+    if (row.orderIsDelayed) delayedOrders++;
+    if (row.orderStatus === "Ready To Dispatch" || row.orderStatus === "Ready For Dispatch") dispatchPendingCount++;
   }
 
-  const today = new Date();
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  // ── Piece KPIs (Total Bottles / Pending PCS / In Production PCS) ──
+  // Reuse the EXACT Machine-wise Production Report row-building and status
+  // bucketing (shared helper above) so both pages show IDENTICAL totals for the
+  // same unit / origin / date / material filters.
+  const rows = await buildMachineReportRows(user, {
+    unit: unitFilter,
+    origin: originFilter,
+    dateFrom: startDate,
+    dateTo: endDate,
+    material: materialActive ? materialFilter : undefined,
+  });
+
   let pendingPieces = 0;
   let inProductionPieces = 0;
   let readyPieces = 0;
-  let dispatchPendingCount = 0;
-  let delayedOrders = 0;
-  let activeOrders = 0;
-
-  for (const [, order] of orderMap) {
-    // Exclude orders linked to soft-deleted proforma invoices
-    if (order.piIsDeleted) continue;
-    activeOrders++;
-    if (order.isDelayed) delayedOrders++;
-
-    const isRtd = order.status === "Ready To Dispatch" || order.status === "Ready For Dispatch";
-    if (isRtd) dispatchPendingCount++;
-
-    // In Transport — en route, not pending or in-production
-    if (order.status === "In Transport") continue;
-
-    if (order.items.length === 0) continue;
-
-    for (const item of order.items) {
-      const ordered = Number(item.orderedQty) || 0;
-      const ready = Number(item.readyQty) || 0;
-      const remaining = ordered - ready;
-
-      if (isRtd) {
-        // Ready To Dispatch orders: all item quantities are counted as ready
-        readyPieces += ready;
-        continue;
-      }
-
-      // Non-RTD active orders: separate Pending vs In Production counts
-      if (remaining > 0) {
-        const effectiveStatus = item.lineStatus || "Pending";
-        if (effectiveStatus === "Pending") {
-          pendingPieces += remaining;
-        } else if (effectiveStatus === "In Production") {
-          inProductionPieces += remaining;
-        }
-      }
-
-      // Items fully marked ready contribute to ready count
-      if (item.lineStatus === "Ready" && ready > 0) {
-        readyPieces += ready;
-      }
+  for (const row of rows) {
+    const remaining = row.quantity - row.readyQuantity;
+    const bucket = statusBucket(row);
+    if (bucket === "pending") {
+      if (remaining > 0) pendingPieces += remaining;
+    } else if (bucket === "inProduction") {
+      if (remaining > 0) inProductionPieces += remaining;
+    } else if (row.productionStatus === "Ready") {
+      if (row.readyQuantity > 0) readyPieces += row.readyQuantity;
     }
   }
 
   // Completed today — query separately using exact timestamp
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const [{ completedTodayCount }] = await db
     .select({ completedTodayCount: sql<number>`count(*)::int` })
     .from(productionOrdersTable)
@@ -2581,89 +2657,19 @@ export async function getMachineReport(
   user: PermissionUser,
   filters: { unit?: string; machineType?: string; product?: string; status?: string; dateFrom?: string; dateTo?: string }
 ) {
-  const conditions = buildOrderConditions(user, {
+  const productRows = await buildMachineReportRows(user, {
     status: filters.status,
     unit: filters.unit,
     dateFrom: filters.dateFrom,
     dateTo: filters.dateTo,
   });
 
-  // Default: exclude completed/cancelled/delivered orders unless explicit status filter is set
-  if (!filters.status || filters.status === "All") {
-    conditions.push(
-      notInArray(productionOrdersTable.status, ["Completed", "Delivered", "Cancelled"])
-    );
-  }
-
-  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
-  const orders = await db
-    .select({
-      id: productionOrdersTable.id,
-      status: productionOrdersTable.status,
-      productionUnit: productionOrdersTable.productionUnit,
-      createdAt: productionOrdersTable.createdAt,
-      proformaInvoiceId: productionOrdersTable.proformaInvoiceId,
-      orderNumber: productionOrdersTable.formattedOrderId,
-    })
-    .from(productionOrdersTable)
-    .where(whereClause);
-
-  if (orders.length === 0) {
+  if (productRows.length === 0) {
     return {
       summary: { totalProducts: 0, totalBottles: 0, pending: 0, inProduction: 0, completed: 0 },
       materialBreakdown: [],
       orders: [],
     };
-  }
-
-  const orderIds = orders.map(o => o.id);
-  const productLines = await db.select().from(productionOrderItemsTable)
-    .where(inArray(productionOrderItemsTable.productionOrderId, orderIds));
-
-  const invoiceToOrder = new Map(orders.map(o => [o.proformaInvoiceId, o]));
-
-  const productRows: {
-    orderId: number; orderNumber: string | null; status: string; productionUnit: string | null; createdAt: Date | null;
-    productName: string; machineType: string | null; materialType: string | null;
-    bottleColour: string | null; bottleWeight: string | null; productCode: string | null;
-    quantity: number; readyQuantity: number; productionStatus: string;
-  }[] = [];
-
-  for (const line of productLines) {
-    const order = orders.find(o => o.id === line.productionOrderId);
-    if (!order) continue;
-
-    productRows.push({
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      status: order.status,
-      productionUnit: order.productionUnit,
-      createdAt: order.createdAt,
-      productName: line.productName,
-      machineType: line.machineType || null,
-      materialType: line.materialType || null,
-      bottleColour: line.bottleColour || null,
-      bottleWeight: line.bottleWeight || null,
-      productCode: null,
-      quantity: Number(line.orderedQuantity),
-      readyQuantity: Number(line.readyQuantity),
-      productionStatus: line.productionStatus,
-    });
-  }
-
-  if (productRows.length === 0) {
-    for (const item of await db.select().from(proformaInvoiceItemsTable)
-      .where(inArray(proformaInvoiceItemsTable.invoiceId, orders.map(o => o.proformaInvoiceId).filter(Boolean) as number[]))) {
-      const order = invoiceToOrder.get(item.invoiceId);
-      if (!order) continue;
-      productRows.push({
-        orderId: order.id, orderNumber: order.orderNumber, status: order.status, productionUnit: order.productionUnit,
-        createdAt: order.createdAt, productName: item.productName, machineType: null,
-        materialType: null, bottleColour: item.bottleColour || null, bottleWeight: null, productCode: null,
-        quantity: Number(item.quantity), readyQuantity: 0, productionStatus: order.status === "Completed" ? "Ready" : "Pending",
-      });
-    }
   }
 
   let filteredRows = productRows;
@@ -2673,23 +2679,6 @@ export async function getMachineReport(
   if (filters.product && filters.product !== "All") {
     filteredRows = filteredRows.filter(r => r.productName === filters.product);
   }
-
-  // Production statuses that require active machine work
-  const PENDING_ST = ["Pending", "Pending Verification", "Confirmed", "Production Pending", "Accepted", "Planning"];
-  const IN_PROD_ST = ["In Production", "Production On Going", "Production Started", "Production Running"];
-  // Any status not in PENDING or IN_PROD is considered dormant (Ready, Completed, etc.) and excluded
-  const DORMANT_ST = ["Ready", "Completed", "Ready For Dispatch", "In Transport", "Delivered", "Cancelled"];
-
-  const statusBucket = (row: typeof filteredRows[0]): "pending" | "inProduction" | "dormant" => {
-    const ps = row.productionStatus;
-    if (PENDING_ST.includes(ps)) return "pending";
-    if (IN_PROD_ST.includes(ps)) return "inProduction";
-    if (DORMANT_ST.includes(ps)) return "dormant";
-    const os = row.status;
-    if (PENDING_ST.includes(os)) return "pending";
-    if (IN_PROD_ST.includes(os)) return "inProduction";
-    return "dormant";
-  };
 
   // Also filter out items whose bucket is "dormant" — they should not appear on a live machine report
   filteredRows = filteredRows.filter(r => statusBucket(r) !== "dormant");
