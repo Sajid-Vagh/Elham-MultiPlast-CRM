@@ -2897,7 +2897,14 @@ export async function getAuditTrail(orderId: number) {
   return trail.rows || [];
 }
 
-export async function getPendingSummary(user: PermissionUser, unitFilter?: string) {
+export async function getPendingSummary(
+  user: PermissionUser,
+  unitFilter?: string,
+  originFilter?: string,
+  dateFrom?: string,
+  dateTo?: string,
+  materialFilter?: string,
+) {
   const effectiveUnit = ((user as any).unit !== "All" && user.role !== "admin")
     ? (user as any).unit
     : (unitFilter && unitFilter !== "All" && unitFilter !== "all" ? unitFilter : undefined);
@@ -2905,15 +2912,23 @@ export async function getPendingSummary(user: PermissionUser, unitFilter?: strin
   const unitCondition = effectiveUnit && effectiveUnit !== "all"
     ? sql`AND po.production_unit = ${effectiveUnit}`
     : sql``;
+  const originCondition = originFilter && originFilter !== "all"
+    ? sql`AND po.created_by_role = ${originFilter}`
+    : sql``;
+  const dateFromCondition = dateFrom ? sql`AND po.created_at >= ${new Date(dateFrom)}` : sql``;
+  const dateToCondition = dateTo ? sql`AND po.created_at <= ${new Date(dateTo + "T23:59:59")}` : sql``;
+  const materialCondition = materialFilter && materialFilter !== "All" && materialFilter !== "all"
+    ? sql`AND lower(COALESCE(NULLIF(oi.material_type, ''), 'N/A')) = lower(${materialFilter})`
+    : sql``;
+  const pendingStatusIn = sql.join(PENDING_ST.map(s => sql`${s}`), sql`, `);
 
   // Source of truth: production_order_items (the dynamic line-items table holding
   // ordered_quantity, ready_quantity, and remaining values).
-  // Pending = SUM(ordered - ready) across all non-terminal orders that are NOT
-  // yet fully ready (exclude RTD / In Transport / Completed / Cancelled).
-  // Only count items with production_status = 'Pending' — In Production items
-  // are NOT pending; they are actively being manufactured.
-  // Exclude soft-deleted invoices and items whose remaining has reached zero.
-  // Use COALESCE to treat NULL statuses as 'Pending' and TRIM to handle whitespace.
+  // Pending = SUM(ordered - ready) across all non-terminal orders. Uses the SAME
+  // PENDING_ST status bucket + order-level exclusion ('Completed','Delivered',
+  // 'Cancelled') and the SAME material source (production_order_items.material_type)
+  // as the Dashboard KPI / Machine Report so totals never diverge.
+  // Exclude items whose remaining has reached zero.
   const results = await db.execute(sql`
     SELECT
       oi.product_name AS "productName",
@@ -2927,12 +2942,14 @@ export async function getPendingSummary(user: PermissionUser, unitFilter?: strin
       array_agg(DISTINCT oi.production_order_id) AS "orderIds"
     FROM production_order_items oi
     JOIN production_orders po ON po.id = oi.production_order_id
-    LEFT JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
-    WHERE po.status NOT IN ('Completed', 'Cancelled', 'Ready To Dispatch', 'Ready For Dispatch', 'In Transport')
-      AND (pi.id IS NULL OR pi.is_deleted = false)
-      AND COALESCE(oi.production_status, 'Pending') = 'Pending'
+    WHERE po.status NOT IN ('Completed', 'Delivered', 'Cancelled')
+      AND COALESCE(oi.production_status, 'Pending') IN (${pendingStatusIn})
       AND (oi.ordered_quantity::numeric - oi.ready_quantity::numeric) > 0
       ${unitCondition}
+      ${originCondition}
+      ${dateFromCondition}
+      ${dateToCondition}
+      ${materialCondition}
     GROUP BY oi.product_name, oi.bottle_colour, oi.bottle_weight, oi.cap_colour, oi.cap_weight, oi.material_type
     HAVING SUM(oi.ordered_quantity::numeric - oi.ready_quantity::numeric) > 0
     ORDER BY SUM(oi.ordered_quantity::numeric - oi.ready_quantity::numeric) DESC
@@ -3177,26 +3194,55 @@ export async function getModifiedSince(user: PermissionUser, since?: string) {
   return { count: Number(count) || 0 };
 }
 
-export async function getManufacturingSummary(user: PermissionUser, unitFilter?: string, originFilter?: string, materialFilter?: string) {
+export async function getManufacturingSummary(
+  user: PermissionUser,
+  unitFilter?: string,
+  originFilter?: string,
+  materialFilter?: string,
+  dateFrom?: string,
+  dateTo?: string,
+) {
   const effectiveUnit = ((user as any).unit !== "All" && user.role !== "admin")
     ? (user as any).unit
     : (unitFilter && unitFilter !== "All" && unitFilter !== "all" ? unitFilter : undefined);
 
-  const materialCondition = materialFilter && materialFilter !== "All" && materialFilter !== "all"
-    ? sql`AND lower(COALESCE(p.material_type, '')) = lower(${materialFilter})`
+  // ── Alignment with the Dashboard KPI (buildMachineReportRows) ──
+  // 1. Same ORDER-level status exclusion: only Completed / Delivered / Cancelled.
+  //    RTD / RFD / In Transport orders are kept (their lines are non-pending so they
+  //    naturally drop out below) — matching the KPI exactly.
+  // 2. No `proforma_invoice_id IS NOT NULL` requirement — orders without a PI link
+  //    are NOT dropped from the summary (the KPI never required it).
+  // 3. Line status uses the same PENDING_ST bucket as the KPI, not just literal
+  //    'Pending' — otherwise Accepted / Planning / Confirmed items vanish.
+  // 4. Material comes from the LINE's own material_type first (the exact source the
+  //    KPI + Machine Report use) so PET items are never relabelled as HDPE or dropped;
+  //    falls back to the linked product, then HDPE. Products stay a LEFT JOIN so a
+  //    missing product link never discards a valid production item.
+  const unitCondition = effectiveUnit && effectiveUnit !== "all"
+    ? sql`AND po.production_unit = ${effectiveUnit}`
     : sql``;
+  const originCondition = originFilter && originFilter !== "all"
+    ? sql`AND po.created_by_role = ${originFilter}`
+    : sql``;
+  const dateFromCondition = dateFrom ? sql`AND po.created_at >= ${new Date(dateFrom)}` : sql``;
+  const dateToCondition = dateTo ? sql`AND po.created_at <= ${new Date(dateTo + "T23:59:59")}` : sql``;
+
+  const materialExpr = sql`COALESCE(NULLIF(poi.material_type, ''), NULLIF(p.material_type, ''), 'HDPE')`;
+  const materialCondition = materialFilter && materialFilter !== "All" && materialFilter !== "all"
+    ? sql`AND lower(${materialExpr}) = lower(${materialFilter})`
+    : sql``;
+  const pendingStatusIn = sql.join(PENDING_ST.map(s => sql`${s}`), sql`, `);
 
   const results = await db.execute(sql`
     WITH active_orders AS (
       SELECT po.id AS po_id, po.status, po.production_unit, po.created_by_role,
              po.proforma_invoice_id AS resolved_invoice_id
       FROM production_orders po
-      LEFT JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
-      WHERE po.status NOT IN ('Completed', 'Cancelled', 'Ready To Dispatch', 'Ready For Dispatch', 'In Transport')
-        AND po.proforma_invoice_id IS NOT NULL
-        AND (pi.id IS NULL OR pi.is_deleted = false)
-        ${effectiveUnit && effectiveUnit !== "all" ? sql`AND po.production_unit = ${effectiveUnit}` : sql``}
-        ${originFilter && originFilter !== "all" ? sql`AND po.created_by_role = ${originFilter}` : sql``}
+      WHERE po.status NOT IN ('Completed', 'Delivered', 'Cancelled')
+        ${unitCondition}
+        ${originCondition}
+        ${dateFromCondition}
+        ${dateToCondition}
     ),
     product_lines AS (
       SELECT
@@ -3208,7 +3254,7 @@ export async function getManufacturingSummary(user: PermissionUser, unitFilter?:
         COALESCE(NULLIF(pii.weight, ''), '-') AS weight,
         COALESCE(NULLIF(p.bottle_colour, ''), 'N/A') AS colour,
         COALESCE(NULLIF(p.bottle_colour_code, ''), '') AS colour_code,
-        COALESCE(NULLIF(p.material_type, 'HDPE'), 'HDPE') AS material_type,
+        ${materialExpr} AS material_type,
         TRIM(LOWER(COALESCE(NULLIF(pii.weight, ''), '-'))) AS weight_norm,
         TRIM(LOWER(COALESCE(NULLIF(p.bottle_colour, ''), 'N/A'))) AS colour_norm,
         INITCAP(TRIM(
@@ -3229,12 +3275,11 @@ export async function getManufacturingSummary(user: PermissionUser, unitFilter?:
         ) AS capacity_sort
       FROM active_orders ao
       JOIN production_order_items poi ON poi.production_order_id = ao.po_id
-      LEFT JOIN proforma_invoices pi ON pi.id = ao.resolved_invoice_id
       LEFT JOIN proforma_invoice_items pii ON pii.id = poi.pi_item_id
       LEFT JOIN products p ON p.id = COALESCE(pii.product_id, (
         SELECT p2.id FROM products p2 WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(pii.product_name)) LIMIT 1
       ))
-      WHERE COALESCE(poi.production_status, 'Pending') = 'Pending'
+      WHERE COALESCE(poi.production_status, 'Pending') IN (${pendingStatusIn})
         AND (poi.ordered_quantity::numeric - poi.ready_quantity::numeric) > 0
         ${materialCondition}
     )
@@ -3302,7 +3347,7 @@ export async function getManufacturingSummaryDetail(
       WITH active_orders AS (
         SELECT po.id AS po_id
         FROM production_orders po
-        WHERE po.status NOT IN ('Completed', 'Cancelled', 'Ready To Dispatch')
+        WHERE po.status NOT IN ('Completed', 'Delivered', 'Cancelled')
       )
       SELECT DISTINCT
         po.id AS "orderId",

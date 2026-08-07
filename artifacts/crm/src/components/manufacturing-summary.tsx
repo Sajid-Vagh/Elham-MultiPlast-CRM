@@ -79,19 +79,23 @@ interface ManufacturingSummaryProps {
   unitFilter?: string;
   originFilter?: string;
   material?: string;
+  dateFrom?: string | null;
+  dateTo?: string | null;
 }
 
-export function ManufacturingSummary({ unitFilter, originFilter, material = "All" }: ManufacturingSummaryProps) {
+export function ManufacturingSummary({ unitFilter, originFilter, material = "All", dateFrom, dateTo }: ManufacturingSummaryProps) {
   const [, setLocation] = useLocation();
   const [drawerGroup, setDrawerGroup] = useState<SummaryGroup | null>(null);
 
   const { data: summary, isLoading } = useQuery({
-    queryKey: ["manufacturing-summary", unitFilter, originFilter, material],
+    queryKey: ["manufacturing-summary", unitFilter, originFilter, material, dateFrom, dateTo],
     queryFn: () => {
       const params = new URLSearchParams();
       if (unitFilter && unitFilter !== "All") params.set("unit", unitFilter);
       if (originFilter && originFilter !== "all") params.set("origin", originFilter);
       if (material && material !== "All") params.set("material", material);
+      if (dateFrom) params.set("startDate", dateFrom);
+      if (dateTo) params.set("endDate", dateTo);
       return customFetch<any>(`/production/manufacturing-summary?${params.toString()}`);
     },
     refetchInterval: 30_000,

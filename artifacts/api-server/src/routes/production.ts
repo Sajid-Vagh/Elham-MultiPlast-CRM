@@ -79,8 +79,8 @@ router.get("/production/pending-summary", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
     if (!user) return;
-    const { unit: unitFilter } = req.query as Record<string, string | undefined>;
-    res.json(await getPendingSummary(user, unitFilter));
+    const { unit: unitFilter, origin: originFilter, startDate, endDate, material: materialFilter } = req.query as Record<string, string | undefined>;
+    res.json(await getPendingSummary(user, unitFilter, originFilter, startDate, endDate, materialFilter));
   } catch (err) {
     req.log.error({ err }, "Pending production summary error:");
     res.status(500).json({ success: false, error: "Internal Server Error" });
@@ -513,8 +513,8 @@ router.get("/production/manufacturing-summary", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
     if (!user) return;
-    const { unit: unitFilter, origin: originFilter, material: materialFilter } = req.query as Record<string, string | undefined>;
-    res.json(await getManufacturingSummary(user, unitFilter, originFilter, materialFilter));
+    const { unit: unitFilter, origin: originFilter, material: materialFilter, startDate, endDate } = req.query as Record<string, string | undefined>;
+    res.json(await getManufacturingSummary(user, unitFilter, originFilter, materialFilter, startDate, endDate));
   } catch (err) {
     req.log.error({ err }, "Manufacturing summary error:");
     res.status(500).json({ success: false, error: "Internal Server Error" });

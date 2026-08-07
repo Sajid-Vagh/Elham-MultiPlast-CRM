@@ -113,8 +113,14 @@ export default function ProductionDashboard() {
         })}
       </div>
 
-      {/* Manufacturing Summary — excludes Ready To Dispatch, Completed, Cancelled */}
-      <ManufacturingSummary unitFilter={String(selectedUnit)} originFilter={originFilter} material={materialFilter} />
+      {/* Manufacturing Summary — same filters as KPI cards (unit/origin/material/date) */}
+      <ManufacturingSummary
+        unitFilter={String(selectedUnit)}
+        originFilter={originFilter}
+        material={materialFilter}
+        dateFrom={dateFilter.startDate}
+        dateTo={dateFilter.endDate}
+      />
 
       {/* Summary + Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
