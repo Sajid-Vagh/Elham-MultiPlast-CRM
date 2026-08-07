@@ -125,6 +125,8 @@ export const productionOrdersTable = pgTable("production_orders", {
   productionSheetGeneratedBy: integer("production_sheet_generated_by").references(() => usersTable.id, { onDelete: "set null" }),
   productionSheetVersion: integer("production_sheet_version").notNull().default(0),
   needsReprint: boolean("needs_reprint").notNull().default(false),
+  // Read tracking: true once the order has been viewed on its detail page (new-order dot)
+  isRead: boolean("is_read").notNull().default(false),
   // Ready To Dispatch timestamp
   readyAt: timestamp("ready_at", { withTimezone: true }),
 });

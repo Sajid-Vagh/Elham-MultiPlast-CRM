@@ -1019,6 +1019,26 @@ router.post("/production/orders/:id/mark-reprint", async (req, res) => {
   }
 });
 
+// ── POST /production/orders/:id/read — Mark order as viewed (clears the new-order dot) ──
+router.post("/production/orders/:id/read", async (req, res) => {
+  try {
+    const user = await requireProductionUser(req, res);
+    if (!user) return;
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid order id" }); return; }
+
+    const [order] = await db.select({ id: productionOrdersTable.id }).from(productionOrdersTable).where(eq(productionOrdersTable.id, id));
+    if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+
+    await db.update(productionOrdersTable).set({ isRead: true }).where(eq(productionOrdersTable.id, id));
+
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Mark production order read error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
+
 // ── POST /production/repair-stuck-orders — Fix data inconsistencies ──
 router.post("/production/repair-stuck-orders", async (req, res) => {
   try {

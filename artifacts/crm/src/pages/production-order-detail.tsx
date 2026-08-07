@@ -115,6 +115,19 @@ export default function ProductionOrderDetail() {
   const isSupportUser = user?.role === "production_and_support" || user?.role === "admin";
   const isAdmin = user?.role === "admin";
 
+  // Mark the order as read (clears the blue "new order" dot on the list) the first
+  // time a production-capable user opens the detail page. Only a production/read
+  // click counts as "viewed" — sales viewing must not clear the production dot.
+  const markReadRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!id || !order || markReadRef.current === id) return;
+    markReadRef.current = id;
+    if (!isProductionUser) return;
+    customFetch<any>(`/production/orders/${id}/read`, { method: "POST" })
+      .then(() => queryClient.invalidateQueries({ queryKey: ["production-orders"] }))
+      .catch(() => {});
+  }, [id, order, isProductionUser, queryClient]);
+
   // ── Production Mutations ──
   const startProductionOnGoing = useMutation({
     mutationFn: () => customFetch<any>(`/production/orders/${id}/status`, {
