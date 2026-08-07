@@ -9,6 +9,7 @@
     "fix-existing": "tsx --env-file ../.env ./src/fix-existing-data.ts",
     "fix-legacy-categories": "tsx --env-file ../.env ./src/fix-legacy-categories.ts",
     "fix-profile-photos": "tsx --env-file ../.env ./src/fix-profile-photos.ts",
+    "reset-sequences": "tsx --env-file ../.env ./src/reset-sequences.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
