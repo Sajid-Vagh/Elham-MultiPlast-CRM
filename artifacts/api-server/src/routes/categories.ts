@@ -1,13 +1,24 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable, dealsTable, usersTable, categoryHistoryTable, activitiesTable, productsTable, dealProductsTable, CATEGORIES } from "@workspace/db";
-import { eq, and, inArray, SQL, sql, desc, gte, lte } from "drizzle-orm";
+import { eq, and, inArray, SQL, sql, desc, gte, lte, or, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
 import { getAccessibleUnits } from "../lib/unit-filter";
+import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 import { parseEndDate } from "../lib/parse-end-date";
 import { normalizeProfilePhotoUrl } from "../lib/storage";
 
 const router: IRouter = Router();
+
+// Build the SQL condition for a unit filter, mirroring the /contacts list logic:
+// "To Be Assigned" (pending) matches contacts whose unit is NULL or empty string.
+function buildUnitCondition(unit: string | undefined): SQL | undefined {
+  if (!unit) return undefined;
+  if (unit === PENDING_UNIT_ASSIGNMENT) {
+    return or(isNull(contactsTable.unit), eq(contactsTable.unit, "")) as SQL | undefined;
+  }
+  return eq(contactsTable.unit, unit);
+}
 
 router.get("/categories/counts", async (req, res) => {
   try {
@@ -27,8 +38,9 @@ router.get("/categories/counts", async (req, res) => {
     if (hasOwnerFilter) {
       conditions.push(eq(contactsTable.salesOwnerId, ownerId!));
     }
-    if (unit) {
-      conditions.push(eq(contactsTable.unit, unit));
+    const unitCond = buildUnitCondition(unit);
+    if (unitCond) {
+      conditions.push(unitCond);
     }
 
     const { startDate, endDate } = req.query as Record<string, string>;
@@ -66,8 +78,9 @@ router.get("/categories/counts", async (req, res) => {
     if (hasOwnerFilter) {
       ecConditions.push(eq(contactsTable.salesOwnerId, ownerId!));
     }
-    if (requestedUnit) {
-      ecConditions.push(eq(contactsTable.unit, requestedUnit));
+    const ecUnitCond = buildUnitCondition(requestedUnit);
+    if (ecUnitCond) {
+      ecConditions.push(ecUnitCond);
     }
     if (startDate) ecConditions.push(gte(contactsTable.createdAt, new Date(startDate)));
     if (endDate) ecConditions.push(lte(contactsTable.createdAt, parseEndDate(endDate)));
@@ -114,13 +127,15 @@ router.get("/categories/:category/contacts", async (req, res) => {
 
     // For Existing Client, unit filter comes from dropdown only (not user.unit)
     if (isExistingClient) {
-      if (requestedUnit) {
-        baseConditions.push(eq(contactsTable.unit, requestedUnit));
+      const ecUnitCond = buildUnitCondition(requestedUnit);
+      if (ecUnitCond) {
+        baseConditions.push(ecUnitCond);
       }
     } else {
       const unit = (user.unit === "All" || user.role === "admin") ? requestedUnit : user.unit;
-      if (unit) {
-        baseConditions.push(eq(contactsTable.unit, unit));
+      const unitCond = buildUnitCondition(unit);
+      if (unitCond) {
+        baseConditions.push(unitCond);
       }
     }
 
@@ -240,8 +255,9 @@ router.get("/categories/:category/contacts/search", async (req, res) => {
     if (!isAdmin) {
       schConditions.push(eq(contactsTable.salesOwnerId, user.id));
     }
-    if (unit) {
-      schConditions.push(eq(contactsTable.unit, unit));
+    const unitCond = buildUnitCondition(unit);
+    if (unitCond) {
+      schConditions.push(unitCond);
     }
     if (q) {
       const s = `%${q}%`;
