@@ -78,20 +78,20 @@ type DetailItem = {
 interface ManufacturingSummaryProps {
   unitFilter?: string;
   originFilter?: string;
+  material?: string;
 }
 
-export function ManufacturingSummary({ unitFilter, originFilter }: ManufacturingSummaryProps) {
+export function ManufacturingSummary({ unitFilter, originFilter, material = "All" }: ManufacturingSummaryProps) {
   const [, setLocation] = useLocation();
   const [drawerGroup, setDrawerGroup] = useState<SummaryGroup | null>(null);
-  const [materialFilter, setMaterialFilter] = useState("All");
 
   const { data: summary, isLoading } = useQuery({
-    queryKey: ["manufacturing-summary", unitFilter, originFilter, materialFilter],
+    queryKey: ["manufacturing-summary", unitFilter, originFilter, material],
     queryFn: () => {
       const params = new URLSearchParams();
       if (unitFilter && unitFilter !== "All") params.set("unit", unitFilter);
       if (originFilter && originFilter !== "all") params.set("origin", originFilter);
-      if (materialFilter && materialFilter !== "All") params.set("material", materialFilter);
+      if (material && material !== "All") params.set("material", material);
       return customFetch<any>(`/production/manufacturing-summary?${params.toString()}`);
     },
     refetchInterval: 30_000,
@@ -182,21 +182,6 @@ export function ManufacturingSummary({ unitFilter, originFilter }: Manufacturing
                   <span className="font-semibold text-foreground">{totalPieces.toLocaleString()} PCS Pending</span>
                 </div>
               )}
-            </div>
-            <div className="flex items-center gap-1.5">
-              {["All", "HDPE", "PP", "PET"].map(mt => (
-                <button
-                  key={mt}
-                  onClick={() => setMaterialFilter(mt)}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                    materialFilter === mt
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80"
-                  }`}
-                >
-                  {mt}
-                </button>
-              ))}
             </div>
           </div>
         </CardHeader>

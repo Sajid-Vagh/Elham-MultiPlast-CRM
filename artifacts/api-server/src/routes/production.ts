@@ -92,8 +92,8 @@ router.get("/production/dashboard", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
     if (!user) return;
-    const { unit: unitFilter, origin: originFilter, startDate, endDate } = req.query as Record<string, string | undefined>;
-    res.json(await getDashboard(user, unitFilter, originFilter, startDate, endDate));
+    const { unit: unitFilter, origin: originFilter, startDate, endDate, material: materialFilter } = req.query as Record<string, string | undefined>;
+    res.json(await getDashboard(user, unitFilter, originFilter, startDate, endDate, materialFilter));
   } catch (err) {
     req.log.error({ err }, "Production dashboard error:");
     res.status(500).json({ success: false, error: "Internal Server Error" });

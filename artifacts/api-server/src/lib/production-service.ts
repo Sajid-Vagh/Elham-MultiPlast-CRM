@@ -2346,7 +2346,7 @@ export async function sendMessage(
   return { message: newMessage };
 }
 
-export async function getDashboard(user: PermissionUser, unitFilter?: string, originFilter?: string, startDate?: string, endDate?: string) {
+export async function getDashboard(user: PermissionUser, unitFilter?: string, originFilter?: string, startDate?: string, endDate?: string, materialFilter?: string) {
   const conditions: SQL[] = [];
   if (user.role !== "admin") {
     const u = (user as any).unit || "All";
@@ -2366,6 +2366,38 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
   }
   if (startDate) conditions.push(gte(productionOrdersTable.createdAt, new Date(startDate)));
   if (endDate) conditions.push(lte(productionOrdersTable.createdAt, new Date(endDate + "T23:59:59")));
+
+  // Material filter — keep only production order line items whose linked product
+  // material matches (product resolved via PI item productId, with name fallback).
+  const materialActive = !!materialFilter && materialFilter !== "All" && materialFilter !== "all";
+  const materialCondition: SQL | undefined = materialActive
+    ? sql`EXISTS (
+        SELECT 1
+        FROM proforma_invoice_items pii
+        JOIN products p ON p.id = COALESCE(pii.product_id, (
+          SELECT p2.id FROM products p2
+          WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(pii.product_name))
+          LIMIT 1
+        ))
+        WHERE pii.id = ${productionOrderItemsTable.piItemId}
+          AND lower(COALESCE(p.material_type, '')) = lower(${materialFilter})
+      )`
+    : undefined;
+  const materialCompletedCondition: SQL | undefined = materialActive
+    ? sql`EXISTS (
+        SELECT 1
+        FROM production_order_items poi
+        JOIN proforma_invoice_items pii ON pii.id = poi.pi_item_id
+        JOIN products p ON p.id = COALESCE(pii.product_id, (
+          SELECT p2.id FROM products p2
+          WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(pii.product_name))
+          LIMIT 1
+        ))
+        WHERE poi.production_order_id = ${productionOrdersTable.id}
+          AND lower(COALESCE(p.material_type, '')) = lower(${materialFilter})
+      )`
+    : undefined;
+
 
   // Active (non-terminal) order statuses — excludes Completed / Cancelled / Delivered
   const activeStatuses = [
@@ -2391,7 +2423,7 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
     .from(productionOrdersTable)
     .leftJoin(proformaInvoicesTable, eq(proformaInvoicesTable.id, productionOrdersTable.proformaInvoiceId))
     .leftJoin(productionOrderItemsTable, eq(productionOrderItemsTable.productionOrderId, productionOrdersTable.id))
-    .where(and(...conditions, inArray(productionOrdersTable.status, activeStatuses)));
+    .where(and(...conditions, materialCondition, inArray(productionOrdersTable.status, activeStatuses)));
 
   // Group rows by order
   const orderMap = new Map<number, {
@@ -2474,6 +2506,7 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
     .leftJoin(proformaInvoicesTable, eq(proformaInvoicesTable.id, productionOrdersTable.proformaInvoiceId))
     .where(and(
       ...conditions,
+      materialCompletedCondition,
       eq(productionOrdersTable.status, "Completed"),
       gte(productionOrdersTable.updatedAt, todayStart),
       or(sql`${proformaInvoicesTable.isDeleted} IS NULL`, eq(proformaInvoicesTable.isDeleted, false)),

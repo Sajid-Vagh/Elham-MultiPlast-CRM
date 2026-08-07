@@ -18,6 +18,8 @@ const KPI_CONFIG = [
   { key: "productionOnGoingCount", label: "In Production PCS", color: "bg-orange-100 text-orange-700 border-orange-300", hoverStatus: "Production On Going", icon: Clock },
 ];
 
+const MATERIAL_OPTIONS = ["All", "HDPE", "PP", "PET"];
+
 const QUICK_ACTIONS = [
   { label: "Pending Orders", status: "Pending", icon: Clock },
   { label: "Ready to Dispatch", status: "Ready To Dispatch", icon: Truck },
@@ -31,15 +33,17 @@ export default function ProductionDashboard() {
   const [selectedUnit, setSelectedUnit] = useUnitFilter();
   const [dateFilter, setDateFilter] = useDateFilter();
   const [originFilter, setOriginFilter] = useState("all");
+  const [materialFilter, setMaterialFilter] = useState("All");
 
   const { data: dashboard, isLoading } = useQuery({
-    queryKey: ["production-dashboard", selectedUnit, originFilter, dateFilter.preset],
+    queryKey: ["production-dashboard", selectedUnit, originFilter, dateFilter.preset, materialFilter],
     queryFn: () => {
       const params = new URLSearchParams();
       if (selectedUnit && selectedUnit !== "All") params.set("unit", selectedUnit);
       if (originFilter !== "all") params.set("origin", originFilter);
       if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
       if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
+      if (materialFilter !== "All") params.set("material", materialFilter);
       return customFetch<any>(`/production/dashboard?${params.toString()}`);
     },
     enabled: !!user,
@@ -66,6 +70,11 @@ export default function ProductionDashboard() {
         </div>
         <div className="flex items-center gap-2">
           <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
+          <select className="text-sm border rounded-md px-3 py-1.5 bg-background" value={materialFilter} onChange={(e) => setMaterialFilter(e.target.value)}>
+            {MATERIAL_OPTIONS.map(m => (
+              <option key={m} value={m}>{m === "All" ? "All Materials" : m}</option>
+            ))}
+          </select>
           <select className="text-sm border rounded-md px-3 py-1.5 bg-background" value={originFilter} onChange={(e) => setOriginFilter(e.target.value)}>
             <option value="all">All Orders</option>
             <option value="sales">Sales Orders</option>
@@ -105,7 +114,7 @@ export default function ProductionDashboard() {
       </div>
 
       {/* Manufacturing Summary — excludes Ready To Dispatch, Completed, Cancelled */}
-      <ManufacturingSummary unitFilter={String(selectedUnit)} originFilter={originFilter} />
+      <ManufacturingSummary unitFilter={String(selectedUnit)} originFilter={originFilter} material={materialFilter} />
 
       {/* Summary + Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
