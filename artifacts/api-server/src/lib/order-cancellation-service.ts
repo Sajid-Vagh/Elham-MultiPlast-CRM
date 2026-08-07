@@ -224,7 +224,22 @@ export async function cancelOrder(
         );
       const hasOtherCompleted = (countResult?.count ?? 0) > 0;
 
-      if (!hasOtherCompleted) {
+      // Protect repeat clients: count OTHER Won deals (excluding the current
+      // deal being marked Lost). If the contact has any other won business,
+      // cancelling this order must NOT strip their "My Client" status.
+      const [wonCount] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(dealsTable)
+        .where(
+          and(
+            eq(dealsTable.contactId, order.contactId),
+            eq(dealsTable.stage, "Won"),
+            order.dealId ? sql`${dealsTable.id} != ${order.dealId}` : sql`true`,
+          )
+        );
+      const hasOtherWonDeals = (wonCount?.count ?? 0) > 0;
+
+      if (!hasOtherCompleted && !hasOtherWonDeals) {
         // Scenario A: First/only order cancelled → move back to previous category
         const [contact] = await tx.select().from(contactsTable).where(eq(contactsTable.id, order.contactId));
         if (contact && contact.isMyClient) {
@@ -260,7 +275,7 @@ export async function cancelOrder(
           }).where(eq(existingCustomersTable.contactId, order.contactId));
         }
       }
-      // Scenario B: Has other completed orders → stay in My Client (no action needed)
+      // Scenario B: Has other completed orders OR other Won deals → stay in My Client (no action needed)
     }
 
     return { productionOrder };
