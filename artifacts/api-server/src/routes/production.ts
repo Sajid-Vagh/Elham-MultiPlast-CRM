@@ -1037,7 +1037,7 @@ router.post("/production/orders/:id/mark-reprint", async (req, res) => {
   }
 });
 
-// ── POST /production/orders/:id/read — Mark order as viewed (clears the new-order dot) ──
+// ── POST /production/orders/:id/read — Mark order as viewed (clears the new-order dot AND the updated-order amber dot) ──
 router.post("/production/orders/:id/read", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
@@ -1048,7 +1048,7 @@ router.post("/production/orders/:id/read", async (req, res) => {
     const [order] = await db.select({ id: productionOrdersTable.id }).from(productionOrdersTable).where(eq(productionOrdersTable.id, id));
     if (!order) { res.status(404).json({ error: "Order not found" }); return; }
 
-    await db.update(productionOrdersTable).set({ isRead: true }).where(eq(productionOrdersTable.id, id));
+    await db.update(productionOrdersTable).set({ isRead: true, isUpdated: false }).where(eq(productionOrdersTable.id, id));
 
     res.json({ success: true });
   } catch (err) {

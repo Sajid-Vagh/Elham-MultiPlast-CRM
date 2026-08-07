@@ -586,6 +586,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - **Backend `GET /production/sheet/stats`** endpoint: Returns counts for dashboard widget (totalPending, needsReprint, neverGenerated, outdated).
 - **Backend `POST /production/orders/:id/mark-reprint`** endpoint: Toggles `needsReprint` flag on an order.
 - **Auto-set `needsReprint` + strict PI→production sync**: `handlePiModification` in `production-service.ts` now ALWAYS runs `resyncProductionOrderItems` regardless of the linked production order's status (inserting new PI items into `production_order_items`, updating matched rows, removing leftover Pending-only rows). If new items were added (`syncResult.added > 0`), the order is unconditionally reverted to `Pending` and all workflow progress flags are reset (`isFrozen`, `dispatchStatus`, `readyAt`, started/accepted/packing/transport/dispatch/delivered fields, `isDelayed`), so the production team sees the new work. Previously the sync was gated by status — pre-production (Pending/Accepted/Planning) auto-synced, in-production required approval, Ready For Dispatch / later statuses never inserted new items (the bug).
+- **Separate `isUpdated` flag for the amber "Updated Order" dot** (migration `076_add_production_order_is_updated.sql`): the amber dot is driven by `is_updated` (set `true` in `handlePiModification` on every PI modification; cleared `false` by `POST /production/orders/:id/read`), independent of `needs_reprint` — so viewing an order clears the dot without losing the "Updated Production Sheet Required" reminder / reprint filter, and the Blue dot (`status = 'Pending' && !isRead`) and Amber dot (`isUpdated`) follow identical view-clearing behavior.
 - **Frontend `production-orders.tsx`**: Added "Production Sheet" dropdown with 7 download options (All Pending, Pre-Production, Created Today, This Week, This Month, Updated/Reprint, Current Filter). Added `needsReprint` badge on each order row. Added sheet stats summary in header.
 - **Frontend `production-dashboard.tsx`**: Added "Updated Production Sheet Required" widget card with amber styling, showing needsReprint + neverGenerated counts, with "Reprint Updated" and "Full Sheet" download buttons.
 - **Build verified**: CRM clean (0 errors), API server pre-existing Drizzle errors only (zero new errors).
@@ -605,7 +606,8 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 
 ## Relevant Files
 - `lib/db/migrations/056_add_production_sheet_tracking.sql`: Migration for production sheet tracking columns
-- `lib/db/src/schema/production_orders.ts`: Updated with `productionSheetGeneratedAt`, `productionSheetGeneratedBy`, `productionSheetVersion`, `needsReprint`
+- `lib/db/migrations/076_add_production_order_is_updated.sql`: Migration for the `is_updated` amber-dot column (backfills from `needs_reprint`)
+- `lib/db/src/schema/production_orders.ts`: Updated with `productionSheetGeneratedAt`, `productionSheetGeneratedBy`, `productionSheetVersion`, `needsReprint`, `isRead`, `isUpdated`
 - `artifacts/api-server/src/routes/production.ts`: New endpoints — `GET /production/sheet`, `GET /production/sheet/stats`, `POST /production/orders/:id/mark-reprint`
 - `artifacts/api-server/src/lib/production-service.ts`: `handlePiModification` — auto-sets `needsReprint` on PI modification
 - `artifacts/api-server/src/lib/exporter.ts`: `buildWorkbook`, `sendWorkbook` — Excel generation utilities

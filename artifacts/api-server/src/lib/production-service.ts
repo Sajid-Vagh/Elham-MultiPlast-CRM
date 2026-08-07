@@ -1882,6 +1882,7 @@ export async function handlePiModification(
       delayedAt: null,
       delayReason: null,
       needsReprint: true,
+      isUpdated: true,
       piVersionAtCreation: newPiVersion,
       updatedAt: now,
       updatedBy: user.id,
@@ -1926,6 +1927,7 @@ export async function handlePiModification(
   await d.update(productionOrdersTable).set({
     piVersionAtCreation: newPiVersion,
     needsReprint: true,
+    isUpdated: true,
     updatedAt: now,
     updatedBy: user.id,
   }).where(eq(productionOrdersTable.id, productionOrderId));

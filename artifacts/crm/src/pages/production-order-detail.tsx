@@ -124,7 +124,10 @@ export default function ProductionOrderDetail() {
     markReadRef.current = id;
     if (!isProductionUser) return;
     customFetch<any>(`/production/orders/${id}/read`, { method: "POST" })
-      .then(() => queryClient.invalidateQueries({ queryKey: ["production-orders"] }))
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ["production-orders"] });
+        queryClient.invalidateQueries({ queryKey: ["production-order", id] });
+      })
       .catch(() => {});
   }, [id, order, isProductionUser, queryClient]);
 
