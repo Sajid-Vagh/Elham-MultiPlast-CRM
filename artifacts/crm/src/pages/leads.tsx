@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Link } from "wouter";
+import { Link, useSearch, useLocation } from "wouter";
 import { useListContacts, useDeleteContact, useBulkDeleteContacts, getListContactsQueryKey, useGetMe } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -75,12 +75,30 @@ function LeadFlagCell({ leadId, value, onSave }: { leadId: number; value: string
 }
 
 export default function Leads() {
+  const searchStr = useSearch();
+  const [, navigate] = useLocation();
+
   const [search, setSearch] = useState("");
   const [salesOwnerId, setSalesOwnerId] = useState<number | undefined>();
   const [city, setCity] = useState<string | undefined>();
-  const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
+  // Category tab is synced to the URL (?category=...) so the browser Back
+  // button from a lead detail page restores the exact tab the user was on.
+  const urlCategory = useMemo(() => {
+    const p = new URLSearchParams(searchStr);
+    return p.get("category") || undefined;
+  }, [searchStr]);
+  const [categoryFilter, setCategoryFilter] = useState<string | undefined>(urlCategory);
   const [unitFilter, setUnitFilter] = useUnitFilter();
   const [dateFilter, setDateFilter] = useDateFilter();
+
+  const updateCategoryFilter = (next: string | undefined) => {
+    setCategoryFilter(next);
+    const p = new URLSearchParams(searchStr);
+    if (next) p.set("category", next);
+    else p.delete("category");
+    const qs = p.toString();
+    navigate(qs ? `/leads?${qs}` : "/leads", { replace: true });
+  };
 
   // Mark Lost
   const [lostContactId, setLostContactId] = useState<number | null>(null);
@@ -356,7 +374,7 @@ export default function Leads() {
               ? "bg-primary text-primary-foreground"
               : "bg-muted text-muted-foreground hover:bg-muted/80"
           }`}
-          onClick={() => setCategoryFilter(undefined)}
+          onClick={() => updateCategoryFilter(undefined)}
         >
           All
           <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
@@ -376,7 +394,7 @@ export default function Leads() {
                   : "bg-muted text-muted-foreground hover:bg-muted/80"
               }`}
               style={categoryFilter === cat ? { backgroundColor: CATEGORY_COLORS[cat] } : {}}
-              onClick={() => setCategoryFilter(categoryFilter === cat ? undefined : cat)}
+              onClick={() => updateCategoryFilter(categoryFilter === cat ? undefined : cat)}
             >
               {cat}
               <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${

@@ -112,8 +112,7 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
     machineType: initial?.machineType || "",
     materialType: initial?.materialType || "",
     hsnCode: initial?.hsnCode || "",
-    defaultUnit: initial?.defaultUnit || "",
-    defaultGst: initial?.defaultGst?.toString() || "",
+    defaultUnit: initial?.defaultUnit || "Pcs",
     bottleWeight: initial?.bottleWeight || "",
     bottleColour: initial?.bottleColour || "",
     bottleColourCode: initial?.bottleColourCode || "",
@@ -211,7 +210,6 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
     materialType: form.materialType || null,
     hsnCode: form.hsnCode || null,
     defaultUnit: form.defaultUnit || null,
-    defaultGst: form.defaultGst ? Number(form.defaultGst) : null,
     bottleWeight: form.bottleWeight || null,
     bottleColour: form.bottleColour || null,
     bottleColourCode: form.bottleColourCode || null,
@@ -267,7 +265,6 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
               {UNIT_OPTIONS.filter(Boolean).map(o => <option key={o} value={o}>{o}</option>)}
             </select>
           </div>
-          <div><Label>Default GST %</Label><Input type="number" value={form.defaultGst} onChange={f("defaultGst")} min={0} max={100} /></div>
           <div><Label>Bottle Weight</Label><Input value={form.bottleWeight} onChange={f("bottleWeight")} /></div>
           <div className="sm:col-span-2"><Label>Bottle Colour</Label>
             <div className="relative mt-1">
@@ -451,7 +448,6 @@ export default function Products() {
               <TableHead>Material</TableHead>
               <TableHead>HSN</TableHead>
               <TableHead>Unit</TableHead>
-              <TableHead>GST%</TableHead>
               <TableHead>Bottle</TableHead>
               <TableHead>Cap</TableHead>
               <TableHead>Status</TableHead>
@@ -460,9 +456,9 @@ export default function Products() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={canManage ? 12 : 11} className="text-center py-8">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={canManage ? 11 : 10} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : products?.length === 0 ? (
-              <TableRow><TableCell colSpan={canManage ? 12 : 11} className="text-center py-8 text-muted-foreground">No products yet.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={canManage ? 11 : 10} className="text-center py-8 text-muted-foreground">No products yet.</TableCell></TableRow>
             ) : (
               products?.map(p => (
                 <TableRow key={p.id}>
@@ -479,7 +475,6 @@ export default function Products() {
                   <TableCell>{p.materialType || "-"}</TableCell>
                   <TableCell className="font-mono text-xs">{p.hsnCode || "-"}</TableCell>
                   <TableCell>{p.defaultUnit || "-"}</TableCell>
-                  <TableCell>{p.defaultGst != null ? `${p.defaultGst}%` : "-"}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5">
                       {(p as any).bottleColourCode && (

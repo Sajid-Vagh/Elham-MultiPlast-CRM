@@ -209,7 +209,7 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto pb-8">
+      <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto pb-8">
         <DialogHeader className="pb-0">
           <DialogTitle className="text-xl font-semibold flex items-center gap-2">
             <Phone className="h-5 w-5 text-primary" />
@@ -236,7 +236,7 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
                 {prevNotesExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
               </button>
               {prevNotesExpanded && (
-                <p className="text-sm mt-2 whitespace-pre-wrap">{prevNotes}</p>
+                <p className="text-sm mt-2 whitespace-pre-wrap break-words overflow-hidden">{prevNotes}</p>
               )}
               {!prevNotesExpanded && (
                 <p className="text-sm mt-1 text-muted-foreground truncate">{prevNotes.substring(0, 100)}{prevNotes.length > 100 ? "..." : ""}</p>
@@ -256,7 +256,7 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
                 {currentNotesExpanded ? <ChevronUp className="h-3.5 w-3.5 text-blue-500" /> : <ChevronDown className="h-3.5 w-3.5 text-blue-500" />}
               </button>
               {currentNotesExpanded && (
-                <p className="text-sm mt-2 text-blue-900 whitespace-pre-wrap">{currentNotes}</p>
+                <p className="text-sm mt-2 text-blue-900 whitespace-pre-wrap break-words overflow-hidden">{currentNotes}</p>
               )}
               {!currentNotesExpanded && (
                 <p className="text-sm mt-1 text-blue-700 truncate">{currentNotes.substring(0, 100)}{currentNotes.length > 100 ? "..." : ""}</p>
