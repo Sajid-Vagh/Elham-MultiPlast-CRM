@@ -178,7 +178,7 @@ export default function CategoriesPage() {
 
     const baseHeaders = [
       "Name", "Company", "Mobile", "City", "Unit", "Category", "Assigned To",
-      "Deal Stage", "Lost Reason", "Last Follow-up", "Next Follow-up",
+      "Latest Deal Stage", "Lost Reason", "Last Follow-up", "Next Follow-up",
       "Latest Comment", "Sales Notes", "Last Updated", "Created Date",
       "Priority", "Lead Source", "Interested Products"
     ];
@@ -237,7 +237,7 @@ export default function CategoriesPage() {
       const row = [
         c.name, c.companyName || "", c.mobile, c.city || "", c.unit || "",
         c.category || "",
-        c.salesOwner?.name || "", deals.map((d: any) => d.stage).join(", ") || "",
+        c.salesOwner?.name || "", c.dealStage ?? deals[0]?.stage ?? "",
         lostReason, fmtDate(c.lastCallDate), fmtDate(c.nextCallDate),
         latestComment, salesNotes, lastUpdated, createdDate,
         priority, leadSource, interestedProducts
@@ -414,7 +414,7 @@ export default function CategoriesPage() {
                     <TableHead>Unit</TableHead>
                     <TableHead>Assigned To</TableHead>
                     <TableHead>Category</TableHead>
-                    <TableHead>Deal Stage</TableHead>
+                    <TableHead>Latest Deal Stage</TableHead>
                     <TableHead>Lost Reason</TableHead>
                     <TableHead>Last Follow-up</TableHead>
                     <TableHead>Next Follow-up</TableHead>
@@ -444,9 +444,7 @@ export default function CategoriesPage() {
                         <TableCell>{c.salesOwner?.name || "-"}</TableCell>
                         <TableCell><CategoryBadge category={c.category} /></TableCell>
                         <TableCell>
-                          {c.deals?.length > 0
-                            ? c.deals.map((d: any) => d.stage).join(", ")
-                            : "-"}
+                          {c.dealStage ?? c.deals?.[0]?.stage ?? "-"}
                         </TableCell>
                         <TableCell>
                           {c.deals?.length > 0

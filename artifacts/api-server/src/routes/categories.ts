@@ -20,6 +20,15 @@ function buildUnitCondition(unit: string | undefined): SQL | undefined {
   return eq(contactsTable.unit, unit);
 }
 
+// Return the single most recent deal's stage (createdAt DESC) plus the deals array sorted newest-first,
+// so callers can show just the latest stage while other columns still access all deals.
+function sortDealsByRecent(deals: (typeof dealsTable.$inferSelect)[]): { dealStage: string | null; sortedDeals: (typeof dealsTable.$inferSelect)[] } {
+  const sortedDeals = [...deals].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+  return { dealStage: sortedDeals[0]?.stage ?? null, sortedDeals };
+}
+
 router.get("/categories/counts", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
@@ -220,18 +229,22 @@ router.get("/categories/:category/contacts", async (req, res) => {
       dealProductsByDeal.get(dp.dealId)!.push(dp);
     }
 
-    res.json(contacts.map(c => ({
-      ...c,
-      salesOwner: userMap.get(c.salesOwnerId) ?? null,
-      deals: (dealsByContact.get(c.id) ?? []).map(d => ({
-        ...d,
-        products: (dealProductsByDeal.get(d.id) ?? []).map(dp => ({
-          ...dp,
-          product: productMap.get(dp.productId) ?? null
-        }))
-      })),
-      activities: activitiesByContact.get(c.id) ?? []
-    })));
+    res.json(contacts.map(c => {
+      const { dealStage, sortedDeals } = sortDealsByRecent(dealsByContact.get(c.id) ?? []);
+      return {
+        ...c,
+        salesOwner: userMap.get(c.salesOwnerId) ?? null,
+        dealStage,
+        deals: sortedDeals.map(d => ({
+          ...d,
+          products: (dealProductsByDeal.get(d.id) ?? []).map(dp => ({
+            ...dp,
+            product: productMap.get(dp.productId) ?? null
+          }))
+        })),
+        activities: activitiesByContact.get(c.id) ?? []
+      };
+    }));
   } catch (err) {
     req.log.error({ err }, "Get category contacts error");
     res.status(500).json({ success: false, error: "Internal Server Error" });
@@ -308,11 +321,15 @@ router.get("/categories/:category/contacts/search", async (req, res) => {
       dealsByContact.get(d.contactId)!.push(d);
     }
 
-    res.json(contacts.map(c => ({
-      ...c,
-      salesOwner: userMap.get(c.salesOwnerId) ?? null,
-      deals: dealsByContact.get(c.id) ?? []
-    })));
+    res.json(contacts.map(c => {
+      const { dealStage, sortedDeals } = sortDealsByRecent(dealsByContact.get(c.id) ?? []);
+      return {
+        ...c,
+        salesOwner: userMap.get(c.salesOwnerId) ?? null,
+        dealStage,
+        deals: sortedDeals
+      };
+    }));
   } catch (err) {
     req.log.error({ err }, "Search category contacts error");
     res.status(500).json({ success: false, error: "Internal Server Error" });
