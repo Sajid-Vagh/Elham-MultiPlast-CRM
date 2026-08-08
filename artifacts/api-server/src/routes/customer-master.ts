@@ -132,7 +132,7 @@ router.post("/customer-master", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { companyName, tradeName, contactPerson, gstin, addressLine1, addressLine2, addressLine3, city, district, state, pincode, mobile, email, customerType, gstStatus, businessConstitution, notes, linkedContactId } = req.body;
+    const { companyName, tradeName, contactPerson, gstin, addressLine1, addressLine2, addressLine3, city, district, state, pincode, mobile, email, customerType, gstStatus, businessConstitution, notes, linkedContactId, idProofType, idProofNumber } = req.body;
 
     if (!companyName && !mobile) {
       res.status(400).json({ error: "Company name or mobile number is required" });
@@ -141,18 +141,31 @@ router.post("/customer-master", async (req, res) => {
 
     const normalizedGstin = gstin ? gstin.toUpperCase().trim() : null;
     const normalizedMobile = mobile ? mobile.replace(/\s/g, "").trim() : null;
+    const normalizedIdProofNumber = idProofNumber ? idProofNumber.toUpperCase().trim() : null;
 
-    // Mobile-only profiles are NOT merged by find-or-create — `mobile` is not unique and
-    // two different companies may legitimately share a phone number. Keep the explicit
-    // duplicate check for that case (a 409 → the client adopts the existing profile).
-    if (!normalizedGstin && normalizedMobile) {
-      const [existing] = await db
-        .select()
-        .from(customerMasterTable)
-        .where(and(eq(customerMasterTable.mobile, normalizedMobile), eq(customerMasterTable.isDeleted, false)));
-      if (existing) {
-        res.status(409).json({ error: "Customer with this mobile number already exists", existing });
-        return;
+    // Duplicate pre-check for profiles WITHOUT a GSTIN. Unregistered profiles are keyed by
+    // their ID proof number (PAN/Aadhaar are unique per person); only fall back to the mobile
+    // duplicate check when no ID proof was provided. A 409 → the client adopts the existing
+    // profile instead of creating a duplicate.
+    if (!normalizedGstin) {
+      if (idProofType && normalizedIdProofNumber) {
+        const [existing] = await db
+          .select()
+          .from(customerMasterTable)
+          .where(and(eq(customerMasterTable.idProofNumber, normalizedIdProofNumber), eq(customerMasterTable.isDeleted, false)));
+        if (existing) {
+          res.status(409).json({ error: "Customer with this ID proof already exists", existing });
+          return;
+        }
+      } else if (normalizedMobile) {
+        const [existing] = await db
+          .select()
+          .from(customerMasterTable)
+          .where(and(eq(customerMasterTable.mobile, normalizedMobile), eq(customerMasterTable.isDeleted, false)));
+        if (existing) {
+          res.status(409).json({ error: "Customer with this mobile number already exists", existing });
+          return;
+        }
       }
     }
 
@@ -161,6 +174,8 @@ router.post("/customer-master", async (req, res) => {
       tradeName: tradeName || null,
       contactPerson: contactPerson || null,
       gstin: normalizedGstin,
+      idProofType: normalizedGstin ? null : (idProofType || null),
+      idProofNumber: normalizedGstin ? null : normalizedIdProofNumber,
       addressLine1: addressLine1 || null,
       addressLine2: addressLine2 || null,
       addressLine3: addressLine3 || null,
@@ -252,13 +267,15 @@ router.patch("/customer-master/:id", async (req, res) => {
 
     if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
-    const { companyName, tradeName, contactPerson, gstin, addressLine1, addressLine2, addressLine3, city, district, state, pincode, mobile, email, customerType, gstStatus, businessConstitution, notes, linkedContactId } = req.body;
+    const { companyName, tradeName, contactPerson, gstin, addressLine1, addressLine2, addressLine3, city, district, state, pincode, mobile, email, customerType, gstStatus, businessConstitution, notes, linkedContactId, idProofType, idProofNumber } = req.body;
 
     const updateData: any = {};
     if (companyName !== undefined) updateData.companyName = companyName;
     if (tradeName !== undefined) updateData.tradeName = tradeName;
     if (contactPerson !== undefined) updateData.contactPerson = contactPerson;
     if (gstin !== undefined) updateData.gstin = gstin ? gstin.toUpperCase().trim() : null;
+    if (idProofType !== undefined) updateData.idProofType = idProofType;
+    if (idProofNumber !== undefined) updateData.idProofNumber = idProofNumber ? idProofNumber.toUpperCase().trim() : null;
     if (addressLine1 !== undefined) updateData.addressLine1 = addressLine1;
     if (addressLine2 !== undefined) updateData.addressLine2 = addressLine2;
     if (addressLine3 !== undefined) updateData.addressLine3 = addressLine3;

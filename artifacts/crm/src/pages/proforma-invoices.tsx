@@ -950,6 +950,16 @@ const selectProduct = (idx: number, product: any) => {
     if (customer.gstin) setGstNumber(customer.gstin);
     if (customer.customerType) setCustomerType(customer.customerType === "Unregistered" ? "Unregistered" : "GST");
     if (customer.gstStatus) setGstStatus(customer.gstStatus);
+    if (customer.idProofType) setIdProofType(customer.idProofType);
+    if (customer.idProofNumber) setIdProofNumber(customer.idProofNumber);
+    // GST profiles carry no ID proof; unregistered profiles carry no GST number.
+    if (customer.customerType === "GST") {
+      setIdProofType("");
+      setIdProofNumber("");
+    } else if (customer.customerType === "Unregistered") {
+      setGstNumber("");
+      setGstStatus("");
+    }
     setCustomerMasterId(customer.id);
   };
 
@@ -975,12 +985,12 @@ const selectProduct = (idx: number, product: any) => {
     setGstVerified(false);
     setGstVerificationResult(null);
     setShowBusinessDetails(false);
-    toast({ title: "New GST Profile", description: `Billing fields cleared — enter new GST details for ${mobile}` });
+    toast({ title: "New Customer Profile", description: `Billing fields cleared — enter new billing details for ${mobile}` });
   };
 
   const handleDeleteProfile = async (profile: any) => {
     if (!profile?.id) return;
-    if (!window.confirm(`Are you sure you want to delete this GST profile?\n\n${profile.companyName || "Unknown"}${profile.gstin ? ` — ${profile.gstin}` : ""}\n\nThis cannot be undone.`)) return;
+    if (!window.confirm(`Are you sure you want to delete this customer profile?\n\n${profile.companyName || "Unknown"}${profile.gstin ? ` — ${profile.gstin}` : profile.idProofNumber ? ` — ${profile.idProofType}: ${profile.idProofNumber}` : ""}\n\nThis cannot be undone.`)) return;
     try {
       const res = await fetch(`/api/customer-master/${profile.id}`, {
         method: "DELETE",
@@ -1113,9 +1123,17 @@ const selectProduct = (idx: number, product: any) => {
 
   const handleSaveCustomer = async () => {
     const gstin = gstNumber.toUpperCase().trim();
-    if (!gstin || !companyName) {
-      toast({ title: "Error", description: "Company name and GSTIN are required to save customer", variant: "destructive" });
-      return;
+    const isGst = customerType === "GST";
+    if (isGst) {
+      if (!gstin || !companyName) {
+        toast({ title: "Error", description: "Company name and GSTIN are required to save customer", variant: "destructive" });
+        return;
+      }
+    } else {
+      if (!customerName.trim() || !idProofType || !idProofNumber.trim()) {
+        toast({ title: "Error", description: "Party name, ID proof type and ID proof number are required to save the customer profile", variant: "destructive" });
+        return;
+      }
     }
     setSavingCustomer(true);
     try {
@@ -1125,7 +1143,9 @@ const selectProduct = (idx: number, product: any) => {
         body: JSON.stringify({
           companyName: customerName,
           tradeName: tradeName || null,
-          gstin,
+          gstin: isGst ? gstin : null,
+          idProofType: isGst ? null : (idProofType || null),
+          idProofNumber: isGst ? null : (idProofNumber.trim() || null),
           addressLine1: addressLine1 || null,
           addressLine2: addressLine2 || null,
           addressLine3: addressLine3 || null,
@@ -1135,13 +1155,13 @@ const selectProduct = (idx: number, product: any) => {
           pincode: pincode || null,
           mobile: mobile || null,
           customerType,
-          gstStatus: gstStatus || "Active",
+          gstStatus: isGst ? (gstStatus || "Active") : null,
           linkedContactId: selectedLead?.id || urlContactId,
         }),
       });
       if (res.status === 409) {
         const err = await res.json();
-        toast({ title: "Customer Already Exists", description: "This GSTIN is already saved in Customer Master", variant: "default" });
+        toast({ title: "Customer Already Exists", description: err.error || "This customer profile is already saved in Customer Master", variant: "default" });
         setExistingCustomer(err.existing);
         setCustomerMasterId(err.existing.id);
         applyExistingCustomer(err.existing);
@@ -1189,6 +1209,8 @@ const selectProduct = (idx: number, product: any) => {
           mobile: mobile || null,
           customerType,
           gstStatus: gstStatus || "Active",
+          idProofType: customerType === "Unregistered" ? (idProofType || null) : null,
+          idProofNumber: customerType === "Unregistered" ? (idProofNumber.trim() || null) : null,
         }),
       });
       if (res.ok) {
@@ -1321,7 +1343,8 @@ const selectProduct = (idx: number, product: any) => {
         const gstin = gstNumber.toUpperCase().trim();
         const hasGstin = gstin.length === 15;
         const hasMobileAndName = mobile && mobile.length >= 10 && companyName;
-        if (hasGstin || hasMobileAndName) {
+        const hasIdProof = customerType === "Unregistered" && idProofType && idProofNumber.trim();
+        if (hasGstin || hasMobileAndName || hasIdProof) {
           try {
             const cmRes = await fetch("/api/customer-master", {
               method: "POST",
@@ -1330,6 +1353,8 @@ const selectProduct = (idx: number, product: any) => {
                 companyName: customerName,
                 tradeName: tradeName || null,
                 gstin: hasGstin ? gstin : null,
+                idProofType: !hasGstin ? (idProofType || null) : null,
+                idProofNumber: !hasGstin ? (idProofNumber.trim() || null) : null,
                 addressLine1: addressLine1 || null,
                 addressLine2: addressLine2 || null,
                 addressLine3: addressLine3 || null,
@@ -1965,16 +1990,16 @@ ${pagesHtml}
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* GST Profile section */}
+              {/* Customer Profile section */}
               <div>
-                <p className="text-xs font-medium text-green-700 uppercase tracking-wide mb-2">GST Profile {gstProfiles.length > 1 ? `(${gstProfiles.length} found)` : "Found"}</p>
+                <p className="text-xs font-medium text-green-700 uppercase tracking-wide mb-2">Customer Profile {gstProfiles.length > 1 ? `(${gstProfiles.length} found)` : "Found"}</p>
                 <div className="bg-white border border-green-200 rounded-lg p-3">
                   {addingNewProfile ? (
                     <div className="text-sm">
                       <p className="font-medium text-green-800 flex items-center gap-1.5">
-                        <Plus className="h-3.5 w-3.5" /> Creating a new GST profile for {mobile}
+                        <Plus className="h-3.5 w-3.5" /> Creating a new customer profile for {mobile}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-1">Billing fields below have been cleared. Enter the new company's GST details.</p>
+                      <p className="text-xs text-muted-foreground mt-1">Billing fields below have been cleared. Enter the new company's billing details.</p>
                     </div>
                   ) : (
                     <>
@@ -1984,8 +2009,8 @@ ${pagesHtml}
                           <p className="font-medium">{gstProfiles[selectedProfileIndex]?.companyName || "—"}</p>
                         </div>
                         <div>
-                          <span className="text-muted-foreground text-xs">GSTIN:</span>
-                          <p className="font-mono text-xs">{gstProfiles[selectedProfileIndex]?.gstin || "—"}</p>
+                          <span className="text-muted-foreground text-xs">GSTIN / ID Proof:</span>
+                          <p className="font-mono text-xs">{gstProfiles[selectedProfileIndex]?.gstin || (gstProfiles[selectedProfileIndex]?.idProofType && gstProfiles[selectedProfileIndex]?.idProofNumber ? `${gstProfiles[selectedProfileIndex].idProofType}: ${gstProfiles[selectedProfileIndex].idProofNumber}` : "—")}</p>
                         </div>
                         <div>
                           <span className="text-muted-foreground text-xs">Billing Address:</span>
@@ -2010,7 +2035,7 @@ ${pagesHtml}
                             <SelectContent>
                               {gstProfiles.map((p: any, i: number) => (
                                 <SelectItem key={p.id} value={String(i)}>
-                                  {p.companyName} — {p.gstin}
+                                  {p.companyName} — {p.gstin || (p.customerType === "Unregistered" && p.idProofType && p.idProofNumber ? `${p.idProofType}: ${p.idProofNumber}` : "")}
                                 </SelectItem>
                               ))}
                               <SelectItem value="new">
@@ -2165,17 +2190,17 @@ ${pagesHtml}
                 </div>
               )}
 
-              {/* GST Profile Selector */}
+              {/* Customer Profile Selector */}
               {gstProfiles.length >= 1 && (
                 <div className="sm:col-span-2">
-                  <Label>Select GST Profile</Label>
-                  <p className="text-xs text-muted-foreground mt-0.5">{gstProfiles.length > 1 ? `Multiple GST profiles found for this mobile number. Select the billing profile, or add a new one.` : `GST profile found for this mobile number. Use it, or add a new one.`}</p>
+                  <Label>Select Customer Profile</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">{gstProfiles.length > 1 ? `Multiple customer profiles found for this mobile number. Select the billing profile, or add a new one.` : `Customer profile found for this mobile number. Use it, or add a new one.`}</p>
                   <div className="space-y-2 mt-1">
                     {gstProfiles.map((profile: any, idx: number) => (
                       <div key={profile.id} className={`relative flex items-center justify-between p-3 pr-8 border rounded-md cursor-pointer transition-colors ${selectedProfileIndex === idx && !addingNewProfile ? "border-green-500 bg-green-50" : "hover:bg-muted/50"}`} onClick={() => { setAddingNewProfile(false); setSelectedProfileIndex(idx); applyExistingCustomer(profile); }}>
                         <button
                           type="button"
-                          title="Delete GST profile"
+                          title="Delete customer profile"
                           className="absolute top-1.5 right-1.5 p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors"
                           onClick={(e) => { e.stopPropagation(); handleDeleteProfile(profile); }}
                         >
@@ -2185,7 +2210,7 @@ ${pagesHtml}
                           <span className="text-sm font-medium">{profile.companyName}</span>
                           {profile.tradeName && <span className="text-xs text-muted-foreground ml-2">({profile.tradeName})</span>}
                           <div className="flex gap-3 mt-1">
-                            <span className="text-xs text-muted-foreground">{profile.gstin}</span>
+                            <span className="text-xs text-muted-foreground">{profile.gstin || (profile.customerType === "Unregistered" && profile.idProofType && profile.idProofNumber ? `${profile.idProofType}: ${profile.idProofNumber}` : "")}</span>
                             <span className="text-xs text-muted-foreground">{profile.city || ""}</span>
                           </div>
                         </div>
@@ -2436,11 +2461,14 @@ ${pagesHtml}
             </div>
 
             {/* Customer Master actions */}
-            {!customerMasterId && !existingCustomer && gstNumber.trim().length >= 15 && companyName.trim() && (
+            {!customerMasterId && !existingCustomer && (
+              (customerType === "GST" && gstNumber.trim().length >= 15 && companyName.trim()) ||
+              (customerType === "Unregistered" && customerName.trim() && idProofType && idProofNumber.trim())
+            ) && (
               <div className="sm:col-span-2">
                 <Button onClick={handleSaveCustomer} disabled={savingCustomer} className="w-full gap-2">
                   {savingCustomer ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  {savingCustomer ? "Saving..." : "Save Customer"}
+                  {savingCustomer ? "Saving..." : customerType === "Unregistered" ? "Save Customer Profile" : "Save Customer"}
                 </Button>
               </div>
             )}

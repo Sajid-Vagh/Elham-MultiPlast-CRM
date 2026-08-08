@@ -21,6 +21,8 @@ export const customerMasterTable = pgTable("customer_master", {
   email: text("email"),
   customerType: text("customer_type").default("GST"),
   gstStatus: text("gst_status").default("Active"),
+  idProofType: text("id_proof_type"),
+  idProofNumber: text("id_proof_number"),
   businessConstitution: text("business_constitution"),
   notes: text("notes"),
   linkedContactId: integer("linked_contact_id").references(() => contactsTable.id, { onDelete: "set null" }),
