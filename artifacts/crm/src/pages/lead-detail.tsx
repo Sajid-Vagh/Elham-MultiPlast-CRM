@@ -623,7 +623,9 @@ export default function LeadDetail() {
       <Card className="sticky top-0 z-10 shadow-sm border-b">
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-            <Link href="/leads"><Button variant="ghost" size="sm" className="shrink-0 -ml-2"><ArrowLeft className="h-4 w-4 mr-1" /> Back</Button></Link>
+            <Button variant="ghost" size="sm" className="shrink-0 -ml-2" onClick={() => { if (window.history.length > 1) window.history.back(); else setLocation("/leads"); }}>
+              <ArrowLeft className="h-4 w-4 mr-1" /> Back
+            </Button>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 {owner && <UserAvatar profilePhoto={owner.profilePhoto} name={owner.name} className="w-3 h-3 shrink-0" />}
