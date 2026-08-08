@@ -586,6 +586,30 @@ router.post("/contacts/:id/read", async (req, res) => {
   }
 });
 
+// PATCH /contacts/:id/read-status — Manually set a lead's read/unread state (row actions menu).
+// Marking read also clears the repeat-enquiry flag (matches POST /contacts/:id/read); marking
+// unread preserves isRepeatEnquiry so repeat enquiries keep their yellow dot. No updatedAt bump,
+// so the Leads sort order is preserved.
+router.patch("/contacts/:id/read-status", async (req, res) => {
+  try {
+    const access = await requireContactAccess(req, res);
+    if (!access) return;
+    const { contact } = access;
+    const isRead = req.body?.isRead === true;
+    const [updated] = await db
+      .update(contactsTable)
+      .set(isRead
+        ? { isRead: true, isRepeatEnquiry: false }
+        : { isRead: false })
+      .where(eq(contactsTable.id, contact.id))
+      .returning();
+    res.json(await withOwner(updated!));
+  } catch (err) {
+    req.log.error({ err }, "Set contact read-status error");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
+
 // POST /contacts/mark-all-read — Bulk mark all leads as read in the current user's scope.
 // Sales users mark only their own leads; admins/support mark all unread leads within their
 // accessible units. Only touches rows that actually need updating (efficient single UPDATE).

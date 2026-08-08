@@ -1,14 +1,14 @@
 import { useState, useMemo, useEffect } from "react";
 import { Link, useSearch, useLocation } from "wouter";
 import { useListContacts, useDeleteContact, useBulkDeleteContacts, getListContactsQueryKey, useGetMe } from "@workspace/api-client-react";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Trash2, MessageSquare, MoreVertical, XCircle, CheckCheck } from "lucide-react";
+import { Plus, Search, Trash2, MessageSquare, MoreVertical, XCircle, CheckCheck, Mail, MailOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
@@ -321,6 +321,41 @@ export default function Leads() {
     }).catch(() => {});
   };
 
+  // Manual read/unread toggle from the row actions menu. Optimistic so the dot flips instantly.
+  const toggleReadMutation = useMutation({
+    mutationFn: async ({ id, isRead }: { id: number; isRead: boolean }) => {
+      const res = await fetch(`/api/contacts/${id}/read-status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("crm_token")}`,
+        },
+        body: JSON.stringify({ isRead }),
+      });
+      if (!res.ok) throw new Error("Failed to update read status");
+      return res.json();
+    },
+    onMutate: ({ id, isRead }) => {
+      queryClient.setQueriesData<any[]>(
+        { queryKey: ["leads-contacts"] },
+        (old) =>
+          old?.map((c) =>
+            c.id === id
+              ? { ...c, isRead, isRepeatEnquiry: isRead ? false : c.isRepeatEnquiry }
+              : c
+          ) ?? old
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
+    },
+    onError: (err: any) => {
+      queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
+      toast({ title: "Failed to update read status", description: err?.message || "Please try again", variant: "destructive" });
+    },
+  });
+
   const handleMarkAllRead = async () => {
     setMarkAllReadSubmitting(true);
     try {
@@ -613,6 +648,19 @@ export default function Leads() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                           <DropdownMenuItem onClick={() => toggleReadMutation.mutate({ id: contact.id, isRead: !contact.isRead })}>
+                            {contact.isRead ? (
+                              <>
+                                <Mail className="h-4 w-4 mr-2 text-muted-foreground" />
+                                <span>Mark Unread</span>
+                              </>
+                            ) : (
+                              <>
+                                <MailOpen className="h-4 w-4 mr-2 text-primary" />
+                                <span>Mark Read</span>
+                              </>
+                            )}
+                          </DropdownMenuItem>
                            <DropdownMenuItem onClick={() => { setLostContactId(contact.id); setLostIsExistingClient(contact.category === "My Client"); setLostOpen(true); }}>
                             <XCircle className="h-4 w-4 mr-2 text-red-500" />
                             <span>Mark Lost</span>
