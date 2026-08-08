@@ -414,7 +414,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0 h-full overflow-y-auto">
+      <main className="flex-1 min-w-0 h-full overflow-y-auto" data-scroll-region>
         {children}
       </main>
 

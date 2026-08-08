@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link, useSearch, useLocation } from "wouter";
 import { useListContacts, useDeleteContact, useBulkDeleteContacts, getListContactsQueryKey, useGetMe } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
@@ -25,6 +25,28 @@ import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
 const LEAD_FLAGS_KEY = "crm_lead_flags";
+
+// ── Scroll position restoration ──────────────────────────────────────────
+// The layout scrolls an inner <main data-scroll-region> container, not the
+// window, so window.scrollY is always 0 here. Before a lead row is opened we
+// stash the container's scrollTop on the CURRENT /leads history entry via
+// history.replaceState (the entry we're about to leave). When the user returns
+// with the browser/Back button, that exact entry is restored and we re-apply
+// the offset after the list has rendered, then clear the marker so a later
+// sidebar navigation to /leads starts from the top instead of re-applying a
+// stale position.
+const LEADS_SCROLL_STATE_KEY = "leadsScrollY";
+
+const getLeadsScrollContainer = () => document.querySelector<HTMLElement>("main[data-scroll-region]");
+
+const saveLeadsScrollPosition = () => {
+  const el = getLeadsScrollContainer();
+  if (!el) return;
+  const prev = window.history.state && typeof window.history.state === "object"
+    ? window.history.state as Record<string, unknown>
+    : {};
+  window.history.replaceState({ ...prev, [LEADS_SCROLL_STATE_KEY]: el.scrollTop }, "");
+};
 
 function loadLeadFlags(): Record<string, string> {
   if (typeof window === "undefined") return {};
@@ -187,6 +209,26 @@ export default function Leads() {
     staleTime: 10_000,
   });
   const { data: users } = useCustomerFacingUsers();
+
+  // Restore the saved scroll offset once the list has rendered. Runs after the
+  // initial load flips isLoading=false (data present, table in the DOM), then
+  // clears the marker so subsequent /leads mounts start at the top.
+  useEffect(() => {
+    if (isLoading) return;
+    const state = window.history.state;
+    const saved = state && typeof state === "object"
+      ? (state as Record<string, unknown>)[LEADS_SCROLL_STATE_KEY]
+      : undefined;
+    if (saved == null) return;
+    const current = window.history.state;
+    if (current && typeof current === "object") {
+      const next = { ...(current as Record<string, unknown>) };
+      delete next[LEADS_SCROLL_STATE_KEY];
+      window.history.replaceState(next, "");
+    }
+    const el = getLeadsScrollContainer();
+    if (el) el.scrollTop = Number(saved);
+  }, [isLoading]);
 
   const unreadCount = contacts?.filter((c: any) => !c.isRead).length ?? 0;
 
@@ -491,7 +533,7 @@ export default function Leads() {
                       )}
                       <Link
                         href={`/leads/${contact.id}`}
-                        onClick={() => markLeadAsRead(contact.id)}
+                        onClick={() => { saveLeadsScrollPosition(); markLeadAsRead(contact.id); }}
                         className="hover:underline text-primary"
                       >
                         {contact.name}
