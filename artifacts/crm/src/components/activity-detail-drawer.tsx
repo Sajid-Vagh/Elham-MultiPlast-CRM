@@ -209,7 +209,7 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto pb-8">
+      <DialogContent className="md:max-w-3xl w-full max-h-[90vh] overflow-y-auto overflow-x-hidden pb-8">
         <DialogHeader className="pb-0">
           <DialogTitle className="text-xl font-semibold flex items-center gap-2">
             <Phone className="h-5 w-5 text-primary" />
@@ -223,7 +223,7 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
           )}
         </DialogHeader>
 
-        <div className="space-y-5 py-4">
+        <div className="space-y-5 py-4 w-full min-w-0 overflow-x-hidden">
           {/* Previous Call Notes */}
           {prevNotes && (
             <div className="rounded-lg border bg-muted/20 p-3">
@@ -236,7 +236,7 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
                 {prevNotesExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
               </button>
               {prevNotesExpanded && (
-                <p className="text-sm mt-2 whitespace-pre-wrap break-words overflow-hidden">{prevNotes}</p>
+                <p className="text-sm mt-2 whitespace-pre-wrap break-words overflow-hidden w-full">{prevNotes}</p>
               )}
               {!prevNotesExpanded && (
                 <p className="text-sm mt-1 text-muted-foreground truncate">{prevNotes.substring(0, 100)}{prevNotes.length > 100 ? "..." : ""}</p>
@@ -256,7 +256,7 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
                 {currentNotesExpanded ? <ChevronUp className="h-3.5 w-3.5 text-blue-500" /> : <ChevronDown className="h-3.5 w-3.5 text-blue-500" />}
               </button>
               {currentNotesExpanded && (
-                <p className="text-sm mt-2 text-blue-900 whitespace-pre-wrap break-words overflow-hidden">{currentNotes}</p>
+                <p className="text-sm mt-2 text-blue-900 whitespace-pre-wrap break-words overflow-hidden w-full">{currentNotes}</p>
               )}
               {!currentNotesExpanded && (
                 <p className="text-sm mt-1 text-blue-700 truncate">{currentNotes.substring(0, 100)}{currentNotes.length > 100 ? "..." : ""}</p>
