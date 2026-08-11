@@ -350,6 +350,7 @@ export default function TransportLogisticsLookup() {
       toast({ title: "Transport record updated" });
       setAddOpen(false);
       setEditingId(null);
+      setTransportForm(EMPTY_TRANSPORT_FORM);
     },
     onError: (e: any) => toast({ title: e.message || "Error", variant: "destructive" }),
   });
@@ -376,6 +377,7 @@ export default function TransportLogisticsLookup() {
       toast({ title: "Packing record updated" });
       setAddOpen(false);
       setEditingId(null);
+      setBundleForm(EMPTY_BUNDLE_FORM);
     },
     onError: (e: any) => toast({ title: e.message || "Error", variant: "destructive" }),
   });

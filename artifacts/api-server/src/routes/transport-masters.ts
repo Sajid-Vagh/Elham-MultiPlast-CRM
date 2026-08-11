@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, productBundleMasterTable, transportDestinationMasterTable, importBatchesTable, auditLogsTable, ordersTable, orderItemsTable } from "@workspace/db";
 import { eq, and, sql, ilike, or, isNull, desc } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
+import { requireAuth } from "../middlewares/auth";
 import { canManageTransportLookup, canImportTransportLookup, canUndoImport, canDeleteTransportLookup, canEditTransportLookup, type PermissionUser } from "../lib/permission-service";
 
 const router: IRouter = Router();
@@ -237,32 +238,21 @@ router.post("/transport-masters/destinations", async (req, res) => {
 });
 
 // Update destination (admin/support only) with audit
-router.patch("/transport-masters/destinations/:id", async (req, res) => {
+router.patch("/transport-masters/destinations/:id", requireAuth, async (req, res) => {
   try {
-    const user = await authUser(req);
+    const user = req.user;
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
     if (!canEditTransportLookup(user)) { res.status(403).json({ error: "Admin or Support only" }); return; }
 
     const id = Number(req.params.id);
+    if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     const [existing] = await db.select().from(transportDestinationMasterTable).where(eq(transportDestinationMasterTable.id, id));
     if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
-    const updateData: any = { updatedAt: new Date(), updatedBy: user.id };
-    const fields = ["state", "city", "pinCode", "transportCompany", "transportType", "transitDays", "remarks", "isActive", "productionUnit",
-      "transportZone", "distanceKm", "weightSlabMin", "weightSlabMax", "vehicleType", "minFreight", "maxFreight"];
-    for (const f of fields) {
-      const dbCol = f.replace(/([A-Z])/g, "_$1").toLowerCase();
-      if (req.body[f] !== undefined) {
-        updateData[dbCol] = f === "isActive" ? req.body[f] : (typeof req.body[f] === "string" ? req.body[f].trim() : req.body[f]);
-        if (f === "productionUnit") updateData[dbCol] = req.body[f] && req.body[f] !== "all" ? req.body[f] : null;
-        if (f === "transitDays" || f === "weightSlabMin" || f === "weightSlabMax") updateData[dbCol] = req.body[f] ? Number(req.body[f]) : null;
-      }
-    }
-    if (req.body.transportCharge !== undefined) updateData.transport_charge = String(req.body.transportCharge);
-    if (req.body.tciBora !== undefined) updateData.tci_bora = String(Number(req.body.tciBora) || 0);
-    if (req.body.normalBora !== undefined) updateData.normal_bora = String(Number(req.body.normalBora) || 0);
-    if (req.body.minFreight !== undefined) updateData.min_freight = req.body.minFreight ? String(req.body.minFreight) : null;
-    if (req.body.maxFreight !== undefined) updateData.max_freight = req.body.maxFreight ? String(req.body.maxFreight) : null;
+    // Whitelist: only body fields that map to table columns are used by Drizzle's
+    // buildUpdateSet (unknown keys are ignored). Strip columns that must never change.
+    const { id: _bodyId, createdAt: _bodyCreatedAt, createdBy: _bodyCreatedBy, importBatchId: _bodyImportBatchId, ...body } = req.body;
+    const updateData: any = { ...body, updatedAt: new Date(), updatedBy: user.id };
 
     const [updated] = await db.update(transportDestinationMasterTable).set(updateData).where(eq(transportDestinationMasterTable.id, id)).returning();
 
@@ -668,24 +658,21 @@ router.post("/transport-masters/bundles", async (req, res) => {
 });
 
 // Update bundle (admin/support only) with audit
-router.patch("/transport-masters/bundles/:id", async (req, res) => {
+router.patch("/transport-masters/bundles/:id", requireAuth, async (req, res) => {
   try {
-    const user = await authUser(req);
+    const user = req.user;
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
     if (!canEditTransportLookup(user)) { res.status(403).json({ error: "Admin or Support only" }); return; }
 
     const id = Number(req.params.id);
+    if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     const [existing] = await db.select().from(productBundleMasterTable).where(eq(productBundleMasterTable.id, id));
     if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
-    const updateData: any = { updatedAt: new Date(), updatedBy: user.id };
-    if (req.body.productName !== undefined) updateData.product_name = req.body.productName.trim();
-    if (req.body.bundleSize !== undefined) updateData.bundle_size = Number(req.body.bundleSize);
-    if (req.body.linerPackingQty !== undefined) updateData.liner_packing_qty = Number(req.body.linerPackingQty);
-    if (req.body.bora !== undefined) updateData.bora = Number(req.body.bora);
-    if (req.body.isActive !== undefined) updateData.is_active = req.body.isActive;
-    if (req.body.productionUnit !== undefined) updateData.production_unit = req.body.productionUnit && req.body.productionUnit !== "all" ? req.body.productionUnit : null;
-    if (req.body.remarks !== undefined) updateData.remarks = req.body.remarks?.trim() || null;
+    // Whitelist: only body fields that map to table columns are used by Drizzle's
+    // buildUpdateSet (unknown keys are ignored). Strip columns that must never change.
+    const { id: _bodyId, createdAt: _bodyCreatedAt, createdBy: _bodyCreatedBy, importBatchId: _bodyImportBatchId, ...body } = req.body;
+    const updateData: any = { ...body, updatedAt: new Date(), updatedBy: user.id };
 
     const [updated] = await db.update(productBundleMasterTable).set(updateData).where(eq(productBundleMasterTable.id, id)).returning();
 
