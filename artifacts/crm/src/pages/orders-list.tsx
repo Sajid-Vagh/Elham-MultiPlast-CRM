@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Package, Search, Calendar, ChevronDown, ChevronRight, Filter, X, RefreshCw, Users } from "lucide-react";
+import { Package, Search, Calendar, ChevronDown, ChevronRight, Filter, X, RefreshCw, Users, MessageCircle } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useAllUsers } from "@/lib/use-all-users";
@@ -92,6 +92,8 @@ interface OrderRow {
   totalQuantity: number;
   formattedOrderId: string | null;
   customerCode: string | null;
+  hasUnreadMessages?: boolean;
+  unreadMessageCount?: number;
   products: { productName: string; bottleWeight: string | null; bottleColour: string | null; machineType: string | null; quantity: number }[];
 }
 
@@ -269,7 +271,14 @@ export default function OrdersList() {
                           {expandedRow === order.id ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                         </TableCell>
                         <TableCell className="font-medium">
-                          <span className="font-mono">{order.orderNumber}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono">{order.orderNumber}</span>
+                            {order.hasUnreadMessages ? (
+                              <span title={`${order.unreadMessageCount || 1} unread message${(order.unreadMessageCount || 1) > 1 ? "s" : ""}`} className="relative inline-flex">
+                                <MessageCircle className="h-3.5 w-3.5 text-emerald-500 fill-emerald-500/20" />
+                              </span>
+                            ) : null}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <p className="font-medium text-sm">{(() => { const n = order.customerName || "-"; const cc = order.customerCode; return cc && !n.includes(cc) ? `${n} (${cc})` : n; })()}</p>

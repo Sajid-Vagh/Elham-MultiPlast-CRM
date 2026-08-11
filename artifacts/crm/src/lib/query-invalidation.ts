@@ -119,6 +119,7 @@ export function onProductionChange(queryClient: QueryClient, orderId?: string, d
   queryClient.invalidateQueries({ queryKey: ["support-dashboard-kpi"] });
   queryClient.invalidateQueries({ queryKey: ["dispatch-dashboard"] });
   queryClient.invalidateQueries({ queryKey: ["dispatch-orders"] });
+  queryClient.invalidateQueries({ queryKey: ["orders-global"] });
   if (orderId) {
     queryClient.invalidateQueries({ queryKey: ["production-order", orderId] });
     queryClient.invalidateQueries({ queryKey: ["voice-notes", "production", Number(orderId)] });

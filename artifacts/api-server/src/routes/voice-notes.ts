@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import multer from "multer";
-import { db, voiceNotesTable, dealsTable, productionOrdersTable, contactsTable, proformaInvoicesTable, productionTimelineTable, usersTable } from "@workspace/db";
+import { db, voiceNotesTable, dealsTable, productionOrdersTable, contactsTable, proformaInvoicesTable, productionTimelineTable, usersTable, ordersTable } from "@workspace/db";
 import { eq, and, isNull, desc, or } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { canAccessUnit } from "../lib/permission-service";
@@ -169,13 +169,19 @@ router.post("/voice-notes", upload.single("file"), async (req: Request, res: Res
         .where(eq(dealsTable.id, crossLinkedDealId));
       const [uploader] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, user.id));
       if (deal?.salesOwnerId && String(deal.salesOwnerId) !== String(user.id)) {
+        // Route the Sales user to the Sales Order Detail page — the dedicated
+        // order communication surface. Falls back to the lead if no order exists.
+        const [salesOrder] = await db.select({ id: ordersTable.id })
+          .from(ordersTable)
+          .where(and(eq(ordersTable.dealId, crossLinkedDealId), eq(ordersTable.isDeleted, false)))
+          .limit(1);
         await createNotification({
           createdById: user.id,
           userId: deal.salesOwnerId,
           type: "voice_note",
           title: "Voice Note from Production",
           message: `${uploader?.name || "Production"} recorded a voice note for order #${productionOrderId}`,
-          link: `/leads/${crossLinkedDealId}`,
+          link: salesOrder ? `/orders/${salesOrder.id}` : `/leads/${crossLinkedDealId}`,
           relatedId: crossLinkedDealId,
           relatedType: "deal",
         });

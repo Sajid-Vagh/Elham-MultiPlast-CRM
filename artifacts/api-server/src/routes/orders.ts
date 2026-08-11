@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, ordersTable, orderItemsTable, usersTable, contactsTable, orderTimelineTable, orderRevisionsTable, proformaInvoicesTable } from "@workspace/db";
-import { eq, and, or, ilike, desc, sql, inArray, gte, lte, getTableColumns } from "drizzle-orm";
+import { db, ordersTable, orderItemsTable, usersTable, contactsTable, orderTimelineTable, orderRevisionsTable, proformaInvoicesTable, notificationsTable } from "@workspace/db";
+import { eq, and, or, ilike, desc, sql, inArray, gte, lte, isNull, getTableColumns } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { generateId } from "../lib/id-generator";
@@ -150,7 +150,29 @@ router.get("/orders", async (req, res) => {
     const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(ordersTable).where(and(...conditions));
     const orders = await db.select().from(ordersTable).where(and(...conditions)).orderBy(desc(ordersTable.createdAt)).limit(limitNum).offset(offset);
 
-    const enriched = await Promise.all(orders.map(enrichOrder));
+    // Unread production messages / voice notes for the current user, keyed by the
+    // notification link, so the Orders list can flag orders with unseen chat.
+    const unreadLinks = new Map<string, number>();
+    try {
+      const unreadRows = await db.select({ link: notificationsTable.link })
+        .from(notificationsTable)
+        .where(and(
+          eq(notificationsTable.userId, user.id),
+          isNull(notificationsTable.readAt),
+          inArray(notificationsTable.type, ["production_message", "voice_note"])
+        ));
+      for (const row of unreadRows) {
+        if (row.link) unreadLinks.set(row.link, (unreadLinks.get(row.link) || 0) + 1);
+      }
+    } catch { /* notifications table unavailable — flag nothing */ }
+
+    const enriched = await Promise.all(orders.map(async (o) => {
+      const e = await enrichOrder(o);
+      const unread = unreadLinks.get(`/orders/${o.id}`) || 0;
+      e.hasUnreadMessages = unread > 0;
+      e.unreadMessageCount = unread;
+      return e;
+    }));
 
     res.json({
       data: enriched,
@@ -334,6 +356,22 @@ router.get("/orders/global", async (req, res) => {
       .limit(limitNum)
       .offset(offset);
 
+    // Unread production messages / voice notes for the current user, keyed by the
+    // notification link, so the Orders list can flag orders with unseen chat.
+    const unreadLinks = new Map<string, number>();
+    try {
+      const unreadRows = await db.select({ link: notificationsTable.link })
+        .from(notificationsTable)
+        .where(and(
+          eq(notificationsTable.userId, user.id),
+          isNull(notificationsTable.readAt),
+          inArray(notificationsTable.type, ["production_message", "voice_note"])
+        ));
+      for (const row of unreadRows) {
+        if (row.link) unreadLinks.set(row.link, (unreadLinks.get(row.link) || 0) + 1);
+      }
+    } catch { /* notifications table unavailable — flag nothing */ }
+
     // Enrich with items count, totals, production info, dispatch status
     const enriched = await Promise.all(orders.map(async (order) => {
       const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
@@ -371,6 +409,7 @@ router.get("/orders/global", async (req, res) => {
       } catch { /* production_orders may not exist */ }
 
       const totalQuantity = items.reduce((sum, i) => sum + Number(i.quantity || 0), 0);
+      const unread = unreadLinks.get(`/orders/${order.id}`) || 0;
 
       return {
         id: order.id,
@@ -397,6 +436,8 @@ router.get("/orders/global", async (req, res) => {
         transportDetails,
         itemsCount: items.length,
         totalQuantity,
+        hasUnreadMessages: unread > 0,
+        unreadMessageCount: unread,
         products: items.slice(0, 5).map(i => ({
           productName: i.productName,
           bottleWeight: (i as any).bottleWeight || null,

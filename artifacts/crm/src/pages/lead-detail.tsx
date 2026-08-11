@@ -1,9 +1,9 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+﻿import { useState, useMemo, useEffect } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import {
   useGetContact, useListDeals, useListActivities, useCreateDeal,
   useUpdateContact, useDeleteContact, useListUsers, useListContactProformaInvoices, getListContactProformaInvoicesQueryKey,
-  getGetContactQueryKey, useGetMe, useUpdateDeal
+  getGetContactQueryKey, useUpdateDeal
 } from "@workspace/api-client-react";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, ChevronDown, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText, Factory, Send, Search } from "lucide-react";
+import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, ChevronDown, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText, Search } from "lucide-react";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -26,8 +26,6 @@ import { CATEGORY_COLORS } from "@/lib/categories";
 import { MoveCategoryDialog } from "@/components/move-category-dialog";
 import { DocumentManager } from "@/components/document-manager";
 import { DocumentUploadDialog } from "@/components/document-upload-dialog";
-import { VoiceNoteSection } from "@/components/voice-note-player";
-import { VoiceNoteUploader } from "@/components/voice-note-uploader";
 import ActivityDetailDrawer from "@/components/activity-detail-drawer";
 import { PiSentDialog } from "@/components/pi-sent-dialog";
 import { STAGE_BADGE_COLORS } from "@/lib/deal-stages";
@@ -36,28 +34,28 @@ import { useActiveUnits } from "@/lib/use-active-units";
 import { onContactChange, onDealChange, onActivityChange } from "@/lib/query-invalidation";
 
 const TIMELINE_ICONS: Record<string, { bg: string; icon: string }> = {
-  "lead_created":    { bg: "#dbeafe", icon: "🆕" },
-  "follow_up":       { bg: "#ffedd5", icon: "🔔" },
-  "call":            { bg: "#dcfce7", icon: "📞" },
-  "whatsapp":        { bg: "#ccfbf1", icon: "💬" },
-  "email":           { bg: "#dbeafe", icon: "✉️" },
-  "note":            { bg: "#fef9c3", icon: "📝" },
-  "activity":        { bg: "#f3f4f6", icon: "•" },
-  "category_change": { bg: "#f3e8ff", icon: "🏷️" },
-  "comment_updated": { bg: "#e0f2fe", icon: "💬" },
-  "deal_created":    { bg: "#d1fae5", icon: "🤝" },
-  "deal_updated":    { bg: "#e0e7ff", icon: "📊" },
-  "document_uploaded": { bg: "#fef9c3", icon: "📄" },
-  "document_replaced": { bg: "#fce7f3", icon: "🔄" },
-  "unit_change":       { bg: "#fef3c7", icon: "🏭" },
+  "lead_created":    { bg: "#dbeafe", icon: "ðŸ†•" },
+  "follow_up":       { bg: "#ffedd5", icon: "ðŸ””" },
+  "call":            { bg: "#dcfce7", icon: "ðŸ“ž" },
+  "whatsapp":        { bg: "#ccfbf1", icon: "ðŸ’¬" },
+  "email":           { bg: "#dbeafe", icon: "âœ‰ï¸" },
+  "note":            { bg: "#fef9c3", icon: "ðŸ“" },
+  "activity":        { bg: "#f3f4f6", icon: "â€¢" },
+  "category_change": { bg: "#f3e8ff", icon: "ðŸ·ï¸" },
+  "comment_updated": { bg: "#e0f2fe", icon: "ðŸ’¬" },
+  "deal_created":    { bg: "#d1fae5", icon: "ðŸ¤" },
+  "deal_updated":    { bg: "#e0e7ff", icon: "ðŸ“Š" },
+  "document_uploaded": { bg: "#fef9c3", icon: "ðŸ“„" },
+  "document_replaced": { bg: "#fce7f3", icon: "ðŸ”„" },
+  "unit_change":       { bg: "#fef3c7", icon: "ðŸ­" },
 };
 
 const ACT_STYLE: Record<string, { bg: string; fg: string; icon: string }> = {
-  "Call":     { bg: "#dcfce7", fg: "#15803d", icon: "📞" },
-  "WhatsApp": { bg: "#ccfbf1", fg: "#0f766e", icon: "💬" },
-  "Email":    { bg: "#dbeafe", fg: "#1d4ed8", icon: "✉️" },
-  "Note":     { bg: "#fef9c3", fg: "#a16207", icon: "📝" },
-  "FollowUp": { bg: "#ffedd5", fg: "#c2410c", icon: "🔔" },
+  "Call":     { bg: "#dcfce7", fg: "#15803d", icon: "ðŸ“ž" },
+  "WhatsApp": { bg: "#ccfbf1", fg: "#0f766e", icon: "ðŸ’¬" },
+  "Email":    { bg: "#dbeafe", fg: "#1d4ed8", icon: "âœ‰ï¸" },
+  "Note":     { bg: "#fef9c3", fg: "#a16207", icon: "ðŸ“" },
+  "FollowUp": { bg: "#ffedd5", fg: "#c2410c", icon: "ðŸ””" },
 };
 
 function localDateStr(d: Date): string {
@@ -86,7 +84,6 @@ export default function LeadDetail() {
   const { data: deals } = useListDeals({ contactId: contactId });
   const { data: activities } = useListActivities({ contactId: contactId });
   const { data: users } = useListUsers();
-  const { data: currentUser } = useGetMe();
   const { units: activeUnits } = useActiveUnits();
   const { data: contactProformas } = useListContactProformaInvoices(contactId, { query: { enabled: !!contactId, queryKey: getListContactProformaInvoicesQueryKey(contactId) } });
 
@@ -129,7 +126,6 @@ export default function LeadDetail() {
   const [completingActivity, setCompletingActivity] = useState<any>(null);
 
   const [expandedTimelineEvent, setExpandedTimelineEvent] = useState<number | null>(null);
-  const [expandedProdTimeline, setExpandedProdTimeline] = useState<number | null>(null);
   const [expandedDeals, setExpandedDeals] = useState<string[]>([]);
   const [expandedSubGroups, setExpandedSubGroups] = useState<string[]>([]);
   const [timelineSearch, setTimelineSearch] = useState("");
@@ -204,108 +200,6 @@ export default function LeadDetail() {
     staleTime: 30_000,
   });
 
-  // Production Order for this contact
-  const { data: productionOrder } = useQuery({
-    queryKey: ["production-by-contact", contactId],
-    queryFn: async () => {
-      const token = localStorage.getItem("crm_token");
-      const res = await fetch(`/api/production/by-contact/${contactId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return null;
-      return res.json() as Promise<{
-        id: number; status: string; priority: string; expectedDispatchDate: string | null;
-        productionUnit: string | null; productionRemarks: string | null;
-        updatedAt: string; createdAt: string;
-        lastUpdatedBy: { id: number; name: string } | null;
-        assignedManager: { id: number; name: string } | null;
-        createdByName: string | null; createdByRole: string | null;
-        timeline: Array<{ id: number; status: string; notes: string | null; createdAt: string; createdByName: string | null }>;
-        notes: Array<{ id: number; note: string; createdAt: string; createdByName: string | null }>;
-        invoiceId: number | null; invoiceNumber: string | null;
-      } | null>;
-    },
-    enabled: !!contactId,
-    staleTime: 10_000,
-  });
-
-  // Production Messages (Order Conversation)
-  const [messageText, setMessageText] = useState("");
-  type ProductionChatMessage = {
-    id: number; productionOrderId: number; senderId: number | null;
-    senderName: string; senderRole: string; message: string; createdAt: string;
-  };
-  const { data: productionChat, refetch: refetchMessages } = useQuery<{
-    orderId: number;
-    orderNumber: string | null;
-    companyName: string | null;
-    customerName: string | null;
-    messages: ProductionChatMessage[];
-  }>({
-    queryKey: ["production-messages", productionOrder?.id],
-    queryFn: async () => {
-      const token = localStorage.getItem("crm_token");
-      const res = await fetch(`/api/production/orders/${productionOrder!.id}/messages`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return { messages: [] };
-      return res.json();
-    },
-    enabled: !!productionOrder?.id,
-    staleTime: 3_000,
-    refetchInterval: productionOrder?.id ? 5_000 : false,
-  });
-  const productionMessages = productionChat?.messages;
-  const productionChatCompany = productionChat?.companyName;
-  const productionChatOrderNumber = productionChat?.orderNumber;
-
-  const sendMessage = useMutation({
-    mutationFn: async (msg: string) => {
-      const token = localStorage.getItem("crm_token");
-      const res = await fetch(`/api/production/orders/${productionOrder!.id}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ message: msg }),
-      });
-      if (!res.ok) throw new Error("Failed to send");
-      return res.json();
-    },
-    onSuccess: () => {
-      setMessageText("");
-      refetchMessages();
-    },
-    onError: () => toast({ title: "Failed to send message", variant: "destructive" }),
-  });
-
-  const handleSendMessage = () => {
-    if (!messageText.trim() || sendMessage.isPending) return;
-    sendMessage.mutate(messageText.trim());
-  };
-
-  // Auto-scroll + unread indicator
-  const chatEndRef = useRef<HTMLDivElement>(null);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
-  const prevMsgCountRef = useRef(0);
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  useEffect(() => {
-    if (!productionMessages) return;
-    const container = chatContainerRef.current;
-    const isAtBottom = container ? container.scrollHeight - container.scrollTop - container.clientHeight < 80 : true;
-    if (isAtBottom) {
-      container?.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
-      setUnreadCount(0);
-    } else if (productionMessages.length > prevMsgCountRef.current) {
-      setUnreadCount(c => c + (productionMessages.length - prevMsgCountRef.current));
-    }
-    prevMsgCountRef.current = productionMessages.length;
-  }, [productionMessages]);
-
-  const scrollToBottom = () => {
-    chatContainerRef.current?.scrollTo({ top: chatContainerRef.current.scrollHeight, behavior: "smooth" });
-    setUnreadCount(0);
-  };
-
   // Upcoming Follow-up
   const { data: upcomingFollowUp } = useQuery({
     queryKey: ["upcoming-followup", contactId],
@@ -372,7 +266,7 @@ export default function LeadDetail() {
 
     if (activities) {
       for (const act of activities) {
-        const st = ACT_STYLE[act.type] || { bg: "#f3f4f6", icon: "•", fg: "#333" };
+        const st = ACT_STYLE[act.type] || { bg: "#f3f4f6", icon: "â€¢", fg: "#333" };
         items.push({
           key: `act-${act.id}`, type: act.type, icon: st.icon, bg: st.bg,
           description: act.type === "FollowUp" ? "Follow-up Scheduled" : `${act.type} Logged`,
@@ -386,7 +280,7 @@ export default function LeadDetail() {
     if (timeline) {
       for (const ev of timeline) {
         if (["follow_up","call","whatsapp","email","note","activity"].includes(ev.type)) continue;
-        const ts = TIMELINE_ICONS[ev.type] || { bg: "#f3f4f6", icon: "•" };
+        const ts = TIMELINE_ICONS[ev.type] || { bg: "#f3f4f6", icon: "â€¢" };
         // Match timeline events to deals
         let eventDealId: number | null = null;
         if (ev.type === "deal_created" || ev.type === "deal_updated") {
@@ -609,7 +503,7 @@ export default function LeadDetail() {
     <div className="flex items-center justify-between group">
       <div>
         <span className="text-xs text-muted-foreground">{label}: </span>
-        <span>{value || "—"}</span>
+        <span>{value || "â€”"}</span>
       </div>
       <Button variant="ghost" size="icon" className="h-5 w-5 opacity-0 group-hover:opacity-100" onClick={() => { setEditField(field); setEditValue(value || ""); setEditDialogOpen(true); }} title={`Edit ${label}`}>
         <Pencil className="h-3 w-3" />
@@ -638,7 +532,7 @@ export default function LeadDetail() {
                     style={{ backgroundColor: `${CATEGORY_COLORS["My Client"]}20`, color: CATEGORY_COLORS["My Client"] }}
                     title={`Customer since ${(contact as any).customerSince}`}
                   >
-                    ⭐ My Client
+                    â­ My Client
                   </Badge>
                 )}
                 {contact.tags && <Badge variant="outline" className="text-[10px]">{contact.tags}</Badge>}
@@ -822,7 +716,7 @@ export default function LeadDetail() {
                   {deal.totalValue != null && (
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground text-xs">Expected Value</span>
-                      <span className="font-medium">₹{Number(deal.totalValue).toLocaleString()}</span>
+                      <span className="font-medium">â‚¹{Number(deal.totalValue).toLocaleString()}</span>
                     </div>
                   )}
                   <div className="flex items-center justify-between">
@@ -890,21 +784,6 @@ export default function LeadDetail() {
             </CardContent>
           </Card>
 
-          {/* Voice Notes */}
-          {deal && (
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                  <Phone className="h-3.5 w-3.5" /> Voice Notes
-                </CardTitle>
-                <VoiceNoteUploader entityType="deal" entityId={deal.id} label="Record" />
-              </CardHeader>
-              <CardContent>
-                <VoiceNoteSection entityType="deal" entityId={deal.id} canDelete={false} />
-              </CardContent>
-            </Card>
-          )}
-
           {/* Section 11: Quick Actions */}
           <Card>
             <CardHeader className="pb-2">
@@ -970,7 +849,7 @@ export default function LeadDetail() {
 
         {/* ========== RIGHT CONTENT ========== */}
         <div className="lg:col-span-2 space-y-4">
-          {/* ═══ GROUPED ACTIVITY TIMELINE ═══ */}
+          {/* â•â•â• GROUPED ACTIVITY TIMELINE â•â•â• */}
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
@@ -993,7 +872,7 @@ export default function LeadDetail() {
                 ))}
                 <span className="text-muted-foreground text-xs ml-1">|</span>
                 <Input type="date" value={actFromDate} onChange={e => { setActFromDate(e.target.value); setActQuick("custom"); }} className="h-7 w-36 text-xs" />
-                <span className="text-xs text-muted-foreground">–</span>
+                <span className="text-xs text-muted-foreground">â€“</span>
                 <Input type="date" value={actToDate} onChange={e => { setActToDate(e.target.value); setActQuick("custom"); }} className="h-7 w-36 text-xs" />
                 <div className="relative ml-auto min-w-[160px] max-w-[200px]">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
@@ -1016,12 +895,12 @@ export default function LeadDetail() {
                     const formatTime = (d: string) => new Date(d).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
 
                     const SUBGROUP_META: Record<SubGroupKey, { label: string; icon: string; color: string }> = {
-                      calls: { label: "Calls", icon: "📞", color: "bg-green-50 text-green-700 border-green-200" },
-                      notes: { label: "Notes", icon: "📝", color: "bg-yellow-50 text-yellow-700 border-yellow-200" },
-                      followUps: { label: "Follow Ups", icon: "🔔", color: "bg-orange-50 text-orange-700 border-orange-200" },
-                      production: { label: "Production & Status", icon: "🏭", color: "bg-blue-50 text-blue-700 border-blue-200" },
-                      documents: { label: "Documents", icon: "📄", color: "bg-purple-50 text-purple-700 border-purple-200" },
-                      other: { label: "Other", icon: "•", color: "bg-gray-50 text-gray-700 border-gray-200" },
+                      calls: { label: "Calls", icon: "ðŸ“ž", color: "bg-green-50 text-green-700 border-green-200" },
+                      notes: { label: "Notes", icon: "ðŸ“", color: "bg-yellow-50 text-yellow-700 border-yellow-200" },
+                      followUps: { label: "Follow Ups", icon: "ðŸ””", color: "bg-orange-50 text-orange-700 border-orange-200" },
+                      production: { label: "Production & Status", icon: "ðŸ­", color: "bg-blue-50 text-blue-700 border-blue-200" },
+                      documents: { label: "Documents", icon: "ðŸ“„", color: "bg-purple-50 text-purple-700 border-purple-200" },
+                      other: { label: "Other", icon: "â€¢", color: "bg-gray-50 text-gray-700 border-gray-200" },
                     };
 
                     const renderEvent = (event: TimelineEvent, eventIdx: number) => {
@@ -1037,7 +916,7 @@ export default function LeadDetail() {
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="text-[11px] font-medium">{event.description}</span>
                               <span className="text-[10px] text-muted-foreground">
-                                {formatDate(event.createdAt)} • {formatTime(event.createdAt)}
+                                {formatDate(event.createdAt)} â€¢ {formatTime(event.createdAt)}
                               </span>
                               {event.type === "FollowUp" && event.callStatus && (
                                 <Badge variant="outline" className={`text-[9px] px-1 py-0 ${event.callStatus === "Completed" ? "border-green-300 text-green-700" : event.callStatus === "Cancelled" ? "border-red-300 text-red-700" : "border-orange-300 text-orange-700"}`}>
@@ -1078,7 +957,7 @@ export default function LeadDetail() {
                                   <span className="text-sm font-semibold truncate block">{group.deal.title || `Deal #${group.deal.id}`}</span>
                                   <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                                     <span>{formatDate(group.deal.createdAt)}</span>
-                                    {group.deal.totalValue && <span className="font-medium text-foreground">₹{Number(group.deal.totalValue).toLocaleString()}</span>}
+                                    {group.deal.totalValue && <span className="font-medium text-foreground">â‚¹{Number(group.deal.totalValue).toLocaleString()}</span>}
                                     <span className={`px-1.5 py-0 rounded-full font-medium ${STAGE_BADGE_COLORS[group.deal.stage] || "bg-gray-100"}`}>{group.deal.stage}</span>
                                   </div>
                                 </div>
@@ -1160,7 +1039,7 @@ export default function LeadDetail() {
                 <div className="space-y-2">
                   {categoryHistory.map((h) => (
                     <div key={h.id} className="flex items-start gap-2 p-2 border rounded text-sm">
-                      <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ backgroundColor: "#f3e8ff" }}>🏷️</div>
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ backgroundColor: "#f3e8ff" }}>ðŸ·ï¸</div>
                       <div className="flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap text-xs">
                           <CategoryBadge category={h.previousCategory || undefined} />
@@ -1241,7 +1120,7 @@ export default function LeadDetail() {
                       <p className="text-xs text-muted-foreground">{new Date(d.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      {d.totalValue && <span className="text-sm font-medium">₹{Number(d.totalValue).toLocaleString()}</span>}
+                      {d.totalValue && <span className="text-sm font-medium">â‚¹{Number(d.totalValue).toLocaleString()}</span>}
                       <span className={`text-xs px-2 py-1 rounded-full font-medium ${STAGE_BADGE_COLORS[d.stage] || "bg-gray-100"}`}>{d.stage}</span>
                       <button
                         type="button"
@@ -1263,225 +1142,6 @@ export default function LeadDetail() {
               ))}
             </div>
           </div>
-
-          {/* Production Updates */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                <Factory className="h-3.5 w-3.5" /> Production Updates
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {!productionOrder ? (
-                <p className="text-xs text-muted-foreground text-center py-4">No Production Order has been created yet.</p>
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground text-xs">Status</span>
-                    <Badge className={`text-[10px] px-2 py-0.5 ${
-                      productionOrder.status === "Completed" ? "bg-green-100 text-green-700 border-green-200" :
-                      productionOrder.status === "Cancelled" ? "bg-red-100 text-red-700 border-red-200" :
-                      productionOrder.status === "On Hold" ? "bg-yellow-100 text-yellow-700 border-yellow-200" :
-                      "bg-blue-100 text-blue-700 border-blue-200"
-                    }`}>{productionOrder.status}</Badge>
-                  </div>
-                  {productionOrder.lastUpdatedBy && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground text-xs">Updated By</span>
-                      <span className="text-xs font-medium">{productionOrder.lastUpdatedBy.name}</span>
-                    </div>
-                  )}
-                  {productionOrder.updatedAt && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground text-xs">Last Updated</span>
-                      <span className="text-xs">{new Date(productionOrder.updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
-                    </div>
-                  )}
-                  {productionOrder.notes && productionOrder.notes.length > 0 && (
-                    <div>
-                      <span className="text-muted-foreground text-xs">Latest Production Note</span>
-                      <div className="mt-1 p-2 rounded-md bg-muted/30 text-xs">
-                        <p className="whitespace-pre-wrap line-clamp-3">{productionOrder.notes[0].note}</p>
-                        <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground">
-                          {productionOrder.notes[0].createdByName && <span>by {productionOrder.notes[0].createdByName}</span>}
-                          <span>{new Date(productionOrder.notes[0].createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {productionOrder.timeline && productionOrder.timeline.length > 0 && (
-                    <div>
-                      <span className="text-muted-foreground text-xs">Production Timeline</span>
-                      <div className="mt-1 space-y-0 max-h-60 overflow-y-auto">
-                        {productionOrder.timeline.slice(0, 5).map((t, tIdx) => {
-                          const isExpanded = expandedProdTimeline === tIdx;
-                          return (
-                            <div
-                              key={t.id}
-                              className="flex items-start gap-2 text-xs cursor-pointer select-none py-1.5 px-1 rounded hover:bg-muted/40 transition-colors"
-                              onClick={() => setExpandedProdTimeline(isExpanded ? null : tIdx)}
-                            >
-                              <div className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-primary mt-1.5" />
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <ChevronDown
-                                    className={`h-3 w-3 text-muted-foreground flex-shrink-0 transition-transform duration-200 ${isExpanded ? "" : "-rotate-90"}`}
-                                  />
-                                  <span className="font-medium">{t.status}</span>
-                                  <span className="text-[10px] text-muted-foreground">
-                                    {new Date(t.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                                    {" \u2022 "}
-                                    {new Date(t.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
-                                  </span>
-                                </div>
-                                {isExpanded && (
-                                  <div className="mt-1 pl-4 space-y-0.5">
-                                    {t.notes && <p className="text-muted-foreground whitespace-pre-wrap"><span className="font-medium text-foreground">Notes:</span> {t.notes}</p>}
-                                    {t.createdByName && <p className="text-muted-foreground"><span className="font-medium text-foreground">By:</span> {t.createdByName}</p>}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  <Link href={`/production/orders/${productionOrder.id}`}>
-                    <Button size="sm" variant="outline" className="w-full h-7 text-xs mt-1">
-                      <ExternalLink className="h-3 w-3 mr-1" /> View Production Order
-                    </Button>
-                  </Link>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Order Conversation */}
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-                    💬 Order Conversation
-                    {productionChatCompany && (
-                      <span className="text-[11px] font-normal text-muted-foreground">
-                        · {productionChatCompany}{productionChatOrderNumber ? ` (${productionChatOrderNumber})` : ""}
-                      </span>
-                    )}
-                  </CardTitle>
-                  {productionOrder && (
-                    <span className="inline-flex items-center gap-1 text-[10px] text-green-600 font-medium bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                      Realtime
-                    </span>
-                  )}
-                </div>
-                {productionMessages && productionMessages.length > 0 && (
-                  <span className="text-[10px] text-muted-foreground">{productionMessages.length} message{productionMessages.length !== 1 ? "s" : ""}</span>
-                )}
-              </div>
-              <p className="text-[11px] text-muted-foreground">Communicate with the Production Team regarding this order.</p>
-            </CardHeader>
-            <CardContent>
-              {!productionOrder ? (
-                <p className="text-xs text-muted-foreground text-center py-4">No Production Order has been created yet.</p>
-              ) : (
-                <>
-                  {/* Chat Container */}
-                  <div
-                    ref={chatContainerRef}
-                    className="relative rounded-xl border bg-[#fafafa] overflow-hidden"
-                    style={{ height: 300 }}
-                  >
-                    <div className="h-full overflow-y-auto px-3 py-3 space-y-3">
-                      {!productionMessages || productionMessages.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full text-center">
-                          <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
-                            <MessageSquare className="h-5 w-5 text-muted-foreground/50" />
-                          </div>
-                          <p className="text-sm font-medium text-muted-foreground">No conversation yet.</p>
-                          <p className="text-[11px] text-muted-foreground/70 mt-1">Start a conversation with the Production Team.</p>
-                        </div>
-                      ) : (
-                        <>
-                          {productionMessages.map((msg, idx) => {
-                            const isMe = currentUser && msg.senderId === currentUser.id;
-                            const showAvatar = idx === 0 || productionMessages[idx - 1].senderId !== msg.senderId;
-                            const isLastInGroup = idx === productionMessages.length - 1 || productionMessages[idx + 1].senderId !== msg.senderId;
-                            const timeStr = new Date(msg.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) === new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" })
-                              ? new Date(msg.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
-                              : new Date(msg.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) + " • " + new Date(msg.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-                            return (
-                              <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"} animate-[fadeSlideIn_0.2s_ease-out]`}>
-                                {showAvatar && !isMe && (
-                                  <div className="flex items-center gap-1.5 mb-1 ml-1">
-                                    <span className="text-[11px] font-semibold text-foreground">{msg.senderName}</span>
-                                    <span className="text-[9px] font-medium text-violet-600 bg-violet-50 border border-violet-200 rounded px-1.5 py-px leading-none">{msg.senderRole}</span>
-                                  </div>
-                                )}
-                                {showAvatar && isMe && (
-                                  <div className="flex items-center gap-1.5 mb-1 mr-1">
-                                    <span className="text-[11px] font-semibold text-muted-foreground">You</span>
-                                  </div>
-                                )}
-                                <div className={`max-w-[75%] px-3 py-2 text-[12.5px] leading-relaxed ${
-                                  isMe
-                                    ? "bg-violet-600 text-white rounded-2xl rounded-br-md shadow-sm"
-                                    : "bg-white text-foreground border border-gray-200 rounded-2xl rounded-bl-md shadow-sm"
-                                }`}>
-                                  <p className="whitespace-pre-wrap break-words">{msg.message}</p>
-                                </div>
-                                {isLastInGroup && (
-                                  <span className={`text-[9px] text-muted-foreground/60 mt-1 ${isMe ? "mr-1" : "ml-1"}`}>
-                                    {timeStr}
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })}
-                          <div ref={chatEndRef} />
-                        </>
-                      )}
-                    </div>
-
-                    {/* Unread indicator */}
-                    {unreadCount > 0 && (
-                      <button
-                        onClick={scrollToBottom}
-                        className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 bg-violet-600 text-white text-[11px] font-medium rounded-full px-3 py-1.5 shadow-lg hover:bg-violet-700 transition-colors cursor-pointer"
-                      >
-                        <span className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[6px] border-t-white" />
-                        {unreadCount} new message{unreadCount !== 1 ? "s" : ""}
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Input Area */}
-                  <div className="flex items-end gap-2 mt-2">
-                    <div className="flex-1 relative">
-                      <Textarea
-                        value={messageText}
-                        onChange={e => setMessageText(e.target.value)}
-                        placeholder="Type your message..."
-                        rows={1}
-                        className="min-h-[40px] max-h-24 text-[13px] resize-none rounded-xl border-gray-200 bg-white pr-10 focus-visible:ring-violet-500 focus-visible:border-violet-400 placeholder:text-muted-foreground/50"
-                        onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
-                      />
-                    </div>
-                    <button
-                      onClick={handleSendMessage}
-                      disabled={!messageText.trim() || sendMessage.isPending}
-                      className="shrink-0 w-10 h-10 rounded-full bg-violet-600 text-white flex items-center justify-center hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md active:scale-95"
-                    >
-                      <Send className="h-4 w-4" />
-                    </button>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
 
           {/* Section 8: Notification History */}
           <Card>
@@ -1690,7 +1350,7 @@ function ProformaInvoiceList({ contactId }: { contactId: number }) {
               </Badge>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-muted-foreground font-medium">₹{Number(p.grandTotal || 0).toLocaleString("en-IN")}</span>
+              <span className="text-muted-foreground font-medium">â‚¹{Number(p.grandTotal || 0).toLocaleString("en-IN")}</span>
               <span className="text-muted-foreground text-[10px]">{p.createdAt ? new Date(p.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : ""}</span>
             </div>
           </div>
