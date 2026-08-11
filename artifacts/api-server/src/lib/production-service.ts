@@ -2376,9 +2376,12 @@ export async function sendMessage(
   }
 
   if (user.role !== "production") {
-    // Sales/Support/Admin → notify all production managers + admins
+    // Sales/Support/Admin → notify the full production-side team: production
+    // managers, production_and_support (Support) users and admins. Without the
+    // production_and_support role here, Support users never saw chat messages
+    // sent from the Sales workspace.
     const productionUsers = await db.select({ id: usersTable.id }).from(usersTable)
-      .where(or(eq(usersTable.role, "production"), eq(usersTable.role, "admin")));
+      .where(or(eq(usersTable.role, "production"), eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
     for (const u of productionUsers) pushRecipient(u.id);
   }
 

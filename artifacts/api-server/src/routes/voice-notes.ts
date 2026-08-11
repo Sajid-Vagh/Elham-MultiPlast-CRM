@@ -136,7 +136,12 @@ router.post("/voice-notes", upload.single("file"), async (req: Request, res: Res
     }
 
     // ── Notify the other side ──
-    if (crossLinkedProductionOrderId && dealId && !productionOrderId) {
+    // Sales/Admin → Production side: notify all production managers, Support
+    // (production_and_support) and admins whenever a production order is linked
+    // and the uploader is NOT on the production side. This covers both a
+    // deal-targeted upload AND a production-order-targeted upload (the Sales
+    // Order Detail page records against the production order directly).
+    if (crossLinkedProductionOrderId && user.role !== "production" && user.role !== "production_and_support") {
       const [po] = await db.select({ productionUnit: productionOrdersTable.productionUnit })
         .from(productionOrdersTable)
         .where(eq(productionOrdersTable.id, crossLinkedProductionOrderId));

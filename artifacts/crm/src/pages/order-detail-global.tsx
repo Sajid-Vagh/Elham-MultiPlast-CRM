@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useRoute, useLocation } from "wouter";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
+import { useNotifications } from "@/lib/notification-context";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -79,6 +80,8 @@ export default function OrderDetailGlobal() {
   const [, setLocation] = useLocation();
   const { data: user } = useGetMe();
   const id = Number(params?.id);
+  const queryClient = useQueryClient();
+  const { notifications, markAsRead } = useNotifications();
 
   const [cancelDialog, setCancelDialog] = useState(false);
 
@@ -86,6 +89,7 @@ export default function OrderDetailGlobal() {
   const [messageText, setMessageText] = useState("");
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const prevMsgCountRef = useRef(0);
 
@@ -144,6 +148,32 @@ export default function OrderDetailGlobal() {
     else if (productionMessages.length > prevMsgCountRef.current) { setUnreadCount(c => c + (productionMessages.length - prevMsgCountRef.current)); }
     prevMsgCountRef.current = productionMessages.length;
   }, [productionMessages]);
+
+  // Auto-scroll to the very bottom so the newest message is always visible on
+  // load and when new messages arrive.
+  useEffect(() => {
+    if (!productionMessages || productionMessages.length === 0) return;
+    bottomRef.current?.scrollIntoView({ behavior: "instant" });
+  }, [productionMessages]);
+
+  // While the chat is open, mark this order's chat notifications as read so the
+  // green unread icons in the orders list and the unread dots in the bell
+  // dropdown clear immediately (and after every new message arrives via SSE).
+  useEffect(() => {
+    if (!id) return;
+    const chatLinks = new Set<string>([`/orders/${id}`]);
+    if (productionOrderId) chatLinks.add(`/production/orders/${productionOrderId}`);
+    const pending = notifications.filter((n) =>
+      !n.readAt &&
+      (n.type === "production_message" || n.type === "voice_note") &&
+      !!n.link && chatLinks.has(n.link)
+    );
+    if (pending.length === 0) return;
+    pending.forEach((n) => { markAsRead(n.id); });
+    queryClient.invalidateQueries({ queryKey: ["orders-global"] });
+    queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    queryClient.invalidateQueries({ queryKey: ["unread-count"] });
+  }, [id, productionOrderId, notifications, markAsRead, queryClient]);
 
   const { data: timeline = [] } = useQuery<any[]>({
     queryKey: ["order-timeline", id],
@@ -334,6 +364,7 @@ export default function OrderDetailGlobal() {
                       );
                     })}
                     <div ref={chatEndRef} />
+                    <div ref={bottomRef} />
                   </>
                 )}
               </div>

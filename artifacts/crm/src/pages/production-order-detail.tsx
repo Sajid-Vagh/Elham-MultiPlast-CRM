@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useNotifications } from "@/lib/notification-context";
 import { onProductionChange } from "@/lib/query-invalidation";
 import { VoiceNotePlayer } from "@/components/voice-note-player";
 import { VoiceNoteUploader } from "@/components/voice-note-uploader";
@@ -90,8 +91,10 @@ export default function ProductionOrderDetail() {
   const [expandedTimelineEntry, setExpandedTimelineEntry] = useState<number | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const prevMsgCountRef = useRef(0);
   const [unreadCount, setUnreadCount] = useState(0);
+  const { notifications, markAsRead } = useNotifications();
 
   const [readyQtyDialogOpen, setReadyQtyDialogOpen] = useState(false);
   const [readyQtyItemId, setReadyQtyItemId] = useState<number | null>(null);
@@ -298,6 +301,31 @@ export default function ProductionOrderDetail() {
     else if (productionMessages.length > prevMsgCountRef.current) { setUnreadCount(c => c + (productionMessages.length - prevMsgCountRef.current)); }
     prevMsgCountRef.current = productionMessages.length;
   }, [productionMessages]);
+
+  // Auto-scroll to the very bottom so the newest message is always visible on
+  // load and when new messages arrive.
+  useEffect(() => {
+    if (!productionMessages || productionMessages.length === 0) return;
+    bottomRef.current?.scrollIntoView({ behavior: "instant" });
+  }, [productionMessages]);
+
+  // While the chat is open, mark this production order's chat notifications as
+  // read so the unread dots in the bell dropdown clear immediately (and after
+  // every new message arrives via SSE).
+  useEffect(() => {
+    if (!id) return;
+    const chatLinks = new Set<string>([`/production/orders/${id}`]);
+    const pending = notifications.filter((n) =>
+      !n.readAt &&
+      (n.type === "production_message" || n.type === "voice_note") &&
+      !!n.link && chatLinks.has(n.link)
+    );
+    if (pending.length === 0) return;
+    pending.forEach((n) => { markAsRead(n.id); });
+    queryClient.invalidateQueries({ queryKey: ["orders-global"] });
+    queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    queryClient.invalidateQueries({ queryKey: ["unread-count"] });
+  }, [id, notifications, markAsRead, queryClient]);
 
   const mergedItems = useMemo(() => {
     const pli = order?.productLineItems || [];
@@ -1019,6 +1047,7 @@ export default function ProductionOrderDetail() {
                         );
                       })}
                       <div ref={chatEndRef} />
+                      <div ref={bottomRef} />
                     </>
                   )}
                 </div>
