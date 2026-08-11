@@ -9,15 +9,15 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Search, MapPin, Package, Truck, Star, Plus, Upload, CheckCircle, FileSpreadsheet, AlertTriangle, Trash2 } from "lucide-react";
+import { Search, MapPin, Package, Truck, Star, Plus, Upload, CheckCircle, FileSpreadsheet, AlertTriangle, Trash2, Pencil } from "lucide-react";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useToast } from "@/hooks/use-toast";
 import { useGetMe } from "@workspace/api-client-react";
 
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("crm_token")}`, "Content-Type": "application/json" });
 
-// Roles allowed to add records / upload sheets (Admin, Support, Production). Sales is view-only.
-const EDIT_ROLES = ["admin", "production", "production_and_support"];
+// Roles allowed to add / edit records & upload sheets (Admin, Support only). Sales is view-only.
+const EDIT_ROLES = ["admin", "support"];
 
 // Roles allowed to delete records / clear all (Admin, Support only).
 const DELETE_ROLES = ["admin", "support"];
@@ -160,8 +160,9 @@ export default function TransportLogisticsLookup() {
   const canEdit = EDIT_ROLES.includes(user?.role || "");
   const canDelete = DELETE_ROLES.includes(user?.role || "");
 
-  // Add Record state
+  // Add / Edit Record state
   const [addOpen, setAddOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [transportForm, setTransportForm] = useState<TransportForm>(EMPTY_TRANSPORT_FORM);
   const [bundleForm, setBundleForm] = useState<BundleForm>(EMPTY_BUNDLE_FORM);
 
@@ -255,8 +256,37 @@ export default function TransportLogisticsLookup() {
   const openAdd = useCallback(() => {
     setTransportForm({ ...EMPTY_TRANSPORT_FORM, productionUnit: unitFilter });
     setBundleForm({ ...EMPTY_BUNDLE_FORM, productionUnit: unitFilter });
+    setEditingId(null);
     setAddOpen(true);
   }, [unitFilter]);
+
+  const openEditTransport = useCallback((item: any) => {
+    setTransportForm({
+      state: item.state || "",
+      city: item.city || "",
+      pinCode: item.pinCode || "",
+      transportCompany: item.transportCompany || "",
+      tciBora: item.tciBora != null && item.tciBora !== "" ? String(item.tciBora) : "",
+      normalBora: item.normalBora != null && item.normalBora !== "" ? String(item.normalBora) : "",
+      productionUnit: item.productionUnit || "all",
+      remarks: item.remarks || "",
+    });
+    setEditingId(item.id);
+    setAddOpen(true);
+  }, []);
+
+  const openEditBundle = useCallback((item: any) => {
+    setBundleForm({
+      productName: item.productName || "",
+      bundleSize: item.bundleSize != null ? String(item.bundleSize) : "",
+      linerPackingQty: (item.linerPacking ?? item.linerPackingQty) != null ? String(item.linerPacking ?? item.linerPackingQty) : "",
+      bora: item.bora != null ? String(item.bora) : "",
+      productionUnit: item.productionUnit || "all",
+      remarks: item.remarks || "",
+    });
+    setEditingId(item.id);
+    setAddOpen(true);
+  }, []);
 
   const createTransportMut = useMutation({
     mutationFn: async (form: TransportForm) => {
@@ -295,6 +325,58 @@ export default function TransportLogisticsLookup() {
       return res.json();
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["product-bundles-lookup"] }); toast({ title: "Packing record added" }); setAddOpen(false); },
+    onError: (e: any) => toast({ title: e.message || "Error", variant: "destructive" }),
+  });
+
+  const updateTransportMut = useMutation({
+    mutationFn: async ({ id, form }: { id: number; form: TransportForm }) => {
+      const res = await fetch(`/api/transport-masters/destinations/${id}`, {
+        method: "PATCH", headers: authHeaders(),
+        body: JSON.stringify({
+          state: form.state, city: form.city, pinCode: form.pinCode || undefined,
+          transportCompany: form.transportCompany || undefined,
+          tciBora: form.tciBora !== "" ? Number(form.tciBora) : 0,
+          normalBora: form.normalBora !== "" ? Number(form.normalBora) : 0,
+          productionUnit: form.productionUnit === "all" ? null : form.productionUnit,
+          remarks: form.remarks || undefined,
+        }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Failed"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["transport-lookup"] });
+      queryClient.invalidateQueries({ queryKey: ["product-bundles-lookup"] });
+      toast({ title: "Transport record updated" });
+      setAddOpen(false);
+      setEditingId(null);
+    },
+    onError: (e: any) => toast({ title: e.message || "Error", variant: "destructive" }),
+  });
+
+  const updateBundleMut = useMutation({
+    mutationFn: async ({ id, form }: { id: number; form: BundleForm }) => {
+      const res = await fetch(`/api/transport-masters/bundles/${id}`, {
+        method: "PATCH", headers: authHeaders(),
+        body: JSON.stringify({
+          productName: form.productName,
+          bundleSize: Number(form.bundleSize || form.linerPackingQty || 80),
+          linerPackingQty: Number(form.linerPackingQty || 0),
+          bora: Number(form.bora || 0),
+          productionUnit: form.productionUnit === "all" ? null : form.productionUnit,
+          remarks: form.remarks || undefined,
+        }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Failed"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["transport-lookup"] });
+      queryClient.invalidateQueries({ queryKey: ["product-bundles-lookup"] });
+      toast({ title: "Packing record updated" });
+      setAddOpen(false);
+      setEditingId(null);
+    },
     onError: (e: any) => toast({ title: e.message || "Error", variant: "destructive" }),
   });
 
@@ -494,14 +576,14 @@ export default function TransportLogisticsLookup() {
                     <TableHead>Transport Company</TableHead>
                     <TableHead className="text-right">TCI Bora (₹)</TableHead>
                     <TableHead className="text-right">Normal Bora (₹)</TableHead>
-                    {canDelete && <TableHead className="text-right">Actions</TableHead>}
+                    {(canEdit || canDelete) && <TableHead className="text-right">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {lookupLoading ? (
-                    <TableRow><TableCell colSpan={canDelete ? 7 : 6} className="text-center py-8">Searching...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={(canEdit || canDelete) ? 7 : 6} className="text-center py-8">Searching...</TableCell></TableRow>
                   ) : !lookupData?.data?.length ? (
-                    <TableRow><TableCell colSpan={canDelete ? 7 : 6} className="text-center py-8 text-muted-foreground">
+                    <TableRow><TableCell colSpan={(canEdit || canDelete) ? 7 : 6} className="text-center py-8 text-muted-foreground">
                       {pinCode || city || state ? "No transport routes found for this destination" : "No transport records found"}
                     </TableCell></TableRow>
                   ) : (
@@ -516,15 +598,27 @@ export default function TransportLogisticsLookup() {
                         </TableCell>
                         <TableCell className="text-right font-bold text-green-700">{formatRate(item.tciBora)}</TableCell>
                         <TableCell className="text-right font-bold">{formatRate(item.normalBora)}</TableCell>
-                        {canDelete && (
-                          <TableCell className="text-right">
-                            <Button
-                              size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive"
-                              disabled={deleteTransportMut.isPending}
-                              onClick={() => window.confirm(`Delete transport record for ${item.city}, ${item.state}?`) && deleteTransportMut.mutate(item.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                        {(canEdit || canDelete) && (
+                          <TableCell className="text-right whitespace-nowrap">
+                            {canEdit && (
+                              <Button
+                                size="icon" variant="ghost" className="h-8 w-8"
+                                disabled={updateTransportMut.isPending}
+                                onClick={() => openEditTransport(item)}
+                                title="Edit"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {canDelete && (
+                              <Button
+                                size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive"
+                                disabled={deleteTransportMut.isPending}
+                                onClick={() => window.confirm(`Delete transport record for ${item.city}, ${item.state}?`) && deleteTransportMut.mutate(item.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </TableCell>
                         )}
                       </TableRow>
@@ -550,14 +644,14 @@ export default function TransportLogisticsLookup() {
                     <TableHead>Product Name</TableHead>
                     <TableHead className="text-right">Bora</TableHead>
                     <TableHead className="text-right">Liner Packing</TableHead>
-                    {canDelete && <TableHead className="text-right">Actions</TableHead>}
+                    {(canEdit || canDelete) && <TableHead className="text-right">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {bundleLoading ? (
-                    <TableRow><TableCell colSpan={canDelete ? 4 : 3} className="text-center py-8">Loading...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={(canEdit || canDelete) ? 4 : 3} className="text-center py-8">Loading...</TableCell></TableRow>
                   ) : bundleData?.data?.length === 0 ? (
-                    <TableRow><TableCell colSpan={canDelete ? 4 : 3} className="text-center py-8 text-muted-foreground">
+                    <TableRow><TableCell colSpan={(canEdit || canDelete) ? 4 : 3} className="text-center py-8 text-muted-foreground">
                       {debouncedSearch ? "No products found" : "No packing records found"}
                     </TableCell></TableRow>
                   ) : (
@@ -566,15 +660,27 @@ export default function TransportLogisticsLookup() {
                         <TableCell className="font-medium">{item.productName}</TableCell>
                         <TableCell className="text-right">{item.bora ?? "—"}</TableCell>
                         <TableCell className="text-right font-bold">{item.linerPacking ?? item.linerPackingQty ?? "—"}</TableCell>
-                        {canDelete && (
-                          <TableCell className="text-right">
-                            <Button
-                              size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive"
-                              disabled={deleteBundleMut.isPending}
-                              onClick={() => window.confirm(`Delete packing record for ${item.productName}?`) && deleteBundleMut.mutate(item.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                        {(canEdit || canDelete) && (
+                          <TableCell className="text-right whitespace-nowrap">
+                            {canEdit && (
+                              <Button
+                                size="icon" variant="ghost" className="h-8 w-8"
+                                disabled={updateBundleMut.isPending}
+                                onClick={() => openEditBundle(item)}
+                                title="Edit"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {canDelete && (
+                              <Button
+                                size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive"
+                                disabled={deleteBundleMut.isPending}
+                                onClick={() => window.confirm(`Delete packing record for ${item.productName}?`) && deleteBundleMut.mutate(item.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </TableCell>
                         )}
                       </TableRow>
@@ -587,13 +693,15 @@ export default function TransportLogisticsLookup() {
         </TabsContent>
       </Tabs>
 
-      {/* Add Record Dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+      {/* Add / Edit Record Dialog */}
+      <Dialog open={addOpen} onOpenChange={o => { setAddOpen(o); if (!o) setEditingId(null); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{activeTab === "lookup" ? "Add Transport Record" : "Add Packing Record"}</DialogTitle>
+            <DialogTitle>{activeTab === "lookup" ? (editingId ? "Edit Transport Record" : "Add Transport Record") : (editingId ? "Edit Packing Record" : "Add Packing Record")}</DialogTitle>
             <DialogDescription>
-              {unitFilter !== "all" ? `New record will be tagged to unit: ${unitFilter}` : "Select a unit from the dropdown above to auto-tag this record"}
+              {editingId
+                ? `Editing record #${editingId}`
+                : unitFilter !== "all" ? `New record will be tagged to unit: ${unitFilter}` : "Select a unit from the dropdown above to auto-tag this record"}
             </DialogDescription>
           </DialogHeader>
           {activeTab === "lookup"
@@ -601,21 +709,39 @@ export default function TransportLogisticsLookup() {
             : renderBundleForm(bundleForm, setBundleForm)}
           <div className="flex gap-2 pt-3">
             {activeTab === "lookup" ? (
-              <Button
-                disabled={createTransportMut.isPending || !transportForm.state || !transportForm.city || (!transportForm.tciBora && !transportForm.normalBora)}
-                onClick={() => createTransportMut.mutate(transportForm)}
-              >
-                {createTransportMut.isPending ? "Saving..." : "Save"}
-              </Button>
+              editingId ? (
+                <Button
+                  disabled={updateTransportMut.isPending || !transportForm.state || !transportForm.city || (!transportForm.tciBora && !transportForm.normalBora)}
+                  onClick={() => updateTransportMut.mutate({ id: editingId, form: transportForm })}
+                >
+                  {updateTransportMut.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              ) : (
+                <Button
+                  disabled={createTransportMut.isPending || !transportForm.state || !transportForm.city || (!transportForm.tciBora && !transportForm.normalBora)}
+                  onClick={() => createTransportMut.mutate(transportForm)}
+                >
+                  {createTransportMut.isPending ? "Saving..." : "Save"}
+                </Button>
+              )
             ) : (
-              <Button
-                disabled={createBundleMut.isPending || !bundleForm.productName}
-                onClick={() => createBundleMut.mutate(bundleForm)}
-              >
-                {createBundleMut.isPending ? "Saving..." : "Save"}
-              </Button>
+              editingId ? (
+                <Button
+                  disabled={updateBundleMut.isPending || !bundleForm.productName}
+                  onClick={() => updateBundleMut.mutate({ id: editingId, form: bundleForm })}
+                >
+                  {updateBundleMut.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              ) : (
+                <Button
+                  disabled={createBundleMut.isPending || !bundleForm.productName}
+                  onClick={() => createBundleMut.mutate(bundleForm)}
+                >
+                  {createBundleMut.isPending ? "Saving..." : "Save"}
+                </Button>
+              )
             )}
-            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setAddOpen(false); setEditingId(null); }}>Cancel</Button>
           </div>
         </DialogContent>
       </Dialog>

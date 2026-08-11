@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, productBundleMasterTable, transportDestinationMasterTable, importBatchesTable, auditLogsTable, ordersTable, orderItemsTable } from "@workspace/db";
 import { eq, and, sql, ilike, or, isNull, desc } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
-import { canManageMaster, canManageTransportLookup, canImportTransportLookup, canUndoImport, canDeleteTransportLookup, type PermissionUser } from "../lib/permission-service";
+import { canManageTransportLookup, canImportTransportLookup, canUndoImport, canDeleteTransportLookup, canEditTransportLookup, type PermissionUser } from "../lib/permission-service";
 
 const router: IRouter = Router();
 
@@ -236,12 +236,12 @@ router.post("/transport-masters/destinations", async (req, res) => {
   }
 });
 
-// Update destination (admin/inventory only) with audit
+// Update destination (admin/support only) with audit
 router.patch("/transport-masters/destinations/:id", async (req, res) => {
   try {
     const user = await authUser(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (!canManageMaster(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (!canEditTransportLookup(user)) { res.status(403).json({ error: "Admin or Support only" }); return; }
 
     const id = Number(req.params.id);
     const [existing] = await db.select().from(transportDestinationMasterTable).where(eq(transportDestinationMasterTable.id, id));
@@ -667,12 +667,12 @@ router.post("/transport-masters/bundles", async (req, res) => {
   }
 });
 
-// Update bundle (admin/inventory only) with audit
+// Update bundle (admin/support only) with audit
 router.patch("/transport-masters/bundles/:id", async (req, res) => {
   try {
     const user = await authUser(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (!canManageMaster(user)) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (!canEditTransportLookup(user)) { res.status(403).json({ error: "Admin or Support only" }); return; }
 
     const id = Number(req.params.id);
     const [existing] = await db.select().from(productBundleMasterTable).where(eq(productBundleMasterTable.id, id));
