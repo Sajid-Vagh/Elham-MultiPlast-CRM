@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Package, User, Truck, Calendar, Clock, CheckCircle2, Circle, Loader2, AlertTriangle, MessageSquare, Send, XCircle, Mic } from "lucide-react";
+import { ArrowLeft, Package, User, Truck, Calendar, Clock, CheckCircle2, Circle, AlertTriangle, MessageSquare, Send, XCircle, Mic } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { ProductionProgressSection } from "@/components/production-progress";
 import { CancelOrderModal } from "@/components/cancel-order-modal";
@@ -96,13 +96,24 @@ export default function OrderDetailGlobal() {
   });
 
   // The chat lives on the production order — resolve it from this sales order's
-  // proforma invoice so Sales users can reply right here.
+  // linked production order. `enrichOrder` already returns `productionOrder.id`,
+  // so use that directly; the by-invoice lookup is a fallback for payloads that
+  // predate the field.
   const { data: productionOrder } = useQuery<any>({
     queryKey: ["production-by-invoice", order?.proformaInvoiceId],
     queryFn: () => customFetch(`/production/by-invoice/${order?.proformaInvoiceId}`),
     enabled: !!order?.proformaInvoiceId,
   });
-  const productionOrderId = productionOrder?.id;
+  const productionOrderId = order?.productionOrder?.id || productionOrder?.id;
+
+  // Voice notes are recorded against the production order (or the linked deal
+  // when no production order exists yet). The backend cross-links deal ↔
+  // production, so both sides always see the merged list.
+  const voiceUploadTarget = productionOrderId
+    ? { entityType: "production" as const, entityId: productionOrderId }
+    : order?.dealId
+      ? { entityType: "deal" as const, entityId: order.dealId }
+      : null;
 
   const { data: productionChat, refetch: refetchMessages } = useQuery<any>({
     queryKey: ["production-messages", productionOrderId],
@@ -277,7 +288,7 @@ export default function OrderDetailGlobal() {
       )}
 
       {/* Order Conversation (Sales workspace — reply to Production directly) */}
-      {order.proformaInvoiceId && (
+      {(order.dealId || order.proformaInvoiceId) && (
         <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
@@ -293,7 +304,10 @@ export default function OrderDetailGlobal() {
               <div className="h-full overflow-y-auto px-3 py-3 space-y-3">
                 {!productionOrderId ? (
                   <div className="flex items-center justify-center h-full text-center">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    <div className="flex flex-col items-center gap-2">
+                      <MessageSquare className="h-5 w-5 text-muted-foreground/50" />
+                      <p className="text-sm text-muted-foreground max-w-xs">No production order yet — the conversation opens once this order reaches production.</p>
+                    </div>
                   </div>
                 ) : !productionMessages || productionMessages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-center">
@@ -350,8 +364,8 @@ export default function OrderDetailGlobal() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-sm flex items-center gap-2"><Mic className="h-4 w-4" /> Voice Notes</CardTitle>
-            {productionOrderId && (
-              <VoiceNoteUploader entityType="production" entityId={productionOrderId} label="Record" />
+            {voiceUploadTarget && (
+              <VoiceNoteUploader entityType={voiceUploadTarget.entityType} entityId={voiceUploadTarget.entityId} label="Record" />
             )}
           </CardHeader>
           <CardContent>
