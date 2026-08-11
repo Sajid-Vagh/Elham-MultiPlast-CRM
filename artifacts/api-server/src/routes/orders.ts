@@ -15,6 +15,31 @@ const PRODUCTION_UNITS = ["Himatnagar", "Surat", "Rajkot"] as const;
 
 const router: IRouter = Router();
 
+// Unread production messages / voice notes for the current user, keyed by the
+// notification link. Chat notification links are ROLE-AWARE:
+//   - Sales users receive `/orders/{salesOrderId}` links
+//   - Production / Support (production_and_support) / Admin users receive
+//     `/production/orders/{productionOrderId}` links
+// So a single list must check whichever link pattern matches the requesting
+// user's workspace. Each user only ever holds notifications for their own
+// workspace, so checking both link patterns per order is accurate for every role.
+async function getUnreadChatLinks(userId: number): Promise<Map<string, number>> {
+  const unreadLinks = new Map<string, number>();
+  try {
+    const unreadRows = await db.select({ link: notificationsTable.link })
+      .from(notificationsTable)
+      .where(and(
+        eq(notificationsTable.userId, userId),
+        isNull(notificationsTable.readAt),
+        inArray(notificationsTable.type, ["production_message", "voice_note"])
+      ));
+    for (const row of unreadRows) {
+      if (row.link) unreadLinks.set(row.link, (unreadLinks.get(row.link) || 0) + 1);
+    }
+  } catch { /* notifications table unavailable — flag nothing */ }
+  return unreadLinks;
+}
+
 async function enrichOrder(order: any) {
   const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
   const salesOwner = order.salesOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, order.salesOwnerId)).then(r => r[0]) : null;
@@ -152,23 +177,14 @@ router.get("/orders", async (req, res) => {
 
     // Unread production messages / voice notes for the current user, keyed by the
     // notification link, so the Orders list can flag orders with unseen chat.
-    const unreadLinks = new Map<string, number>();
-    try {
-      const unreadRows = await db.select({ link: notificationsTable.link })
-        .from(notificationsTable)
-        .where(and(
-          eq(notificationsTable.userId, user.id),
-          isNull(notificationsTable.readAt),
-          inArray(notificationsTable.type, ["production_message", "voice_note"])
-        ));
-      for (const row of unreadRows) {
-        if (row.link) unreadLinks.set(row.link, (unreadLinks.get(row.link) || 0) + 1);
-      }
-    } catch { /* notifications table unavailable — flag nothing */ }
+    const unreadLinks = await getUnreadChatLinks(user.id);
 
     const enriched = await Promise.all(orders.map(async (o) => {
       const e = await enrichOrder(o);
-      const unread = unreadLinks.get(`/orders/${o.id}`) || 0;
+      // Sales users hold `/orders/{id}` links; Production/Support/Admin hold
+      // `/production/orders/{prodId}` links — check the one for this user.
+      const prodId = e.productionOrder?.id;
+      const unread = (unreadLinks.get(`/orders/${o.id}`) || 0) + (prodId ? unreadLinks.get(`/production/orders/${prodId}`) || 0 : 0);
       e.hasUnreadMessages = unread > 0;
       e.unreadMessageCount = unread;
       return e;
@@ -358,19 +374,7 @@ router.get("/orders/global", async (req, res) => {
 
     // Unread production messages / voice notes for the current user, keyed by the
     // notification link, so the Orders list can flag orders with unseen chat.
-    const unreadLinks = new Map<string, number>();
-    try {
-      const unreadRows = await db.select({ link: notificationsTable.link })
-        .from(notificationsTable)
-        .where(and(
-          eq(notificationsTable.userId, user.id),
-          isNull(notificationsTable.readAt),
-          inArray(notificationsTable.type, ["production_message", "voice_note"])
-        ));
-      for (const row of unreadRows) {
-        if (row.link) unreadLinks.set(row.link, (unreadLinks.get(row.link) || 0) + 1);
-      }
-    } catch { /* notifications table unavailable — flag nothing */ }
+    const unreadLinks = await getUnreadChatLinks(user.id);
 
     // Enrich with items count, totals, production info, dispatch status
     const enriched = await Promise.all(orders.map(async (order) => {
@@ -394,6 +398,7 @@ router.get("/orders/global", async (req, res) => {
       let dispatchStatusVal = null;
       let transportName = null;
       let transportDetails = null;
+      let prodOrderId: number | null = null;
       try {
         const { productionOrdersTable } = await import("@workspace/db");
         const [prodOrder] = await db.select().from(productionOrdersTable)
@@ -401,6 +406,7 @@ router.get("/orders/global", async (req, res) => {
           .orderBy(desc(productionOrdersTable.createdAt))
           .limit(1);
         if (prodOrder) {
+          prodOrderId = prodOrder.id;
           productionStatus = prodOrder.status;
           dispatchStatusVal = prodOrder.dispatchStatus;
           transportName = prodOrder.transportName;
@@ -409,7 +415,9 @@ router.get("/orders/global", async (req, res) => {
       } catch { /* production_orders may not exist */ }
 
       const totalQuantity = items.reduce((sum, i) => sum + Number(i.quantity || 0), 0);
-      const unread = unreadLinks.get(`/orders/${order.id}`) || 0;
+      // Sales users hold `/orders/{id}` links; Production/Support/Admin hold
+      // `/production/orders/{prodId}` links — check the one for this user.
+      const unread = (unreadLinks.get(`/orders/${order.id}`) || 0) + (prodOrderId ? unreadLinks.get(`/production/orders/${prodOrderId}`) || 0 : 0);
 
       return {
         id: order.id,
