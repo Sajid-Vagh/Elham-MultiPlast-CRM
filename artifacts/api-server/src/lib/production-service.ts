@@ -2959,7 +2959,30 @@ export async function listOrders(
     .orderBy(desc(productionOrdersTable.createdAt))
     .limit(pageSize).offset(offset);
 
-  const enriched = await Promise.all(orders.map(o => enrichProductionOrder(o, user)));
+  // Unread production messages / voice notes for the current user, keyed by the
+  // notification link, so the Production Orders list can flag orders with unseen
+  // chat — mirroring the Sales-side Orders list behaviour.
+  const unreadLinks = new Map<string, number>();
+  try {
+    const unreadRows = await db.select({ link: notificationsTable.link })
+      .from(notificationsTable)
+      .where(and(
+        eq(notificationsTable.userId, user.id),
+        isNull(notificationsTable.readAt),
+        inArray(notificationsTable.type, ["production_message", "voice_note"])
+      ));
+    for (const row of unreadRows) {
+      if (row.link) unreadLinks.set(row.link, (unreadLinks.get(row.link) || 0) + 1);
+    }
+  } catch { /* notifications table unavailable — flag nothing */ }
+
+  const enriched = await Promise.all(orders.map(async (o) => {
+    const e = await enrichProductionOrder(o, user);
+    const unread = unreadLinks.get(`/production/orders/${o.id}`) || 0;
+    e.hasUnreadMessages = unread > 0;
+    e.unreadMessageCount = unread;
+    return e;
+  }));
 
   return { data: enriched, total: count, page: pageNum, totalPages: Math.ceil(count / pageSize) };
 }

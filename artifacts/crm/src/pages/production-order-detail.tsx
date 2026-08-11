@@ -322,6 +322,7 @@ export default function ProductionOrderDetail() {
     );
     if (pending.length === 0) return;
     pending.forEach((n) => { markAsRead(n.id); });
+    queryClient.invalidateQueries({ queryKey: ["production-orders"] });
     queryClient.invalidateQueries({ queryKey: ["orders-global"] });
     queryClient.invalidateQueries({ queryKey: ["notifications"] });
     queryClient.invalidateQueries({ queryKey: ["unread-count"] });

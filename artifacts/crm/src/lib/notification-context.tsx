@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { playNotificationSoundForType, showBrowserNotification } from "./notification-sound";
 import { toast } from "@/hooks/use-toast";
 
@@ -161,6 +162,16 @@ export function NotificationProvider({ userId, children }: { userId: number | un
   const lastKnownMaxIdRef = useRef<number | null>(null);
   const [ownerFilter, setOwnerFilterState] = useState<string>(loadOwnerFilter);
   const ownerFilterRef = useRef(ownerFilter);
+  const queryClient = useQueryClient();
+
+  // New chat messages / voice notes should surface immediately on the Sales and
+  // Production order lists (green unread-message icon), so refresh those two
+  // list caches whenever a chat notification arrives.
+  const invalidateChatLists = useCallback((n: Notification) => {
+    if (n.type !== "production_message" && n.type !== "voice_note") return;
+    queryClient.invalidateQueries({ queryKey: ["orders-global"] });
+    queryClient.invalidateQueries({ queryKey: ["production-orders"] });
+  }, [queryClient]);
 
   // Keep a ref in sync so the SSE handler + polling callbacks (both stable)
   // always read the latest filter without being re-created on every change.
@@ -205,6 +216,7 @@ export function NotificationProvider({ userId, children }: { userId: number | un
           if (!isInitial && maxId > (lastKnownMaxIdRef.current ?? 0)) {
             const newest = fetched.find(n => n.id === maxId);
             if (newest && !newest.readAt && !newest.notificationSeen && matchesOwnerFilter(newest, ownerFilterRef.current)) setLatestNotification(newest);
+            if (newest) invalidateChatLists(newest);
           }
           lastKnownMaxIdRef.current = maxId;
         }
@@ -217,7 +229,7 @@ export function NotificationProvider({ userId, children }: { userId: number | un
     } finally {
       if (isInitial) setLoading(false);
     }
-  }, [userId]);
+  }, [userId, invalidateChatLists]);
 
   // Fetch on mount
   useEffect(() => {
@@ -252,6 +264,7 @@ export function NotificationProvider({ userId, children }: { userId: number | un
           });
           setTotal((prev) => prev + 1);
           lastKnownMaxIdRef.current = Math.max(lastKnownMaxIdRef.current ?? 0, n.id);
+          invalidateChatLists(n);
 
           // Global "Owners" gatekeeper: when a specific owner is selected, skip
           // the toast (popup + sound) for notifications caused by anyone else.

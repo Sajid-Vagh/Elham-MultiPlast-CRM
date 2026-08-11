@@ -18,7 +18,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Search, ArrowLeft, ArrowRight, Download, FileSpreadsheet, Clock, CalendarDays } from "lucide-react";
+import { Search, ArrowLeft, ArrowRight, Download, FileSpreadsheet, Clock, CalendarDays, MessageCircle } from "lucide-react";
 import { useUserUnits } from "@/lib/use-user-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 import { useToast } from "@/hooks/use-toast";
@@ -293,6 +293,11 @@ export default function ProductionOrders() {
                             <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0" title="New order — not viewed yet" />
                           ) : null}
                           <span>{order.masterOrderNumber || order.displayOrderId || order.orderNumber}</span>
+                          {order.hasUnreadMessages ? (
+                            <span title={`${order.unreadMessageCount || 1} unread message${(order.unreadMessageCount || 1) > 1 ? "s" : ""}`} className="relative inline-flex shrink-0">
+                              <MessageCircle className="h-3.5 w-3.5 text-emerald-500 fill-emerald-500/20" />
+                            </span>
+                          ) : null}
                         </div>
                       </td>
                       <td className="py-3 px-4 min-w-[160px]">
