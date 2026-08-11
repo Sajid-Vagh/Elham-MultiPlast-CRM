@@ -16,11 +16,11 @@ import { useGetMe } from "@workspace/api-client-react";
 
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("crm_token")}`, "Content-Type": "application/json" });
 
-// Roles allowed to add / edit records & upload sheets (Admin, Support only). Sales is view-only.
-const EDIT_ROLES = ["admin", "support"];
+// Roles allowed to add / edit records & upload sheets (Admin, Support, Production & Support). Sales/Production is view-only.
+const EDIT_ROLES = ["admin", "support", "production_and_support"];
 
-// Roles allowed to delete records / clear all (Admin, Support only).
-const DELETE_ROLES = ["admin", "support"];
+// Roles allowed to delete records / clear all (Admin, Support, Production & Support).
+const DELETE_ROLES = ["admin", "support", "production_and_support"];
 
 // ── Add Record form types ──
 type TransportForm = { state: string; city: string; pinCode: string; transportCompany: string; tciBora: string; normalBora: string; productionUnit: string; remarks: string };
