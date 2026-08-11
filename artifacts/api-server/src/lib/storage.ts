@@ -344,7 +344,7 @@ class SupabaseStorageProvider implements StorageProvider {
       // Heal the missing storage.objects RLS policy (migration 072) even when
       // no file is uploaded yet — keeps existing deployments working without a
       // manual SQL step.
-      await this.ensurePublicReadPolicies();
+      await ensurePublicReadPolicies();
       return true;
     }
 
@@ -422,41 +422,64 @@ class SupabaseStorageProvider implements StorageProvider {
     // auto-created on storage.objects. Without one, anonymous public-URL loads
     // (<img src>, <audio src>) return 403. Ensure the policy on every
     // make-public event so the fix self-heals (idempotent, runs once/process).
-    await this.ensurePublicReadPolicies();
+    await ensurePublicReadPolicies();
   }
+}
 
-  // ────────────────────────────────────────
-  // Storage RLS policies
-  // ────────────────────────────────────────
-  // Root cause of "profile photo 403 / initials fallback for non-admin users":
-  // buckets are created by INSERTing into storage.buckets directly (bypassing
-  // the Storage REST API), so Supabase never generates the standard public-read
-  // SELECT policy on storage.objects. The bucket flag public=true alone does not
-  // let the browser's anonymous request download the object — storage.objects
-  // RLS still denies -> HTTP 403. This grants SELECT to PUBLIC (anon +
-  // authenticated) for every bucket flagged public, mirroring migration
-  // 072_add_storage_public_read_policies.sql. One generic policy covers
-  // profile-photos, voice-notes, documents, builty and future public buckets.
-  private policiesEnsured = false;
+// ────────────────────────────────────────
+// Storage RLS policies (module-level)
+// ────────────────────────────────────────
+// Root cause of "profile photo 403 / initials fallback for non-admin users":
+// buckets are created by INSERTing into storage.buckets directly (bypassing
+// the Storage REST API), so Supabase never generates the standard public-read
+// SELECT policy on storage.objects. The bucket flag public=true alone does not
+// let the browser's anonymous request download the object — storage.objects
+// RLS still denies -> HTTP 403. This grants SELECT to PUBLIC (anon +
+// authenticated) for every bucket flagged public, mirroring migration
+// 072_add_storage_public_read_policies.sql. One generic policy covers
+// profile-photos, voice-notes, documents, builty and future public buckets.
+// Module-level (not a class method) so index.ts can run it once at boot after
+// the DB connection is established, and existing deployments self-heal on next
+// startup even if the migration was applied late. Idempotent — runs at most
+// once per process.
+let policiesEnsured = false;
 
-  private async ensurePublicReadPolicies(): Promise<void> {
-    if (this.policiesEnsured) return;
-    try {
-      const { db } = await import("@workspace/db");
-      await db.execute(sql`DROP POLICY IF EXISTS "Public read access (all public buckets)" ON storage.objects`);
-      await db.execute(sql`
-        CREATE POLICY "Public read access (all public buckets)"
-          ON storage.objects
-          FOR SELECT
-          TO public
-          USING (bucket_id IN (SELECT id FROM storage.buckets WHERE public = true))
-      `);
-      this.policiesEnsured = true;
-      console.log(`[storage] Public read policy ensured on storage.objects (anon SELECT for all public buckets)`);
-    } catch (err: any) {
-      console.warn(`[storage] Could not ensure public read policy on storage.objects:`, err?.message);
-      console.warn(`[storage] Apply migration lib/db/migrations/072_add_storage_public_read_policies.sql in Supabase SQL Editor.`);
+const KNOWN_PUBLIC_BUCKETS = ["profile-photos", "voice-notes", "documents", "builty"];
+
+export async function ensurePublicReadPolicies(): Promise<void> {
+  if (policiesEnsured) return;
+  try {
+    const { db } = await import("@workspace/db");
+
+    // The storage schema may not exist in this database (e.g. local dev without
+    // Supabase). Bail silently instead of erroring on boot.
+    const reg = await db.execute(sql`SELECT to_regclass('storage.objects') AS t`);
+    const tableOid = (reg as any).rows?.[0]?.t;
+    if (!tableOid) {
+      console.warn("[storage] storage.objects not found — skipping public read policy setup.");
+      policiesEnsured = true;
+      return;
     }
+
+    // Re-flag every known bucket public (idempotent, mirrors createBucketViaDb).
+    const bucketList = KNOWN_PUBLIC_BUCKETS.map(b => `'${b}'`).join(", ");
+    await db.execute(sql.raw(`UPDATE storage.buckets SET public = true WHERE id IN (${bucketList})`));
+
+    // Drop any stale policy and recreate the single generic public-read policy.
+    await db.execute(sql`DROP POLICY IF EXISTS "Public read access (all public buckets)" ON storage.objects`);
+    await db.execute(sql`
+      CREATE POLICY "Public read access (all public buckets)"
+        ON storage.objects
+        FOR SELECT
+        TO public
+        USING (bucket_id IN (SELECT id FROM storage.buckets WHERE public = true))
+    `);
+
+    policiesEnsured = true;
+    console.log("[storage] Public read policy ensured on storage.objects (anon SELECT for all public buckets)");
+  } catch (err: any) {
+    console.warn(`[storage] Could not ensure public read policy on storage.objects:`, err?.message);
+    console.warn(`[storage] Apply migration lib/db/migrations/072_add_storage_public_read_policies.sql in Supabase SQL Editor.`);
   }
 }
 
@@ -513,19 +536,26 @@ export function normalizeProfilePhotoUrl(url: string | null | undefined): string
   // on Render/Vercel, so remap them to the equivalent Supabase public object
   // URL exactly like the relative-path case below.
   if (/^https?:\/\/[^/]+\/api\/uploads\//.test(url)) {
-    const storagePath = url.replace(/^https?:\/\/[^/]+\/api\/uploads\//, "");
-    const supabaseUrl = process.env.SUPABASE_URL;
-    if (supabaseUrl) return `${supabaseUrl.replace(/\/+$/, "")}/storage/v1/object/public/${storagePath}`;
-    return `/api/uploads/${storagePath}`;
+    return buildPublicObjectUrl(url.replace(/^https?:\/\/[^/]+\/api\/uploads\//, ""));
   }
 
-  if (!url.startsWith("/")) return url; // already absolute (e.g. Supabase public URL)
+  // Already absolute (e.g. a Supabase public URL) — pass through unchanged.
+  if (/^https?:\/\//i.test(url)) return url;
+
+  // Any remaining value is treated as a relative/legacy storage path: strip a
+  // leading "/" and the optional "/api/uploads/" prefix, then map to a full
+  // Supabase public object URL. Without SUPABASE_URL (local development) the
+  // local API upload route is used instead.
+  const storagePath = url.replace(/^\/+/, "").replace(/^api\/uploads\//, "");
+  return buildPublicObjectUrl(storagePath);
+}
+
+function buildPublicObjectUrl(storagePath: string): string {
   const supabaseUrl = process.env.SUPABASE_URL;
-  if (supabaseUrl && url.startsWith("/api/uploads/")) {
-    const storagePath = url.replace(/^\/api\/uploads\//, "");
+  if (supabaseUrl) {
     return `${supabaseUrl.replace(/\/+$/, "")}/storage/v1/object/public/${storagePath}`;
   }
-  return url;
+  return `/api/uploads/${storagePath}`;
 }
 
 export function setStorageProvider(p: StorageProvider) {

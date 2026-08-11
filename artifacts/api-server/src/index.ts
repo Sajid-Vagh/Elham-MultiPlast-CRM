@@ -63,6 +63,18 @@ async function main() {
     logger.info("Connecting to database...");
     await waitForDb(30, 2000);
     logger.info("Database connected");
+
+    // Ensure the storage.objects RLS public-read policy exists — boot-time
+    // self-heal for the Supabase Storage 403 / profile-photo initials fallback.
+    // Equivalent to applying migration 072_add_storage_public_read_policies.sql;
+    // runs once per process and is idempotent, so existing deployments repair
+    // themselves on next startup without a manual SQL step.
+    try {
+      const { ensurePublicReadPolicies } = await import("./lib/storage");
+      await ensurePublicReadPolicies();
+    } catch (err) {
+      logger.warn({ err }, "Storage RLS public-read policy setup failed (non-critical)");
+    }
   } catch (err) {
     logger.error({ err }, "Failed to connect to database after retries");
     process.exit(1);

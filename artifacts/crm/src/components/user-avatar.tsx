@@ -19,11 +19,20 @@ interface UserAvatarProps {
 
 export function UserAvatar({ profilePhoto, name, className }: UserAvatarProps) {
   const cacheBuster = useMemo(() => Date.now(), [profilePhoto]);
-  // Backend may return a relative path (e.g. "/api/uploads/profiles/x.jpg" when
-  // using local storage). Resolve it against the configured API base URL so the
-  // image loads regardless of the frontend origin.
-  const resolved = profilePhoto ? resolveApiUrl(profilePhoto) : undefined;
-  const src = resolved ? `${resolved}${resolved.includes("?") ? "&" : "?"}v=${cacheBuster}` : undefined;
+  // Backend normally returns an absolute Supabase public URL (already
+  // normalized server-side). As a failsafe, if we ever receive a relative path
+  // (e.g. "/api/uploads/...") resolve it against the configured API base URL —
+  // and only pass it to the image if it became absolute, otherwise fall back to
+  // the initials instead of firing a broken request.
+  const src = useMemo(() => {
+    if (!profilePhoto) return undefined;
+    if (/^https?:\/\//i.test(profilePhoto)) {
+      return `${profilePhoto}${profilePhoto.includes("?") ? "&" : "?"}v=${cacheBuster}`;
+    }
+    const resolved = resolveApiUrl(profilePhoto);
+    if (!/^https?:\/\//i.test(resolved)) return undefined;
+    return `${resolved}${resolved.includes("?") ? "&" : "?"}v=${cacheBuster}`;
+  }, [profilePhoto, cacheBuster]);
 
   return (
     <Avatar className={className}>
