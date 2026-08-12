@@ -28,6 +28,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { ProductionProgressSection } from "@/components/production-progress";
 import { CancelOrderModal } from "@/components/cancel-order-modal";
+import { WonAmountAdjustmentModal } from "@/components/won-amount-adjustment-modal";
 import { onPIChange, onDealChange } from "@/lib/query-invalidation";
 import { customerLabel } from "@/lib/customer-label";
 const STATUS_COLORS: Record<string, string> = {
@@ -226,6 +227,7 @@ export default function ProformaInvoicesPage() {
 
   const [statusFilter, setStatusFilter] = useState("all");
   const [orderTypeFilter, setOrderTypeFilter] = useState<string | null>(urlOrderType);
+  const [pendingWonAdjustment, setPendingWonAdjustment] = useState<{ status: string; originalGrandTotal: number; newGrandTotal: number } | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
   const [statusDialog, setStatusDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
   const [newStatus, setNewStatus] = useState("");
@@ -1288,6 +1290,25 @@ const selectProduct = (idx: number, product: any) => {
       hasError = true;
     }
     if (hasError) return;
+
+    // Won Amount adjustment confirmation — editing a PI already linked to a
+    // Deal/Order whose grand total changed must NOT silently re-sync the Deal's
+    // Won Amount. Intercept the submit, open the WonAmountAdjustmentModal and
+    // wait for the user to confirm the amount to add/deduct before proceeding.
+    if (editMode && selectedInvoice?.id && (selectedInvoice.dealId || selectedInvoice.orderId)) {
+      const originalGrandTotal = Number(selectedInvoice.grandTotal || 0);
+      const newGrandTotal = Number(grandTotal);
+      const difference = Math.round((newGrandTotal - originalGrandTotal) * 100) / 100;
+      if (Math.abs(difference) > 0.001) {
+        setPendingWonAdjustment({ status, originalGrandTotal, newGrandTotal });
+        return;
+      }
+    }
+
+    await performSave(status);
+  };
+
+  const performSave = async (status: string, wonAmountAdjustment?: number) => {
     setSaving(true);
     try {
       const body: any = {
@@ -1406,6 +1427,9 @@ const selectProduct = (idx: number, product: any) => {
       if (invoiceNumber) body.invoiceNumber = invoiceNumber;
       if (editMode && selectedInvoice?.id && selectedInvoice.status !== "Draft" && revisionReason) {
         body.revisionReason = revisionReason;
+      }
+      if (wonAmountAdjustment !== undefined) {
+        body.wonAmountAdjustment = wonAmountAdjustment;
       }
 
       let res: Response;
@@ -2736,6 +2760,19 @@ ${pagesHtml}
         </div>
       </div>
       {deleteDialogEl}
+      {pendingWonAdjustment && (
+        <WonAmountAdjustmentModal
+          open={!!pendingWonAdjustment}
+          onOpenChange={(o) => { if (!o) setPendingWonAdjustment(null); }}
+          originalTotal={pendingWonAdjustment.originalGrandTotal}
+          newTotal={pendingWonAdjustment.newGrandTotal}
+          onConfirm={(value) => {
+            const st = pendingWonAdjustment.status;
+            setPendingWonAdjustment(null);
+            performSave(st, value);
+          }}
+        />
+      )}
     </>
     );
   }
