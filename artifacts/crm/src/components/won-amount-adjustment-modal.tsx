@@ -52,11 +52,6 @@ export function WonAmountAdjustmentModal({ open, onOpenChange, originalTotal, ne
               You can change this value (e.g. use 0 to keep the Won Value unchanged).
             </p>
           </div>
-
-          <div className="rounded-md border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground space-y-1">
-            <div className="flex justify-between"><span>Original Invoice Total:</span><span className="font-medium">₹{formatAmount(originalTotal)}</span></div>
-            <div className="flex justify-between"><span>New Invoice Total:</span><span className="font-medium">₹{formatAmount(newTotal)}</span></div>
-          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

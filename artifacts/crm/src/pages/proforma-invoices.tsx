@@ -227,7 +227,7 @@ export default function ProformaInvoicesPage() {
 
   const [statusFilter, setStatusFilter] = useState("all");
   const [orderTypeFilter, setOrderTypeFilter] = useState<string | null>(urlOrderType);
-  const [pendingWonAdjustment, setPendingWonAdjustment] = useState<{ status: string; originalGrandTotal: number; newGrandTotal: number } | null>(null);
+  const [pendingWonAdjustment, setPendingWonAdjustment] = useState<{ status: string; originalTaxableAmount: number; newTaxableAmount: number } | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
   const [statusDialog, setStatusDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
   const [newStatus, setNewStatus] = useState("");
@@ -1296,11 +1296,11 @@ const selectProduct = (idx: number, product: any) => {
     // Won Amount. Intercept the submit, open the WonAmountAdjustmentModal and
     // wait for the user to confirm the amount to add/deduct before proceeding.
     if (editMode && selectedInvoice?.id && (selectedInvoice.dealId || selectedInvoice.orderId)) {
-      const originalGrandTotal = Number(selectedInvoice.grandTotal || 0);
-      const newGrandTotal = Number(grandTotal);
-      const difference = Math.round((newGrandTotal - originalGrandTotal) * 100) / 100;
+      const originalTaxableAmount = Number(selectedInvoice.taxableAmount || 0);
+      const newTaxableAmount = Number(taxableAmount);
+      const difference = Math.round((newTaxableAmount - originalTaxableAmount) * 100) / 100;
       if (Math.abs(difference) > 0.001) {
-        setPendingWonAdjustment({ status, originalGrandTotal, newGrandTotal });
+        setPendingWonAdjustment({ status, originalTaxableAmount, newTaxableAmount });
         return;
       }
     }
@@ -2764,8 +2764,8 @@ ${pagesHtml}
         <WonAmountAdjustmentModal
           open={!!pendingWonAdjustment}
           onOpenChange={(o) => { if (!o) setPendingWonAdjustment(null); }}
-          originalTotal={pendingWonAdjustment.originalGrandTotal}
-          newTotal={pendingWonAdjustment.newGrandTotal}
+          originalTotal={pendingWonAdjustment.originalTaxableAmount}
+          newTotal={pendingWonAdjustment.newTaxableAmount}
           onConfirm={(value) => {
             const st = pendingWonAdjustment.status;
             setPendingWonAdjustment(null);
