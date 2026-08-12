@@ -127,9 +127,17 @@ export const productionOrdersTable = pgTable("production_orders", {
   needsReprint: boolean("needs_reprint").notNull().default(false),
   // Read tracking: true once the order has been viewed on its detail page (new-order dot)
   isRead: boolean("is_read").notNull().default(false),
+  // Per-user read tracking: array of user IDs who have viewed the order. The
+  // "new order" blue dot is computed per-request (isRead = readBy includes the
+  // requesting user) instead of using the global is_read flag.
+  readBy: integer("read_by").array().notNull().default([]),
   // Update tracking: true when the linked PI was modified (amber "updated" dot).
   // Cleared on view, independent of needs_reprint (which drives sheet reprinting).
   isUpdated: boolean("is_updated").notNull().default(false),
+  // Per-user update tracking: array of user IDs who have seen the latest PI
+  // update. The amber "updated" dot is computed per-request
+  // (isUpdated = is_updated && !updatedReadBy includes the requesting user).
+  updatedReadBy: integer("updated_read_by").array().notNull().default([]),
   // Cancellation acknowledgment: false when an order is cancelled; true once a
   // production user confirms the cancellation on the detail page. Unacknowledged
   // cancellations stay on the default orders list; acknowledged ones drop off.

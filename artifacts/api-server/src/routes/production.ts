@@ -61,6 +61,19 @@ async function requireProductionUser(req: any, res: any): Promise<PermissionUser
   return user;
 }
 
+// SQL that appends the given user id to production_orders.read_by (dedup via
+// UNION) so marking an order viewed only affects the requesting user — other
+// production users keep their own "new order" blue dot.
+function appendReadByUser(userId: number) {
+  return sql`ARRAY(SELECT x FROM unnest(COALESCE(${productionOrdersTable.readBy}, '{}'::int[])) AS u(x) UNION SELECT ${userId})`;
+}
+
+// Same for production_orders.updated_read_by — clears the "updated order" amber
+// dot for the requesting user only.
+function appendUpdatedReadByUser(userId: number) {
+  return sql`ARRAY(SELECT x FROM unnest(COALESCE(${productionOrdersTable.updatedReadBy}, '{}'::int[])) AS u(x) UNION SELECT ${userId})`;
+}
+
 // ── Pending Production Requirements ──
 router.get("/production/pending-requirements", async (req, res) => {
   try {
@@ -1037,7 +1050,10 @@ router.post("/production/orders/:id/mark-reprint", async (req, res) => {
   }
 });
 
-// ── POST /production/orders/:id/read — Mark order as viewed (clears the new-order dot AND the updated-order amber dot) ──
+// ── POST /production/orders/:id/read — Mark order as viewed by the REQUESTING
+// USER ONLY. Appends the user's id to read_by (clears their "new order" blue
+// dot) and to updated_read_by (clears their "updated order" amber dot) without
+// touching the read state of other production users.
 router.post("/production/orders/:id/read", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
@@ -1045,10 +1061,22 @@ router.post("/production/orders/:id/read", async (req, res) => {
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid order id" }); return; }
 
-    const [order] = await db.select({ id: productionOrdersTable.id }).from(productionOrdersTable).where(eq(productionOrdersTable.id, id));
+    const [order] = await db.select({ id: productionOrdersTable.id, readBy: productionOrdersTable.readBy, updatedReadBy: productionOrdersTable.updatedReadBy }).from(productionOrdersTable).where(eq(productionOrdersTable.id, id));
     if (!order) { res.status(404).json({ error: "Order not found" }); return; }
 
-    await db.update(productionOrdersTable).set({ isRead: true, isUpdated: false }).where(eq(productionOrdersTable.id, id));
+    const readBy = order.readBy ?? [];
+    const updatedReadBy = order.updatedReadBy ?? [];
+    const needsRead = !readBy.includes(user.id);
+    const needsUpdatedRead = !updatedReadBy.includes(user.id);
+    if (needsRead || needsUpdatedRead) {
+      await db.update(productionOrdersTable)
+        .set({
+          readBy: needsRead ? appendReadByUser(user.id) : readBy,
+          updatedReadBy: needsUpdatedRead ? appendUpdatedReadByUser(user.id) : updatedReadBy,
+          isRead: true,
+        })
+        .where(eq(productionOrdersTable.id, id));
+    }
 
     res.json({ success: true });
   } catch (err) {

@@ -33,7 +33,7 @@ async function requireContactAccess(req: any, res: any): Promise<{ user: any; co
   return { user, contact };
 }
 
-async function withOwner(contact: typeof contactsTable.$inferSelect) {
+async function withOwner(contact: typeof contactsTable.$inferSelect, viewer?: { id?: number }) {
   const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, contact.salesOwnerId));
   const { passwordHash: _, ...safeOwner } = owner ?? {};
   let commentUser = null;
@@ -42,7 +42,17 @@ async function withOwner(contact: typeof contactsTable.$inferSelect) {
     if (u) { const { passwordHash: _, ...safe } = u; commentUser = safe; }
   }
   const normalizedOwner = owner ? { ...safeOwner, profilePhoto: normalizeProfilePhotoUrl(safeOwner.profilePhoto) } : null;
-  return { ...contact, salesOwner: normalizedOwner, commentUpdatedByUser: commentUser };
+  // Per-user read state: the unread dot reflects ONLY whether the requesting
+  // user has read this lead, never whether some other user (e.g. an admin) has.
+  const readBy = contact.readBy ?? [];
+  const isRead = viewer?.id != null ? readBy.includes(viewer.id) : !!contact.isRead;
+  return {
+    ...contact,
+    salesOwner: normalizedOwner,
+    commentUpdatedByUser: commentUser,
+    isRead,
+    isRepeatEnquiry: contact.isRepeatEnquiry === true && !isRead,
+  };
 }
 
 // Build the rich 409 duplicate payload shown by the "Customer Already Exists" dialog
@@ -90,6 +100,17 @@ async function findExistingContact(mobile: string, email?: string | null) {
       ...(email ? [eq(contactsTable.email, email)] : []),
     ))
     .limit(1);
+}
+
+// SQL that appends the given user id to read_by (dedup via UNION) so marking a
+// lead read only affects the requesting user — other users keep their own dot.
+function appendReadBy(userId: number) {
+  return sql`ARRAY(SELECT x FROM unnest(COALESCE(${contactsTable.readBy}, '{}'::int[])) AS u(x) UNION SELECT ${userId})`;
+}
+
+// SQL that removes the given user id from read_by (mark unread for this user only).
+function removeReadBy(userId: number) {
+  return sql`ARRAY(SELECT x FROM unnest(COALESCE(${contactsTable.readBy}, '{}'::int[])) AS u(x) WHERE x <> ${userId})`;
 }
 
 router.get("/contacts", async (req, res) => {
@@ -193,7 +214,18 @@ router.get("/contacts", async (req, res) => {
       return [u.id, { ...safe, profilePhoto: normalizeProfilePhotoUrl(safe.profilePhoto) }];
     }));
 
-    const enriched = contacts.map(c => ({ ...c, salesOwner: userMap.get(c.salesOwnerId) ?? null }));
+    const enriched = contacts.map(c => {
+      // Per-user read state: the dot reflects ONLY whether the requesting user
+      // has read this lead. One user reading it must not clear it for others.
+      const readBy = c.readBy ?? [];
+      const isRead = readBy.includes(user.id);
+      return {
+        ...c,
+        salesOwner: userMap.get(c.salesOwnerId) ?? null,
+        isRead,
+        isRepeatEnquiry: c.isRepeatEnquiry === true && !isRead,
+      };
+    });
     // Debug: log unit values for every contact returned
     console.log("[DEBUG] GET /contacts - unit values:", JSON.stringify(enriched.map(c => ({ id: c.id, name: c.name, unit: c.unit }))));
     res.json(enriched);
@@ -237,11 +269,13 @@ router.post("/contacts", async (req, res) => {
   const customerCode = await generateCustomerCode();
   // A lead created for the caller is immediately "read" for them; only cross-owner
   // assignments stay unread so the assignee sees the blue "new lead" dot.
+  // readBy is the per-user equivalent of the legacy is_read flag.
   const insertValues: typeof contactsTable.$inferInsert = {
     ...values,
     customerCode,
     isRead: values.salesOwnerId === user.id,
     isRepeatEnquiry: false,
+    readBy: values.salesOwnerId === user.id ? [user.id] : [],
   };
   try {
     const [contact] = await db.insert(contactsTable).values(insertValues).returning();
@@ -261,7 +295,7 @@ router.post("/contacts", async (req, res) => {
         });
       }
     }
-    res.status(201).json(await withOwner(contact!));
+    res.status(201).json(await withOwner(contact!, user));
   } catch (err: any) {
     if (err?.code === "23505") {
       // Safety net: the unique constraint fired anyway — try to find the existing contact for rich metadata
@@ -443,13 +477,15 @@ router.post("/contacts/:id/repeat-enquiry", async (req, res) => {
       !!existingCustomer;
 
     // Bump updatedAt (NOW) so the lead jumps to the top of the Leads list, flag it as an
-    // unread repeat enquiry (yellow dot), but DO NOT overwrite contact.salesOwnerId
-    // (Rule C — the parent contact always belongs to the original sales owner) and DO NOT
-    // downgrade the category of permanent clients.
+    // unread repeat enquiry (yellow dot) by clearing the per-user read_by array — the owner
+    // sees the yellow dot until THEY read it (admins opening the lead won't clear it) — but
+    // DO NOT overwrite contact.salesOwnerId (Rule C — the parent contact always belongs to
+    // the original sales owner) and DO NOT downgrade the category of permanent clients.
     const updatePayload: Record<string, any> = {
       updatedAt: new Date(),
       isRead: false,
       isRepeatEnquiry: true,
+      readBy: [],
     };
     if (!isPermanentClient) {
       updatePayload.category = "Regular Follow up";
@@ -481,7 +517,7 @@ router.post("/contacts/:id/repeat-enquiry", async (req, res) => {
       }
     }
 
-    res.json({ success: true, message: isOwnLead ? "Lead marked as repeat enquiry" : "Repeat enquiry logged and owner notified", contact: await withOwner(updated!) });
+    res.json({ success: true, message: isOwnLead ? "Lead marked as repeat enquiry" : "Repeat enquiry logged and owner notified", contact: await withOwner(updated!, user) });
   } catch (err) {
     req.log.error({ err }, "Repeat enquiry error");
     res.status(500).json({ success: false, error: "Internal Server Error" });
@@ -557,29 +593,37 @@ router.get("/contacts/:id", async (req, res) => {
   try {
     const access = await requireContactAccess(req, res);
     if (!access) return;
-    res.json(await withOwner(access.contact));
+    res.json(await withOwner(access.contact, access.user));
   } catch (err) {
     req.log.error({ err }, "Get contact error");
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
-// POST /contacts/:id/read — Mark a lead as read (unread indicator)
+// POST /contacts/:id/read — Mark a lead as read (unread indicator) for the
+// REQUESTING USER ONLY. Appends the user's id to read_by instead of setting a
+// global boolean, so other users (e.g. the assigned sales owner) keep seeing
+// their own unread dot until they read it too.
 router.post("/contacts/:id/read", async (req, res) => {
   try {
     const access = await requireContactAccess(req, res);
     if (!access) return;
-    const { contact } = access;
-    if (contact.isRead) {
-      res.json(await withOwner(contact));
+    const { user, contact } = access;
+    const readBy = contact.readBy ?? [];
+    if (readBy.includes(user.id)) {
+      res.json(await withOwner(contact, user));
       return;
     }
     const [updated] = await db
       .update(contactsTable)
-      .set({ isRead: true, isRepeatEnquiry: false })
+      .set({
+        readBy: appendReadBy(user.id),
+        isRead: true,
+        isRepeatEnquiry: false,
+      })
       .where(eq(contactsTable.id, contact.id))
       .returning();
-    res.json(await withOwner(updated!));
+    res.json(await withOwner(updated!, user));
   } catch (err) {
     req.log.error({ err }, "Mark contact read error");
     res.status(500).json({ success: false, error: "Internal Server Error" });
@@ -587,39 +631,39 @@ router.post("/contacts/:id/read", async (req, res) => {
 });
 
 // PATCH /contacts/:id/read-status — Manually set a lead's read/unread state (row actions menu).
-// Marking read also clears the repeat-enquiry flag (matches POST /contacts/:id/read); marking
-// unread preserves isRepeatEnquiry so repeat enquiries keep their yellow dot. No updatedAt bump,
-// so the Leads sort order is preserved.
+// Operates ONLY on the requesting user's read_by entry: marking read appends the
+// user's id (clearing their yellow/blue dot), marking unread removes it. Other
+// users' read state is never touched. No updatedAt bump, so the sort order is preserved.
 router.patch("/contacts/:id/read-status", async (req, res) => {
   try {
     const access = await requireContactAccess(req, res);
     if (!access) return;
-    const { contact } = access;
+    const { user, contact } = access;
     const isRead = req.body?.isRead === true;
     const [updated] = await db
       .update(contactsTable)
       .set(isRead
-        ? { isRead: true, isRepeatEnquiry: false }
-        : { isRead: false })
+        ? { readBy: appendReadBy(user.id), isRead: true, isRepeatEnquiry: false }
+        : { readBy: removeReadBy(user.id), isRead: false })
       .where(eq(contactsTable.id, contact.id))
       .returning();
-    res.json(await withOwner(updated!));
+    res.json(await withOwner(updated!, user));
   } catch (err) {
     req.log.error({ err }, "Set contact read-status error");
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
-// POST /contacts/mark-all-read — Bulk mark all leads as read in the current user's scope.
-// Sales users mark only their own leads; admins/support mark all unread leads within their
-// accessible units. Only touches rows that actually need updating (efficient single UPDATE).
-// Does NOT bump updatedAt so the Leads sort order is preserved.
+// POST /contacts/mark-all-read — Bulk mark all leads as read FOR THE REQUESTING
+// USER ONLY. Appends the user's id to read_by across their scoped leads (sales
+// users: their own; admins/support: all in accessible units). Other users keep
+// their own unread dots. Does NOT bump updatedAt so the sort order is preserved.
 router.post("/contacts/mark-all-read", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const conditions: SQL[] = [eq(contactsTable.isRead, false)];
+    const conditions: SQL[] = [sql`NOT (${user.id} = ANY(${contactsTable.readBy}))`];
 
     if (user.role === "sales") {
       conditions.push(eq(contactsTable.salesOwnerId, user.id));
@@ -630,7 +674,11 @@ router.post("/contacts/mark-all-read", async (req, res) => {
 
     const result = await db
       .update(contactsTable)
-      .set({ isRead: true, isRepeatEnquiry: false })
+      .set({
+        readBy: appendReadBy(user.id),
+        isRead: true,
+        isRepeatEnquiry: false,
+      })
       .where(and(...conditions));
 
     res.json({ success: true, message: "All leads marked as read", updated: result.rowCount || 0 });
@@ -725,10 +773,13 @@ router.patch("/contacts/:id", async (req, res) => {
       }
     }
 
-    // Reset the unread flag whenever the lead is reassigned to a different owner
+    // Reset the unread state whenever the lead is reassigned to a different owner.
+    // The per-user read_by array is cleared so the NEW owner sees the blue "new
+    // lead" dot until they read it (the old owner's read state is irrelevant now).
     if (parsed.data.salesOwnerId !== undefined && parsed.data.salesOwnerId !== oldContact.salesOwnerId) {
       updatePayload.isRead = false;
       updatePayload.isRepeatEnquiry = false;
+      updatePayload.readBy = [];
     }
 
     const [contact] = await db.update(contactsTable).set(updatePayload).where(eq(contactsTable.id, params.data.id)).returning();
@@ -913,7 +964,7 @@ router.patch("/contacts/:id", async (req, res) => {
       }
     }
 
-    res.json(await withOwner(contact));
+    res.json(await withOwner(contact, user));
   } catch (err: any) {
     if (err?.code === "23505") {
       res.status(409).json({ error: "Mobile or email already exists" });
@@ -1448,7 +1499,7 @@ router.get("/contacts/search/mobile", async (req, res) => {
       return;
     }
 
-    const result = await withOwner(contact);
+    const result = await withOwner(contact, user);
     res.json(result);
   } catch (err) {
     req.log.error({ err }, "Search contact by mobile error");

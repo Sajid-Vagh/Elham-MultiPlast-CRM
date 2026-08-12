@@ -673,7 +673,7 @@ export async function notifyProductionUsersOfProductReady(params: {
   }
 }
 
-export async function enrichProductionOrder(order: any, user?: { role: string }) {
+export async function enrichProductionOrder(order: any, user?: { id?: number; role: string }) {
   let invoice: any = null;
   if (order.proformaInvoiceId) {
     const [inv] = await db
@@ -942,6 +942,11 @@ export async function enrichProductionOrder(order: any, user?: { role: string })
     // orphan production orders that have no resolvable contact.
     customerName: contact?.companyName || contact?.name || masterOrder?.customerName || invoice?.customerName || null,
     orderNumber: masterOrderNumber || order.formattedOrderId || (order.createdAt ? `EML_${getFinancialYear(new Date(order.createdAt))}_${order.id}` : `#${order.id}`),
+    // Per-user read state: the "new order" blue dot and the "updated" amber dot
+    // reflect ONLY whether the REQUESTING user has seen them. One user opening
+    // the order must not clear the dots for their teammates.
+    isRead: (user?.id != null ? (order.readBy ?? []).includes(user.id) : !!order.isRead),
+    isUpdated: order.isUpdated === true && (user?.id == null || !(order.updatedReadBy ?? []).includes(user.id)),
   };
   // Mask customer identity for production-only users
   if (user && isProductionOnlyRole(user.role)) {
@@ -1883,6 +1888,9 @@ export async function handlePiModification(
       delayReason: null,
       needsReprint: true,
       isUpdated: true,
+      // New PI modification = nobody has seen the latest update yet; the amber
+      // dot must show for every production user until each one opens the order.
+      updatedReadBy: [],
       piVersionAtCreation: newPiVersion,
       updatedAt: now,
       updatedBy: user.id,
@@ -1928,6 +1936,8 @@ export async function handlePiModification(
     piVersionAtCreation: newPiVersion,
     needsReprint: true,
     isUpdated: true,
+    // New PI modification = nobody has seen the latest update yet.
+    updatedReadBy: [],
     updatedAt: now,
     updatedBy: user.id,
   }).where(eq(productionOrdersTable.id, productionOrderId));

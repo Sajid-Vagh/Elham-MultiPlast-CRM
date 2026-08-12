@@ -37,6 +37,10 @@ export const contactsTable = pgTable("contacts", {
   isMyClient: boolean("is_my_client").notNull().default(false),
   isRead: boolean("is_read").notNull().default(false),
   isRepeatEnquiry: boolean("is_repeat_enquiry").notNull().default(false),
+  // Per-user read tracking: array of user IDs who have read/acknowledged this
+  // lead. The read/unread indicator is computed per-request from this array
+  // (isRead = readBy includes the requesting user), replacing the global is_read flag.
+  readBy: integer("read_by").array().notNull().default([]),
   lostReason: text("lost_reason"),
   otherReason: text("other_reason"),
   lostNotes: text("lost_notes"),

@@ -912,3 +912,49 @@ Simplify the "Packing Quantities" data on the Freight & Packing Lookup page (and
 - `artifacts/crm/src/components/cancel-order-modal.tsx`: shared cancel modal
 - `artifacts/crm/src/pages/order-detail-global.tsx`, `orders-list.tsx`, `proforma-invoices.tsx`: Cancel buttons
 - `artifacts/crm/src/pages/production-order-detail.tsx`, `production-orders.tsx`: acknowledge button/pill + unacknowledged filter
+
+---
+
+# Per-User Read/Unread State (Read Isolation)
+
+## Goal
+- Replace the single GLOBAL `isRead` / `isUpdated` booleans with per-user read tracking, so one user (e.g. an Admin) opening a lead, order chat, or production order no longer clears the unread indicator for everyone else (blue dot for leads, blue "new order" dot + amber "updated order" dot for production orders, green chat icon for orders).
+- Each user sees their OWN unread dots; User B still sees a dot until User B explicitly opens the item.
+
+## Progress
+### Done
+- **DB migration `078_add_per_user_read_tracking.sql`:** adds `contacts.read_by`, `production_orders.read_by`, `production_orders.updated_read_by` (`INTEGER[] NOT NULL DEFAULT '{}'`) + indexes. Backfills: rows already globally read (`is_read = true` / `is_updated = false`) get the array filled with all current users (stays hidden); unread rows keep `'{}'` so every user sees the dot until each reads it. Legacy `is_read` / `is_updated` / `is_repeat_enquiry` columns are KEPT for backward compatibility.
+- **Schema (`lib/db/src/schema/contacts.ts`, `production_orders.ts`):** `readBy` / `updatedReadBy` array columns added alongside the legacy booleans.
+- **Backend `contacts.ts` — per-user read logic:**
+  - `appendReadBy(userId)` / `removeReadBy(userId)` SQL helpers (unnest + UNION dedup) mutate ONLY the requesting user's entry.
+  - `POST /contacts/:id/read`, `PATCH /contacts/:id/read-status`, `POST /contacts/mark-all-read` now append/remove `req.user.id` instead of flipping the global flag; `mark-all-read` scopes to `NOT ($userId = ANY(read_by))`.
+  - `withOwner()` + the `GET /contacts` list compute `isRead = readBy.includes(user.id)` and `isRepeatEnquiry = isRepeatEnquiry && !isRead` per request.
+  - Repeat enquiry (`POST /contacts/:id/repeat-enquiry`) clears `readBy = []` (yellow dot for every user until each reads); lead reassignment clears `readBy = []` so only the NEW owner sees the blue dot; self-assigned leads get `readBy = [user.id]`.
+- **Backend `production.ts` + `production-service.ts` — per-user read logic:**
+  - `appendReadByUser` / `appendUpdatedReadByUser` SQL helpers added to `production.ts`.
+  - `POST /production/orders/:id/read` appends the requesting user to `read_by` and `updated_read_by` (clears their blue + amber dots only).
+  - `enrichProductionOrder()` computes `isRead = readBy.includes(user.id)` and `isUpdated = is_updated && !updatedReadBy.includes(user.id)` per request (used by list + detail + dashboard + reports).
+  - `handlePiModification` resets `updatedReadBy = []` so the amber "updated" dot shows for every production user until each opens the order.
+- **Orders green chat icon (`hasUnreadMessages`):** already per-user — derived from the `notifications` table (`userId = user.id AND readAt IS NULL` for `production_message` / `voice_note` links). `getUnreadChatLinks(userId)` in `orders.ts` + `listOrders` in `production-service.ts` filter by the requesting user. Chat panels (`order-detail-global.tsx`, `production-order-detail.tsx`) mark only the current user's notifications read. **No `orders` DB change was needed.**
+- **Frontend (no changes required):** `leads.tsx`, `lead-detail.tsx`, `production-orders.tsx`, `production-order-detail.tsx`, `orders-list.tsx` already consume the computed `isRead` / `isUpdated` / `hasUnreadMessages` flags; mark-read actions go through the per-user endpoints.
+- **Fixes applied during completion:**
+  - `production.ts` was missing the `appendReadByUser` / `appendUpdatedReadByUser` helpers referenced by `POST /production/orders/:id/read` — added.
+  - `GET /contacts/:id` referenced an undefined `user` variable — changed to `access.user`.
+  - Rebuilt `@workspace/db` libs (`tsc --build`) — the stale `dist` still had `updateReadBy` instead of `updatedReadBy`, producing false type errors.
+- **Build verified:** CRM typecheck = 0 errors; API server = 27 errors (pre-existing baseline, 0 new).
+
+## Key Decisions
+- `read_by` arrays (not dynamic notification derivation) chosen for leads + production orders because those dots are NOT backed by notification rows — they track "has this user opened this item".
+- Legacy `is_read` / `is_updated` columns stay for backward compat with exports and any code not yet migrated; the CRM UI only reads the per-user computed values.
+- Backfill keeps existing behaviour: globally-read rows stay invisible to everyone, unread rows stay visible to everyone until each user reads.
+- Production order creation defaults `readBy = []` so every production user sees the blue "new order" dot until each opens it; the old owner's read state is discarded on reassignment.
+- Orders green icon already per-user (notification-based); no schema change.
+
+## Relevant Files
+- `lib/db/migrations/078_add_per_user_read_tracking.sql`: migration (must be applied before deploy)
+- `lib/db/src/schema/contacts.ts`, `lib/db/src/schema/production_orders.ts`: `readBy` / `updatedReadBy` columns
+- `artifacts/api-server/src/routes/contacts.ts`: per-user read/read-status/mark-all-read + list/detail `isRead` computation
+- `artifacts/api-server/src/routes/production.ts`: `appendReadByUser`/`appendUpdatedReadByUser` + per-user `POST /read`
+- `artifacts/api-server/src/lib/production-service.ts`: `enrichProductionOrder` per-user `isRead`/`isUpdated`; `handlePiModification` resets `updatedReadBy`; `listOrders` per-user chat unread
+- `artifacts/api-server/src/routes/orders.ts`: `getUnreadChatLinks` per-user green icon
+- `artifacts/crm/src/pages/leads.tsx`, `lead-detail.tsx`, `production-orders.tsx`, `production-order-detail.tsx`, `orders-list.tsx`: consume per-user flags (no changes required)
