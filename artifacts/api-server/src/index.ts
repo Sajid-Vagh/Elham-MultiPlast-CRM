@@ -1,6 +1,5 @@
 import app from "./app";
 import bcrypt from "bcryptjs";
-import cron from "node-cron";
 import { logger } from "./lib/logger";
 import { closeDb, waitForDb, db, usersTable, sessionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -154,22 +153,6 @@ async function main() {
     }
   }, VOICE_NOTE_CLEANUP_INTERVAL);
   logger.info("Voice note orphan cleanup scheduled (every 24h)");
-
-  // ── Automated storage cleanup: purge voice-note audio files 90 days after an
-  //    order is marked 'Delivered'/'Completed'. Runs daily at midnight.
-  //    Database rows + transcripts are never deleted — only the physical files.
-  cron.schedule("0 0 * * *", async () => {
-    try {
-      const { cleanupDeliveredOrderVoiceNotes } = await import("./lib/voice-notes-cleanup");
-      const result = await cleanupDeliveredOrderVoiceNotes();
-      if (result.scanned > 0 || result.purged > 0) {
-        logger.info({ ...result }, "Daily voice note retention cleanup completed");
-      }
-    } catch (err) {
-      logger.error({ err }, "Daily voice note retention cleanup failed");
-    }
-  }, { timezone: process.env.TZ || "Asia/Kolkata" });
-  logger.info("Voice note retention cleanup scheduled (daily at midnight)");
 
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "Shutting down gracefully...");
