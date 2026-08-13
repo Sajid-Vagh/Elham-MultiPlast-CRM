@@ -26,7 +26,6 @@ import {
   AlertTriangle, XCircle, Mic,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { ProductionProgressSection } from "@/components/production-progress";
 import { CancelOrderModal } from "@/components/cancel-order-modal";
 import { WonAmountAdjustmentModal } from "@/components/won-amount-adjustment-modal";
 import { onPIChange, onDealChange, onProductionChange } from "@/lib/query-invalidation";
@@ -3090,10 +3089,6 @@ ${pagesHtml}
               )}
             </CardContent>
           </Card>
-        )}
-
-        {inv.productionOrder && (
-          <ProductionProgressSection invoiceId={inv.id} />
         )}
 
         <div className="flex gap-3 flex-wrap">

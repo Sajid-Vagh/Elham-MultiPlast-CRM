@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Package, User, Truck, Calendar, Clock, CheckCircle2, Circle, AlertTriangle, MessageSquare, Send, XCircle, Mic } from "lucide-react";
+import { ArrowLeft, Package, User, Truck, Calendar, Circle, AlertTriangle,
+  MessageSquare, Send, XCircle, Mic } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { ProductionProgressSection } from "@/components/production-progress";
 import { CancelOrderModal } from "@/components/cancel-order-modal";
@@ -60,19 +61,6 @@ const ORDER_STATUS_COLORS: Record<string, string> = {
   "Delivered": "bg-green-100 text-green-700",
   "Completed": "bg-emerald-100 text-emerald-700",
   "Cancelled": "bg-red-100 text-red-600",
-};
-
-const TIMELINE_ICONS: Record<string, string> = {
-  created: "bg-blue-500",
-  confirmed: "bg-indigo-500",
-  production_started: "bg-orange-500",
-  production_running: "bg-purple-500",
-  quality_check: "bg-yellow-500",
-  ready_for_dispatch: "bg-cyan-500",
-  dispatched: "bg-blue-500",
-  delivered: "bg-green-500",
-  completed: "bg-emerald-500",
-  cancelled: "bg-red-500",
 };
 
 export default function OrderDetailGlobal() {
@@ -174,12 +162,6 @@ export default function OrderDetailGlobal() {
     queryClient.invalidateQueries({ queryKey: ["notifications"] });
     queryClient.invalidateQueries({ queryKey: ["unread-count"] });
   }, [id, productionOrderId, notifications, markAsRead, queryClient]);
-
-  const { data: timeline = [] } = useQuery<any[]>({
-    queryKey: ["order-timeline", id],
-    queryFn: () => customFetch(`/orders/${id}/timeline`),
-    enabled: !!id,
-  });
 
   if (!id || isNaN(id)) {
     return (
@@ -312,11 +294,6 @@ export default function OrderDetailGlobal() {
         </CardContent>
       </Card>
 
-      {/* Production Progress (for Sales users - read only) */}
-      {canViewProduction && order.dealId && (
-        <ProductionProgressSection invoiceId={order.proformaInvoiceId || 0} />
-      )}
-
       {/* Order Conversation (Sales workspace — reply to Production directly) */}
       {(order.dealId || order.proformaInvoiceId) && (
         <Card>
@@ -405,39 +382,10 @@ export default function OrderDetailGlobal() {
         </Card>
       )}
 
-      {/* Order Status Timeline */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2"><Clock className="h-4 w-4" /> Order Status Timeline</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {timeline.length === 0 ? (
-            <p className="text-center text-muted-foreground text-sm py-4">No timeline events</p>
-          ) : (
-            <div className="relative">
-              <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-border" />
-              {timeline.map((event: any, i: number) => {
-                const eventKey = (event.status || "").toLowerCase().replace(/\s+/g, "_");
-                const dotColor = TIMELINE_ICONS[eventKey] || "bg-gray-400";
-                return (
-                  <div key={event.id || i} className="flex gap-4 pb-6 relative">
-                    <div className={`w-8 h-8 rounded-full ${dotColor} flex items-center justify-center text-white z-10 flex-shrink-0`}>
-                      <CheckCircle2 className="h-4 w-4" />
-                    </div>
-                    <div className="flex-1 min-w-0 pt-1">
-                      <p className="text-sm font-medium">{event.status || "Status Change"}</p>
-                      {event.notes && <p className="text-xs text-muted-foreground mt-0.5">{event.notes}</p>}
-                      <p className="text-xs text-muted-foreground">
-                        {event.userName || "System"} — {new Date(event.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Production Progress (for Sales users - read only) */}
+      {canViewProduction && order.dealId && (
+        <ProductionProgressSection invoiceId={order.proformaInvoiceId || 0} />
+      )}
 
       {/* Cancel Order Modal */}
       <CancelOrderModal
