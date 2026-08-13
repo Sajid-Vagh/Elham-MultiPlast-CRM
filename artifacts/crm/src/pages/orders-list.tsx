@@ -116,8 +116,7 @@ export default function OrdersList() {
   const [cancelOrder, setCancelOrder] = useState<OrderRow | null>(null);
 
   const showUnitFilter = user?.role === "admin" || user?.role === "production_and_support" || user?.unit === "All";
-  const isAdmin = user?.role === "admin";
-  const { data: users } = useAllUsers(isAdmin);
+  const { data: users } = useAllUsers(true);
 
   const params = new URLSearchParams();
   if (search) params.set("search", search);
@@ -191,9 +190,9 @@ export default function OrdersList() {
             )}
 
             <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(1); }}>
-              <SelectTrigger className="w-44"><SelectValue placeholder="Status" /></SelectTrigger>
+              <SelectTrigger className="w-44"><SelectValue placeholder="All Statuses" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="All">All</SelectItem>
+                <SelectItem value="All">All Statuses</SelectItem>
                 {PRODUCTION_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                 {DISPATCH_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
               </SelectContent>
@@ -209,7 +208,7 @@ export default function OrdersList() {
               </Select>
             )}
 
-            {isAdmin && users && (
+            {users && (
               <Select value={ownerFilter || "all"} onValueChange={v => { setOwnerFilter(v === "all" ? "" : v); setPage(1); }}>
                 <SelectTrigger className="w-40"><Users className="h-3.5 w-3.5 mr-1.5" /><SelectValue placeholder="All Owners" /></SelectTrigger>
                 <SelectContent>
