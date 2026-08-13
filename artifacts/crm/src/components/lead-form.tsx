@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { UserAvatar } from "@/components/user-avatar";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import { INDUSTRIES } from "@/lib/constants";
 import { DuplicateWarningDialog, type DuplicateLeadInfo } from "@/components/duplicate-warning-dialog";
 import { AlertTriangle, ExternalLink } from "lucide-react";
 
@@ -358,11 +359,11 @@ export default function LeadForm({
               )} />
               <FormField control={form.control} name="industry" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Industry</FormLabel>
+                  <FormLabel>Industry <span className="text-muted-foreground font-normal">(Optional)</span></FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select industry" /></SelectTrigger></FormControl>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Select Industry (Optional)" /></SelectTrigger></FormControl>
                     <SelectContent>
-                      {["Liquid Detergent","Lubricant","Agro Chemical & Pesticide","Edible Oil","Veterinary","Other"].map(i => (
+                      {INDUSTRIES.map(i => (
                         <SelectItem key={i} value={i}>{i}</SelectItem>
                       ))}
                     </SelectContent>

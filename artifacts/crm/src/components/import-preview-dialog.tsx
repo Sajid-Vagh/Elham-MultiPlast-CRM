@@ -22,10 +22,11 @@ import { useToast } from "@/hooks/use-toast";
 import { onContactChange } from "@/lib/query-invalidation";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import { INDUSTRIES } from "@/lib/constants";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import {
   CheckCircle, AlertCircle, AlertTriangle, Upload, X, Sparkles,
-  User, Building2, MapPin, Phone, Mail, Package, Tag, Search,
+  User, Building2, MapPin, Phone, Mail, Package, Search,
   FileText, ArrowRight, Copy, RefreshCw, Info,
 } from "lucide-react";
 
@@ -386,11 +387,16 @@ export function ImportPreviewDialog({
               value={form.gstNumber || ""} onChange={v => updateField("gstNumber", v)}
               confidence={conf.gstNumber || 0}
             />
-            <FieldInput
-              label="Industry" icon={<Tag className="h-3.5 w-3.5" />}
-              value={form.industry || ""} onChange={v => updateField("industry", v)}
-              confidence={conf.industry || 0}
-            />
+            <div>
+              <Label className="text-xs">Industry</Label>
+              <Select value={form.industry || "__none__"} onValueChange={v => updateField("industry", v === "__none__" ? "" : v)}>
+                <SelectTrigger><SelectValue placeholder="Select Industry" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {INDUSTRIES.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div>

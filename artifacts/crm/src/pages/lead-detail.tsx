@@ -30,6 +30,7 @@ import ActivityDetailDrawer from "@/components/activity-detail-drawer";
 import { PiSentDialog } from "@/components/pi-sent-dialog";
 import { STAGE_BADGE_COLORS } from "@/lib/deal-stages";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import { INDUSTRIES } from "@/lib/constants";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { onContactChange, onDealChange, onActivityChange } from "@/lib/query-invalidation";
 
@@ -1252,6 +1253,14 @@ export default function LeadDetail() {
                   <SelectContent>
                     <SelectItem value={PENDING_UNIT_ASSIGNMENT}>Not assigned</SelectItem>
                     {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              ) : editField === "industry" ? (
+                <Select value={editValue || "__none__"} onValueChange={(v) => setEditValue(v === "__none__" ? "" : v)}>
+                  <SelectTrigger><SelectValue placeholder="Select Industry" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {INDUSTRIES.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}
                   </SelectContent>
                 </Select>
               ) : (

@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Plus, Pencil, Trash2, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { onProductChange } from "@/lib/query-invalidation";
+import { INDUSTRIES } from "@/lib/constants";
 
 type Product = { id: number; name: string; category?: string | null; industry?: string | null; machineType?: string | null; pricePerUnit?: number | null; productCode?: string | null; bottleWeight?: string | null; bottleColour?: string | null; bottleColourCode?: string | null; capColour?: string | null; materialType?: string | null; hsnCode?: string | null; defaultUnit?: string | null; defaultGst?: number | null; status?: string | null };
 
@@ -66,17 +67,6 @@ const COLOUR_PRESETS: { name: string; hex: string }[] = [
 ];
 
 const COLOUR_MAP = new Map(COLOUR_PRESETS.map(c => [c.name.toLowerCase(), c.hex]));
-
-const INDUSTRY_OPTIONS = [
-  "Liquid Detergents",
-  "Lubricants",
-  "Agro Chemicals and Pesticides",
-  "Veterinary Products",
-  "Edible Oil",
-  "Chemicals",
-  "Cosmetics",
-  "Other",
-];
 
 const HSN_BY_MATERIAL: Record<string, string> = {
   PET: "39239090",
@@ -229,7 +219,7 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
           <div><Label>Industry *</Label>
             <select value={form.industry} onChange={f("industry")} className={SELECT_CLASS}>
               <option value="">Select Industry</option>
-              {INDUSTRY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+              {INDUSTRIES.map(o => <option key={o} value={o}>{o}</option>)}
             </select>
           </div>
           <div><Label>Material Type *</Label>
