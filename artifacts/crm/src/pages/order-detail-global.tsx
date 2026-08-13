@@ -384,7 +384,7 @@ export default function OrderDetailGlobal() {
 
       {/* Production Progress (for Sales users - read only) */}
       {canViewProduction && order.dealId && (
-        <ProductionProgressSection invoiceId={order.proformaInvoiceId || 0} />
+        <ProductionProgressSection dealId={order.dealId} />
       )}
 
       {/* Cancel Order Modal */}

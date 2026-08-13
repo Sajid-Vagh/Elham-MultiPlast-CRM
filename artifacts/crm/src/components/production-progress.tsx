@@ -36,16 +36,29 @@ interface Props {
   dealId: number;
 }
 
-export function ProductionProgressSection({ invoiceId }: { invoiceId: number }) {
-  const { data: productionOrder } = useQuery({
+interface SectionProps {
+  /** Preferred: pass the dealId directly (orders page has it on the order payload). */
+  dealId?: number | null;
+  /** Backward-compat: resolve the deal via the linked proforma invoice. */
+  invoiceId?: number;
+}
+
+export function ProductionProgressSection({ dealId, invoiceId }: SectionProps) {
+  // Prefer an explicit dealId (orders payload carries it); otherwise resolve it
+  // from the proforma invoice so the component stays usable on PI-centric pages.
+  const invoiceResolved = useQuery({
     queryKey: ["production-by-invoice", invoiceId],
     queryFn: () => customFetch<any>(`/production/by-invoice/${invoiceId}`),
-    enabled: !!invoiceId,
+    enabled: !!invoiceId && !dealId,
   });
 
-  if (!productionOrder) return null;
+  if (!dealId) {
+    const resolvedDealId = invoiceResolved.data?.dealId;
+    if (!resolvedDealId) return null;
+    return <ProductionProgress dealId={resolvedDealId} />;
+  }
 
-  return <ProductionProgress dealId={productionOrder.dealId} />;
+  return <ProductionProgress dealId={dealId} />;
 }
 
 export default function ProductionProgress({ dealId }: Props) {
