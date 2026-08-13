@@ -239,7 +239,7 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
     const rows = pageItems.map((item: any, ri: number) => `
       <tr>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${b.start + ri + 1}</td>
-        <td style="text-align:left;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;word-break:break-word;white-space:normal;">${item.productName}${item.bottleType ? ` (${item.bottleType})` : ""}${item.capacity ? ` ${item.capacity}` : ""}${item.weight && !String(item.productName || "").includes(`(${item.weight}g)`) ? ` ${item.weight}` : ""}</td>
+        <td style="text-align:left;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;word-break:break-word;white-space:normal;">${item.productName}${item.bottleType ? ` (${item.bottleType})` : ""}${item.capacity ? ` ${item.capacity}` : ""}${item.weight && !String(item.productName || "").includes(`(${item.weight}g)`) ? ` ${item.weight}` : ""}${item.bottleColour && !String(item.productName || "").includes(item.bottleColour) ? ` - ${item.bottleColour}` : ""}</td>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.hsnCode || "-"}</td>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.quantity}</td>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.unit}</td>

@@ -785,10 +785,14 @@ export default function ProformaInvoicesPage() {
     PP: "39269099",
   };
 
-const productDisplayName = (product: any) =>
-  product?.name
-    ? `${product.name}${product.bottleWeight ? ` (${product.bottleWeight}g)` : ""}`
-    : "";
+const productDisplayName = (product: any) => {
+  if (!product?.name) return "";
+  const parts: string[] = [];
+  if (product.bottleWeight) parts.push(`${product.bottleWeight}g`);
+  if (product.bottleColour) parts.push(product.bottleColour);
+  const suffix = parts.length > 0 ? ` (${parts.join(", ")})` : "";
+  return `${product.name}${suffix}`;
+};
 
 const selectProduct = (idx: number, product: any) => {
   setItems(prev => prev.map((item, i) => {
@@ -1875,7 +1879,7 @@ const selectProduct = (idx: number, product: any) => {
         : "";
 
       const rows = pageItems.map((item: any, ri: number) =>
-        `<tr><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${b.start + ri + 1}</td><td style="text-align:left;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;word-break:break-word;white-space:normal;">${item.productName}${item.bottleType ? ` (${item.bottleType})` : ""}${item.capacity ? ` ${item.capacity}` : ""}${item.weight && !String(item.productName || "").includes(`(${item.weight}g)`) ? ` ${item.weight}` : ""}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.hsnCode || "-"}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.quantity}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.unit}</td><td style="text-align:right;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${Number(item.rate).toFixed(2)}</td><td style="text-align:right;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${Number(item.amount).toFixed(2)}</td></tr>`
+        `<tr><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${b.start + ri + 1}</td><td style="text-align:left;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;word-break:break-word;white-space:normal;">${item.productName}${item.bottleType ? ` (${item.bottleType})` : ""}${item.capacity ? ` ${item.capacity}` : ""}${item.weight && !String(item.productName || "").includes(`(${item.weight}g)`) ? ` ${item.weight}` : ""}${item.bottleColour && !String(item.productName || "").includes(item.bottleColour) ? ` - ${item.bottleColour}` : ""}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.hsnCode || "-"}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.quantity}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.unit}</td><td style="text-align:right;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${Number(item.rate).toFixed(2)}</td><td style="text-align:right;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${Number(item.amount).toFixed(2)}</td></tr>`
       ).join("\n");
 
       // Carry Forward row on non-last pages
