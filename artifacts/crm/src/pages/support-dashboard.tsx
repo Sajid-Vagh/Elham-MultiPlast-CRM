@@ -5,18 +5,25 @@ import { useLocation } from "wouter";
 import { Users, DollarSign, Truck, Package, CheckCircle2, ClipboardList } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useDateFilter } from "@/lib/use-date-filter";
+import { useUnitFilter } from "@/lib/use-unit-filter";
+import { useActiveUnits } from "@/lib/use-active-units";
 import { DateRangeFilter } from "@/components/date-range-filter";
+import { ClearFiltersButton } from "@/components/clear-filters-button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function SupportDashboardPage() {
   const [, setLocation] = useLocation();
   const [dateFilter, setDateFilter] = useDateFilter();
+  const [unitFilter, setUnitFilter] = useUnitFilter();
+  const { units: activeUnits } = useActiveUnits();
 
   const { data: dash, isLoading } = useQuery({
-    queryKey: ["support-dashboard-kpi", dateFilter.preset],
+    queryKey: ["support-dashboard-kpi", dateFilter.preset, unitFilter],
     queryFn: () => {
       const params = new URLSearchParams();
       if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
       if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
+      if (unitFilter !== "All") params.set("unit", unitFilter);
       const qs = params.toString();
       return customFetch<any>(`/dashboard/support-kpi${qs ? `?${qs}` : ""}`);
     },
@@ -42,6 +49,14 @@ export default function SupportDashboardPage() {
         </div>
         <div className="flex items-center gap-2">
           <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
+          <Select value={unitFilter} onValueChange={setUnitFilter}>
+            <SelectTrigger className="w-36 h-8 text-sm"><SelectValue placeholder="All Units" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="All">All Units</SelectItem>
+              {activeUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <ClearFiltersButton />
           <Badge variant="outline" className="text-xs gap-1.5 px-3 py-1">
             <span className="relative flex h-1.5 w-1.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />

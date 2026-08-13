@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
@@ -21,6 +21,8 @@ import { Label } from "@/components/ui/label";
 import { Search, ArrowLeft, ArrowRight, Download, FileSpreadsheet, Clock, CalendarDays, MessageCircle } from "lucide-react";
 import { useUserUnits } from "@/lib/use-user-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
+import { useStatusFilter } from "@/lib/global-filters";
+import { ClearFiltersButton } from "@/components/clear-filters-button";
 import { useToast } from "@/hooks/use-toast";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -80,7 +82,17 @@ export default function ProductionOrders() {
   const [selectedUnit, setSelectedUnit] = useUnitFilter();
   const { toast } = useToast();
 
-  const [status, setStatus] = useState(params.get("status") || "all");
+  const [globalStatus, setGlobalStatus] = useStatusFilter();
+  const statusSeeded = useRef(false);
+  useEffect(() => {
+    if (statusSeeded.current) return;
+    statusSeeded.current = true;
+    const s = params.get("status");
+    if (s && (STATUSES as string[]).includes(s)) setGlobalStatus(s === "all" ? "All" : s);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const status = globalStatus === "All" ? "all" : (STATUSES as string[]).includes(globalStatus) ? globalStatus : "all";
+  const setStatus = (v: string) => setGlobalStatus(v === "all" ? "All" : v);
   const [dispatchStatus, setDispatchStatus] = useState(params.get("dispatchStatus") || "all");
   const [priority, setPriority] = useState("all");
   const [origin, setOrigin] = useState("all");
@@ -244,6 +256,7 @@ export default function ProductionOrders() {
             </SelectContent>
           </Select>
         )}
+        <ClearFiltersButton onClear={() => { setSearch(""); setDispatchStatus("all"); setPriority("all"); setOrigin("all"); setPage(1); }} />
       </div>
 
       {/* Table */}

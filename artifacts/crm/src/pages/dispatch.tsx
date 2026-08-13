@@ -18,6 +18,8 @@ import { useToast } from "@/hooks/use-toast";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useUserUnits } from "@/lib/use-user-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
+import { useStatusFilter } from "@/lib/global-filters";
+import { ClearFiltersButton } from "@/components/clear-filters-button";
 
 const DISPATCH_STATUS_COLORS: Record<string, string> = {
   "Pending Dispatch": "bg-amber-100 text-amber-700 border-amber-300",
@@ -44,7 +46,9 @@ export default function DispatchPage() {
   const [selectedUnit, setSelectedUnit] = useUnitFilter();
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [globalStatus, setGlobalStatus] = useStatusFilter();
+  const statusFilter = globalStatus === "All" ? "all" : (DISPATCH_STATUSES as string[]).includes(globalStatus) ? globalStatus : "all";
+  const setStatusFilter = (v: string) => setGlobalStatus(v === "all" ? "All" : v);
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [transportFilter, setTransportFilter] = useState("all");
   const [dispatchDateFrom, setDispatchDateFrom] = useState("");
@@ -241,6 +245,7 @@ export default function DispatchPage() {
             {userUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>
         </Select>
+        <ClearFiltersButton onClear={() => { setSearch(""); setPriorityFilter("all"); setTransportFilter("all"); setDispatchDateFrom(""); setDispatchDateTo(""); setPage(1); }} />
         <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
           <Filter className="h-4 w-4 mr-1" />
           More Filters

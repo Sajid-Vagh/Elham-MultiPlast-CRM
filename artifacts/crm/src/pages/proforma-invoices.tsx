@@ -31,6 +31,8 @@ import { WonAmountAdjustmentModal } from "@/components/won-amount-adjustment-mod
 import { onPIChange, onDealChange, onProductionChange } from "@/lib/query-invalidation";
 import { customerLabel } from "@/lib/customer-label";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { useStatusFilter } from "@/lib/global-filters";
+import { ClearFiltersButton } from "@/components/clear-filters-button";
 import { VoiceRecorder } from "@/components/voice-recorder";
 import { DealWonCelebration } from "@/components/deal-won-celebration";
 const STATUS_COLORS: Record<string, string> = {
@@ -275,7 +277,9 @@ export default function ProformaInvoicesPage() {
   const [attachLoading, setAttachLoading] = useState(false);
   const [attachingId, setAttachingId] = useState<number | null>(null);
 
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [globalStatus, setGlobalStatus] = useStatusFilter();
+  const statusFilter = globalStatus === "All" ? "all" : (INVOICE_STATUSES as string[]).includes(globalStatus) ? globalStatus : "all";
+  const setStatusFilter = (v: string) => setGlobalStatus(v === "all" ? "All" : v);
   const [orderTypeFilter, setOrderTypeFilter] = useState<string | null>(urlOrderType);
   const [pendingWonAdjustment, setPendingWonAdjustment] = useState<{ status: string; originalTaxableAmount: number; newTaxableAmount: number } | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
@@ -3313,6 +3317,7 @@ ${pagesHtml}
             {orderTypeFilter === "NEW" ? "New Orders" : "Repeat Orders"} ✕
           </Badge>
         )}
+        <ClearFiltersButton onClear={() => { setSearch(""); setOrderTypeFilter(null); setPage(1); }} />
       </div>
 
       {fetchError && (

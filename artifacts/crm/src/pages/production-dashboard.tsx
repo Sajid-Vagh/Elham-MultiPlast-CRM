@@ -7,6 +7,7 @@ import { useUserUnits } from "@/lib/use-user-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 import { useDateFilter } from "@/lib/use-date-filter";
 import { DateRangeFilter } from "@/components/date-range-filter";
+import { ClearFiltersButton } from "@/components/clear-filters-button";
 import { Clock, AlertTriangle, Truck, BarChart3 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
@@ -86,6 +87,7 @@ export default function ProductionDashboard() {
               {userUnits.filter(u => u !== "All").map(u => (<option key={u} value={u}>{u}</option>))}
             </select>
           )}
+          <ClearFiltersButton onClear={() => { setOriginFilter("all"); setMaterialFilter("All"); }} />
         </div>
       </div>
 

@@ -20,7 +20,9 @@ import { ExportDropdown } from "@/components/export-dropdown";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 import { useDateFilter } from "@/lib/use-date-filter";
+import { useOwnerFilter } from "@/lib/global-filters";
 import { DateRangeFilter } from "@/components/date-range-filter";
+import { ClearFiltersButton } from "@/components/clear-filters-button";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
@@ -101,7 +103,9 @@ export default function Leads() {
   const [, navigate] = useLocation();
 
   const [search, setSearch] = useState("");
-  const [salesOwnerId, setSalesOwnerId] = useState<number | undefined>();
+  const [globalOwner, setGlobalOwner] = useOwnerFilter();
+  const salesOwnerId = globalOwner ? Number(globalOwner) : undefined;
+  const setSalesOwnerId = (v: number | undefined) => setGlobalOwner(v === undefined ? "" : String(v));
   const [city, setCity] = useState<string | undefined>();
   // Category tab is synced to the URL (?category=...) so the browser Back
   // button from a lead detail page restores the exact tab the user was on.
@@ -441,6 +445,7 @@ export default function Leads() {
             {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>
         </Select>
+        <ClearFiltersButton onClear={() => setSearch("")} />
       </div>
 
       {/* Category filter tabs with counts */}

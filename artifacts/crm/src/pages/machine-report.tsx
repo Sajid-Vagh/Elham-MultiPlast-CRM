@@ -10,6 +10,8 @@ import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { BarChart3, Package, Clock, Settings2, Factory } from "lucide-react";
 import { useUserUnits } from "@/lib/use-user-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
+import { useStatusFilter } from "@/lib/global-filters";
+import { ClearFiltersButton } from "@/components/clear-filters-button";
 
 const MACHINE_TYPES = ["All", "250ml Machine", "1L Machine", "5L Machine"];
 const STATUS_OPTIONS = ["All", "Pending", "Production On Going"];
@@ -29,7 +31,9 @@ export default function MachineReport() {
   const { units: accessibleUnits, locked: unitLocked } = useUserUnits();
   const [unitFilter, setUnitFilter] = useUnitFilter();
   const [machineFilter, setMachineFilter] = useState("All");
-  const [statusFilter, setStatusFilter] = useState("All");
+  const [globalStatus, setGlobalStatus] = useStatusFilter();
+  const statusFilter = STATUS_OPTIONS.includes(globalStatus) ? globalStatus : "All";
+  const setStatusFilter = (v: string) => setGlobalStatus(v);
   const [materialFilter, setMaterialFilter] = useState("All");
 
   const showUnitFilter = user?.role === "admin" || user?.role === "production_and_support" || user?.unit === "All";
@@ -130,6 +134,7 @@ export default function MachineReport() {
             {MATERIAL_OPTIONS.map(m => <SelectItem key={m} value={m}>{m === "All" ? "All Products" : m}</SelectItem>)}
           </SelectContent>
         </Select>
+        <ClearFiltersButton onClear={() => { setMachineFilter("All"); setMaterialFilter("All"); }} />
       </div>
 
       {isLoading ? (

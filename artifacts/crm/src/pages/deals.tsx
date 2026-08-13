@@ -1,4 +1,4 @@
-import { useState, useMemo, type ReactNode } from "react";
+import { useState, useMemo, useEffect, useRef, type ReactNode } from "react";
 import { DndContext, DragOverlay, useDraggable, useDroppable, closestCenter } from "@dnd-kit/core";
 import type { DragStartEvent, DragEndEvent } from "@dnd-kit/core";
 import { useQueryClient } from "@tanstack/react-query";
@@ -36,6 +36,8 @@ import { PENDING_UNIT_ASSIGNMENT, isPendingUnit } from "@/lib/unit-constants";
 import { VoiceRecorder } from "@/components/voice-recorder";
 import { Mic } from "lucide-react";
 import { useDateFilter } from "@/lib/use-date-filter";
+import { useUnitFilter } from "@/lib/use-unit-filter";
+import { useOwnerFilter, useStatusFilter, useGlobalFilters } from "@/lib/global-filters";
 import { DateRangeFilter } from "@/components/date-range-filter";
 
 function DraggableCard({ deal, children }: { deal: Deal; children: ReactNode }) {
@@ -80,10 +82,28 @@ function DroppableColumn({ stage, children }: { stage: string; children: ReactNo
 export default function Deals() {
   const searchStr = useSearch();
   const [, navigate] = useLocation();
-  const params = new URLSearchParams(searchStr);
-  const stageFilter = params.get("stage") || "";
-  const ownerFilter = params.get("owner") || "";
-  const unitFilter = params.get("unit") || "All";
+  const [globalUnit, setGlobalUnit] = useUnitFilter();
+  const [globalOwner, setGlobalOwner] = useOwnerFilter();
+  const [globalStatus, setGlobalStatus] = useStatusFilter();
+  const { clearAllFilters } = useGlobalFilters();
+
+  // Seed global filters from URL params (deep links) on first mount only.
+  const filtersSeeded = useRef(false);
+  useEffect(() => {
+    if (filtersSeeded.current) return;
+    filtersSeeded.current = true;
+    const p = new URLSearchParams(searchStr);
+    const stage = p.get("stage");
+    const owner = p.get("owner");
+    const unit = p.get("unit");
+    if (stage && (DEAL_STAGES as readonly string[]).includes(stage)) setGlobalStatus(stage);
+    if (owner) setGlobalOwner(owner);
+    if (unit) setGlobalUnit(unit);
+  }, [searchStr, setGlobalStatus, setGlobalOwner, setGlobalUnit]);
+
+  const unitFilter = globalUnit;
+  const ownerFilter = globalOwner;
+  const stageFilter = (DEAL_STAGES as readonly string[]).includes(globalStatus) ? globalStatus : "";
 
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
@@ -163,7 +183,10 @@ export default function Deals() {
     return d;
   })();
 
-  const clearFilters = () => navigate(`/deals?unit=${unitFilter}`);
+  const clearFilters = () => {
+    clearAllFilters();
+    navigate("/deals");
+  };
 
   const handleMarkWonCancel = () => {
     if (markWonDeal) {
@@ -429,6 +452,7 @@ export default function Deals() {
         <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
         {isAdmin && (
           <Select value={ownerFilter || "all"} onValueChange={(v) => {
+            setGlobalOwner(v === "all" ? "" : v);
             const sp = new URLSearchParams(searchStr);
             if (v === "all") sp.delete("owner");
             else sp.set("owner", v);
@@ -446,10 +470,10 @@ export default function Deals() {
           </Select>
         )}
         <Select value={unitFilter} onValueChange={(v) => {
+          setGlobalUnit(v);
           const sp = new URLSearchParams(searchStr);
           if (v === "All") sp.delete("unit");
           else sp.set("unit", v);
-          localStorage.setItem("crm_unit_filter", v);
           navigate(`/deals?${sp.toString()}`);
         }}>
           <SelectTrigger className="w-[150px]">

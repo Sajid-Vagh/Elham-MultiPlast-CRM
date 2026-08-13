@@ -11,6 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Search, MapPin, Package, Truck, Star, Plus, Upload, CheckCircle, FileSpreadsheet, AlertTriangle, Trash2, Pencil } from "lucide-react";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { useUnitFilter } from "@/lib/use-unit-filter";
+import { ClearFiltersButton } from "@/components/clear-filters-button";
 import { useToast } from "@/hooks/use-toast";
 import { useGetMe } from "@workspace/api-client-react";
 
@@ -154,7 +156,9 @@ export default function TransportLogisticsLookup() {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [activeTab, setActiveTab] = useState("lookup");
-  const [unitFilter, setUnitFilter] = useState<string>("all");
+  const [globalUnit, setGlobalUnit] = useUnitFilter();
+  const unitFilter = globalUnit === "All" ? "all" : globalUnit;
+  const setUnitFilter = (v: string) => setGlobalUnit(v === "all" ? "All" : v);
   const { units: activeUnits } = useActiveUnits();
 
   const canEdit = EDIT_ROLES.includes(user?.role || "");
@@ -500,6 +504,8 @@ export default function TransportLogisticsLookup() {
           <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Units" /></SelectTrigger>
           <SelectContent>{renderUnitOptions(true)}</SelectContent>
         </Select>
+
+        <ClearFiltersButton onClear={() => { setSearch(""); setPinCode(""); setCity(""); setState(""); }} />
 
         {canEdit && (
           <div className="flex items-center gap-2">

@@ -22,8 +22,10 @@ import { useActiveUnits } from "@/lib/use-active-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 import { PENDING_UNIT_ASSIGNMENT, isPendingUnit } from "@/lib/unit-constants";
 import { useDateFilter } from "@/lib/use-date-filter";
+import { useOwnerFilter, useStatusFilter } from "@/lib/global-filters";
 import { customerLabel } from "@/lib/customer-label";
 import { DateRangeFilter } from "@/components/date-range-filter";
+import { ClearFiltersButton } from "@/components/clear-filters-button";
 import ActivityDetailDrawer from "@/components/activity-detail-drawer";
 import CustomerProfileDrawer from "@/components/customer-profile-drawer";
 import { FlexibleTimeInput } from "@/components/flexible-time-input";
@@ -108,9 +110,13 @@ const SORT_OPTIONS = [
 export default function FollowUps() {
   const [dateFilter, setDateFilter] = useDateFilter();
   const [unitFilter, setUnitFilter] = useUnitFilter();
-  const [ownerFilter, setOwnerFilter] = useState<string | undefined>();
+  const [globalOwner, setGlobalOwner] = useOwnerFilter();
+  const [globalStatus, setGlobalStatus] = useStatusFilter();
+  const ownerFilter = globalOwner || undefined;
+  const setOwnerFilter = (v: string | undefined) => setGlobalOwner(v ?? "");
+  const statusFilter = globalStatus === "All" ? "all" : globalStatus;
+  const setStatusFilter = (v: string) => setGlobalStatus(v === "all" ? "All" : v);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [sortBy, setSortBy] = useState("date-asc");
   const [page, setPage] = useState(1);
@@ -474,6 +480,7 @@ export default function FollowUps() {
                   </SelectContent>
                 </Select>
               )}
+              <ClearFiltersButton onClear={() => { setSearchQuery(""); setTypeFilter("all"); }} />
               <Select value={sortBy} onValueChange={setSortBy}>
                 <SelectTrigger className="w-[150px] h-9">
                   <SelectValue />

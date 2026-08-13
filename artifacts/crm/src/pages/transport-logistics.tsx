@@ -12,6 +12,8 @@ import { Search, Plus, Pencil, Trash2, Package, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useGetMe } from "@workspace/api-client-react";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { useUnitFilter } from "@/lib/use-unit-filter";
+import { ClearFiltersButton } from "@/components/clear-filters-button";
 
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem("crm_token")}`, "Content-Type": "application/json" });
 
@@ -35,7 +37,9 @@ function BundleMasterTab() {
   const [editItem, setEditItem] = useState<Bundle | null>(null);
   const [createForm, setCreateForm] = useState<BundleForm>(EMPTY_BUNDLE_FORM);
   const [editForm, setEditForm] = useState<BundleForm>(EMPTY_BUNDLE_FORM);
-  const [unitFilter, setUnitFilter] = useState<string>("all");
+  const [globalUnit, setGlobalUnit] = useUnitFilter();
+  const unitFilter = globalUnit === "All" ? "all" : globalUnit;
+  const setUnitFilter = (v: string) => setGlobalUnit(v === "all" ? "All" : v);
 
   const { data, isLoading } = useQuery({
     queryKey: ["product-bundles", { search, page, unit: unitFilter }],
@@ -104,6 +108,7 @@ function BundleMasterTab() {
             {activeUnits.filter(u => u !== "Not Sure").map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>
         </Select>
+        <ClearFiltersButton onClear={() => { setSearch(""); setPage(1); }} />
       </div>
 
       <div className="relative max-w-sm">
@@ -234,7 +239,9 @@ function DestinationMasterTab() {
   const [editItem, setEditItem] = useState<Destination | null>(null);
   const [createForm, setCreateForm] = useState<DestinationForm>(EMPTY_DEST_FORM);
   const [editForm, setEditForm] = useState<DestinationForm>(EMPTY_DEST_FORM);
-  const [unitFilter, setUnitFilter] = useState<string>("all");
+  const [globalUnit, setGlobalUnit] = useUnitFilter();
+  const unitFilter = globalUnit === "All" ? "all" : globalUnit;
+  const setUnitFilter = (v: string) => setGlobalUnit(v === "all" ? "All" : v);
 
   const { data, isLoading } = useQuery({
     queryKey: ["transport-destinations", { search, page, unit: unitFilter }],
@@ -331,6 +338,7 @@ function DestinationMasterTab() {
             {activeUnits.filter(u => u !== "Not Sure").map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>
         </Select>
+        <ClearFiltersButton onClear={() => { setSearch(""); setPage(1); }} />
       </div>
 
       <div className="relative max-w-sm">

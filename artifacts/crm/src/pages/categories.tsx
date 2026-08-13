@@ -22,6 +22,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
+import { useOwnerFilter } from "@/lib/global-filters";
+import { ClearFiltersButton } from "@/components/clear-filters-button";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 
 function CategoryCard({ name, count, color, onClick }: { name: string; count: number; color: string; onClick: () => void }) {
@@ -63,7 +65,9 @@ export default function CategoriesPage() {
   const isAdmin = me?.role === "admin";
   const activeUnit = unitFilter !== "All" ? unitFilter : undefined;
   const { units: activeUnits } = useActiveUnits();
-  const [ownerFilter, setOwnerFilter] = useState("All");
+  const [globalOwner, setGlobalOwner] = useOwnerFilter();
+  const ownerFilter = globalOwner || "All";
+  const setOwnerFilter = (v: string) => setGlobalOwner(v === "All" ? "" : v);
   const { data: users } = useListUsers();
   const ownerUsers = users?.filter(u => u.role === "admin" || u.role === "sales" || u.role === "production_and_support");
 
@@ -345,6 +349,7 @@ export default function CategoriesPage() {
             </SelectContent>
           </Select>
         )}
+        <ClearFiltersButton onClear={() => setSearch("")} />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

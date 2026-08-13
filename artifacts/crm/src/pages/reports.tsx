@@ -24,7 +24,9 @@ import { ExportDropdown } from "@/components/export-dropdown";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { useDateFilter } from "@/lib/use-date-filter";
+import { useOwnerFilter } from "@/lib/global-filters";
 import { DateRangeFilter } from "@/components/date-range-filter";
+import { ClearFiltersButton } from "@/components/clear-filters-button";
 
 function UnitPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const { units: activeUnits } = useActiveUnits();
@@ -73,7 +75,7 @@ function downloadCSV(data: any[], filename: string) {
 export default function Reports() {
   const [unit, setUnit] = useUnitFilter();
   const [dateFilter, setDateFilter] = useDateFilter();
-  const [ownerId, setOwnerId] = useState("");
+  const [ownerId, setOwnerId] = useOwnerFilter();
   const [activeTab, setActiveTab] = useState("pipeline");
   const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
@@ -260,6 +262,7 @@ export default function Reports() {
                 </SelectContent>
               </Select>
             )}
+            <ClearFiltersButton />
           </div>
         </div>
 

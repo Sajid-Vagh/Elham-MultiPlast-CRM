@@ -13,6 +13,9 @@ import { Package, Search, Calendar, ChevronDown, ChevronRight, Filter, X, Refres
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useAllUsers } from "@/lib/use-all-users";
+import { useUnitFilter } from "@/lib/use-unit-filter";
+import { useDateFilter } from "@/lib/use-date-filter";
+import { useOwnerFilter, useStatusFilter, useGlobalFilters } from "@/lib/global-filters";
 import { CancelOrderModal } from "@/components/cancel-order-modal";
 
 const PROD_STATUS_COLORS: Record<string, string> = {
@@ -41,7 +44,11 @@ const DATE_PRESETS = [
   { value: "today", label: "Today" },
   { value: "yesterday", label: "Yesterday" },
   { value: "this-week", label: "This Week" },
+  { value: "last-week", label: "Last Week" },
   { value: "this-month", label: "This Month" },
+  { value: "last-month", label: "Last Month" },
+  { value: "this-year", label: "This Year" },
+  { value: "last-year", label: "Last Year" },
   { value: "custom", label: "Custom" },
 ];
 
@@ -105,12 +112,11 @@ export default function OrdersList() {
   const { units: activeUnits } = useActiveUnits();
 
   const [search, setSearch] = useState("");
-  const [datePreset, setDatePreset] = useState("all");
-  const [customStartDate, setCustomStartDate] = useState("");
-  const [customEndDate, setCustomEndDate] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All");
-  const [productionUnitFilter, setProductionUnitFilter] = useState("All");
-  const [ownerFilter, setOwnerFilter] = useState("");
+  const [dateFilter, setDateFilter] = useDateFilter();
+  const [globalUnit, setGlobalUnit] = useUnitFilter();
+  const [globalOwner, setGlobalOwner] = useOwnerFilter();
+  const [globalStatus, setGlobalStatus] = useStatusFilter();
+  const { clearAllFilters, hasActiveFilters } = useGlobalFilters();
   const [page, setPage] = useState(1);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [cancelOrder, setCancelOrder] = useState<OrderRow | null>(null);
@@ -118,18 +124,39 @@ export default function OrdersList() {
   const showUnitFilter = user?.role === "admin" || user?.role === "production_and_support" || user?.unit === "All";
   const { data: users } = useAllUsers(true);
 
+  const SERVER_DATE_PRESETS = ["today", "yesterday", "this-week", "this-month"];
+  const VALID_ORDER_STATUSES = ["All", ...PRODUCTION_STATUSES, ...DISPATCH_STATUSES];
+  const datePreset = dateFilter.preset === "all" ? "all" : dateFilter.preset;
+  const customStartDate = dateFilter.startDate ?? "";
+  const customEndDate = dateFilter.endDate ?? "";
+  const statusFilter = VALID_ORDER_STATUSES.includes(globalStatus) ? globalStatus : "All";
+  const productionUnitFilter = globalUnit;
+  const ownerFilter = globalOwner;
+  const setDatePreset = (v: string) => setDateFilter(v);
+  const setStatusFilter = (v: string) => setGlobalStatus(v);
+  const setProductionUnitFilter = (v: string) => setGlobalUnit(v);
+  const setOwnerFilter = (v: string) => setGlobalOwner(v);
+
   const params = new URLSearchParams();
   if (search) params.set("search", search);
-  if (datePreset !== "all") params.set("datePreset", datePreset);
-  if (datePreset === "custom" && customStartDate) params.set("startDate", toStartIso(customStartDate));
-  if (datePreset === "custom" && customEndDate) params.set("endDate", toEndIso(customEndDate));
+  if (datePreset !== "all") {
+    if (SERVER_DATE_PRESETS.includes(datePreset)) {
+      params.set("datePreset", datePreset);
+    } else if (datePreset === "custom") {
+      if (customStartDate) params.set("startDate", toStartIso(customStartDate));
+      if (customEndDate) params.set("endDate", toEndIso(customEndDate));
+    } else {
+      if (dateFilter.startDate) params.set("startDate", toStartIso(dateFilter.startDate));
+      if (dateFilter.endDate) params.set("endDate", toEndIso(dateFilter.endDate));
+    }
+  }
   if (productionUnitFilter !== "All") params.set("productionUnit", productionUnitFilter);
   if (ownerFilter) params.set("ownerId", ownerFilter);
   params.set("page", String(page));
   params.set("limit", "30");
 
   const { data, isLoading, isRefetching, refetch } = useQuery<{ data: OrderRow[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>({
-    queryKey: ["orders-global", search, datePreset, customStartDate, customEndDate, productionUnitFilter, ownerFilter, page],
+    queryKey: ["orders-global", search, dateFilter.preset, dateFilter.startDate, dateFilter.endDate, productionUnitFilter, ownerFilter, page],
     queryFn: () => customFetch(`/orders/global?${params.toString()}`),
     refetchInterval: 30_000,
   });
@@ -183,9 +210,9 @@ export default function OrdersList() {
 
             {datePreset === "custom" && (
               <>
-                <Input type="date" value={customStartDate} onChange={e => setCustomStartDate(e.target.value)} className="w-40" />
+                <Input type="date" value={customStartDate} onChange={e => setDateFilter("custom", e.target.value || null, dateFilter.endDate)} className="w-40" />
                 <span className="text-xs text-muted-foreground">to</span>
-                <Input type="date" value={customEndDate} onChange={e => setCustomEndDate(e.target.value)} className="w-40" />
+                <Input type="date" value={customEndDate} onChange={e => setDateFilter("custom", dateFilter.startDate, e.target.value || null)} className="w-40" />
               </>
             )}
 
@@ -218,8 +245,8 @@ export default function OrdersList() {
               </Select>
             )}
 
-            {(search || datePreset !== "all" || statusFilter !== "All" || productionUnitFilter !== "All" || ownerFilter) && (
-              <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setDatePreset("all"); setStatusFilter("All"); setProductionUnitFilter("All"); setOwnerFilter(""); setPage(1); }}>
+            {(search || hasActiveFilters) && (
+              <Button variant="ghost" size="sm" onClick={() => { setSearch(""); clearAllFilters(); setPage(1); }}>
                 <X className="h-3.5 w-3.5 mr-1" />Clear
               </Button>
             )}

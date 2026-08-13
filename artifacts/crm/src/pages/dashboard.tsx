@@ -20,7 +20,9 @@ import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { usePrivacyMode } from "@/lib/use-privacy-mode";
 import { customerLabel } from "@/lib/customer-label";
 import { useDateFilter, getLabel } from "@/lib/use-date-filter";
+import { useOwnerFilter } from "@/lib/global-filters";
 import { DateRangeFilter } from "@/components/date-range-filter";
+import { ClearFiltersButton } from "@/components/clear-filters-button";
 
 function daysDiff(dateStr: string): number {
   const today = new Date();
@@ -39,7 +41,7 @@ const PIE_COLORS = ["#f87171","#fb923c","#fbbf24","#a3e635","#34d399","#60a5fa",
 
 export default function Dashboard() {
   const [followUpDateFilter, setFollowUpDateFilter] = useState("");
-  const [ownerFilter, setOwnerFilter] = useState("");
+  const [ownerFilter, setOwnerFilter] = useOwnerFilter();
   const [unitFilter, setUnitFilter] = useUnitFilter();
   const [dateFilter, setDateFilter] = useDateFilter();
   const [privacyHidden, togglePrivacy] = usePrivacyMode();
@@ -181,6 +183,7 @@ export default function Dashboard() {
               </SelectContent>
             </Select>
           )}
+          <ClearFiltersButton />
           <Button variant="ghost" size="icon" onClick={togglePrivacy} className="h-8 w-8 text-muted-foreground" title={privacyHidden ? "Show financial values" : "Hide financial values"}>
             {privacyHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </Button>

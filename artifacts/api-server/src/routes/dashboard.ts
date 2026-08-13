@@ -409,11 +409,13 @@ router.get("/dashboard/support-kpi", async (req, res) => {
     if (startDate) { orderDateConds.push(gte(ordersTable.createdAt, new Date(startDate))); prodDateConds.push(gte(productionOrdersTable.createdAt, new Date(startDate))); }
     if (endDate) { const end = new Date(endDate); end.setHours(23, 59, 59, 999); orderDateConds.push(lte(ordersTable.createdAt, end)); prodDateConds.push(lte(productionOrdersTable.createdAt, end)); }
 
-    // Unit isolation for support-kpi
+    // Unit isolation for support-kpi (honor ?unit= for admin / unit-All users)
+    const requestedUnit = req.query.unit as string | undefined;
     const accessibleUnits = getAccessibleUnits(user);
-    if (accessibleUnits) {
-      orderDateConds.push(inArray(ordersTable.productionUnit, accessibleUnits));
-      prodDateConds.push(inArray(productionOrdersTable.productionUnit, accessibleUnits));
+    const unitFilter = accessibleUnits ? accessibleUnits : (requestedUnit && requestedUnit !== "All" ? [requestedUnit] : null);
+    if (unitFilter) {
+      orderDateConds.push(inArray(ordersTable.productionUnit, unitFilter));
+      prodDateConds.push(inArray(productionOrdersTable.productionUnit, unitFilter));
     }
 
     // Repeat orders

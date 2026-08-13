@@ -39,6 +39,7 @@ import Inventory from "@/pages/inventory";
 import OrdersList from "@/pages/orders-list";
 import OrderDetailGlobal from "@/pages/order-detail-global";
 import { readWorkspace, getHomeRoute } from "@/lib/use-workspace";
+import { GlobalFilterProvider } from "@/lib/global-filters";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -275,12 +276,14 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
+      <GlobalFilterProvider>
+        <TooltipProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <Router />
+          </WouterRouter>
+          <Toaster />
+        </TooltipProvider>
+      </GlobalFilterProvider>
     </QueryClientProvider>
   );
 }

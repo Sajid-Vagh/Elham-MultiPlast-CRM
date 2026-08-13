@@ -642,7 +642,6 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
                     localStorage.removeItem("crm_token");
                     localStorage.removeItem("crm_user_role");
                     localStorage.removeItem("crm_user_unit");
-                    localStorage.removeItem("crm_unit_filter");
                     sessionStorage.removeItem("crm_notif_since");
                     setShowLogoutConfirm(false);
                     setLocation("/login");

@@ -11,7 +11,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { Search, Users, Factory, Truck, AlertTriangle, Clock, CheckCircle2, XCircle, Phone } from "lucide-react";
 import { useDateFilter } from "@/lib/use-date-filter";
+import { useStatusFilter } from "@/lib/global-filters";
 import { DateRangeFilter } from "@/components/date-range-filter";
+import { ClearFiltersButton } from "@/components/clear-filters-button";
 
 const EXISTING_CUSTOMER_STATUSES = ["All", "Active", "Production Running", "Dispatch Pending", "Repeat Order Due", "Inactive"];
 
@@ -36,7 +38,9 @@ const KPI_CARDS = [
 export default function ExistingCustomers() {
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All");
+  const [globalStatus, setGlobalStatus] = useStatusFilter();
+  const statusFilter = EXISTING_CUSTOMER_STATUSES.includes(globalStatus) ? globalStatus : "All";
+  const setStatusFilter = (v: string) => setGlobalStatus(v);
   const [page, setPage] = useState(1);
   const [dateFilter, setDateFilter] = useDateFilter();
 
@@ -127,6 +131,7 @@ export default function ExistingCustomers() {
             ))}
           </SelectContent>
         </Select>
+        <ClearFiltersButton onClear={() => setSearch("")} />
       </div>
 
       {/* Table */}
