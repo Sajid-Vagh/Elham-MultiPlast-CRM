@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
   useGetPipelineReport, useGetReportByOwner, useGetReportByCity,
-  useGetReportByProduct, useGetReportLostReasons, useGetMe
+  useGetReportByState, useGetReportByProduct, useGetReportLostReasons, useGetMe
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -104,6 +104,8 @@ export default function Reports() {
   const { data: pipeline } = useGetPipelineReport({ startDate: dateFilter.startDate || undefined, endDate: dateFilter.endDate || undefined, unit: unit !== "All" ? unit : undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
   const { data: byOwner } = useGetReportByOwner({ startDate: dateFilter.startDate || undefined, endDate: dateFilter.endDate || undefined, unit: unit !== "All" ? unit : undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
   const { data: byCity } = useGetReportByCity({ startDate: dateFilter.startDate || undefined, endDate: dateFilter.endDate || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
+  const { data: byState } = useGetReportByState({ startDate: dateFilter.startDate || undefined, endDate: dateFilter.endDate || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
+  const dealsByState = byState?.dealsByState ?? [];
   const { data: byProduct } = useGetReportByProduct({ startDate: dateFilter.startDate || undefined, endDate: dateFilter.endDate || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
   const { toast } = useToast();
   const { data: lostReasons } = useGetReportLostReasons({ startDate: dateFilter.startDate || undefined, endDate: dateFilter.endDate || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined, unit: unit !== "All" ? unit : undefined });
@@ -125,11 +127,12 @@ export default function Reports() {
       case "pipeline": return pipeline;
       case "by-owner": return byOwner;
       case "by-city": return byCity;
+      case "by-state": return dealsByState;
       case "by-product": return byProduct;
       case "lost-reasons": return lostReasons;
       default: return [];
     }
-  }, [activeTab, pipeline, byOwner, byCity, byProduct, lostReasons]);
+  }, [activeTab, pipeline, byOwner, byCity, dealsByState, byProduct, lostReasons]);
 
   const exportCSV = useCallback(() => {
     const data = getCurrentTabData() ?? [];
@@ -238,6 +241,7 @@ export default function Reports() {
             <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
             <TabsTrigger value="by-owner">By Owner</TabsTrigger>
             <TabsTrigger value="by-city">By City</TabsTrigger>
+            <TabsTrigger value="by-state">By State</TabsTrigger>
             <TabsTrigger value="by-product">By Product</TabsTrigger>
             <TabsTrigger value="lost-reasons">
               <XCircle className="h-3.5 w-3.5 mr-1 text-red-400" />
@@ -414,6 +418,69 @@ export default function Reports() {
                   ))}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── BY STATE TAB ── */}
+        <TabsContent value="by-state">
+          <Card>
+            <CardHeader><CardTitle>Performance by State</CardTitle></CardHeader>
+            <CardContent>
+              {!dealsByState.length ? (
+                <p className="text-sm text-muted-foreground text-center py-12">No deals found for the selected filters.</p>
+              ) : (
+                <>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={[...dealsByState].sort((a, b) => b.totalDeals - a.totalDeals)} margin={{ top: 20, right: 30, left: 45, bottom: 30 }}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                      <XAxis dataKey="state" tick={{ fontSize: 11 }} angle={-30} textAnchor="end" height={60} />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={40} />
+                      <Tooltip
+                        cursor={{ fill: "rgba(148,163,184,0.1)" }}
+                        content={({ active, payload }: any) => {
+                          if (!active || !payload?.length) return null;
+                          const d = payload[0].payload;
+                          return (
+                            <div className="rounded-lg border bg-background px-3 py-2 text-xs shadow-md">
+                              <p className="font-medium">{d.state}</p>
+                              <p>Total Deals: <span className="font-medium">{d.totalDeals}</span></p>
+                              <p className="text-green-600">Won: {d.wonDeals}</p>
+                              <p className="text-red-500">Lost: {d.lostDeals}</p>
+                              <p className="text-muted-foreground">Won Value: ₹{Number(d.totalWonValue).toLocaleString()}</p>
+                            </div>
+                          );
+                        }}
+                      />
+                      <Legend />
+                      <Bar dataKey="totalDeals" name="Total Deals" fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="wonDeals" name="Won Deals" fill="#34d399" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <Table className="mt-4">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>State</TableHead>
+                        <TableHead>Total Deals</TableHead>
+                        <TableHead className="text-green-600">Won</TableHead>
+                        <TableHead>Won Value</TableHead>
+                        <TableHead className="text-red-500">Lost</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {[...dealsByState].sort((a, b) => b.totalWonValue - a.totalWonValue).map(row => (
+                        <TableRow key={row.state}>
+                          <TableCell className="font-medium">{row.state}</TableCell>
+                          <TableCell>{row.totalDeals}</TableCell>
+                          <TableCell className="text-green-600 font-medium">{row.wonDeals}</TableCell>
+                          <TableCell>₹{Number(row.totalWonValue).toLocaleString()}</TableCell>
+                          <TableCell className="text-red-500 font-medium">{row.lostDeals}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

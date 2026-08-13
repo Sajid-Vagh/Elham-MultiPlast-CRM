@@ -828,6 +828,34 @@ paths:
                 items:
                   $ref: "#/components/schemas/CityStat"
 
+  /reports/by-state:
+    get:
+      operationId: getReportByState
+      tags: [reports]
+      summary: Deal stats grouped by state
+      parameters:
+        - name: month
+          in: query
+          schema:
+            type: string
+        - name: salesOwnerId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: State stats
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [dealsByState]
+                properties:
+                  dealsByState:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StateStat"
+
   /import/excel:
     post:
       operationId: importExcel
@@ -1406,6 +1434,23 @@ components:
       required: [city, totalDeals, wonDeals, lostDeals, totalWonValue, totalLostValue]
       properties:
         city:
+          type: string
+        totalDeals:
+          type: integer
+        wonDeals:
+          type: integer
+        lostDeals:
+          type: integer
+        totalWonValue:
+          type: number
+        totalLostValue:
+          type: number
+
+    StateStat:
+      type: object
+      required: [state, totalDeals, wonDeals, lostDeals, totalWonValue, totalLostValue]
+      properties:
+        state:
           type: string
         totalDeals:
           type: integer

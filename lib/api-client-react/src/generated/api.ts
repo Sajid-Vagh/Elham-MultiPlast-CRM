@@ -41,6 +41,8 @@ import type {
   GetReportByCityParams,
   GetReportByOwnerParams,
   GetReportByProductParams,
+  GetReportByState200,
+  GetReportByStateParams,
   GetReportLostReasons200Item,
   GetReportLostReasonsParams,
   HealthStatus,
@@ -59,6 +61,7 @@ import type {
   ProformaInvoiceList,
   ReportSummary,
   SearchContactByMobileParams,
+  StateStat,
   User,
   UserInput,
   UserUpdate
@@ -3058,6 +3061,85 @@ export function useGetReportByCity<TData = Awaited<ReturnType<typeof getReportBy
 
 
 
+
+
+
+
+export const getGetReportByStateUrl = (params?: GetReportByStateParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `https://elham-multiplast-crm.onrender.com/api/reports/by-state?${stringifiedParams}` : `https://elham-multiplast-crm.onrender.com/api/reports/by-state`
+}
+
+/**
+ * @summary Deal stats grouped by state
+ */
+export const getReportByState = async (params?: GetReportByStateParams, options?: RequestInit): Promise<GetReportByState200> => {
+
+  return customFetch<GetReportByState200>(getGetReportByStateUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+export const getGetReportByStateQueryKey = (params?: GetReportByStateParams,) => {
+    return [
+    `https://elham-multiplast-crm.onrender.com/api/reports/by-state`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetReportByStateQueryOptions = <TData = Awaited<ReturnType<typeof getReportByState>>, TError = ErrorType<unknown>>(params?: GetReportByStateParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReportByState>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReportByStateQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReportByState>>> = ({ signal }) => getReportByState(params, { signal, ...requestOptions });
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReportByState>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReportByStateQueryResult = NonNullable<Awaited<ReturnType<typeof getReportByState>>>
+export type GetReportByStateQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Deal stats grouped by state
+ */
+
+export function useGetReportByState<TData = Awaited<ReturnType<typeof getReportByState>>, TError = ErrorType<unknown>>(
+ params?: GetReportByStateParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReportByState>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReportByStateQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 
 

@@ -713,6 +713,15 @@ export interface CityStat {
   totalLostValue: number;
 }
 
+export interface StateStat {
+  state: string;
+  totalDeals: number;
+  wonDeals: number;
+  lostDeals: number;
+  totalWonValue: number;
+  totalLostValue: number;
+}
+
 export interface ExcelRow {
   /** @nullable */
   name?: string | null;
@@ -869,5 +878,16 @@ month?: string;
 salesOwnerId?: number;
 startDate?: string;
 endDate?: string;
+};
+
+export type GetReportByStateParams = {
+month?: string;
+salesOwnerId?: number;
+startDate?: string;
+endDate?: string;
+};
+
+export type GetReportByState200 = {
+  dealsByState: StateStat[];
 };
 

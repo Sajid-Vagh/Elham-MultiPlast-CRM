@@ -1230,6 +1230,27 @@ export const GetReportByCityResponse = zod.array(GetReportByCityResponseItem)
 
 
 /**
+ * @summary Deal stats grouped by state
+ */
+export const GetReportByStateQueryParams = zod.object({
+  "month": zod.coerce.string().optional(),
+  "salesOwnerId": zod.coerce.number().optional()
+})
+
+export const GetReportByStateResponseItem = zod.object({
+  "state": zod.string(),
+  "totalDeals": zod.number(),
+  "wonDeals": zod.number(),
+  "lostDeals": zod.number(),
+  "totalWonValue": zod.number(),
+  "totalLostValue": zod.number()
+})
+export const GetReportByStateResponse = zod.object({
+  "dealsByState": zod.array(GetReportByStateResponseItem)
+})
+
+
+/**
  * @summary Import contacts/leads from Excel file
  */
 export const ImportExcelBody = zod.object({

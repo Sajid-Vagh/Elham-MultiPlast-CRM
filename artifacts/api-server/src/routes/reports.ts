@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, activitiesTable, proformaInvoicesTable, proformaInvoiceItemsTable, DEAL_STAGES, STAGE_PROBS } from "@workspace/db";
 import { eq, and, gte, lte, sql, inArray, or, isNull, type SQL } from "drizzle-orm";
-import { GetPipelineReportQueryParams, GetReportByOwnerQueryParams, GetReportByProductQueryParams, GetReportByCityQueryParams } from "@workspace/api-zod";
+import { GetPipelineReportQueryParams, GetReportByOwnerQueryParams, GetReportByProductQueryParams, GetReportByCityQueryParams, GetReportByStateQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 import { normalizeProfilePhotoUrl } from "../lib/storage";
@@ -661,6 +661,51 @@ router.get("/reports/by-city", async (req, res) => {
     res.json(Array.from(cityMap.entries()).map(([city, s]) => ({ city, ...s })));
   } catch (err) {
     req.log.error({ err }, "By-city report error");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
+
+router.get("/reports/by-state", async (req, res) => {
+  try {
+    const params = GetReportByStateQueryParams.safeParse(req.query);
+    const user = await restrictToOwnDeals(req, params.data ?? {});
+    if (!user) { res.status(403).json({ error: "Unauthorized" }); return; }
+    let deals = await db.select().from(dealsTable);
+    const contacts = await db.select().from(contactsTable);
+    const contactMap = new Map(contacts.map(c => [c.id, c]));
+
+    if (params.success) {
+      if (params.data.salesOwnerId) deals = deals.filter(d => d.salesOwnerId === params.data.salesOwnerId);
+      const { startDate, endDate } = getDateRange(req);
+      if (startDate || endDate) {
+        deals = deals.filter(d => {
+          const created = new Date(d.createdAt);
+          if (startDate && created < startDate) return false;
+          if (endDate && created > endDate) return false;
+          return true;
+        });
+      }
+    }
+
+    const stateMap = new Map<string, { totalDeals: number; wonDeals: number; lostDeals: number; totalWonValue: number }>();
+    for (const deal of deals) {
+      const contact = contactMap.get(deal.contactId);
+      const state = contact?.state ?? "Unknown";
+      if (!stateMap.has(state)) stateMap.set(state, { totalDeals: 0, wonDeals: 0, lostDeals: 0, totalWonValue: 0 });
+      const s = stateMap.get(state)!;
+      s.totalDeals++;
+      if (deal.stage === "Won") {
+        s.wonDeals++;
+        s.totalWonValue += Number(deal.wonAmount ?? 0);
+      }
+      if (deal.stage === "Lost") {
+        s.lostDeals++;
+      }
+    }
+
+    res.json({ dealsByState: Array.from(stateMap.entries()).map(([state, s]) => ({ state, ...s })) });
+  } catch (err) {
+    req.log.error({ err }, "By-state report error");
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
