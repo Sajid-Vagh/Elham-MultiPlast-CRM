@@ -810,7 +810,9 @@ export async function enrichProductionOrder(order: any, user?: { id?: number; ro
   const productMap = new Map(allProducts.map(p => [p.name?.toLowerCase()?.trim(), p]));
 
   const enrichedItems = items.map((i: any) => {
-    const product = productMap.get(i.productName?.toLowerCase()?.trim());
+    const product = i.productId
+      ? allProducts.find(p => p.id === i.productId)
+      : productMap.get(i.productName?.toLowerCase()?.trim());
     return {
       ...i,
       quantity: Number(i.quantity),

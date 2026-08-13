@@ -785,10 +785,15 @@ export default function ProformaInvoicesPage() {
     PP: "39269099",
   };
 
+const productDisplayName = (product: any) =>
+  product?.name
+    ? `${product.name}${product.bottleWeight ? ` (${product.bottleWeight}g)` : ""}`
+    : "";
+
 const selectProduct = (idx: number, product: any) => {
   setItems(prev => prev.map((item, i) => {
     if (i !== idx) return item;
-    const next = { ...item, productName: product.name, productId: product.id };
+    const next = { ...item, productName: productDisplayName(product), productId: product.id };
     const hsn = product.hsnCode || (product.materialType ? MATERIAL_HSN[product.materialType] : "") || "";
     if (hsn) next.hsnCode = hsn;
     if (product.defaultUnit) next.unit = product.defaultUnit;
@@ -1303,6 +1308,11 @@ const selectProduct = (idx: number, product: any) => {
     }
     if (items.some((i) => !i.productName)) {
       toast({ title: "Error", description: "All items must have a product name", variant: "destructive" });
+      hasError = true;
+    }
+    const customProduct = items.find((i) => i.productName && !i.productId);
+    if (customProduct) {
+      toast({ title: "Error", description: `"${customProduct.productName}" is not a listed product. Please select a product from the dropdown.`, variant: "destructive" });
       hasError = true;
     }
     if (hasError) return;
@@ -1865,7 +1875,7 @@ const selectProduct = (idx: number, product: any) => {
         : "";
 
       const rows = pageItems.map((item: any, ri: number) =>
-        `<tr><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${b.start + ri + 1}</td><td style="text-align:left;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;word-break:break-word;white-space:normal;">${item.productName}${item.bottleType ? ` (${item.bottleType})` : ""}${item.capacity ? ` ${item.capacity}` : ""}${item.weight ? ` ${item.weight}` : ""}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.hsnCode || "-"}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.quantity}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.unit}</td><td style="text-align:right;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${Number(item.rate).toFixed(2)}</td><td style="text-align:right;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${Number(item.amount).toFixed(2)}</td></tr>`
+        `<tr><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${b.start + ri + 1}</td><td style="text-align:left;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;word-break:break-word;white-space:normal;">${item.productName}${item.bottleType ? ` (${item.bottleType})` : ""}${item.capacity ? ` ${item.capacity}` : ""}${item.weight && !String(item.productName || "").includes(`(${item.weight}g)`) ? ` ${item.weight}` : ""}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.hsnCode || "-"}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.quantity}</td><td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.unit}</td><td style="text-align:right;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${Number(item.rate).toFixed(2)}</td><td style="text-align:right;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${Number(item.amount).toFixed(2)}</td></tr>`
       ).join("\n");
 
       // Carry Forward row on non-last pages
@@ -2714,17 +2724,20 @@ ${pagesHtml}
                             value={item.productName}
                             onChange={(e) => { updateItem(idx, "productName", e.target.value); setProductSearchQuery(e.target.value); setActiveProductIdx(idx); const r = e.currentTarget.getBoundingClientRect(); setProductSearchPos({ top: r.bottom, left: r.left, width: r.width }); }}
                             placeholder="Type product name"
-                            className="h-8 w-full"
+                            className={`h-8 w-full ${item.productName && !item.productId ? "border-destructive/70 focus-visible:ring-destructive/30" : ""}`}
                             onFocus={(e) => { setActiveProductIdx(idx); const r = e.currentTarget.getBoundingClientRect(); setProductSearchPos({ top: r.bottom, left: r.left, width: r.width }); }}
                             onBlur={() => setTimeout(() => setShowProductSearch(false), 200)}
                           />
+                          {item.productName && !item.productId && (
+                            <p className="text-[11px] text-destructive mt-0.5 leading-tight">Select a product from the dropdown</p>
+                          )}
                         </TableCell>
                       <TableCell>
                         <Select value={item.bottleColour || ""} onValueChange={(v) => updateItem(idx, "bottleColour", v || undefined)}>
                           <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="Color" /></SelectTrigger>
                           <SelectContent>
                             {(() => {
-                              const resultColors = productSearchResults.filter(r => r.name?.toLowerCase() === item.productName?.toLowerCase()).map((r: any) => r.bottleColour).filter(Boolean);
+                              const resultColors = productSearchResults.filter(r => r.id === item.productId || r.name?.toLowerCase() === item.productName?.toLowerCase() || productDisplayName(r)?.toLowerCase() === item.productName?.toLowerCase()).map((r: any) => r.bottleColour).filter(Boolean);
                               const allColors = [...new Set([...(item.bottleColour ? [item.bottleColour] : []), ...resultColors, "Dark Blue", "White", "Purple", "Green", "Red", "Yellow", "Orange", "Pink", "Black", "Clear", "Transparent", "Blue", "Silver", "Gold"])];
                               return allColors.map((c: string) => (
                                 <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
