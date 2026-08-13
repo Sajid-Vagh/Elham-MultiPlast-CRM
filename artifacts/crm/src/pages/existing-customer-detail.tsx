@@ -44,6 +44,8 @@ const ORDER_STATUS_COLORS: Record<string, string> = {
 
 const PROD_STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-600",
+  "Production On Going": "bg-purple-100 text-purple-800",
+  "Ready To Dispatch": "bg-blue-100 text-blue-800",
   "Accepted": "bg-blue-100 text-blue-700",
   "Planning": "bg-indigo-100 text-indigo-700",
   "In Production": "bg-orange-100 text-orange-700",
