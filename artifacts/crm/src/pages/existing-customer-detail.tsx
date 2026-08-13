@@ -16,6 +16,7 @@ import { ArrowLeft, Phone, Mail, MapPin, Building, Calendar, Package, ShoppingCa
 import { VoiceNoteSection } from "@/components/voice-note-player";
 import { VoiceNoteUploader } from "@/components/voice-note-uploader";
 import { useToast } from "@/hooks/use-toast";
+import { FlexibleTimeInput } from "@/components/flexible-time-input";
 
 const STATUS_COLORS: Record<string, string> = {
   "Active": "bg-green-100 text-green-700",
@@ -947,7 +948,7 @@ export default function ExistingCustomerDetail() {
               </div>
               <div className="space-y-1">
                 <Label>Time</Label>
-                <Input type="time" value={followUpForm.followUpTime} onChange={e => setFollowUpForm(f => ({ ...f, followUpTime: e.target.value }))} />
+                <FlexibleTimeInput value={followUpForm.followUpTime} onChange={v => setFollowUpForm(f => ({ ...f, followUpTime: v }))} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">

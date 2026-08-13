@@ -28,6 +28,7 @@ import { MoveCategoryDialog } from "@/components/move-category-dialog";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { DEAL_STAGES, STAGE_PROBS, STAGE_BADGE_COLORS } from "@/lib/deal-stages";
 import { customerLabel } from "@/lib/customer-label";
+import { FlexibleTimeInput } from "@/components/flexible-time-input";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { Link as LinkIcon } from "lucide-react";
@@ -693,7 +694,7 @@ export default function DealDetail() {
                     </div>
                     <div><Label>Notes</Label><Textarea value={actNotes} onChange={e => setActNotes(e.target.value)} placeholder="Notes from this interaction..." /></div>
                     <div><Label>Next Follow-up Date</Label><Input type="date" value={actFollowUp} onChange={e => setActFollowUp(e.target.value)} /></div>
-                    {actFollowUp && <div><Label>Follow-up Time</Label><Input type="time" value={actFollowUpTime} onChange={e => setActFollowUpTime(e.target.value)} /></div>}
+                    {actFollowUp && <div><Label>Follow-up Time</Label><FlexibleTimeInput value={actFollowUpTime} onChange={setActFollowUpTime} /></div>}
                     <Button onClick={handleLogActivity} disabled={createActivity.isPending || !actFollowUp} className="w-full">Log</Button>
                   </div>
                 </DialogContent>
@@ -833,7 +834,7 @@ export default function DealDetail() {
             </div>
             <div><Label>Notes</Label><Textarea value={editActNotes} onChange={e => setEditActNotes(e.target.value)} placeholder="Notes from this interaction..." /></div>
             <div><Label>Follow-up Date</Label><Input type="date" value={editActFollowUp} onChange={e => setEditActFollowUp(e.target.value)} /></div>
-            {editActFollowUp && <div><Label>Follow-up Time</Label><Input type="time" value={editActFollowUpTime} onChange={e => setEditActFollowUpTime(e.target.value)} /></div>}
+            {editActFollowUp && <div><Label>Follow-up Time</Label><FlexibleTimeInput value={editActFollowUpTime} onChange={setEditActFollowUpTime} /></div>}
             <div><Label>Follow-up Type</Label>
               <Select value={editActFollowType} onValueChange={setEditActFollowType}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -1011,7 +1012,7 @@ export default function DealDetail() {
             </div>
             <div>
               <Label>Follow-up Time</Label>
-              <Input type="time" className="mt-1" value={fuTime} onChange={e => setFuTime(e.target.value)} />
+              <FlexibleTimeInput className="mt-1" value={fuTime} onChange={setFuTime} />
             </div>
             <div>
               <Label>Type</Label>

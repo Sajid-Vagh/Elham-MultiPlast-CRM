@@ -12,6 +12,7 @@ import { onActivityChange } from "@/lib/query-invalidation";
 import { Calendar as CalendarIcon, Clock, Phone, MessageSquare, Video, Users, Bell, AlertTriangle, Mail, MapPin } from "lucide-react";
 import { UserAvatar } from "@/components/user-avatar";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
+import { FlexibleTimeInput } from "@/components/flexible-time-input";
 
 interface ScheduleFollowUpDialogProps {
   open: boolean;
@@ -165,11 +166,10 @@ export function ScheduleFollowUpDialog({ open, onOpenChange, contactId, dealId }
                 <Clock className="h-4 w-4 text-muted-foreground" />
                 Follow-up Time <span className="text-destructive">*</span>
               </Label>
-              <Input
-                type="time"
+              <FlexibleTimeInput
                 value={time}
-                onChange={e => { setTime(e.target.value); setErrors(prev => ({ ...prev, time: "" })); }}
-                className={errors.time ? "border-destructive" : ""}
+                onChange={v => { setTime(v); setErrors(prev => ({ ...prev, time: "" })); }}
+                error={!!errors.time}
               />
               {errors.time && <p className="text-xs text-destructive flex items-center gap-1 mt-1"><AlertTriangle className="h-3 w-3" />{errors.time}</p>}
             </div>

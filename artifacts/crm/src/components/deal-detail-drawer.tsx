@@ -20,6 +20,7 @@ import { Pencil, Phone, Calendar, ExternalLink, Clock, CheckCircle2, X, MessageS
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
 import { PiSentDialog } from "@/components/pi-sent-dialog";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import { FlexibleTimeInput } from "@/components/flexible-time-input";
 import { Link } from "wouter";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 
@@ -362,7 +363,7 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
             </div>
             <div><Label>Notes</Label><Textarea value={actNotes} onChange={e => setActNotes(e.target.value)} placeholder="Notes from this interaction..." /></div>
             <div><Label>Follow-up Date</Label><Input type="date" value={actFollowUp} onChange={e => setActFollowUp(e.target.value)} /></div>
-            {actFollowUp && <div><Label>Follow-up Time</Label><Input type="time" value={actFollowUpTime} onChange={e => setActFollowUpTime(e.target.value)} /></div>}
+            {actFollowUp && <div><Label>Follow-up Time</Label><FlexibleTimeInput value={actFollowUpTime} onChange={setActFollowUpTime} /></div>}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setActivityOpen(false)}>Cancel</Button>
@@ -444,7 +445,7 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
             </div>
             <div>
               <Label>Follow-up Time</Label>
-              <Input type="time" className="mt-1" value={fuTime} onChange={e => setFuTime(e.target.value)} />
+              <FlexibleTimeInput className="mt-1" value={fuTime} onChange={setFuTime} />
             </div>
             <div>
               <Label>Type</Label>

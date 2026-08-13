@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { onActivityChange } from "@/lib/query-invalidation";
 import { Calendar, Clock, Phone, MessageSquare, Video, Users, MapPin, Mail, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
+import { FlexibleTimeInput } from "@/components/flexible-time-input";
 
 interface ActivityModalProps {
   open: boolean;
@@ -343,11 +344,10 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
                       <Clock className="h-4 w-4 text-muted-foreground" />
                       Time
                     </Label>
-                    <Input
-                      type="time"
+                    <FlexibleTimeInput
                       value={nextTime}
-                      onChange={e => { setNextTime(e.target.value); setErrors(prev => ({ ...prev, nextTime: "" })); }}
-                      className={errors.nextTime ? "border-destructive" : ""}
+                      onChange={v => { setNextTime(v); setErrors(prev => ({ ...prev, nextTime: "" })); }}
+                      error={!!errors.nextTime}
                     />
                     {errors.nextTime && <p className="text-xs text-destructive flex items-center gap-1 mt-1"><AlertTriangle className="h-3 w-3" />{errors.nextTime}</p>}
                   </div>

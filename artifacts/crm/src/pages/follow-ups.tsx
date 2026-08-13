@@ -26,6 +26,7 @@ import { customerLabel } from "@/lib/customer-label";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import ActivityDetailDrawer from "@/components/activity-detail-drawer";
 import CustomerProfileDrawer from "@/components/customer-profile-drawer";
+import { FlexibleTimeInput } from "@/components/flexible-time-input";
 
 const PAGE_SIZE = 15;
 
@@ -682,7 +683,7 @@ export default function FollowUps() {
             {editDate && (
               <div>
                 <Label>Follow-up Time</Label>
-                <Input type="time" value={editTime} onChange={e => setEditTime(e.target.value)} />
+                <FlexibleTimeInput value={editTime} onChange={setEditTime} />
               </div>
             )}
           </div>

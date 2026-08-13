@@ -6,6 +6,7 @@ import { Link, useLocation } from "wouter";
 import { playFollowUpSound, showBrowserNotification } from "@/lib/notification-sound";
 import { NotificationProvider, useNotifications, groupConversations } from "@/lib/notification-context";
 import { NotificationPopup } from "./notification-popup";
+import { useToast } from "@/hooks/use-toast";
 import { NotificationSidePanel } from "./notification-side-panel";
 import {
   LayoutDashboard, Users, Briefcase,
@@ -20,6 +21,7 @@ import { UserAvatar } from "@/components/user-avatar";
 import { useWorkspace, getWorkspaceLabel, getHomeRoute, type Workspace } from "@/lib/use-workspace";
 
 const REMINDER_SOUND_SS_KEY = "crm_reminder_sound_played_ids";
+const FOLLOWUP_TOAST_SS_KEY = "crm_followup_toast_fired_keys";
 
 function getReminderSoundSet(): Set<string> {
   try {
@@ -34,7 +36,21 @@ function addReminderSoundId(key: string) {
   sessionStorage.setItem(REMINDER_SOUND_SS_KEY, JSON.stringify([...set]));
 }
 
-function useTimeBasedReminders(activities: { id: number; followUpDate?: string | null; followUpTime?: string | null; contact?: { name?: string } | null; deal?: { contact?: { name?: string } | null } | null }[] | undefined) {
+function getFiredToastKeys(): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(FOLLOWUP_TOAST_SS_KEY);
+    return new Set<string>(raw ? JSON.parse(raw) : []);
+  } catch { return new Set(); }
+}
+
+function addFiredToastKey(key: string) {
+  const set = getFiredToastKeys();
+  set.add(key);
+  sessionStorage.setItem(FOLLOWUP_TOAST_SS_KEY, JSON.stringify([...set]));
+}
+
+function useTimeBasedReminders(activities: { id: number; followUpDate?: string | null; followUpTime?: string | null; callStatus?: string | null; contact?: { name?: string } | null; deal?: { contact?: { name?: string } | null } | null }[] | undefined) {
+  const { toast } = useToast();
   useEffect(() => {
     if (!activities?.length) return;
     const check = () => {
@@ -50,6 +66,21 @@ function useTimeBasedReminders(activities: { id: number; followUpDate?: string |
         if (isNaN(h) || isNaN(m)) continue;
         const followUpTotal = h * 60 + m;
         const diff = followUpTotal - currentTotal;
+
+        // Exact-time in-app toast for pending follow-ups (fires once per activity + time).
+        if (a.callStatus === "Pending" && diff >= -1 && diff <= 1) {
+          const toastKey = `${a.id}:${a.followUpDate}:${a.followUpTime}:now`;
+          if (!getFiredToastKeys().has(toastKey)) {
+            addFiredToastKey(toastKey);
+            const name = a.contact?.name || a.deal?.contact?.name || "Unknown";
+            playFollowUpSound();
+            toast({
+              title: "Follow-up Now",
+              description: `You have a scheduled follow-up now for ${name}.`,
+            });
+          }
+        }
+
         if (diff >= 0 && diff <= 15) {
           const key = `${a.id}-15min`;
           if (!getReminderSoundSet().has(key) && Notification.permission === "granted") {
@@ -69,7 +100,7 @@ function useTimeBasedReminders(activities: { id: number; followUpDate?: string |
     check();
     const interval = setInterval(check, 60_000);
     return () => clearInterval(interval);
-  }, [activities]);
+  }, [activities, toast]);
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
