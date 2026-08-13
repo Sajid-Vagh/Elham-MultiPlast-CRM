@@ -34,6 +34,59 @@ const COMPANY_DEFAULTS = {
   disclaimer: "Products supplied are generic industrial packaging developed independently by Elham Multiplast LLP for functional applications. Any branding, labeling, or market usage by the buyer shall be at the buyer's sole responsibility.",
 };
 
+// Material types that are redundant on the invoice — stripped from the item
+// description shown in the "Description of Goods" column.
+const MATERIAL_TOKENS = ["HDPE", "PET", "PP", "LDPE", "LLDPE", "PVC", "PE", "Nylon"];
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Build a clean, compact item description for the PDF:
+//  - drops redundant spec suffix blocks like "(80g, Sky Blue)" or "(80g)"
+//  - strips material-type tokens (HDPE / PET / PP / ...) wherever they appear
+//  - appends the capacity only when it adds info (not a duplicate of the
+//    weight and not already present in the name)
+function formatItemDescription(item: any): string {
+  const raw = String(item.productName || "").trim();
+  let name = raw;
+
+  // Remove parenthetical spec blocks: "(80g, Sky Blue)", "(80g)", "(500g)",
+  // "(2L, HDPE)", "(500ml)" — a number followed by a weight/capacity unit.
+  name = name.replace(/\(\s*\d+(?:\.\d+)?\s*(?:g|kg|ml|l|lt|ltrs?|lit(?:er|re)s?)\s*(?:,\s*[^)]*)?\)/gi, "").trim();
+
+  // Remove a trailing parenthetical that is just the stored colour, e.g. "(Sky Blue)"
+  const colour = item.bottleColour ? String(item.bottleColour).trim() : "";
+  if (colour) {
+    name = name.replace(new RegExp(`\\(\\s*${escapeRegExp(colour)}\\s*\\)\\s*$`), "").trim();
+  }
+
+  // Remove material tokens (bare or parenthesised), then tidy leftover junk.
+  name = name
+    .replace(new RegExp(`\\b(?:${MATERIAL_TOKENS.join("|")})\\b`, "gi"), "")
+    .replace(/\(\s*\)/g, "")
+    .replace(/\([,\s]+/g, "(")
+    .replace(/[,\s]+\)/g, ")")
+    .replace(/\s{2,}/g, " ")
+    .replace(/[\s,;:]+$/g, "")
+    .trim();
+
+  // Append capacity only when it is meaningful and not already in the name.
+  // A unitless capacity that matches the weight (e.g. capacity "80" vs weight
+  // "80") is a duplicate and is skipped; "500ml" vs weight "500" is kept.
+  const weightRaw = item.weight ? String(item.weight).trim() : "";
+  const weightVal = weightRaw.replace(/[^0-9.]/g, "");
+  const cap = item.capacity ? String(item.capacity).trim() : "";
+  const capVal = cap.replace(/[^0-9.]/g, "");
+  const capHasUnit = /[a-z]/i.test(cap);
+  const isDuplicate = (capVal === weightVal && !capHasUnit) || (weightRaw !== "" && cap === weightRaw);
+  if (cap && !isDuplicate && !new RegExp(`\\b${escapeRegExp(cap)}\\b`, "i").test(name)) {
+    name = `${name} ${cap}`.trim();
+  }
+
+  return name || raw;
+}
+
 async function getNextInvoiceNumber(): Promise<string> {
   const year = new Date().getFullYear();
   const prefix = `PI-${year}-`;
@@ -157,33 +210,39 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
 
   function footerHtml(): string {
     return `</tbody></table>
-    <table class="summary-table">
-      ${`<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">Product Total</td><td style="text-align:right;padding:3pt 8pt">${taxableAmount.toFixed(2)}</td></tr>`}
-      ${freight > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">Freight Charges</td><td style="text-align:right;padding:3pt 8pt">${freight.toFixed(2)}</td></tr>` : ""}
-      ${cgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">CGST @ ${cgstPct}%</td><td style="text-align:right;padding:3pt 8pt">${cgstAmount.toFixed(2)}</td></tr>` : ""}
-      ${sgstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">SGST @ ${sgstPct}%</td><td style="text-align:right;padding:3pt 8pt">${sgstAmount.toFixed(2)}</td></tr>` : ""}
-      ${igstPct > 0 ? `<tr><td colspan="5" style="text-align:right;padding:3pt 8pt">IGST @ ${igstPct}%</td><td style="text-align:right;padding:3pt 8pt">${igstAmount.toFixed(2)}</td></tr>` : ""}
-      <tr class="total-row"><td colspan="4" style="text-align:right;padding:3pt 8pt">Grand Total</td><td style="text-align:right;padding:3pt 8pt">${qtyDisplay}</td><td style="text-align:right;padding:3pt 8pt">${grandTotal.toFixed(2)}</td></tr>
-    </table>
-    <table class="tax-summary">
-      <thead>
-        <tr>
-          <th>Tax Rate</th>
-          <th>Taxable Amount</th>
-          <th>CGST Amount</th>
-          <th>SGST Amount</th>
-          <th>Total Tax</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${isInterstate
-          ? `<tr><td>IGST @ ${igstPct}%</td><td>${baseAmount.toFixed(2)}</td><td>0.00</td><td>0.00</td><td>${igstAmount.toFixed(2)}</td></tr>`
-          : `<tr><td>CGST @ ${cgstPct}% + SGST @ ${sgstPct}%</td><td>${baseAmount.toFixed(2)}</td><td>${cgstAmount.toFixed(2)}</td><td>${sgstAmount.toFixed(2)}</td><td>${totalTax.toFixed(2)}</td></tr>`
-        }
-      </tbody>
-    </table>
-    <div class="amount-words">
-      <strong>Amount in Words :</strong> ${invoice.amountInWords || ""}
+    <div class="totals-block">
+      <table class="summary-table">
+        <tr><td class="sum-label">Product Total</td><td class="sum-value">${taxableAmount.toFixed(2)}</td></tr>
+        ${freight > 0 ? `<tr><td class="sum-label">Freight Charges</td><td class="sum-value">${freight.toFixed(2)}</td></tr>` : ""}
+        ${cgstPct > 0 ? `<tr><td class="sum-label">CGST @ ${cgstPct}%</td><td class="sum-value">${cgstAmount.toFixed(2)}</td></tr>` : ""}
+        ${sgstPct > 0 ? `<tr><td class="sum-label">SGST @ ${sgstPct}%</td><td class="sum-value">${sgstAmount.toFixed(2)}</td></tr>` : ""}
+        ${igstPct > 0 ? `<tr><td class="sum-label">IGST @ ${igstPct}%</td><td class="sum-value">${igstAmount.toFixed(2)}</td></tr>` : ""}
+      </table>
+      <table class="tax-summary">
+        <thead>
+          <tr>
+            <th>Tax Rate</th>
+            <th>Taxable Amount</th>
+            <th>CGST</th>
+            <th>SGST</th>
+            <th>Total Tax</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${isInterstate
+            ? `<tr><td>IGST @ ${igstPct}%</td><td>${baseAmount.toFixed(2)}</td><td>0.00</td><td>0.00</td><td>${igstAmount.toFixed(2)}</td></tr>`
+            : `<tr><td>CGST @ ${cgstPct}% + SGST @ ${sgstPct}%</td><td>${baseAmount.toFixed(2)}</td><td>${cgstAmount.toFixed(2)}</td><td>${sgstAmount.toFixed(2)}</td><td>${totalTax.toFixed(2)}</td></tr>`
+          }
+        </tbody>
+      </table>
+      <div class="grand-total-row">
+        <span class="gt-qty">${qtyDisplay}</span>
+        <span class="gt-label">Grand Total :</span>
+        <span class="gt-value">${grandTotal.toFixed(2)}</span>
+      </div>
+      <div class="amount-words">
+        <strong>Amount in Words :</strong> ${invoice.amountInWords || ""}
+      </div>
     </div>
     <div class="footer-section">
       <table>
@@ -239,7 +298,7 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
     const rows = pageItems.map((item: any, ri: number) => `
       <tr>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${b.start + ri + 1}</td>
-        <td style="text-align:left;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;word-break:break-word;white-space:normal;">${item.productName}${item.bottleType ? ` (${item.bottleType})` : ""}${item.capacity ? ` ${item.capacity}` : ""}${item.weight && !String(item.productName || "").includes(`(${item.weight}g)`) ? ` ${item.weight}` : ""}${item.bottleColour && !String(item.productName || "").includes(item.bottleColour) ? ` - ${item.bottleColour}` : ""}</td>
+        <td style="text-align:left;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;word-break:break-word;white-space:normal;">${formatItemDescription(item)}</td>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.hsnCode || "-"}</td>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.quantity}</td>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.unit}</td>
@@ -302,16 +361,23 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;marg
 table.items{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.5pt;}
 table.items th{background:#f0f0f0;border:1px solid #000;padding:4pt 4pt;text-align:center;font-weight:bold;font-size:8pt;height:22pt;overflow-wrap:break-word;}
 table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wrap:break-word;word-break:break-word;}
-/* ── Summary Table ── */
+/* ── Totals Block (Summary / Tax / Grand Total / Amount in Words) ── */
+.totals-block{width:100%;}
 .summary-table{width:100%;border-collapse:collapse;border-top:1.5px solid #000;}
-.summary-table td{border:0;padding:2pt 6pt;font-size:8.5pt;}
-.summary-table .total-row td{border-top:1.5px solid #000;font-weight:bold;font-size:9.5pt;padding:3pt 6pt;}
-/* ── Tax Table ── */
-.tax-summary{width:100%;table-layout:fixed;border-collapse:collapse;margin-top:4pt;font-size:8pt;}
-.tax-summary th{background:#f0f0f0;border:1px solid #000;padding:3pt 4pt;text-align:center;font-weight:bold;font-size:7.5pt;height:18pt;overflow-wrap:break-word;}
-.tax-summary td{border:1px solid #000;padding:2pt 4pt;text-align:center;font-size:8pt;overflow-wrap:break-word;}
+.summary-table td{border:0;padding:1.5pt 6pt;font-size:8.5pt;}
+.summary-table .sum-label{text-align:right;width:76%;}
+.summary-table .sum-value{text-align:right;width:24%;font-weight:600;}
+/* ── Compact Tax Table ── */
+.tax-summary{width:100%;max-width:72%;margin-left:auto;table-layout:fixed;border-collapse:collapse;margin-top:3pt;font-size:7pt;}
+.tax-summary th{background:#f0f0f0;border:1px solid #000;padding:1.5pt 3pt;text-align:center;font-weight:bold;font-size:6.5pt;height:12pt;overflow-wrap:break-word;}
+.tax-summary td{border:1px solid #000;padding:1.5pt 3pt;text-align:center;font-size:7pt;overflow-wrap:break-word;}
+/* ── Grand Total (highlighted) ── */
+.grand-total-row{display:flex;align-items:baseline;justify-content:flex-end;gap:8pt;margin-top:3pt;padding:3pt 6pt;border-top:1.5px solid #000;border-bottom:1.5px solid #000;background:#f0f0f0;}
+.grand-total-row .gt-qty{font-size:8.5pt;font-weight:600;margin-right:auto;}
+.grand-total-row .gt-label{font-size:10.5pt;font-weight:bold;}
+.grand-total-row .gt-value{font-size:12pt;font-weight:bold;}
 /* ── Amount in Words ── */
-.amount-words{padding:5pt 8pt;font-size:8.5pt;border-top:1.5px solid #000;}
+.amount-words{text-align:right;padding:3pt 6pt 5pt 6pt;font-size:8.5pt;}
 .amount-words strong{font-size:9pt;}
 /* ── Footer Section ── */
 .footer-section{width:100%;border-top:1.5px solid #000;margin-top:auto;}
