@@ -7,7 +7,8 @@ import { setBaseUrl } from "@workspace/api-client-react";
 const isDev = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
 setBaseUrl(isDev ? "/api" : "https://elham-multiplast-crm.onrender.com/api");
 
-// Auto-capitalize: first letter of each word in text inputs and textareas
+// Auto-capitalize: sentence case in text inputs and textareas
+// (first letter of the string + first letter after . ? ! followed by a space)
 // Respects localStorage crm_autocap === "off" to disable
 let _capitalizing = false;
 
@@ -55,10 +56,12 @@ document.addEventListener(
 
     const val = el.value;
 
-    // Auto-capitalize: first letter of each word
+    // Auto-capitalize: sentence case — only the very first letter of the
+    // string and the first letter after . ? ! followed by whitespace.
+    // Words after a plain space are NOT capitalized.
     let capitalized = val.replace(
-      /(^|[\s\-\/])([a-z])/g,
-      (_, sep, char) => sep + char.toUpperCase(),
+      /(^[a-z])|([.!?]\s+)([a-z])/g,
+      (_, first, sep, char) => (first ? first.toUpperCase() : sep + char.toUpperCase()),
     );
 
     // Auto-uppercase measurement units after numbers (e.g. 5l → 5L, 20ml → 20ML)
