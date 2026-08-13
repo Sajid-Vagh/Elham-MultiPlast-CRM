@@ -526,7 +526,7 @@ export function computeOverallOrderStatus(items: { productionStatus: string }[])
   return "Production On Going";
 }
 
-export async function recalculateOrderStatus(orderId: number, triggeredBy?: { id: number; name: string }): Promise<void> {
+export async function recalculateOrderStatus(orderId: number, triggeredBy?: { id: number; name: string }, options?: { allowRevert?: boolean }): Promise<void> {
   const items = await db.select({ productionStatus: productionOrderItemsTable.productionStatus })
     .from(productionOrderItemsTable)
     .where(eq(productionOrderItemsTable.productionOrderId, orderId));
@@ -539,6 +539,55 @@ export async function recalculateOrderStatus(orderId: number, triggeredBy?: { id
 
   // No change needed
   if (order.status === newStatus) return;
+
+  // ── Backward transition (product line REVERTED) ──
+  // A reverted item means the order is no longer as far along as its status
+  // claims (e.g. an item marked Ready by mistake flipped the whole order to
+  // "Ready To Dispatch"). Roll the order back to the freshly computed stage,
+  // as long as the dispatch workflow has NOT advanced past "Pending Dispatch"
+  // (an order already being loaded/delivered must not be yanked backwards).
+  if (options?.allowRevert) {
+    const stages = ["Pending", "Production On Going", "Packaging", "Ready To Dispatch"];
+    const fromIdx = stages.indexOf(order.status);
+    const toIdx = stages.indexOf(newStatus);
+    const isBackward = fromIdx >= 0 && toIdx >= 0 && toIdx < fromIdx;
+    if (isBackward) {
+      const dispatchAdvanced = !!order.dispatchStatus && order.dispatchStatus !== "Pending Dispatch";
+      if (dispatchAdvanced) return;
+
+      const now = new Date();
+      const revertData: any = {
+        status: newStatus,
+        updatedAt: now,
+        updatedBy: triggeredBy?.id || null,
+        dispatchStatus: null,
+        readyAt: null,
+      };
+      if (newStatus === "Pending") revertData.isFrozen = false;
+
+      await db.update(productionOrdersTable).set(revertData).where(eq(productionOrdersTable.id, orderId));
+
+      const actorName = triggeredBy?.name || "System";
+      await addTimelineEntry(db, orderId, newStatus,
+        `Auto revert: ${order.status} → ${newStatus}\nProduct line rolled back.\nBy: ${actorName}`,
+        triggeredBy?.id || 0);
+
+      await writeAuditTrail(db, {
+        productionOrderId: orderId, action: "auto_status_revert",
+        oldValue: order.status, newValue: newStatus,
+        changedById: triggeredBy?.id || 0, changedByName: actorName,
+        reason: "Product line reverted to a previous state",
+      });
+
+      await logProductionActivity(db, {
+        dealId: order.dealId, contactId: null,
+        eventName: `Auto Status: ${order.status} → ${newStatus}`,
+        orderId, details: "Product line reverted — order moved back to an earlier stage.",
+        userName: actorName, createdBy: triggeredBy?.id || 0,
+      });
+      return;
+    }
+  }
 
   const validTransitions: Record<string, string[]> = {
     "Pending": ["Production On Going", "Ready To Dispatch"],
@@ -646,15 +695,28 @@ export async function updateProductLineStatus(
     return { error: "No change", status: 400 };
   }
 
+  // Revert detection: moving a product line to an EARLIER stage (Ready → In
+  // Production / Pending, or In Production → Pending). This lets users undo a
+  // mistaken "Ready" without needing a separate endpoint.
+  const oldStatus = item.productionStatus;
+  const isRevert = PRODUCT_LINE_STATUSES.indexOf(newStatus) < PRODUCT_LINE_STATUSES.indexOf(oldStatus as ProductLineStatus);
+
   const now = new Date();
   const orderedQty = Number(item.orderedQuantity);
   let readyQty = data.readyQuantity !== undefined ? data.readyQuantity : Number(item.readyQuantity);
 
+  // A reverted item is no longer complete: reset the produced quantity so the
+  // "remaining <= 0 → Ready" auto-advance below can never force it back.
+  if (isRevert) readyQty = 0;
   if (readyQty < 0) readyQty = 0;
   if (readyQty > orderedQty) readyQty = orderedQty;
 
   const updateData: any = { productionStatus: newStatus, readyQuantity: String(readyQty), updatedAt: now };
 
+  if (isRevert) {
+    updateData.completedAt = null;
+    if (newStatus === "Pending") updateData.startedAt = null;
+  }
   if (newStatus === "In Production" && !item.startedAt) {
     updateData.startedAt = now;
   }
@@ -664,19 +726,20 @@ export async function updateProductLineStatus(
     updateData.completedAt = now;
   }
 
-  const remaining = orderedQty - readyQty;
-  if (readyQty > 0 && readyQty < orderedQty && newStatus !== "Ready") {
-    updateData.productionStatus = "In Production";
-  }
-  if (remaining <= 0 && newStatus !== "Ready") {
-    updateData.productionStatus = "Ready";
-    updateData.readyQuantity = String(orderedQty);
-    updateData.completedAt = now;
+  if (!isRevert) {
+    const remaining = orderedQty - readyQty;
+    if (readyQty > 0 && readyQty < orderedQty && newStatus !== "Ready") {
+      updateData.productionStatus = "In Production";
+    }
+    if (remaining <= 0 && newStatus !== "Ready") {
+      updateData.productionStatus = "Ready";
+      updateData.readyQuantity = String(orderedQty);
+      updateData.completedAt = now;
+    }
   }
 
   await db.update(productionOrderItemsTable).set(updateData).where(eq(productionOrderItemsTable.id, itemId));
 
-  const oldStatus = item.productionStatus;
   const statusChanged = oldStatus !== updateData.productionStatus;
   if (statusChanged) {
     await addTimelineEntry(db, orderId, updateData.productionStatus,
@@ -728,7 +791,7 @@ export async function updateProductLineStatus(
     userName: user.name || "", createdBy: user.id,
   });
 
-  await recalculateOrderStatus(orderId, { id: user.id, name: user.name || "Unknown" });
+  await recalculateOrderStatus(orderId, { id: user.id, name: user.name || "Unknown" }, { allowRevert: isRevert });
 
   const [updated] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, orderId));
   return { order: await enrichProductionOrder(updated!, user) };

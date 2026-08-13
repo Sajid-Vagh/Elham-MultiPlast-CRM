@@ -14,6 +14,10 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
+  DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { useNotifications } from "@/lib/notification-context";
 import { onProductionChange } from "@/lib/query-invalidation";
@@ -101,6 +105,10 @@ export default function ProductionOrderDetail() {
   const [readyQtyProductName, setReadyQtyProductName] = useState("");
   const [readyQtyOrdered, setReadyQtyOrdered] = useState(0);
   const [readyQtyInput, setReadyQtyInput] = useState("");
+  const [revertDialogOpen, setRevertDialogOpen] = useState(false);
+  const [revertItemId, setRevertItemId] = useState<number | null>(null);
+  const [revertProductName, setRevertProductName] = useState("");
+  const [revertTargetStatus, setRevertTargetStatus] = useState("In Production");
 
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [transferTargetUnit, setTransferTargetUnit] = useState("");
@@ -239,6 +247,8 @@ export default function ProductionOrderDetail() {
       setReadyQtyDialogOpen(false);
       setReadyQtyItemId(null);
       setReadyQtyInput("");
+      setRevertDialogOpen(false);
+      setRevertItemId(null);
       toast({ title: "Product status updated" });
     },
     onError: (err: any) => toast({ title: err?.message || "Failed", variant: "destructive" }),
@@ -855,7 +865,34 @@ export default function ProductionOrderDetail() {
                                     </Button>
                                   )}
                                   {item.productionStatus === "Ready" && (
-                                    <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">Ready</Badge>
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button size="sm" variant="outline" className="h-6 text-xs bg-green-100 hover:bg-green-200 text-green-700 border-green-200">
+                                          Ready <ChevronDown className="ml-1 h-3 w-3" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                        <DropdownMenuLabel className="text-xs">Revert to:</DropdownMenuLabel>
+                                        <DropdownMenuItem className="text-xs"
+                                          onClick={() => {
+                                            setRevertItemId(item.pliId);
+                                            setRevertProductName(item.productName);
+                                            setRevertTargetStatus("In Production");
+                                            setRevertDialogOpen(true);
+                                          }}>
+                                          In Production
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem className="text-xs"
+                                          onClick={() => {
+                                            setRevertItemId(item.pliId);
+                                            setRevertProductName(item.productName);
+                                            setRevertTargetStatus("Pending");
+                                            setRevertDialogOpen(true);
+                                          }}>
+                                          Pending
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
                                   )}
                                 </div>
                               </td>
@@ -931,6 +968,36 @@ export default function ProductionOrderDetail() {
                                 }}>
                                 Ready
                               </Button>
+                            )}
+                            {item.productionStatus === "Ready" && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button size="sm" variant="outline" className="flex-1 h-7 text-xs bg-green-100 hover:bg-green-200 text-green-700 border-green-200">
+                                    Ready <ChevronDown className="ml-1 h-3 w-3" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuLabel className="text-xs">Revert to:</DropdownMenuLabel>
+                                  <DropdownMenuItem className="text-xs"
+                                    onClick={() => {
+                                      setRevertItemId(item.pliId);
+                                      setRevertProductName(item.productName);
+                                      setRevertTargetStatus("In Production");
+                                      setRevertDialogOpen(true);
+                                    }}>
+                                    In Production
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem className="text-xs"
+                                    onClick={() => {
+                                      setRevertItemId(item.pliId);
+                                      setRevertProductName(item.productName);
+                                      setRevertTargetStatus("Pending");
+                                      setRevertDialogOpen(true);
+                                    }}>
+                                    Pending
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             )}
                           </div>
                         )}
@@ -1208,6 +1275,46 @@ export default function ProductionOrderDetail() {
                 });
               }}>
               {updateProductLineStatus.isPending ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Revert Product Line Dialog */}
+      <Dialog open={revertDialogOpen} onOpenChange={setRevertDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Revert {revertProductName} to {revertTargetStatus}?
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              This line is currently marked <b>Ready</b>. Reverting to{" "}
+              <b>{revertTargetStatus}</b> will reset the produced quantity to 0,
+              clear the completed timestamp, and roll the order back to an earlier
+              stage (only if dispatch has not started).
+            </p>
+            <p className="text-xs text-amber-600">
+              This is recorded in the timeline and activity log.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRevertDialogOpen(false)}>Cancel</Button>
+            <Button
+              variant="outline"
+              className="bg-amber-500 hover:bg-amber-600 text-white border-amber-500"
+              disabled={updateProductLineStatus.isPending}
+              onClick={() => {
+                if (revertItemId === null) return;
+                updateProductLineStatus.mutate({
+                  itemId: revertItemId,
+                  productionStatus: revertTargetStatus,
+                  readyQuantity: 0,
+                });
+              }}>
+              {updateProductLineStatus.isPending ? "Reverting..." : `Revert to ${revertTargetStatus}`}
             </Button>
           </DialogFooter>
         </DialogContent>
