@@ -21,6 +21,7 @@ import { Link } from "wouter";
 import { DuplicateWarningDialog, type DuplicateLeadInfo } from "@/components/duplicate-warning-dialog";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import { INDUSTRIES } from "@/lib/constants";
 
 // ── IndiaMart multi-format parser ────────────────────────────────────────────
 interface ParsedLead {
@@ -664,7 +665,7 @@ export default function ImportPage() {
   }, [me?.id, me?.role]);
 
   // ── IndiaMart state ──
-  const emptyIm = { companyName: "", clientName: "", clientMobile: "", email: "", city: "", state: "", requirement: "", quantity: "", salesOwnerId: "" };
+  const emptyIm = { companyName: "", clientName: "", clientMobile: "", email: "", city: "", state: "", requirement: "", quantity: "", industry: "", salesOwnerId: "" };
   const [im, setIm] = useState(emptyIm);
   const [smartPasteText, setSmartPasteText] = useState("");
   const [parsePreview, setParsePreview] = useState<Partial<ParsedLead> | null>(null);
@@ -732,6 +733,7 @@ export default function ImportPage() {
         state:        im.state        || null,
         requirement:  im.requirement  || null,
         quantity:     im.quantity     || null,
+        industry:     im.industry     || null,
         salesOwnerId: me?.role !== "admin" && me?.id ? me.id : im.salesOwnerId ? Number(im.salesOwnerId) : null,
         unit: unit === PENDING_UNIT_ASSIGNMENT ? null : unit || null,
         category: importCategory,
@@ -1055,6 +1057,16 @@ export default function ImportPage() {
                 <div>
                   <Label>Quantity</Label>
                   <Input value={im.quantity} onChange={imF("quantity")} placeholder="e.g. 3 liter, 500 pcs" />
+                </div>
+                <div>
+                  <Label>Industry <span className="text-muted-foreground font-normal">(Optional)</span></Label>
+                  <Select value={im.industry || "__none__"} onValueChange={v => setIm(p => ({ ...p, industry: v === "__none__" ? "" : v }))}>
+                    <SelectTrigger><SelectValue placeholder="Select Industry (Optional)" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">None</SelectItem>
+                      {INDUSTRIES.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
