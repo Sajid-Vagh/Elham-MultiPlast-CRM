@@ -44,8 +44,12 @@ async function withOwner(contact: typeof contactsTable.$inferSelect, viewer?: { 
   const normalizedOwner = owner ? { ...safeOwner, profilePhoto: normalizeProfilePhotoUrl(safeOwner.profilePhoto) } : null;
   // Per-user read state: the unread dot reflects ONLY whether the requesting
   // user has read this lead, never whether some other user (e.g. an admin) has.
+  // Legacy fallback: leads read under the pre-per-user build have is_read=true
+  // but an empty read_by; those count as read so acknowledged dots stay gone.
   const readBy = contact.readBy ?? [];
-  const isRead = viewer?.id != null ? readBy.includes(viewer.id) : !!contact.isRead;
+  const isRead = viewer?.id != null
+    ? readBy.includes(viewer.id) || (contact.isRead === true && readBy.length === 0)
+    : !!contact.isRead;
   return {
     ...contact,
     salesOwner: normalizedOwner,
@@ -217,8 +221,11 @@ router.get("/contacts", async (req, res) => {
     const enriched = contacts.map(c => {
       // Per-user read state: the dot reflects ONLY whether the requesting user
       // has read this lead. One user reading it must not clear it for others.
+      // Legacy fallback: leads marked read under the pre-per-user build have
+      // is_read=true but an empty read_by; treat those as read by everyone so
+      // the dot never resurrects for leads the user already acknowledged.
       const readBy = c.readBy ?? [];
-      const isRead = readBy.includes(user.id);
+      const isRead = readBy.includes(user.id) || (c.isRead === true && readBy.length === 0);
       return {
         ...c,
         salesOwner: userMap.get(c.salesOwnerId) ?? null,

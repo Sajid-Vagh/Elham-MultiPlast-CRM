@@ -942,6 +942,9 @@ Simplify the "Packing Quantities" data on the Freight & Packing Lookup page (and
   - `GET /contacts/:id` referenced an undefined `user` variable — changed to `access.user`.
   - Rebuilt `@workspace/db` libs (`tsc --build`) — the stale `dist` still had `updateReadBy` instead of `updatedReadBy`, producing false type errors.
 - **Build verified:** CRM typecheck = 0 errors; API server = 27 errors (pre-existing baseline, 0 new).
+- **Persistence bug fix (read dots resurrecting after login):** the per-user commit `71ff343` landed Aug 12, but reads made by the still-running OLD build after migration 078's one-time backfill wrote ONLY `is_read = true` and left `read_by = '{}'`. The new `GET /contacts` / `withOwner` logic computed `isRead = readBy.includes(user.id)` and ignored the legacy flag, so every such lead showed a blue dot again next session. Fixes:
+  - `contacts.ts` list + `withOwner()` now compute `isRead = readBy.includes(user.id) || (is_read === true && readBy.length === 0)` — legacy globally-read rows with no per-user data count as read for everyone, while per-user arrays keep winning once present.
+  - Migration `079_rebackfill_legacy_read_by.sql` re-runs the idempotent 078 backfill (`read_by = ARRAY(SELECT id FROM users)` where `read_by='{}' AND is_read=true`). Applied directly against the live DB on 2026-08-13 (14 rows fixed).
 
 ## Key Decisions
 - `read_by` arrays (not dynamic notification derivation) chosen for leads + production orders because those dots are NOT backed by notification rows — they track "has this user opened this item".
@@ -952,6 +955,7 @@ Simplify the "Packing Quantities" data on the Freight & Packing Lookup page (and
 
 ## Relevant Files
 - `lib/db/migrations/078_add_per_user_read_tracking.sql`: migration (must be applied before deploy)
+- `lib/db/migrations/079_rebackfill_legacy_read_by.sql`: re-runs 078's backfill (catches legacy is_read=true rows read after 078 ran)
 - `lib/db/src/schema/contacts.ts`, `lib/db/src/schema/production_orders.ts`: `readBy` / `updatedReadBy` columns
 - `artifacts/api-server/src/routes/contacts.ts`: per-user read/read-status/mark-all-read + list/detail `isRead` computation
 - `artifacts/api-server/src/routes/production.ts`: `appendReadByUser`/`appendUpdatedReadByUser` + per-user `POST /read`
