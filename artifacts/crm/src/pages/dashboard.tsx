@@ -3,7 +3,7 @@ import { useGetMe } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {   Briefcase, Users, DollarSign, TrendingUp, AlertCircle, PhoneCall, X, Clock, Phone, CheckCircle2, FolderTree, UserCheck, Activity, BarChart3, ChevronRight, UserPlus, RefreshCw, Eye, EyeOff } from "lucide-react";
+import {   Briefcase, Users, DollarSign, TrendingUp, AlertCircle, PhoneCall, X, Clock, Phone, CheckCircle2, FolderTree, UserCheck, BarChart3, ChevronRight, UserPlus, Eye, EyeOff } from "lucide-react";
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -112,26 +112,6 @@ export default function Dashboard() {
     },
     enabled: !!token,
     staleTime: 60_000,
-  });
-
-  const { data: recentActivities } = useQuery({
-    queryKey: ["dashboard-recent-activities", ownerFilter, unitFilter, dateFilter.preset],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (ownerFilter) params.set("ownerId", ownerFilter);
-      if (unitFilter !== "All") params.set("unit", unitFilter);
-      if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
-      if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
-      const res = await fetch(`/api/dashboard/recent-activities?${params.toString()}`, { headers: authHeaders });
-      if (!res.ok) return [];
-      return res.json() as Promise<{
-        id: number; type: string; notes: string | null; callStatus: string | null;
-        followUpDate: string | null; contactId: number | null; contactName: string;
-        createdBy: number | null; createdByName: string; createdAt: string;
-      }[]>;
-    },
-    enabled: !!token,
-    staleTime: 30_000,
   });
 
   const { data: dueContacts } = useQuery({
@@ -328,72 +308,6 @@ export default function Dashboard() {
           </Card>
         </Link>
       </div>
-
-      {/* Revenue Breakdown (admin only) */}
-      {isAdmin && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          <Link href="/proforma-invoices?type=new" className="block">
-            <Card className="border-green-200 hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-xs font-medium">New Orders</CardTitle>
-                <TrendingUp className="h-4 w-4 text-green-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-bold text-green-600">{kpi?.newOrders ?? 0}</div>
-                <p className="text-xs text-muted-foreground">{privacyHidden ? "₹ *******" : `₹${(kpi?.newOrderRevenue ?? 0).toLocaleString()}`}</p>
-              </CardContent>
-            </Card>
-          </Link>
-          <Link href="/proforma-invoices?type=repeat" className="block">
-            <Card className="border-blue-200 hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-xs font-medium">Repeat Orders</CardTitle>
-                <RefreshCw className="h-4 w-4 text-blue-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-bold text-blue-600">{kpi?.repeatOrders ?? 0}</div>
-                <p className="text-xs text-muted-foreground">{privacyHidden ? "₹ *******" : `₹${(kpi?.repeatOrderRevenue ?? 0).toLocaleString()}`}</p>
-              </CardContent>
-            </Card>
-          </Link>
-          <Link href="/proforma-invoices" className="block">
-            <Card className="border-purple-200 hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-xs font-medium">Total Orders</CardTitle>
-                <DollarSign className="h-4 w-4 text-purple-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-bold text-purple-600">{kpi?.newOrders !== undefined ? (kpi.newOrders + (kpi.repeatOrders ?? 0)) : 0}</div>
-                <p className="text-xs text-muted-foreground">{privacyHidden ? "₹ *******" : `₹${(kpi?.totalOrderRevenue ?? 0).toLocaleString()}`}</p>
-              </CardContent>
-            </Card>
-          </Link>
-          <Link href="/proforma-invoices" className="block">
-            <Card className="border-amber-200 hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-xs font-medium">New Revenue</CardTitle>
-                <BarChart3 className="h-4 w-4 text-amber-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-bold text-amber-600">{privacyHidden ? "₹ *******" : `₹${(kpi?.newOrderRevenue ?? 0).toLocaleString()}`}</div>
-                <p className="text-xs text-muted-foreground">{kpi?.newOrders ?? 0} orders</p>
-              </CardContent>
-            </Card>
-          </Link>
-          <Link href="/proforma-invoices" className="block">
-            <Card className="border-teal-200 hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-xs font-medium">Repeat Revenue</CardTitle>
-                <RefreshCw className="h-4 w-4 text-teal-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-bold text-teal-600">{privacyHidden ? "₹ *******" : `₹${(kpi?.repeatOrderRevenue ?? 0).toLocaleString()}`}</div>
-                <p className="text-xs text-muted-foreground">{kpi?.repeatOrders ?? 0} orders</p>
-              </CardContent>
-            </Card>
-          </Link>
-        </div>
-      )}
 
       {/* ── SALES PERFORMANCE (admin only) ── */}
       {isAdmin && salesPerformance && salesPerformance.length > 0 && (
@@ -741,59 +655,6 @@ export default function Dashboard() {
                       {count}
                     </p>
                     <p className="text-xs text-muted-foreground truncate">{category}</p>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── RECENT ACTIVITIES ── */}
-      {recentActivities && recentActivities.length > 0 && (
-        <Card className="hover:shadow-lg transition-shadow duration-200">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="h-5 w-5 text-blue-500" />
-                Recent Activities
-              </CardTitle>
-              <Link href="/follow-ups">
-                <Badge variant="outline" className="cursor-pointer">View All</Badge>
-              </Link>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2 max-h-80 overflow-y-auto">
-              {recentActivities.slice(0, 15).map(a => (
-                <Link key={a.id} href={`/leads/${a.contactId}`} className="block">
-                  <div className="flex items-start gap-3 p-2.5 rounded-md hover:bg-muted/50 transition-colors">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                      a.callStatus === "Completed" ? "bg-green-100" :
-                      a.callStatus === "Pending" ? "bg-orange-100" : "bg-blue-100"
-                    }`}>
-                      {a.type === "FollowUp" ? (
-                        <Phone className={`h-3.5 w-3.5 ${
-                          a.callStatus === "Completed" ? "text-green-600" :
-                          a.callStatus === "Pending" ? "text-orange-600" : "text-blue-600"
-                        }`} />
-                      ) : (
-                        <Activity className="h-3.5 w-3.5 text-blue-600" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{a.contactName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {a.type === "FollowUp" ? `Follow-up: ${a.callStatus ?? "Scheduled"}` : a.type}
-                        {a.followUpDate && ` — ${a.followUpDate}`}
-                      </p>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(a.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{a.createdByName}</p>
-                    </div>
                   </div>
                 </Link>
               ))}

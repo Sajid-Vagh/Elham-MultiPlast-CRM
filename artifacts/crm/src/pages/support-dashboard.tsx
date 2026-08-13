@@ -2,7 +2,7 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
-import { Users, DollarSign, RefreshCw, Truck, Package, CheckCircle2, ClipboardList } from "lucide-react";
+import { Users, DollarSign, Truck, Package, CheckCircle2, ClipboardList } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useDateFilter } from "@/lib/use-date-filter";
 import { DateRangeFilter } from "@/components/date-range-filter";
@@ -50,43 +50,6 @@ export default function SupportDashboardPage() {
             Live
           </Badge>
         </div>
-      </div>
-
-      {/* Primary KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="h-full rounded-xl border bg-card text-card-foreground shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Repeat Orders</CardTitle>
-            <RefreshCw className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{d.totalRepeatOrders ?? 0}</div>
-            <p className="text-xs text-muted-foreground">+{d.repeatOrdersThisMonth ?? 0} this month</p>
-          </CardContent>
-        </Card>
-
-        <Card className="h-full rounded-xl border bg-card text-card-foreground shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Repeat Revenue</CardTitle>
-            <DollarSign className="h-4 w-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{(d.totalRepeatRevenue ?? 0).toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">{(d.repeatRevenueThisMonth ?? 0).toLocaleString()} this month</p>
-          </CardContent>
-        </Card>
-
-        <Card className="h-full rounded-xl border bg-card text-card-foreground shadow hover:translate-y-[-3px] hover:shadow-lg transition-all duration-200 ease-out">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Repeat Customers</CardTitle>
-            <Users className="h-4 w-4 text-purple-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{d.repeatCustomers ?? 0}</div>
-            <p className="text-xs text-muted-foreground">Unique customers with repeat orders</p>
-          </CardContent>
-        </Card>
-
       </div>
 
       {/* Dispatch Workflow KPIs */}
