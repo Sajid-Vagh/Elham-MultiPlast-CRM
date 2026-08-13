@@ -958,3 +958,31 @@ Simplify the "Packing Quantities" data on the Freight & Packing Lookup page (and
 - `artifacts/api-server/src/lib/production-service.ts`: `enrichProductionOrder` per-user `isRead`/`isUpdated`; `handlePiModification` resets `updatedReadBy`; `listOrders` per-user chat unread
 - `artifacts/api-server/src/routes/orders.ts`: `getUnreadChatLinks` per-user green icon
 - `artifacts/crm/src/pages/leads.tsx`, `lead-detail.tsx`, `production-orders.tsx`, `production-order-detail.tsx`, `orders-list.tsx`: consume per-user flags (no changes required)
+
+---
+
+# Sales Order Items Sync (`order_items`) — PI Edit Parity
+
+## Goal
+- When a Converted Proforma Invoice is edited (items added/removed/changed), the Sales Order detail page (`order-detail-global.tsx`) must show EXACTLY the same items as the PI — `order_items` was never updated on PI edits, so new products reached the PI and `production_order_items` but stayed missing from the Sales Order.
+
+## Progress
+### Done
+- **New helper `syncOrderItemsFromPi(piId, dealId, txDb)` in `production-service.ts`:**
+  - Finds the linked Sales Order via `ordersTable.dealId` (repeat orders are created with `dealId = null`, so this resolves to the conversion order), excludes soft-deleted orders.
+  - **DELETE** all existing `order_items` rows for the order, then **INSERT** the current PI items field-for-field (`productId`, `productName`, `hsnCode`, `bottleType`, `bottleWeight` ← PI `weight`, `colour` ← PI `bottleColour`, `capacity`, `quantity`, `unit`, `rate`, `gstPercent`, `amount`).
+  - Runtime state is carried over from the replaced row when a product of the same name + colour is still present (`status`, `readyQuantity`, `dispatchedQuantity`, `dispatchStatus`, `batchNumber`, `gramage`, `remarks`, `linerPackingQty`, `tciBoraQty`, `normalBoraQty`) so an in-flight order keeps its progress.
+  - Recomputes order `totalAmount` / `totalGst` / `grandTotal` from the PI items (same convention as the Won-deal conversion in `deals.ts`); order `freight` is left untouched so support-side freight adjustments are preserved.
+- **`handlePiModification` now also calls `syncOrderItemsFromPi(order.proformaInvoiceId, order.dealId, txDb)`** — so ANY production-linked PI update (revision or draft edit) refreshes `order_items`, not just `production_order_items`. `approveModification` also syncs order_items on approval.
+- **`PATCH /proforma-invoices/:id` (`updateInvoiceHandler`):** when a linked production order does NOT exist, the route now calls `syncOrderItemsFromPi` directly inside the transaction (revision path: `newInvoice.id` + `existing.dealId`; draft path: `piId` + `piDealId`) so a PI linked to a Sales Order is always synced, with or without a production order.
+- **Build verified:** API server typecheck — 0 errors in `proforma-invoices.ts` / `production-service.ts` (remaining errors are the documented pre-existing baseline); CRM untouched.
+
+## Key Decisions
+- DELETE + INSERT chosen for guaranteed item-set parity (no stale leftovers), with runtime-state carry-over keyed by `productName + colour` to avoid resetting ready/dispatch progress on unchanged products.
+- Sales Order lookup is via `dealId` only (orders table has no `proformaInvoiceId` column); repeat orders keep `dealId = null` so they are never clobbered.
+- `handlePiModification` is the single place that covers both revision and draft PATCH paths when a production order exists; the route-level call is the fallback for the no-production-order case (avoids double-running the sync).
+- No DB migration required (only `order_items` writes, existing table).
+
+## Relevant Files
+- `artifacts/api-server/src/lib/production-service.ts`: `syncOrderItemsFromPi` helper; `handlePiModification` + `approveModification` call it
+- `artifacts/api-server/src/routes/proforma-invoices.ts`: `updateInvoiceHandler` fallback calls in revision + draft transactions

@@ -3,7 +3,7 @@ import {
   productionMessagesTable, proformaInvoicesTable, proformaInvoiceItemsTable,
   usersTable, contactsTable, dealsTable, activitiesTable, ordersTable,
   productionAuditTrailTable, notificationsTable, productsTable,
-  productionOrderItemsTable,
+  productionOrderItemsTable, orderItemsTable,
   PRODUCTION_STATUSES, VALID_STATUS_TRANSITIONS,
   VALID_DISPATCH_TRANSITIONS, PRODUCT_LINE_STATUSES,
   type ProductionStatus, type NoteType, type ProductLineStatus,
@@ -416,6 +416,104 @@ export async function resyncProductionOrderItems(
   }
 
   return { added, updated, deleted };
+}
+
+// ═══════════════════════════════════════════════════
+// SALES ORDER ITEMS SYNC (order_items)
+// Guarantees the Sales Order page (order-detail-global.tsx, which reads
+// orderItemsTable via enrichOrder) is an EXACT reflection of the converted
+// Proforma Invoice — item-for-item, field-for-field. Previously only
+// production_order_items were re-synced on PI edits, so new products added to
+// a converted PI never reached the Sales Order.
+//
+// Strategy: DELETE all existing order_items for the linked order, then INSERT
+// the current PI items. Runtime state (readyQuantity / dispatchedQuantity /
+// status / batchNumber / packing quantities) is carried over from the row being
+// replaced when a product of the same name + colour is still present, so an
+// in-flight order keeps its progress instead of being reset.
+// ═══════════════════════════════════════════════════
+export async function syncOrderItemsFromPi(
+  piId: number | null,
+  dealId: number | null | undefined,
+  txDb?: typeof db
+): Promise<{ orderId: number | null; deleted: number; inserted: number }> {
+  const d = txDb || db;
+  if (!piId || !dealId) return { orderId: null, deleted: 0, inserted: 0 };
+
+  // 1. Find the linked Sales Order via the shared dealId (repeat orders are
+  //    created with dealId = null, so this resolves to the conversion order).
+  const [order] = await d
+    .select()
+    .from(ordersTable)
+    .where(and(eq(ordersTable.dealId, dealId), eq(ordersTable.isDeleted, false)))
+    .orderBy(desc(ordersTable.createdAt))
+    .limit(1);
+  if (!order) return { orderId: null, deleted: 0, inserted: 0 };
+
+  const piItems = await d.select().from(proformaInvoiceItemsTable)
+    .where(eq(proformaInvoiceItemsTable.invoiceId, piId));
+  if (piItems.length === 0) return { orderId: order.id, deleted: 0, inserted: 0 };
+
+  // 2. Snapshot existing runtime state keyed by product name + colour so an item
+  //    still present after the edit keeps its ready/dispatch progress.
+  const existingRows = await d.select().from(orderItemsTable)
+    .where(eq(orderItemsTable.orderId, order.id));
+  const stateByKey = new Map<string, typeof orderItemsTable.$inferSelect>();
+  for (const row of existingRows) {
+    const key = `${(row.productName || "").toLowerCase().trim()}::${(row.colour || "").toLowerCase().trim()}`;
+    stateByKey.set(key, row);
+  }
+
+  // 3. DELETE all existing order items (guaranteed parity — no leftovers).
+  await d.delete(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
+
+  // 4. INSERT the current PI items, mapped field-for-field.
+  let inserted = 0;
+  for (const piItem of piItems) {
+    const key = `${(piItem.productName || "").toLowerCase().trim()}::${(piItem.bottleColour || "").toLowerCase().trim()}`;
+    const prev = stateByKey.get(key);
+    await d.insert(orderItemsTable).values({
+      orderId: order.id,
+      productId: piItem.productId ?? null,
+      productName: piItem.productName,
+      hsnCode: piItem.hsnCode || null,
+      bottleType: piItem.bottleType || null,
+      bottleWeight: piItem.weight || null,
+      colour: piItem.bottleColour || null,
+      capacity: piItem.capacity || null,
+      quantity: String(piItem.quantity),
+      unit: piItem.unit || "Pcs",
+      rate: String(piItem.rate || 0),
+      gstPercent: String(piItem.gstPercent || 0),
+      amount: String(piItem.amount || 0),
+      status: prev?.status || "Pending",
+      readyQuantity: prev?.readyQuantity ? String(prev.readyQuantity) : "0",
+      dispatchedQuantity: prev?.dispatchedQuantity ? String(prev.dispatchedQuantity) : "0",
+      dispatchStatus: prev?.dispatchStatus || "Pending",
+      batchNumber: prev?.batchNumber || null,
+      gramage: prev?.gramage || null,
+      remarks: prev?.remarks || null,
+      linerPackingQty: prev?.linerPackingQty ?? 0,
+      tciBoraQty: prev?.tciBoraQty ?? 0,
+      normalBoraQty: prev?.normalBoraQty ?? 0,
+    });
+    inserted++;
+  }
+
+  // 5. Keep order totals in parity with the PI items (same convention as the
+  //    Won-deal conversion in deals.ts — order freight is left untouched so
+  //    support-side freight adjustments are preserved).
+  const totalAmount = piItems.reduce((s, i) => s + Number(i.amount || 0), 0);
+  const totalGst = piItems.reduce((s, i) => s + Number(i.amount || 0) * Number(i.gstPercent || 0) / 100, 0);
+  const grandTotal = totalAmount + totalGst + Number(order.freight || 0);
+  await d.update(ordersTable).set({
+    totalAmount: String(totalAmount),
+    totalGst: String(totalGst),
+    grandTotal: String(grandTotal),
+    updatedAt: new Date(),
+  }).where(eq(ordersTable.id, order.id));
+
+  return { orderId: order.id, deleted: existingRows.length, inserted };
 }
 
 export function computeOverallOrderStatus(items: { productionStatus: string }[]): string {
@@ -1857,6 +1955,13 @@ export async function handlePiModification(
   //    updates matched rows, and removes leftover Pending-only rows.
   const syncResult = await resyncProductionOrderItems(productionOrderId, order.proformaInvoiceId, txDb);
 
+  // 1b. ALWAYS sync the linked Sales Order's items (order_items) so the Sales
+  //     Order page is an exact reflection of the updated PI — production
+  //     parity alone (production_order_items) is not enough.
+  if (order.dealId && order.proformaInvoiceId) {
+    await syncOrderItemsFromPi(order.proformaInvoiceId, order.dealId, txDb);
+  }
+
   // 2. New items were added → unconditionally revert the order to "Pending" and
   //    reset workflow progress flags so the production team knows there is new
   //    work to do. This applies regardless of prior status (e.g. an order that
@@ -1988,6 +2093,11 @@ export async function approveModification(
         }).where(eq(productionOrdersTable.id, orderId));
 
         const syncResult = await resyncProductionOrderItems(orderId, pi.id, tx as unknown as typeof db);
+
+        // Keep the Sales Order's items in parity with the approved PI as well.
+        if (order.dealId) {
+          await syncOrderItemsFromPi(pi.id, order.dealId, tx as unknown as typeof db);
+        }
 
         await writeAuditTrail(tx, {
           productionOrderId: orderId, action: "pi_modification_approved",

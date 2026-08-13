@@ -15,7 +15,7 @@ import { canModifyInvoice } from "../lib/permission-service";
 import { convertContactToMyClient } from "../lib/won-service";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
-import { findLinkedProductionOrder, canModifyPiForProductionStatus, PI_LOCKED_ERROR } from "../lib/production-service";
+import { findLinkedProductionOrder, canModifyPiForProductionStatus, PI_LOCKED_ERROR, syncOrderItemsFromPi } from "../lib/production-service";
 
 const router: IRouter = Router();
 
@@ -1437,6 +1437,13 @@ async function updateInvoiceHandler(req: any, res: any) {
             const { handlePiModification } = await import("../lib/production-service");
             await handlePiModification(user, linkedOrder.id, nextVersion, tx as unknown as typeof db);
           }
+
+          // No production order — still sync the Sales Order's items so the
+          // Sales Order page reflects the revised PI (handlePiModification
+          // already does this when a production order exists).
+          if (!linkedOrder && existing.dealId) {
+            await syncOrderItemsFromPi(newInvoice!.id, existing.dealId, tx as unknown as typeof db);
+          }
         });
       } catch (syncErr) {
         req.log.warn({ err: syncErr }, "Production sync failed for PI revision");
@@ -1759,6 +1766,13 @@ async function updateInvoiceHandler(req: any, res: any) {
           const { handlePiModification } = await import("../lib/production-service");
           const nextVersion = (existing.version || 1) + 1;
           await handlePiModification(user, linkedOrder.id, nextVersion, tx as unknown as typeof db);
+        }
+
+        // No production order — still sync the Sales Order's items so the Sales
+        // Order page reflects the edited PI (handlePiModification already does
+        // this when a production order exists).
+        if (!linkedOrder && piDealId) {
+          await syncOrderItemsFromPi(piId, piDealId, tx as unknown as typeof db);
         }
       });
     } catch (syncErr) {
