@@ -40,7 +40,7 @@ interface LeadFormProps {
   onSubmit: (data: LeadFormData) => void;
   onCancel?: () => void;
   submitLabel?: string;
-  users?: { id: number; name: string; unit?: string; colorCode: string; profilePhoto?: string | null }[];
+  users?: { id: number; name: string; unit?: string; colorCode: string; profilePhoto?: string | null; role?: string }[];
   me?: { id: number; name: string; role: string; unit?: string; colorCode: string; profilePhoto?: string | null } | null;
   /** For create mode, enable duplicate detection on mobile/email blur */
   enableDuplicateDetection?: boolean;
@@ -162,6 +162,19 @@ export default function LeadForm({
       }
     }
   }, [me, canAssign, form, initialData]);
+
+  // Default Sales Owner to the Admin user on create (admin users only)
+  useEffect(() => {
+    if (initialData || !canAssign || !users?.length) return;
+    if (form.getValues("salesOwnerId")) return;
+    const adminUser =
+      (me?.role === "admin" && users.find(u => u.id === me.id)) ||
+      users.find(u => u.role === "admin") ||
+      users.find(u => /^admin$/i.test(u.name || ""));
+    if (adminUser) {
+      form.setValue("salesOwnerId", String(adminUser.id));
+    }
+  }, [initialData, canAssign, users, me, form]);
 
   // Auto-fill unit from selected sales owner's unit (admin only)
   const watchedOwnerId = form.watch("salesOwnerId");

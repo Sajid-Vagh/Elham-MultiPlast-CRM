@@ -673,6 +673,18 @@ export default function ImportPage() {
   const [imDuplicateData, setImDuplicateData] = useState<DuplicateLeadInfo | null>(null);
   const [imDuplicateOpen, setImDuplicateOpen] = useState(false);
 
+  // Default Sales Owner to the Admin user on import (admin users only)
+  useEffect(() => {
+    if (me?.role !== "admin" || !users?.length || im.salesOwnerId) return;
+    const adminUser =
+      (me?.id && users.find(u => u.id === me.id)) ||
+      users.find(u => u.role === "admin") ||
+      users.find(u => /^admin$/i.test(u.name || ""));
+    if (adminUser) {
+      setIm(p => ({ ...p, salesOwnerId: String(adminUser.id) }));
+    }
+  }, [me?.id, me?.role, users, im.salesOwnerId]);
+
   // ── Import History state ──
   const [historyData, setHistoryData] = useState<{ sessions: any[]; total: number } | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -1033,7 +1045,6 @@ export default function ImportPage() {
                     <Select value={im.salesOwnerId || "none"} onValueChange={v => setIm(p => ({ ...p, salesOwnerId: v === "none" ? "" : v }))}>
                       <SelectTrigger><SelectValue placeholder="Select owner" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">Auto-assign</SelectItem>
                         {users?.map(u => (
                           <SelectItem key={u.id} value={u.id.toString()}>
                             <span className="flex items-center gap-2">

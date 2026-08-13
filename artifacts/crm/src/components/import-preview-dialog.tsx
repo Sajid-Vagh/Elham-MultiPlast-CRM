@@ -154,12 +154,12 @@ export function ImportPreviewDialog({
     }
   }, [previewData]);
 
-  // Auto-assign sales user for non-admin
+  // Default Sales Owner to the current user for non-admins; admins get the admin user by default
   useEffect(() => {
-    if (currentUserRole && currentUserRole !== "admin" && currentUserId) {
+    if (currentUserId && (currentUserRole === "admin" || !salesOwnerId)) {
       setSalesOwnerId(String(currentUserId));
     }
-  }, [currentUserId, currentUserRole]);
+  }, [currentUserId, currentUserRole, salesOwnerId]);
 
   const updateField = (field: string, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -434,7 +434,6 @@ export function ImportPreviewDialog({
                 <Select value={salesOwnerId || "none"} onValueChange={v => setSalesOwnerId(v === "none" ? "" : v)}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select owner" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Auto-assign</SelectItem>
                     {users?.map(u => <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
