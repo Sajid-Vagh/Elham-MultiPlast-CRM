@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { parseNotesText } from "@/lib/parse-notes";
 import { Package, Plus, Check, Trash2, RotateCcw, History, Upload, Bold, Highlighter, Eraser, Loader2, Search } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -1184,7 +1185,7 @@ export default function Inventory() {
                           ({log.adjustmentType})
                         </span>
                       </div>
-                      {log.notes && <div className="text-xs text-muted-foreground mt-0.5 truncate">{log.notes}</div>}
+                      {log.notes && <div className="text-xs text-muted-foreground mt-0.5 truncate">{parseNotesText(log.notes)}</div>}
                     </div>
                     <div className="text-xs text-muted-foreground flex-shrink-0">
                       {new Date(log.createdAt).toLocaleDateString("en-IN", {

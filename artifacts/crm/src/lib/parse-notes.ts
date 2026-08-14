@@ -8,7 +8,7 @@
 export function parseNotesText(notes: string | null | undefined): string | null {
   if (!notes) return null;
   const trimmed = notes.trim();
-  if (!trimmed.startsWith("[")) {
+  if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) {
     return notes;
   }
   try {
@@ -31,6 +31,10 @@ export function parseNotesText(notes: string | null | undefined): string | null 
     return notes;
   }
 }
+
+// Alias for callers that want a descriptive name for the activity/comments feed
+// formatting helper. Returns clean text only; never the raw JSON string.
+export const formatActivityNotes = parseNotesText;
 
 // Prefer the raw notes (clean text only) and fall back to the backend-formatted
 // display string (which may include timestamps/usernames) only when raw notes

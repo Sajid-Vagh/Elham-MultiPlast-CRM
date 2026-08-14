@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { User, Phone, Building, MapPin, Calendar, MessageSquare, ListOrdered, RotateCcw, Bell, Loader2 } from "lucide-react";
 import { CategoryBadge } from "@/components/category-badge";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import { parseNotesText } from "@/lib/parse-notes";
 
 interface CustomerProfileDrawerProps {
   contactId: number | null;
@@ -46,6 +47,8 @@ export default function CustomerProfileDrawer({ contactId, open, onOpenChange }:
     enabled: !!contactId && open,
     staleTime: 10_000,
   });
+
+  const customerComments = parseNotesText(contact?.customerComments);
 
   const sortedTimeline = useMemo(() => {
     return [...timeline]
@@ -180,7 +183,7 @@ export default function CustomerProfileDrawer({ contactId, open, onOpenChange }:
             </Card>
 
             {/* Customer Comments */}
-            {contact.customerComments && (
+            {customerComments && (
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
@@ -189,11 +192,11 @@ export default function CustomerProfileDrawer({ contactId, open, onOpenChange }:
                 </CardHeader>
                 <CardContent className="text-sm">
                   <p className="whitespace-pre-wrap text-sm">
-                    {showFullComment || contact.customerComments.length <= 100
-                      ? contact.customerComments
-                      : `${contact.customerComments.slice(0, 100)}...`}
+                    {showFullComment || customerComments.length <= 100
+                      ? customerComments
+                      : `${customerComments.slice(0, 100)}...`}
                   </p>
-                  {contact.customerComments.length > 100 && (
+                  {customerComments.length > 100 && (
                     <Button variant="link" size="sm" className="h-auto p-0 text-xs mt-1" onClick={() => setShowFullComment(!showFullComment)}>
                       {showFullComment ? "View Less" : "View More"}
                     </Button>
@@ -233,7 +236,7 @@ export default function CustomerProfileDrawer({ contactId, open, onOpenChange }:
                             </span>
                           </div>
                           {ev.notes && (
-                            <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{ev.notes}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{parseNotesText(ev.notes)}</p>
                           )}
                           {ev.user?.name && (
                             <p className="text-[10px] text-muted-foreground">by {ev.user.name}</p>

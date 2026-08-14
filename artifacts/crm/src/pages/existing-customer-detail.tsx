@@ -17,6 +17,7 @@ import { VoiceNoteSection } from "@/components/voice-note-player";
 import { VoiceNoteUploader } from "@/components/voice-note-uploader";
 import { useToast } from "@/hooks/use-toast";
 import { FlexibleTimeInput } from "@/components/flexible-time-input";
+import { parseNotesText } from "@/lib/parse-notes";
 
 const STATUS_COLORS: Record<string, string> = {
   "Active": "bg-green-100 text-green-700",
@@ -706,7 +707,7 @@ export default function ExistingCustomerDetail() {
                       <span className="text-xs text-muted-foreground">{new Date(comm.createdAt).toLocaleString("en-IN")}</span>
                       <span className="text-xs text-muted-foreground ml-auto">by {comm.createdBy || "System"}</span>
                     </div>
-                    <p className="text-sm mt-1 whitespace-pre-wrap">{comm.notes}</p>
+                    <p className="text-sm mt-1 whitespace-pre-wrap">{parseNotesText(comm.notes)}</p>
                     {comm.nextAction && (
                       <p className="text-xs text-amber-600 mt-1">
                         Next Action: {comm.nextAction}{comm.nextActionDate ? ` (${new Date(comm.nextActionDate).toLocaleDateString("en-IN")})` : ""}

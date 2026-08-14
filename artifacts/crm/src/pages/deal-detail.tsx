@@ -9,7 +9,7 @@ import {
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { onDealChange, onActivityChange, onProductionChange } from "@/lib/query-invalidation";
-import { dedupeById } from "@/lib/parse-notes";
+import { dedupeById, parseNotesText } from "@/lib/parse-notes";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -762,7 +762,7 @@ export default function DealDetail() {
                           )}
                         </div>
                       </div>
-                      {act.notes && <p className="text-muted-foreground mt-1.5">{act.notes}</p>}
+                      {act.notes && <p className="text-muted-foreground mt-1.5">{parseNotesText(act.notes)}</p>}
                       {act.followUpDate && (
                         <div className="flex items-center gap-2 mt-1">
                           <p className="text-xs text-primary">Follow-up: {act.followUpDate}{act.followUpTime ? ` ${act.followUpTime}` : ""} via {act.followUpType}</p>

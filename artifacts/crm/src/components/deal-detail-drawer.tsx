@@ -21,6 +21,7 @@ import { MarkLostDialog } from "@/components/mark-lost-dialog";
 import { PiSentDialog } from "@/components/pi-sent-dialog";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { FlexibleTimeInput } from "@/components/flexible-time-input";
+import { parseNotesText } from "@/lib/parse-notes";
 import { Link } from "wouter";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 
@@ -252,7 +253,7 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
                     {deal.totalValue != null && <div><span className="text-muted-foreground">Amount</span><p className="font-medium">₹{Number(deal.totalValue).toLocaleString()}</p></div>}
                     {deal.wonAmount != null && <div><span className="text-muted-foreground">Won Amount</span><p className="font-medium text-green-700">₹{Number(deal.wonAmount).toLocaleString()}</p></div>}
                     {deal.lostReason && <div className="col-span-2"><span className="text-muted-foreground">Lost Reason</span><p className="font-medium text-red-700">{deal.lostReason}</p></div>}
-                    {deal.notes && <div className="col-span-2"><span className="text-muted-foreground">Notes</span><p className="font-medium whitespace-pre-wrap">{deal.notes}</p></div>}
+                    {deal.notes && <div className="col-span-2"><span className="text-muted-foreground">Notes</span><p className="font-medium whitespace-pre-wrap">{parseNotesText(deal.notes)}</p></div>}
                     <div><span className="text-muted-foreground">Created</span><p className="font-medium">{new Date(deal.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p></div>
                     {deal.updatedAt && <div><span className="text-muted-foreground">Updated</span><p className="font-medium">{new Date(deal.updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p></div>}
                   </div>
@@ -292,7 +293,7 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
                                 {isCompleted && <span className="text-xs text-green-700">✓ Completed</span>}
                                 <span className="text-xs text-muted-foreground ml-auto">{new Date(act.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
                               </div>
-                              {act.notes && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{act.notes}</p>}
+                              {act.notes && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{parseNotesText(act.notes)}</p>}
                               {act.followUpDate && <p className="text-xs text-primary mt-0.5">Follow-up: {act.followUpDate}{act.followUpTime ? ` ${act.followUpTime}` : ""}</p>}
                             </div>
                           </div>
@@ -312,7 +313,7 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
                           <div className={`w-2 h-2 rounded-full shrink-0 ${act.callStatus === "Completed" ? "bg-green-500" : "bg-amber-500"}`} />
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-medium">{act.followUpDate}{act.followUpTime ? ` ${act.followUpTime}` : ""} via {act.followUpType || act.type}</p>
-                            {act.notes && <p className="text-xs text-muted-foreground truncate">{act.notes}</p>}
+                            {act.notes && <p className="text-xs text-muted-foreground truncate">{parseNotesText(act.notes)}</p>}
                           </div>
                           <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${act.callStatus === "Completed" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
                             {act.callStatus || "Pending"}

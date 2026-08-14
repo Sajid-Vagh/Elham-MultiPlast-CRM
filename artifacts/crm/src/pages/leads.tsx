@@ -25,6 +25,7 @@ import { DateRangeFilter } from "@/components/date-range-filter";
 import { ClearFiltersButton } from "@/components/clear-filters-button";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import { parseNotesText } from "@/lib/parse-notes";
 
 const LEAD_FLAGS_KEY = "crm_lead_flags";
 
@@ -549,6 +550,7 @@ export default function Leads() {
             ) : (
               contacts?.map((contact) => {
                 const isSelected = selectedIds.has(contact.id);
+                const commentsText = parseNotesText(contact.customerComments);
                 return (
                   <TableRow
                     key={contact.id}
@@ -626,17 +628,17 @@ export default function Leads() {
                     </TableCell>
                     <TableCell>{contact.unit || PENDING_UNIT_ASSIGNMENT}</TableCell>
                     <TableCell className="max-w-[150px]">
-                      {contact.customerComments ? (
+                      {commentsText ? (
                         <div className="group relative">
                           <span className="text-xs text-muted-foreground cursor-pointer block truncate">
-                            {contact.customerComments.length > 100
-                              ? `${contact.customerComments.slice(0, 100)}...`
-                              : contact.customerComments}
+                            {commentsText.length > 100
+                              ? `${commentsText.slice(0, 100)}...`
+                              : commentsText}
                           </span>
-                          {contact.customerComments.length > 100 && (
+                          {commentsText.length > 100 && (
                             <div className="fixed z-50 hidden group-hover:block">
                               <div className="absolute bottom-0 left-0 bg-popover border rounded-md shadow-lg p-3 text-xs whitespace-pre-wrap max-w-xs max-h-48 overflow-y-auto">
-                                {contact.customerComments}
+                                {commentsText}
                               </div>
                             </div>
                           )}

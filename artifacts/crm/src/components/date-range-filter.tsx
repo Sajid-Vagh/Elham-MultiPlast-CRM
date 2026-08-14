@@ -15,6 +15,7 @@ const PRESETS = [
   { key: "last-month", label: "Last Month" },
   { key: "this-year", label: "This Year" },
   { key: "last-year", label: "Last Year" },
+  { key: "custom", label: "Custom Range" },
   { key: "all", label: "All Time" },
 ];
 
@@ -35,7 +36,15 @@ export function DateRangeFilter({ value, onChange, className }: DateRangeFilterP
   }, [value.startDate, value.endDate]);
 
   const isActive = value.preset !== "all";
-  const label = getLabel(value.preset);
+  const formatRangeLabel = (d: string) => {
+    const date = new Date(`${d}T00:00:00`);
+    if (isNaN(date.getTime())) return d;
+    return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  };
+  const label =
+    value.preset === "custom" && value.startDate && value.endDate
+      ? `${formatRangeLabel(value.startDate)} → ${formatRangeLabel(value.endDate)}`
+      : getLabel(value.preset);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -64,8 +73,13 @@ export function DateRangeFilter({ value, onChange, className }: DateRangeFilterP
                 size="sm"
                 className="h-7 text-xs px-2"
                 onClick={() => {
-                  onChange(p.key);
-                  setOpen(false);
+                  if (p.key === "custom") {
+                    onChange("custom", value.startDate || null, value.endDate || null);
+                    setOpen(true);
+                  } else {
+                    onChange(p.key);
+                    setOpen(false);
+                  }
                 }}
               >
                 {p.label}

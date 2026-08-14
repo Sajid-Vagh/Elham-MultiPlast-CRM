@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowLeft, Phone, Mail, MapPin, Building, Calendar, Package, ShoppingCart, AlertTriangle } from "lucide-react";
+import { parseNotesText } from "@/lib/parse-notes";
 
 export default function CustomerProfile() {
   const [, params] = useRoute("/customers/:id");
@@ -175,7 +176,7 @@ export default function CustomerProfile() {
                   <Badge variant="outline">{c.type}</Badge>
                   <span className="text-xs text-muted-foreground">{new Date(c.createdAt).toLocaleString("en-IN")}</span>
                 </div>
-                <p className="text-sm mt-1">{c.notes}</p>
+                <p className="text-sm mt-1">{parseNotesText(c.notes)}</p>
               </div>
             ))}
           </CardContent></Card>

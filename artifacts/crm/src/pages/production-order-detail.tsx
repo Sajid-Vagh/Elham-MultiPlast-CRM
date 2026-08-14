@@ -26,6 +26,7 @@ import { VoiceNoteUploader } from "@/components/voice-note-uploader";
 import { useVoiceNotes, type VoiceNoteData } from "@/lib/use-voice-notes";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { cleanProductName } from "@/lib/product-name";
+import { parseNotesText } from "@/lib/parse-notes";
 import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Calendar, Factory, ClipboardList, CheckCircle2, AlertTriangle, CircleDot, ChevronDown, Mic, ArrowRightLeft, Zap } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -1043,7 +1044,7 @@ export default function ProductionOrderDetail() {
                           </div>
                           {isExpanded && (
                             <div className="mt-1.5 pl-5 space-y-1 text-xs">
-                              {entry.notes && <p className="text-muted-foreground whitespace-pre-wrap"><span className="font-medium text-foreground">Notes:</span> {entry.notes}</p>}
+                              {entry.notes && <p className="text-muted-foreground whitespace-pre-wrap"><span className="font-medium text-foreground">Notes:</span> {parseNotesText(entry.notes)}</p>}
                               {entry.createdByUser && <p className="text-muted-foreground"><span className="font-medium text-foreground">Updated By:</span> {entry.createdByUser.name}</p>}
                               <p className="text-muted-foreground"><span className="font-medium text-foreground">Time:</span> {new Date(entry.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}</p>
                             </div>

@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CheckCircle2, Circle, Loader2, Clock, Truck, ClipboardCheck, FileCheck, MapPin, ChevronDown } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
+import { parseNotesText } from "@/lib/parse-notes";
 
 const PRODUCTION_STEPS = [
   { key: "Pending", label: "Pending", short: "Pending" },
@@ -311,7 +312,7 @@ export default function ProductionProgress({ dealId }: Props) {
                     <Badge variant="outline" className={`text-[9px] py-0 px-1.5 ${STATUS_BADGE[entry.status] || "bg-gray-100"} border`}>
                       {entry.status}
                     </Badge>
-                    <span className="text-muted-foreground flex-1">{entry.notes}</span>
+                    <span className="text-muted-foreground flex-1">{parseNotesText(entry.notes)}</span>
                     <span className="text-muted-foreground/60 whitespace-nowrap">
                       {new Date(entry.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
                       {" \u2022 "}

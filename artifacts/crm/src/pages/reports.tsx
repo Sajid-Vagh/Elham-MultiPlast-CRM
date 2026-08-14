@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from "@/components/ui/sheet";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, PieChart, Pie, Legend, Tooltip, Sector } from "recharts";
-import { TrendingUp, Users, Briefcase, DollarSign, XCircle, Download, Search, Phone, ExternalLink, Eye, Copy, ChevronDown, ChevronRight, FileSpreadsheet, FileText } from "lucide-react";
+import { TrendingUp, Users, Briefcase, DollarSign, XCircle, Download, Search, Phone, ExternalLink, Eye, Copy, ChevronDown, ChevronRight, FileSpreadsheet, FileText, CalendarIcon } from "lucide-react";
 import * as XLSX from "xlsx";
 import { useToast } from "@/hooks/use-toast";
 import { UserAvatar } from "@/components/user-avatar";
@@ -32,8 +32,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
-import { useDateFilter } from "@/lib/use-date-filter";
+import { useDateFilter, getLabel } from "@/lib/use-date-filter";
+import type { DateFilterState } from "@/lib/use-date-filter";
 import { useOwnerFilter } from "@/lib/global-filters";
+import { parseNotesText } from "@/lib/parse-notes";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { ClearFiltersButton } from "@/components/clear-filters-button";
 
@@ -86,6 +88,55 @@ function downloadExcel(sheets: { name: string; headers: string[]; rows: any[][] 
     XLSX.utils.book_append_sheet(wb, ws, s.name.slice(0, 31));
   }
   XLSX.writeFile(wb, filename);
+}
+
+// ── Dynamic export file naming ──────────────────────────────────────────────
+// Default:  [TabName]_Report_[DD-MM-YYYY].xlsx   e.g. By_Product_Report_14-08-2026.xlsx
+// Custom:   [TabName]_[DDMon]_to_[DDMon].xlsx    e.g. By_Product_26Jan_to_05May.xlsx
+
+const TAB_FILE_NAMES: Record<string, string> = {
+  pipeline: "Pipeline",
+  "by-owner": "By_Owner",
+  "by-city": "By_City",
+  "by-state": "By_State",
+  "by-product": "By_Product",
+  "lost-reasons": "Lost_Reasons",
+  "all-reports": "All_Reports",
+};
+
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// "2026-05-05" -> "05May" (used inside custom-range filenames)
+function shortDatePart(iso: string): string {
+  const parts = iso.slice(0, 10).split("-");
+  if (parts.length !== 3) return iso;
+  const [, month, day] = parts;
+  const mon = MONTHS_SHORT[Number(month) - 1];
+  return `${day}${mon ?? month}`;
+}
+
+// Today as DD-MM-YYYY (used in the default filename)
+function todayFileNameDate(): string {
+  const n = new Date();
+  const dd = String(n.getDate()).padStart(2, "0");
+  const mm = String(n.getMonth() + 1).padStart(2, "0");
+  return `${dd}-${mm}-${n.getFullYear()}`;
+}
+
+// Clear human-readable range, e.g. "05 May 2026" (used in the UI)
+function formatRangeLabel(d: string): string {
+  const date = new Date(`${d}T00:00:00`);
+  if (isNaN(date.getTime())) return d;
+  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function buildExportFileName(tab: string, df: DateFilterState, ext: "xlsx" | "csv"): string {
+  const tabName = TAB_FILE_NAMES[tab] || tab;
+  const isCustom = df.preset === "custom" && df.startDate && df.endDate;
+  const base = isCustom
+    ? `${tabName}_${shortDatePart(df.startDate!)}_to_${shortDatePart(df.endDate!)}`
+    : `${tabName}_Report_${todayFileNameDate()}`;
+  return `${base}.${ext}`;
 }
 
 export default function Reports() {
@@ -149,7 +200,7 @@ export default function Reports() {
         const d = pipeline ?? [];
         return {
           name: "Pipeline Report",
-          headers: ["Stage", "Deals", "Total Value", "Probability %"],
+          headers: ["Stage", "Deals", "Total Value", "Probability"],
           rows: d.map(r => [r.stage, r.count, r.totalValue ?? 0, r.probability ?? ""]),
         };
       }
@@ -157,7 +208,7 @@ export default function Reports() {
         const d = byOwner ?? [];
         return {
           name: "Performance by Owner",
-          headers: ["Owner", "Total Deals", "Active Deals", "Won Deals", "Lost Deals", "Won Value"],
+          headers: ["Owner", "Total", "Active", "Won", "Lost", "Won Value"],
           rows: d.map(r => [r.userName, r.totalDeals, r.activeDeals, r.wonDeals, r.lostDeals, r.totalWonValue ?? 0]),
         };
       }
@@ -165,7 +216,7 @@ export default function Reports() {
         const d = [...(byCity ?? [])].sort((a, b) => (b.totalWonValue ?? 0) - (a.totalWonValue ?? 0));
         return {
           name: "Performance by City",
-          headers: ["City", "Total Deals", "Won Deals", "Won Value", "Lost Deals"],
+          headers: ["City", "Total Deals", "Won", "Won Value", "Lost"],
           rows: d.map(r => [r.city, r.totalDeals, r.wonDeals, r.totalWonValue ?? 0, r.lostDeals]),
         };
       }
@@ -173,7 +224,7 @@ export default function Reports() {
         const d = [...dealsByState].sort((a, b) => (b.totalWonValue ?? 0) - (a.totalWonValue ?? 0));
         return {
           name: "Performance by State",
-          headers: ["State", "Total Deals", "Won Deals", "Won Value", "Lost Deals"],
+          headers: ["State", "Total Deals", "Won", "Won Value", "Lost"],
           rows: d.map(r => [r.state, r.totalDeals, r.wonDeals, r.totalWonValue ?? 0, r.lostDeals]),
         };
       }
@@ -197,7 +248,7 @@ export default function Reports() {
         const total = d.reduce((s, r) => s + (r.count ?? 0), 0);
         return {
           name: "Lost Reasons",
-          headers: ["Reason", "Deals", "Share %"],
+          headers: ["Reason", "Deals", "Share"],
           rows: d.map(r => [r.reason, r.count, total > 0 ? Math.round((r.count / total) * 100) : 0]),
         };
       }
@@ -208,30 +259,28 @@ export default function Reports() {
 
   const doQuickExport = (format: "xlsx" | "csv") => {
     const sheet = buildTabSheet(activeTab);
-    const date = new Date().toISOString().split("T")[0];
-    const fname = `report-${activeTab}_${date}`;
+    const fname = buildExportFileName(activeTab, dateFilter, format);
     if (format === "xlsx") {
       if (!sheet.rows.length) {
         toast({ title: "Nothing to export", description: "No data in the current view.", variant: "destructive" });
         return;
       }
-      downloadExcel([sheet], `${fname}.xlsx`);
+      downloadExcel([sheet], fname);
     } else {
-      downloadCSV(sheet.headers, sheet.rows, `${fname}.csv`);
+      downloadCSV(sheet.headers, sheet.rows, fname);
     }
     toast({ title: "Export completed", description: `Quick ${format.toUpperCase()} downloaded (${sheet.name}).` });
   };
 
   const doDetailedExport = (format: "xlsx" | "csv") => {
-    const date = new Date().toISOString().split("T")[0];
-    const fname = `reports-complete_${date}`;
+    const fname = buildExportFileName("all-reports", dateFilter, format);
     const allSheets = ALL_TABS.map(tab => buildTabSheet(tab)).filter(s => s.rows.length > 0);
     if (!allSheets.length) {
       toast({ title: "Nothing to export", description: "No report data for the current filters.", variant: "destructive" });
       return;
     }
     if (format === "xlsx") {
-      downloadExcel(allSheets, `${fname}.xlsx`);
+      downloadExcel(allSheets, fname);
     } else {
       const headers = ["Report", ...Array.from(new Set(allSheets.flatMap(s => s.headers)))];
       const rows = allSheets.flatMap(s =>
@@ -241,7 +290,7 @@ export default function Reports() {
           return [s.name, ...headers.slice(1).map(h => cell[h] ?? "")];
         })
       );
-      downloadCSV(headers, rows, `${fname}.csv`);
+      downloadCSV(headers, rows, fname);
     }
     toast({ title: "Export completed", description: `Detailed ${format.toUpperCase()} downloaded (complete report).` });
   };
@@ -324,6 +373,17 @@ export default function Reports() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Reports</h1>
         <p className="text-muted-foreground mt-1">Sales analytics and performance</p>
+        {dateFilter.preset !== "all" && (
+          <p className="text-xs mt-2 text-muted-foreground flex items-center gap-1.5">
+            <CalendarIcon className="h-3.5 w-3.5" />
+            Timeline:
+            <span className="font-medium text-foreground">
+              {dateFilter.startDate && dateFilter.endDate
+                ? `${formatRangeLabel(dateFilter.startDate)} → ${formatRangeLabel(dateFilter.endDate)}`
+                : getLabel(dateFilter.preset)}
+            </span>
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -976,8 +1036,8 @@ export default function Reports() {
                                   {r.lostReason}
                                 </TableCell>
                               )}
-                              <TableCell className="max-w-[180px] truncate text-sm text-muted-foreground" title={r.notes}>
-                                {r.notes || "—"}
+                              <TableCell className="max-w-[180px] truncate text-sm text-muted-foreground" title={parseNotesText(r.notes) || undefined}>
+                                {parseNotesText(r.notes) || "—"}
                               </TableCell>
                               <TableCell className={`text-right whitespace-nowrap font-medium ${isStageMode && selectedStage === "Won" ? "text-green-600" : "text-red-500"}`}>
                                 {r.dealValue ? `₹${Number(r.dealValue).toLocaleString()}` : "—"}
