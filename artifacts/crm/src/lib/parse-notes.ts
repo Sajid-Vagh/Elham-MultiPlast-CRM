@@ -21,10 +21,11 @@ export function parseNotesText(notes: string | null | undefined): string | null 
           return item.text ?? item.note ?? item.content ?? "";
         })
         .filter(Boolean);
-      if (texts.length > 0) return texts.join("\n");
-    } else if (parsed && typeof parsed === "object") {
+      return texts.join("\n");
+    }
+    if (parsed && typeof parsed === "object") {
       const t = parsed.text ?? parsed.note ?? parsed.content;
-      if (t) return t;
+      if (t != null) return String(t);
     }
     return notes;
   } catch {

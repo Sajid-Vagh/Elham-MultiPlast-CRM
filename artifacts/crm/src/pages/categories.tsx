@@ -25,6 +25,7 @@ import { useUnitFilter } from "@/lib/use-unit-filter";
 import { useOwnerFilter } from "@/lib/global-filters";
 import { ClearFiltersButton } from "@/components/clear-filters-button";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import { parseNotesText } from "@/lib/parse-notes";
 
 function CategoryCard({ name, count, color, onClick }: { name: string; count: number; color: string; onClick: () => void }) {
   return (
@@ -209,10 +210,10 @@ export default function CategoriesPage() {
       const sorted = (arr: any[]) =>
         [...arr].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-      const latestComment = sorted(activities.filter((a: any) => a.type !== "FollowUp" && a.notes))[0]?.notes || "";
-      const latestFollowUpComment = sorted(activities.filter((a: any) => a.type === "FollowUp" && a.notes))[0]?.notes || "";
+      const latestComment = parseNotesText(sorted(activities.filter((a: any) => a.type !== "FollowUp" && a.notes))[0]?.notes || "") || "";
+      const latestFollowUpComment = parseNotesText(sorted(activities.filter((a: any) => a.type === "FollowUp" && a.notes))[0]?.notes || "") || "";
 
-      const salesNotes = deals.map((d: any) => d.notes).filter(Boolean).join("; ") || "";
+      const salesNotes = deals.map((d: any) => parseNotesText(d.notes)).filter(Boolean).join("; ") || "";
 
       const allDates = [
         ...deals.map((d: any) => d.updatedAt),

@@ -100,7 +100,7 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
   const openEdit = () => {
     setEditTitle(deal?.title || "");
     setEditValue(deal?.totalValue ? String(deal.totalValue) : "");
-    setEditNotes(deal?.notes || "");
+    setEditNotes(parseNotesText(deal?.notes) || "");
     setEditOpen(true);
   };
 

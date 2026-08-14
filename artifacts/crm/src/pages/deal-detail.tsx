@@ -390,7 +390,7 @@ export default function DealDetail() {
   const openEditDialog = (act: any) => {
     setEditActivity(act);
     setEditActType(act.type);
-    setEditActNotes(act.notes || "");
+    setEditActNotes(parseNotesText(act.notes) || "");
     setEditActFollowUp(act.followUpDate || "");
     setEditActFollowUpTime(act.followUpTime || "");
     setEditActFollowType(act.followUpType || "Call");
@@ -613,7 +613,7 @@ export default function DealDetail() {
                 {productionProgress.notes?.length > 0 && (
                   <div className="pt-2 border-t border-blue-200">
                     <p className="text-xs text-muted-foreground mb-1">Latest Note:</p>
-                    <p className="text-xs bg-white/60 p-2 rounded">{productionProgress.notes[0].note}</p>
+                    <p className="text-xs bg-white/60 p-2 rounded">{parseNotesText(productionProgress.notes[0].note)}</p>
                   </div>
                 )}
                 {productionProgress.invoiceNumber && (

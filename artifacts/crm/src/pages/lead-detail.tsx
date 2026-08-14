@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText, Search } from "lucide-react";
+import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText, Search, Tag } from "lucide-react";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -335,6 +335,7 @@ export default function LeadDetail() {
 
   const owner = contact.salesOwner;
   const deal = deals && deals.length > 0 ? deals[0] : null;
+  const commentsText = parseNotesText(contact.customerComments) || "";
 
   const handleDeleteActivity = () => {
     if (!deleteActId) return;
@@ -536,19 +537,19 @@ export default function LeadDetail() {
               <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
                 <MessageSquare className="h-3.5 w-3.5" /> Customer Comments
               </CardTitle>
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditComment(contact.customerComments || ""); setCommentDialogOpen(true); }} title="Edit Comments">
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditComment(commentsText); setCommentDialogOpen(true); }} title="Edit Comments">
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
             </CardHeader>
             <CardContent className="text-sm">
-              {contact.customerComments ? (
+              {commentsText ? (
                 <div>
                   <p className="whitespace-pre-wrap text-sm">
-                    {showFullComment || contact.customerComments.length <= 100
-                      ? contact.customerComments
-                      : `${contact.customerComments.slice(0, 100)}...`}
+                    {showFullComment || commentsText.length <= 100
+                      ? commentsText
+                      : `${commentsText.slice(0, 100)}...`}
                   </p>
-                  {contact.customerComments.length > 100 && (
+                  {commentsText.length > 100 && (
                     <Button variant="link" size="sm" className="h-auto p-0 text-xs mt-1" onClick={() => setShowFullComment(!showFullComment)}>
                       {showFullComment ? "View Less" : "View More"}
                     </Button>
@@ -922,7 +923,7 @@ export default function LeadDetail() {
                 <div className="space-y-2">
                   {categoryHistory.map((h) => (
                     <div key={h.id} className="flex items-start gap-2 p-2 border rounded text-sm">
-                      <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ backgroundColor: "#f3e8ff" }}>ðŸ·ï¸</div>
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ backgroundColor: "#f3e8ff" }}><Tag className="h-3.5 w-3.5" style={{ color: "#a855f7" }} /></div>
                       <div className="flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap text-xs">
                           <CategoryBadge category={h.previousCategory || undefined} />
@@ -1099,7 +1100,7 @@ export default function LeadDetail() {
                         <span className="font-medium text-foreground">{h.updatedByName || `User #${h.updatedBy}`}</span>
                         <span>{new Date(h.updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
                       </div>
-                      <p className="whitespace-pre-wrap">{h.comment}</p>
+                      <p className="whitespace-pre-wrap">{parseNotesText(h.comment) || "—"}</p>
                     </div>
                   ))}
                 </div>

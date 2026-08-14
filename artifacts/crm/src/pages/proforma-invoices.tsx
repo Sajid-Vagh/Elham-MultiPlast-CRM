@@ -29,6 +29,7 @@ import { CancelOrderModal } from "@/components/cancel-order-modal";
 import { WonAmountAdjustmentModal } from "@/components/won-amount-adjustment-modal";
 import { onPIChange, onDealChange, onProductionChange } from "@/lib/query-invalidation";
 import { customerLabel } from "@/lib/customer-label";
+import { parseNotesText } from "@/lib/parse-notes";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useStatusFilter } from "@/lib/global-filters";
 import { ClearFiltersButton } from "@/components/clear-filters-button";
@@ -754,7 +755,7 @@ export default function ProformaInvoicesPage() {
               }));
             }
             if (latest.freight) setFreight(Number(latest.freight));
-            if (latest.notes) setNotes(latest.notes);
+            if (latest.notes) setNotes(parseNotesText(latest.notes) || "");
             toast({ title: "Repeat Order", description: `Copied products from ${latest.invoiceNumber}. GST profile loaded from Customer Master.` });
           }
         })
@@ -2102,7 +2103,7 @@ ${pagesHtml}
                         }
                         // Copy freight and notes (business data only)
                         if (latest.freight) setFreight(Number(latest.freight));
-                        if (latest.notes) setNotes(latest.notes);
+                        if (latest.notes) setNotes(parseNotesText(latest.notes) || "");
                         setInvoiceNumber("");
                         toast({ title: "Previous Order Loaded", description: `Copied products & terms from ${latest.invoiceNumber}. GST profile preserved from Customer Master.` });
                       }}
@@ -2940,7 +2941,7 @@ ${pagesHtml}
             setCgstPct(Number(inv.cgstPercent || 0));
             setSgstPct(Number(inv.sgstPercent || 0));
             setIgstPct(Number(inv.igstPercent || 0));
-            setNotes(inv.notes || "");
+            setNotes(parseNotesText(inv.notes) || "");
             setItems((inv.items || []).map((i: any) => {
               const it: InvoiceItem = {
                 productName: i.productName,

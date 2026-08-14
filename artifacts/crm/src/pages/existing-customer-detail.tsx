@@ -754,7 +754,7 @@ export default function ExistingCustomerDetail() {
                           {icon}
                         </div>
                         <div className="flex-1 min-w-0 pt-1">
-                          <p className="text-sm font-medium">{event.description}</p>
+                          <p className="text-sm font-medium">{parseNotesText(event.description)}</p>
                           <p className="text-xs text-muted-foreground">{event.user} - {new Date(event.createdAt).toLocaleString("en-IN")}</p>
                         </div>
                       </div>
@@ -779,7 +779,7 @@ export default function ExistingCustomerDetail() {
                       <span className="text-xs text-muted-foreground">{new Date(n.createdAt).toLocaleString("en-IN")}</span>
                       <span className="text-xs text-muted-foreground ml-auto">by {n.createdBy || "System"}</span>
                     </div>
-                    <p className="text-sm mt-1 whitespace-pre-wrap">{n.note}</p>
+                    <p className="text-sm mt-1 whitespace-pre-wrap">{parseNotesText(n.note)}</p>
                     <div className="flex gap-2 mt-2">
                       {n.department && <Badge variant="outline" className="text-[10px]">{n.department}</Badge>}
                       {n.isResolved && <Badge className="bg-green-100 text-green-700 text-[10px]">Resolved</Badge>}

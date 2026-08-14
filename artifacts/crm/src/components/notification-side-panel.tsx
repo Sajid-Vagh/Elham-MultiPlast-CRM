@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/sheet";
 import { useNotifications } from "@/lib/notification-context";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { parseNotesText } from "@/lib/parse-notes";
 import { useGetMe } from "@workspace/api-client-react";
 import { toast } from "@/hooks/use-toast";
 
@@ -69,7 +70,7 @@ function EnquiryPanel({ notification, onClose }: { notification: any; onClose: (
       unit: contact.unit || "",
       city: contact.city || "",
       address: contact.address || "",
-      customerComments: contact.customerComments || "",
+      customerComments: parseNotesText(contact.customerComments) || "",
     });
   }, [contact]);
 

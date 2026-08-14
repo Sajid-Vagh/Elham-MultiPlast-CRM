@@ -188,7 +188,7 @@ export default function CustomerProfile() {
               <div key={i} className="flex gap-3 items-start">
                 <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 flex-shrink-0" />
                 <div>
-                  <p className="text-sm font-medium">{event.description}</p>
+                  <p className="text-sm font-medium">{parseNotesText(event.description)}</p>
                   <p className="text-xs text-muted-foreground">{event.user?.name || "System"} - {new Date(event.createdAt).toLocaleString("en-IN")}</p>
                 </div>
               </div>

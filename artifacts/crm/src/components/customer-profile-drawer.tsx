@@ -230,7 +230,7 @@ export default function CustomerProfileDrawer({ contactId, open, onOpenChange }:
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[11px] font-medium">{ev.description}</span>
+                            <span className="text-[11px] font-medium">{parseNotesText(ev.description)}</span>
                             <span className="text-[10px] text-muted-foreground">
                               {formatDate(ev.createdAt)} • {formatTime(ev.createdAt)}
                             </span>

@@ -1069,7 +1069,7 @@ export default function ProductionOrderDetail() {
                 <div className="space-y-3">
                   {order.notes.map((note: any) => (
                     <div key={note.id} className="p-3 bg-muted/30 rounded-lg">
-                      <p className="text-sm">{note.note}</p>
+                      <p className="text-sm">{parseNotesText(note.note)}</p>
                       <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground"><User className="h-3 w-3" /><span>{note.createdByUser?.name || "Unknown"}</span><span>·</span><Clock className="h-3 w-3" /><span>{new Date(note.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span></div>
                     </div>
                   ))}
