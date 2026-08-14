@@ -7,25 +7,28 @@ interface NotificationPopupProps {
   message: string;
   link?: string | null;
   type?: string;
+  position?: "bottom-right" | "top-right";
   onDismiss: (id: number) => void;
   onOpen: () => void;
 }
 
-export function NotificationPopup({ id, title, message, link, type, onDismiss, onOpen }: NotificationPopupProps) {
+export function NotificationPopup({ id, title, message, link, type, position = "bottom-right", onDismiss, onOpen }: NotificationPopupProps) {
   // NOTE: No auto-hide. Notifications stay on screen until the user manually
   // dismisses them (X) or opens them (opens the side panel).
 
   const isEnquiry = type === "enquiry_assigned";
   const isRepeatEnquiry = type === "repeat_enquiry";
-  const accent = isRepeatEnquiry ? "bg-yellow-50 border-yellow-200" : isEnquiry ? "bg-blue-50 border-blue-200" : "bg-white";
+  const isReminder = type === "follow_up";
+  const accent = isRepeatEnquiry ? "bg-yellow-50 border-yellow-200" : isEnquiry ? "bg-blue-50 border-blue-200" : isReminder ? "bg-violet-50 border-violet-200" : "bg-white";
   const showLabeled = isEnquiry || isRepeatEnquiry;
+  const positionClass = position === "top-right" ? "fixed top-20 right-4" : "fixed bottom-4 right-4";
 
   const handleClick = () => {
     onOpen();
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-[100] animate-in slide-in-from-right-5 fade-in duration-300">
+    <div className={`${positionClass} z-[100] animate-in slide-in-from-right-5 fade-in duration-300`}>
       <div className={`border rounded-lg shadow-lg w-80 overflow-hidden ${accent}`}>
         <div className="flex items-start justify-between p-3 pb-2">
           <button

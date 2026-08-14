@@ -3,12 +3,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useGetMe, useLogout, useListActivities, getListActivitiesQueryKey, useUpdateActivity } from "@workspace/api-client-react";
 import { onActivityChange } from "@/lib/query-invalidation";
 import { Link, useLocation } from "wouter";
-import { playFollowUpSound, showBrowserNotification } from "@/lib/notification-sound";
 import { NotificationProvider, useNotifications, groupConversations } from "@/lib/notification-context";
 import { dedupeById, parseNotesText } from "@/lib/parse-notes";
+import { showBrowserNotification } from "@/lib/notification-sound";
 import { ActivityCountProvider, useActivityCount } from "@/lib/activity-count-context";
+import { useActivityReminders } from "@/lib/use-activity-reminder";
 import { NotificationPopup } from "./notification-popup";
-import { useToast } from "@/hooks/use-toast";
 import { NotificationSidePanel } from "./notification-side-panel";
 import {
   LayoutDashboard, Users, Briefcase,
@@ -21,89 +21,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 import { UserAvatar } from "@/components/user-avatar";
 import { useWorkspace, getWorkspaceLabel, getHomeRoute, type Workspace } from "@/lib/use-workspace";
-
-const REMINDER_SOUND_SS_KEY = "crm_reminder_sound_played_ids";
-const FOLLOWUP_TOAST_SS_KEY = "crm_followup_toast_fired_keys";
-
-function getReminderSoundSet(): Set<string> {
-  try {
-    const raw = sessionStorage.getItem(REMINDER_SOUND_SS_KEY);
-    return new Set<string>(raw ? JSON.parse(raw) : []);
-  } catch { return new Set(); }
-}
-
-function addReminderSoundId(key: string) {
-  const set = getReminderSoundSet();
-  set.add(key);
-  sessionStorage.setItem(REMINDER_SOUND_SS_KEY, JSON.stringify([...set]));
-}
-
-function getFiredToastKeys(): Set<string> {
-  try {
-    const raw = sessionStorage.getItem(FOLLOWUP_TOAST_SS_KEY);
-    return new Set<string>(raw ? JSON.parse(raw) : []);
-  } catch { return new Set(); }
-}
-
-function addFiredToastKey(key: string) {
-  const set = getFiredToastKeys();
-  set.add(key);
-  sessionStorage.setItem(FOLLOWUP_TOAST_SS_KEY, JSON.stringify([...set]));
-}
-
-function useTimeBasedReminders(activities: { id: number; followUpDate?: string | null; followUpTime?: string | null; callStatus?: string | null; contact?: { name?: string } | null; deal?: { contact?: { name?: string } | null } | null }[] | undefined) {
-  const { toast } = useToast();
-  useEffect(() => {
-    if (!activities?.length) return;
-    const check = () => {
-      const now = new Date();
-      const currentHours = now.getHours();
-      const currentMinutes = now.getMinutes();
-      const currentTotal = currentHours * 60 + currentMinutes;
-      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-
-      for (const a of activities) {
-        if (a.followUpDate !== today || !a.followUpTime) continue;
-        const [h, m] = a.followUpTime.split(":").map(Number);
-        if (isNaN(h) || isNaN(m)) continue;
-        const followUpTotal = h * 60 + m;
-        const diff = followUpTotal - currentTotal;
-
-        // Exact-time in-app toast for pending follow-ups (fires once per activity + time).
-        if (a.callStatus === "Pending" && diff >= -1 && diff <= 1) {
-          const toastKey = `${a.id}:${a.followUpDate}:${a.followUpTime}:now`;
-          if (!getFiredToastKeys().has(toastKey)) {
-            addFiredToastKey(toastKey);
-            const name = a.contact?.name || a.deal?.contact?.name || "Unknown";
-            playFollowUpSound();
-            toast({
-              title: "Follow-up Now",
-              description: `You have a scheduled follow-up now for ${name}.`,
-            });
-          }
-        }
-
-        if (diff >= 0 && diff <= 15) {
-          const key = `${a.id}-15min`;
-          if (!getReminderSoundSet().has(key) && Notification.permission === "granted") {
-            addReminderSoundId(key);
-            const name = a.contact?.name || a.deal?.contact?.name || "Unknown";
-            const timeStr = `${h % 12 || 12}:${m.toString().padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
-            playFollowUpSound();
-            new Notification(`Reminder: Call ${name} at ${timeStr}`, {
-              body: `Follow-up scheduled in ${diff} minute${diff !== 1 ? "s" : ""}`,
-              icon: "/favicon.ico",
-              tag: `crm-reminder-${a.id}`,
-            });
-          }
-        }
-      }
-    };
-    check();
-    const interval = setInterval(check, 60_000);
-    return () => clearInterval(interval);
-  }, [activities, toast]);
-}
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { data: user, isLoading } = useGetMe();
@@ -229,7 +146,15 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
 
   const updateActivity = useUpdateActivity();
 
-  useTimeBasedReminders(upcomingActivities);
+  // Global Real-time Activity / Call-Due Reminder service (mounted on every page).
+  const { reminders: activityReminders, dismiss: dismissActivityReminder } = useActivityReminders();
+
+  // Auto-dismiss each reminder popup strictly 5 seconds after it appears.
+  useEffect(() => {
+    if (!activityReminders.length) return;
+    const timers = activityReminders.map((r) => setTimeout(() => dismissActivityReminder(r.key), 5000));
+    return () => timers.forEach((t) => clearTimeout(t));
+  }, [activityReminders, dismissActivityReminder]);
 
   useEffect(() => {
     if (user) {
@@ -679,6 +604,24 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
           type={n.type}
           onDismiss={closePopup}
           onOpen={() => { closePopup(n.id); markAsRead(n.id); if (n.link) setLocation(n.link); else openNotificationPanel(n); }}
+        />
+      ))}
+
+      {/* Real-time Activity / Call-Due reminder popups */}
+      {activityReminders.slice(0, 3).map(r => (
+        <NotificationPopup
+          key={r.key}
+          id={-1}
+          title="Call Reminder"
+          message={`It's time to call ${r.name}!${r.phone ? `\nPhone: ${r.phone}` : ""}\nNote: ${r.note}`}
+          link={r.contactId ? `/leads/${r.contactId}` : "/follow-ups"}
+          type="follow_up"
+          position="top-right"
+          onDismiss={() => dismissActivityReminder(r.key)}
+          onOpen={() => {
+            dismissActivityReminder(r.key);
+            setLocation(r.contactId ? `/leads/${r.contactId}` : "/follow-ups");
+          }}
         />
       ))}
     </div>
