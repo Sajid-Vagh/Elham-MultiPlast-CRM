@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useListProducts, useCreateProduct, useUpdateProduct, useDeleteProduct, getListProductsQueryKey } from "@workspace/api-client-react";
 import { useGetMe } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -14,193 +14,8 @@ import { onProductChange } from "@/lib/query-invalidation";
 import { INDUSTRIES } from "@/lib/constants";
 
 type ProductVariant = { id: number; productId: number; weight?: string | null; defaultColor?: string | null; isActive: boolean };
-type VariantRow = { weight: string; colour: string; code: string };
+type VariantRow = { weight: string };
 type Product = { id: number; name: string; category?: string | null; industry?: string | null; machineType?: string | null; pricePerUnit?: number | null; productCode?: string | null; bottleWeight?: string | null; bottleColour?: string | null; bottleColourCode?: string | null; capColour?: string | null; materialType?: string | null; hsnCode?: string | null; defaultUnit?: string | null; defaultGst?: number | null; status?: string | null; variants?: ProductVariant[]; variantCount?: number };
-
-const COLOUR_PRESETS: { name: string; hex: string }[] = [
-  { name: "Purple", hex: "#800080" },
-  { name: "Blue", hex: "#0000FF" },
-  { name: "Sky Blue", hex: "#87CEEB" },
-  { name: "Dark Blue", hex: "#00008B" },
-  { name: "Light Blue", hex: "#ADD8E6" },
-  { name: "Green", hex: "#008000" },
-  { name: "Dark Green", hex: "#006400" },
-  { name: "Light Green", hex: "#90EE90" },
-  { name: "Red", hex: "#FF0000" },
-  { name: "Maroon", hex: "#800000" },
-  { name: "Yellow", hex: "#FFD700" },
-  { name: "Orange", hex: "#FF8C00" },
-  { name: "Black", hex: "#000000" },
-  { name: "White", hex: "#FFFFFF" },
-  { name: "Transparent", hex: "#E5E7EB" },
-  { name: "Natural", hex: "#C2B280" },
-  { name: "Grey", hex: "#808080" },
-  { name: "Silver", hex: "#C0C0C0" },
-  { name: "Pink", hex: "#FFC0CB" },
-  { name: "Peach", hex: "#FFDAB9" },
-  { name: "Brown", hex: "#A52A2A" },
-  { name: "Violet", hex: "#EE82EE" },
-  { name: "Golden", hex: "#FFD700" },
-  { name: "Cream", hex: "#FFFDD0" },
-  { name: "Ivory", hex: "#FFFFF0" },
-  { name: "Teal", hex: "#008080" },
-  { name: "Navy", hex: "#000080" },
-  { name: "Beige", hex: "#F5F5DC" },
-  { name: "Magenta", hex: "#FF00FF" },
-  { name: "Cyan", hex: "#00FFFF" },
-  { name: "Olive", hex: "#808000" },
-  { name: "Coral", hex: "#FF7F50" },
-  { name: "Turquoise", hex: "#40E0D0" },
-  { name: "Indigo", hex: "#4B0082" },
-  { name: "Burgundy", hex: "#800020" },
-  { name: "Rust", hex: "#B7410E" },
-  { name: "Copper", hex: "#B87333" },
-  { name: "Bronze", hex: "#CD7F32" },
-  { name: "Charcoal", hex: "#36454F" },
-  { name: "Lime", hex: "#00FF00" },
-  { name: "Salmon", hex: "#FA8072" },
-  { name: "Plum", hex: "#8E4585" },
-  { name: "Lavender", hex: "#E6E6FA" },
-  { name: "Mint", hex: "#98FF98" },
-  { name: "Chocolate", hex: "#D2691E" },
-  { name: "Tan", hex: "#D2B48C" },
-  { name: "Rose", hex: "#FF007F" },
-  { name: "Mauve", hex: "#E0B0FF" },
-];
-
-const COLOUR_MAP = new Map(COLOUR_PRESETS.map(c => [c.name.toLowerCase(), c.hex]));
-
-function ColourInput({ value, onChange }: { value: string; onChange: (name: string, code: string) => void }) {
-  const [colourQuery, setColourQuery] = useState(value);
-  const [showColourDropdown, setShowColourDropdown] = useState(false);
-  const [activeColourIdx, setActiveColourIdx] = useState(-1);
-  const colourInputRef = useRef<HTMLInputElement>(null);
-  const colourDropdownRef = useRef<HTMLDivElement>(null);
-
-  const filteredColours = colourQuery.trim()
-    ? COLOUR_PRESETS.filter(c => c.name.toLowerCase().includes(colourQuery.toLowerCase()))
-    : COLOUR_PRESETS;
-
-  useEffect(() => {
-    setColourQuery(value);
-  }, [value]);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (colourDropdownRef.current && !colourDropdownRef.current.contains(e.target as Node) &&
-          colourInputRef.current && !colourInputRef.current.contains(e.target as Node)) {
-        setShowColourDropdown(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const selectColour = (name: string, hex: string) => {
-    setColourQuery(name);
-    onChange(name, hex);
-    setShowColourDropdown(false);
-    setActiveColourIdx(-1);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (!showColourDropdown) {
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        setShowColourDropdown(true);
-        setActiveColourIdx(0);
-        e.preventDefault();
-      }
-      return;
-    }
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setActiveColourIdx(i => (i + 1) % filteredColours.length);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setActiveColourIdx(i => (i - 1 + filteredColours.length) % filteredColours.length);
-    } else if (e.key === "Enter" && activeColourIdx >= 0) {
-      e.preventDefault();
-      const c = filteredColours[activeColourIdx];
-      if (c) selectColour(c.name, c.hex);
-    } else if (e.key === "Escape") {
-      setShowColourDropdown(false);
-      setActiveColourIdx(-1);
-    }
-  };
-
-  const handleInputChange = (val: string) => {
-    setColourQuery(val);
-    const matched = COLOUR_MAP.get(val.toLowerCase());
-    onChange(val, matched || "");
-    setShowColourDropdown(true);
-    setActiveColourIdx(-1);
-  };
-
-  const resolvedColourCode = COLOUR_MAP.get(colourQuery.toLowerCase()) || "";
-
-  return (
-    <div className="relative">
-      <div className="flex items-center gap-2">
-        {resolvedColourCode && (
-          <span
-            className="w-4 h-4 rounded border shrink-0"
-            style={{
-              backgroundColor: resolvedColourCode === "transparent" ? "#f3f4f6" : resolvedColourCode,
-              borderColor: resolvedColourCode === "transparent" ? "#d1d5db" : resolvedColourCode === "#FFFFFF" ? "#d1d5db" : resolvedColourCode,
-            }}
-          />
-        )}
-        <input
-          ref={colourInputRef}
-          type="text"
-          value={colourQuery}
-          onChange={(e) => handleInputChange(e.target.value)}
-          onFocus={() => { setShowColourDropdown(true); setActiveColourIdx(-1); }}
-          onKeyDown={handleKeyDown}
-          placeholder="Type a colour name..."
-          className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground"
-        />
-      </div>
-      {showColourDropdown && filteredColours.length > 0 && (
-        <div ref={colourDropdownRef} className="absolute z-50 mt-1 w-full max-h-40 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md">
-          {filteredColours.map((c, i) => (
-            <button
-              key={c.name}
-              type="button"
-              onMouseDown={(e) => { e.preventDefault(); selectColour(c.name, c.hex); }}
-              onMouseEnter={() => setActiveColourIdx(i)}
-              className={`flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left ${
-                i === activeColourIdx ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
-              }`}
-            >
-              <span
-                className="w-3.5 h-3.5 rounded-full border shrink-0"
-                style={{
-                  backgroundColor: c.hex === "transparent" ? "#f3f4f6" : c.hex,
-                  borderColor: c.hex === "transparent" ? "#d1d5db" : c.hex === "#FFFFFF" ? "#d1d5db" : c.hex,
-                }}
-              />
-              {c.name}
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="flex items-center gap-2 mt-1.5">
-        <label className="text-[11px] text-muted-foreground flex items-center gap-1.5 cursor-pointer">
-          <input
-            type="color"
-            value={value && COLOUR_MAP.has(value.toLowerCase()) ? COLOUR_MAP.get(value.toLowerCase())! : (value ? "" : "#800080")}
-            onChange={(e) => {
-              onChange(colourQuery || "Custom", e.target.value);
-            }}
-            className="h-5 w-5 rounded border border-input cursor-pointer p-0"
-          />
-          Custom hex
-        </label>
-      </div>
-    </div>
-  );
-}
 
 const HSN_BY_MATERIAL: Record<string, string> = {
   PET: "39239090",
@@ -243,15 +58,15 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
   const [variants, setVariants] = useState<VariantRow[]>(() => {
     const v = initial?.variants || [];
     if (v.length) {
-      return v.filter(x => x.isActive !== false).map(x => ({ weight: x.weight || "", colour: x.defaultColor || "", code: (x.defaultColor && COLOUR_MAP.has(x.defaultColor.toLowerCase())) ? COLOUR_MAP.get(x.defaultColor.toLowerCase())! : "" }));
+      return v.filter(x => x.isActive !== false).map(x => ({ weight: x.weight || "" }));
     }
-    if (initial?.bottleWeight || initial?.bottleColour) {
-      return [{ weight: initial.bottleWeight || "", colour: initial.bottleColour || "", code: initial.bottleColourCode || (initial.bottleColour && COLOUR_MAP.has(initial.bottleColour.toLowerCase()) ? COLOUR_MAP.get(initial.bottleColour.toLowerCase())! : "") }];
+    if (initial?.bottleWeight) {
+      return [{ weight: initial.bottleWeight || "" }];
     }
     return [];
   });
   const updateVariant = (i: number, patch: Partial<VariantRow>) => setVariants(prev => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-  const addVariant = () => setVariants(prev => [...prev, { weight: "", colour: "", code: "" }]);
+  const addVariant = () => setVariants(prev => [...prev, { weight: "" }]);
   const removeVariant = (i: number) => setVariants(prev => prev.filter((_, idx) => idx !== i));
   const f = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm(p => ({ ...p, [k]: e.target.value }));
   const handleMaterialChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -270,7 +85,7 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
   const canSave = form.name && form.industry && form.materialType && form.defaultUnit && (isPet || (machineRequired ? form.machineType : true));
 
   const handleSubmit = () => {
-    const rows = variants.filter(r => r.weight.trim() || r.colour.trim());
+    const rows = variants.filter(r => r.weight.trim());
     onSave({
       ...form,
       productCode: form.productCode || null,
@@ -279,11 +94,8 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
       materialType: form.materialType || null,
       hsnCode: form.hsnCode || null,
       defaultUnit: form.defaultUnit || null,
-      bottleWeight: rows[0]?.weight.trim() || null,
-      bottleColour: rows[0]?.colour.trim() || null,
-      bottleColourCode: rows[0]?.code || null,
       capColour: form.capColour || null,
-      variants: rows.map(r => ({ weight: r.weight.trim() || null, defaultColor: r.colour.trim() || null })),
+      variants: rows.map(r => ({ weight: r.weight.trim() || null })),
     });
   };
 
@@ -336,10 +148,10 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
               {UNIT_OPTIONS.filter(Boolean).map(o => <option key={o} value={o}>{o}</option>)}
             </select>
           </div>
-          <div className="sm:col-span-2"><Label>Variants (weight / colour)</Label>
+          <div className="sm:col-span-2"><Label>Variants (weights)</Label>
             <div className="space-y-2 mt-1">
               {variants.length === 0 && (
-                <p className="text-xs text-muted-foreground">No variants. Add a weight + colour combination below.</p>
+                <p className="text-xs text-muted-foreground">No variants. Add the available weight(s) for this product below.</p>
               )}
               {variants.map((v, i) => (
                 <div key={i} className="flex items-start gap-2">
@@ -349,7 +161,6 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
                     placeholder="Weight (e.g. 80g)"
                     className="w-36 shrink-0"
                   />
-                  <div className="flex-1"><ColourInput value={v.colour} onChange={(name, code) => updateVariant(i, { colour: name, code })} /></div>
                   <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-destructive" onClick={() => removeVariant(i)}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -474,8 +285,8 @@ export default function Products() {
               <TableHead>Material</TableHead>
               <TableHead>HSN</TableHead>
               <TableHead>Unit</TableHead>
-              <TableHead>Bottle</TableHead>
-              <TableHead>Variants</TableHead>
+              <TableHead>Default Wt</TableHead>
+              <TableHead>Variants (weights)</TableHead>
               <TableHead>Cap</TableHead>
               <TableHead>Status</TableHead>
               {canManage && <TableHead className="w-20" />}
@@ -503,15 +314,7 @@ export default function Products() {
                   <TableCell className="font-mono text-xs">{p.hsnCode || "-"}</TableCell>
                   <TableCell>{p.defaultUnit || "-"}</TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      {(p as any).bottleColourCode && (
-                        <span
-                          className="w-2.5 h-2.5 rounded-full border shrink-0"
-                          style={{ backgroundColor: (p as any).bottleColourCode === "#FFFFFF" ? "#f3f4f6" : (p as any).bottleColourCode, borderColor: (p as any).bottleColourCode === "#FFFFFF" ? "#d1d5db" : (p as any).bottleColourCode }}
-                        />
-                      )}
-                      <span>{[p.bottleWeight, p.bottleColour].filter(Boolean).join(" · ") || "-"}</span>
-                    </div>
+                    {p.bottleWeight || "-"}
                   </TableCell>
                   <TableCell>
                     {p.variants && p.variants.length > 0 ? (
@@ -520,7 +323,7 @@ export default function Products() {
                         <div className="flex flex-wrap gap-1">
                           {p.variants.map(v => (
                             <span key={v.id} className="text-[10px] text-muted-foreground border rounded px-1.5 py-0.5 whitespace-nowrap">
-                              {[v.weight, v.defaultColor].filter(Boolean).join(" · ")}
+                              {v.weight || "-"}
                             </span>
                           ))}
                         </div>

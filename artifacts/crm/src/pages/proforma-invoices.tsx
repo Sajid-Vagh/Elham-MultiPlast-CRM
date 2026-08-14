@@ -35,6 +35,7 @@ import { useStatusFilter } from "@/lib/global-filters";
 import { ClearFiltersButton } from "@/components/clear-filters-button";
 import { VoiceRecorder } from "@/components/voice-recorder";
 import { DealWonCelebration } from "@/components/deal-won-celebration";
+import { CreatableSelect } from "@/components/creatable-select";
 const STATUS_COLORS: Record<string, string> = {
   "Draft": "bg-gray-100 text-gray-700",
   "Sent": "bg-blue-100 text-blue-700",
@@ -763,6 +764,7 @@ export default function ProformaInvoicesPage() {
                 bottleType: it.bottleType || undefined,
                 bottleColour: it.bottleColour || undefined,
                 capacity: it.capacity || undefined,
+                variants: it.variants || undefined,
               })));
             }
             if (latest.freight) setFreight(Number(latest.freight));
@@ -836,7 +838,15 @@ export default function ProformaInvoicesPage() {
     PP: "39269099",
   };
 
-const COMMON_COLOURS = ["Dark Blue", "White", "Purple", "Green", "Red", "Yellow", "Orange", "Pink", "Black", "Clear", "Transparent", "Blue", "Silver", "Gold", "Sky Blue", "Golden", "Natural", "Milky"];
+const COMMON_COLOURS = [
+  "Red", "Rose", "Dark Red", "Maroon", "Burgundy", "Orange", "Coral", "Peach", "Golden", "Gold", "Yellow", "Cream", "Ivory",
+  "Green", "Dark Green", "Light Green", "Lime", "Mint", "Olive", "Teal",
+  "Blue", "Dark Blue", "Sky Blue", "Light Blue", "Navy", "Cyan", "Turquoise", "Indigo",
+  "Purple", "Violet", "Lavender", "Magenta", "Plum", "Mauve",
+  "Pink", "Salmon", "Brown", "Chocolate", "Tan", "Beige",
+  "Black", "Grey", "Charcoal", "Silver", "White", "Copper", "Bronze",
+  "Transparent", "Clear", "Natural", "Milky",
+];
 
 const productDisplayName = (product: any) => {
   if (!product?.name) return "";
@@ -877,7 +887,6 @@ const selectProduct = (idx: number, product: any) => {
       productId: product.id,
       variants: variants.length ? variants : undefined,
       weight: (variant?.weight || product.bottleWeight || "") || undefined,
-      bottleColour: (variant?.defaultColor || product.bottleColour || "") || undefined,
       bottleType: product.materialType || item.bottleType,
     };
     next.productName = displayNameFor(next);
@@ -897,8 +906,7 @@ const selectProduct = (idx: number, product: any) => {
 const changeWeight = (idx: number, weight: string) => {
   setItems(prev => prev.map((item, i) => {
     if (i !== idx) return item;
-    const variant = (item.variants || []).find(v => v.weight === weight && v.isActive !== false) || (item.variants || []).find(v => v.weight === weight);
-    const next = { ...item, weight: weight || undefined, ...(variant?.defaultColor ? { bottleColour: variant.defaultColor } : {}) };
+    const next = { ...item, weight: weight || undefined };
     if (next.productId) next.productName = displayNameFor(next);
     return recalcItem(next);
   }));
@@ -2205,6 +2213,7 @@ ${pagesHtml}
                             bottleType: it.bottleType || undefined,
                             bottleColour: it.bottleColour || undefined,
                             capacity: it.capacity || undefined,
+                            variants: it.variants || undefined,
                           })));
                         }
                         // Copy freight and notes (business data only)
@@ -2358,7 +2367,7 @@ ${pagesHtml}
                     <span className="ml-1 font-medium">₹{Number(selectedDeal.totalValue || 0).toLocaleString("en-IN")}</span>
                   </div>
                 </div>
-              </CardContent>
+          </CardContent>
             </Card>
           )}
 
@@ -2728,11 +2737,6 @@ ${pagesHtml}
                 </div>
               </div>
           )}
-          <datalist id="pi-bottle-colour-options">
-            {[...new Set([...COMMON_COLOURS, ...items.flatMap(it => (it.variants || []).map(v => v.defaultColor).filter((c): c is string => !!c))])].map((c) => (
-              <option key={c} value={c} />
-            ))}
-          </datalist>
           </CardContent>
         </Card>
 
@@ -2876,10 +2880,10 @@ ${pagesHtml}
                         })()}
                       </TableCell>
                       <TableCell>
-                        <Input
-                          list="pi-bottle-colour-options"
+                        <CreatableSelect
                           value={item.bottleColour || ""}
-                          onChange={(e) => setItemDisplay(idx, { bottleColour: e.target.value || undefined })}
+                          onChange={(v) => setItemDisplay(idx, { bottleColour: v || undefined })}
+                          options={[...new Set([...COMMON_COLOURS, ...(item.variants || []).map(v => v.defaultColor).filter((c): c is string => !!c)])]}
                           placeholder="Color"
                           className="h-8 w-full text-xs"
                         />
@@ -3064,7 +3068,9 @@ ${pagesHtml}
               amount: Number(i.amount),
               weight: i.weight || undefined,
               bottleType: i.bottleType || undefined,
+              bottleColour: i.bottleColour || undefined,
               capacity: i.capacity || undefined,
+              variants: i.variants || undefined,
             })));
             setEditMode(true);
             setMode("create");

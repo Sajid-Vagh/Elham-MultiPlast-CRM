@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable, productionNotesTable, usersTable, contactsTable, dealsTable, customerMasterTable, activitiesTable, ordersTable, orderItemsTable, INVOICE_STATUSES } from "@workspace/db";
-import { eq, desc, and, or, SQL, sql, like, gte, lte, isNull } from "drizzle-orm";
+import { db, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable, productionNotesTable, usersTable, contactsTable, dealsTable, customerMasterTable, activitiesTable, ordersTable, orderItemsTable, productVariantsTable, INVOICE_STATUSES } from "@workspace/db";
+import { eq, desc, and, or, SQL, sql, like, gte, lte, isNull, inArray } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { amountToWords } from "../lib/amount-to-words";
@@ -412,6 +412,21 @@ async function enrichInvoice(invoice: typeof proformaInvoicesTable.$inferSelect)
     .from(proformaInvoiceItemsTable)
     .where(eq(proformaInvoiceItemsTable.invoiceId, invoice.id));
 
+  const productIds = [...new Set(items.map(i => i.productId).filter((id): id is number => !!id))];
+  const variantsByProduct = new Map<number, { id: number; productId: number; weight: string | null; defaultColor: string | null; isActive: boolean }[]>();
+  if (productIds.length > 0) {
+    const variants = await db
+      .select()
+      .from(productVariantsTable)
+      .where(inArray(productVariantsTable.productId, productIds))
+      .orderBy(productVariantsTable.weight);
+    for (const v of variants) {
+      const list = variantsByProduct.get(v.productId) || [];
+      list.push(v);
+      variantsByProduct.set(v.productId, list);
+    }
+  }
+
   let createdByUser = null;
   if (invoice.createdBy) {
     const [u] = await db.select().from(usersTable).where(eq(usersTable.id, invoice.createdBy));
@@ -540,6 +555,7 @@ async function enrichInvoice(invoice: typeof proformaInvoicesTable.$inferSelect)
     items: items.map((i) => ({
       ...i,
       productId: i.productId || undefined,
+      variants: i.productId ? variantsByProduct.get(i.productId) || [] : [],
       quantity: Number(i.quantity),
       rate: Number(i.rate),
       discount: Number(i.discount || 0),
