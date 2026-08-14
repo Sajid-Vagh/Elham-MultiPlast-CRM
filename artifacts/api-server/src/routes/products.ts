@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, productsTable, usersTable } from "@workspace/db";
-import { eq, or, sql } from "drizzle-orm";
+import { db, productsTable, productVariantsTable, usersTable } from "@workspace/db";
+import { eq, inArray, or, and, sql } from "drizzle-orm";
 import { CreateProductBody, UpdateProductBody, GetProductParams, UpdateProductParams, DeleteProductParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -9,6 +9,25 @@ const router: IRouter = Router();
 
 const DUPLICATE_MSG = "Product Code already exists. Please use a different Product Code.";
 const PRODUCT_MGMT_ROLES = ["admin", "production_and_support"];
+
+type VariantInput = { weight?: string | null; defaultColor?: string | null; isActive?: boolean | null };
+
+async function attachVariants<T extends { id: number }>(rows: T[]) {
+  if (rows.length === 0) return rows as (T & { variants: any[]; variantCount: number })[];
+  const variants = await db.select().from(productVariantsTable)
+    .where(inArray(productVariantsTable.productId, rows.map(r => r.id)))
+    .orderBy(productVariantsTable.weight);
+  const byProduct = new Map<number, any[]>();
+  for (const v of variants) {
+    const list = byProduct.get(v.productId) || [];
+    list.push(v);
+    byProduct.set(v.productId, list);
+  }
+  return rows.map(r => {
+    const list = byProduct.get(r.id) || [];
+    return { ...r, variants: list, variantCount: list.length };
+  }) as (T & { variants: any[]; variantCount: number })[];
+}
 
 // ── SEARCH ──
 router.get("/products/search", async (req, res) => {
@@ -21,16 +40,19 @@ router.get("/products/search", async (req, res) => {
     const products = await db
       .select()
       .from(productsTable)
-      .where(or(
-        sql`LOWER(${productsTable.name}) LIKE ${`%${qLower}%`}`,
-        sql`LOWER(${productsTable.productCode}) LIKE ${`%${qLower}%`}`,
-        sql`LOWER(${productsTable.bottleWeight}) LIKE ${`%${qLower}%`}`,
-        sql`LOWER(${productsTable.bottleColour}) LIKE ${`%${qLower}%`}`,
-        sql`LOWER(${productsTable.materialType}) LIKE ${`%${qLower}%`}`,
+      .where(and(
+        or(
+          sql`LOWER(${productsTable.name}) LIKE ${`%${qLower}%`}`,
+          sql`LOWER(${productsTable.productCode}) LIKE ${`%${qLower}%`}`,
+          sql`LOWER(${productsTable.bottleWeight}) LIKE ${`%${qLower}%`}`,
+          sql`LOWER(${productsTable.bottleColour}) LIKE ${`%${qLower}%`}`,
+          sql`LOWER(${productsTable.materialType}) LIKE ${`%${qLower}%`}`,
+        ),
+        eq(productsTable.status, "active"),
       ))
       .orderBy(productsTable.name)
       .limit(20);
-    res.json(products);
+    res.json(await attachVariants(products));
   } catch (err) {
     req.log.error({ err }, "Search products error");
     res.status(500).json({ success: false, error: "Internal Server Error" });
@@ -57,7 +79,7 @@ router.get("/products", async (req, res) => {
     } else {
       products = await db.select().from(productsTable).orderBy(productsTable.name);
     }
-    res.json(products);
+    res.json(await attachVariants(products));
   } catch (err) {
     req.log.error({ err }, "List products error");
     res.status(500).json({ success: false, error: "Internal Server Error" });
@@ -86,12 +108,24 @@ router.post("/products", async (req, res) => {
         return;
       }
     }
+    const variants: VariantInput[] = Array.isArray((parsed.data as any).variants) ? (parsed.data as any).variants : [];
+    const { variants: _variants, ...rest } = (parsed.data as any);
     const insertData = {
-      ...parsed.data,
-      pricePerUnit: (parsed.data as any).pricePerUnit?.toString() ?? null,
-      defaultGst: (parsed.data as any).defaultGst?.toString() ?? null,
+      ...rest,
+      pricePerUnit: (rest as any).pricePerUnit?.toString() ?? null,
+      defaultGst: (rest as any).defaultGst?.toString() ?? null,
     } as any;
-    const [product] = await db.insert(productsTable).values(insertData).returning();
+
+    let product;
+    await db.transaction(async (tx) => {
+      const [created] = await tx.insert(productsTable).values(insertData).returning();
+      product = created;
+      if (variants.length > 0) {
+        await tx.insert(productVariantsTable).values(
+          variants.map(v => ({ productId: created.id, weight: v.weight || null, defaultColor: v.defaultColor || null, isActive: v.isActive ?? true }))
+        );
+      }
+    });
 
     // Notify admins about new product
     const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
@@ -110,7 +144,8 @@ router.post("/products", async (req, res) => {
       }
     }
 
-    res.status(201).json(product);
+    const [enriched] = await attachVariants([product!]);
+    res.status(201).json(enriched);
   } catch (err: any) {
     if (err?.code === "23505") {
       res.status(409).json({ error: DUPLICATE_MSG });
@@ -130,7 +165,8 @@ router.get("/products/:id", async (req, res) => {
   try {
     const [product] = await db.select().from(productsTable).where(eq(productsTable.id, parsed.data.id));
     if (!product) { res.status(404).json({ error: "Not found" }); return; }
-    res.json(product);
+    const [enriched] = await attachVariants([product]);
+    res.json(enriched);
   } catch (err) {
     req.log.error({ err }, "Get product error");
     res.status(500).json({ success: false, error: "Internal Server Error" });
@@ -159,16 +195,33 @@ router.patch("/products/:id", async (req, res) => {
         return;
       }
     }
-    const updateData = { ...parsed.data } as any;
-    if ("pricePerUnit" in parsed.data) {
-      updateData.pricePerUnit = (parsed.data as any).pricePerUnit?.toString() ?? null;
+    const variants = "variants" in parsed.data ? (parsed.data as any).variants : undefined;
+    const { variants: _variants, ...rest } = (parsed.data as any);
+    const updateData = { ...rest } as any;
+    if ("pricePerUnit" in rest) {
+      updateData.pricePerUnit = rest.pricePerUnit?.toString() ?? null;
     }
-    if ("defaultGst" in parsed.data) {
-      updateData.defaultGst = (parsed.data as any).defaultGst?.toString() ?? null;
+    if ("defaultGst" in rest) {
+      updateData.defaultGst = rest.defaultGst?.toString() ?? null;
     }
-    const [product] = await db.update(productsTable).set(updateData).where(eq(productsTable.id, params.data.id)).returning();
+
+    let product;
+    await db.transaction(async (tx) => {
+      const [updated] = await tx.update(productsTable).set(updateData).where(eq(productsTable.id, params.data.id)).returning();
+      product = updated;
+      if (Array.isArray(variants)) {
+        await tx.delete(productVariantsTable).where(eq(productVariantsTable.productId, params.data.id));
+        const list: VariantInput[] = variants;
+        if (list.length > 0) {
+          await tx.insert(productVariantsTable).values(
+            list.map(v => ({ productId: params.data.id, weight: v.weight || null, defaultColor: v.defaultColor || null, isActive: v.isActive ?? true }))
+          );
+        }
+      }
+    });
     if (!product) { res.status(404).json({ error: "Not found" }); return; }
-    res.json(product);
+    const [enriched] = await attachVariants([product]);
+    res.json(enriched);
   } catch (err) {
     req.log.error({ err }, "Update product error");
     res.status(500).json({ success: false, error: "Internal Server Error" });

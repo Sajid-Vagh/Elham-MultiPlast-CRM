@@ -230,7 +230,7 @@ export async function syncProductionOrderItems(productionOrderId: number, invoic
       materialType: product?.materialType || null,
       machineType: product?.machineType || null,
       bottleColour: item.bottleColour || product?.bottleColour || null,
-      bottleWeight: product?.bottleWeight || null,
+      bottleWeight: item.weight || product?.bottleWeight || null,
       capColour: product?.capColour || null,
       hsnCode: item.hsnCode || null,
       orderedQuantity: String(item.quantity),
@@ -380,7 +380,7 @@ export async function resyncProductionOrderItems(
         materialType: product?.materialType || null,
         machineType: product?.machineType || null,
         bottleColour: piItem.bottleColour || product?.bottleColour || null,
-        bottleWeight: product?.bottleWeight || null,
+        bottleWeight: piItem.weight || product?.bottleWeight || null,
         capColour: product?.capColour || null,
         hsnCode: piItem.hsnCode || null,
         orderedQuantity: String(piItem.quantity),
@@ -396,7 +396,7 @@ export async function resyncProductionOrderItems(
         materialType: product?.materialType || null,
         machineType: product?.machineType || null,
         bottleColour: piItem.bottleColour || product?.bottleColour || null,
-        bottleWeight: product?.bottleWeight || null,
+        bottleWeight: piItem.weight || product?.bottleWeight || null,
         capColour: product?.capColour || null,
         hsnCode: piItem.hsnCode || null,
         orderedQuantity: String(piItem.quantity),
@@ -885,7 +885,7 @@ export async function enrichProductionOrder(order: any, user?: { id?: number; ro
       materialType: product?.materialType || null,
       machineType: product?.machineType || null,
       bottleColour: i.bottleColour || product?.bottleColour || null,
-      bottleWeight: product?.bottleWeight || null,
+      bottleWeight: i.weight || product?.bottleWeight || null,
       capColour: product?.capColour || null,
       productCode: product?.productCode || null,
     };
@@ -2722,7 +2722,7 @@ async function buildMachineReportRows(
       productRows.push({
         orderId: order.id, orderNumber: order.orderNumber, status: order.status, productionUnit: order.productionUnit,
         createdAt: order.createdAt, productName: item.productName, machineType: null,
-        materialType: null, bottleColour: item.bottleColour || null, bottleWeight: null, productCode: null,
+        materialType: null, bottleColour: item.bottleColour || null, bottleWeight: item.weight || null, productCode: null,
         quantity: Number(item.quantity), readyQuantity: 0, productionStatus: order.status === "Completed" ? "Ready" : "Pending",
       });
     }

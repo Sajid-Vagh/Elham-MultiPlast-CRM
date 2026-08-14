@@ -1001,10 +1001,12 @@ router.post("/deals/:id/mark-won", async (req, res) => {
           piItems.map(item => ({
             orderId: order.id,
             productName: item.productName,
+            productId: item.productId || null,
             hsnCode: item.hsnCode || null,
             bottleType: item.bottleType || null,
             capacity: item.capacity || null,
             bottleWeight: item.weight || null,
+            colour: item.bottleColour || null,
             quantity: String(item.quantity),
             unit: item.unit || "Pcs",
             rate: String(item.rate || 0),

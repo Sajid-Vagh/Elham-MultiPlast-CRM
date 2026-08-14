@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
+import type { ProductVariantInput } from "./productVariant";
+
 export interface ProductInput {
   name: string;
   /** @nullable */
@@ -23,4 +25,5 @@ export interface ProductInput {
   capColour?: string | null;
   /** @nullable */
   status?: string | null;
+  variants?: ProductVariantInput[];
 }

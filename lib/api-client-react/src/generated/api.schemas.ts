@@ -337,6 +337,29 @@ export interface Product {
   /** @nullable */
   status?: string | null;
   createdAt?: string;
+  variants?: ProductVariant[];
+  variantCount?: number;
+}
+
+export interface ProductVariant {
+  id: number;
+  productId: number;
+  /** @nullable */
+  weight?: string | null;
+  /** @nullable */
+  defaultColor?: string | null;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProductVariantInput {
+  /** @nullable */
+  weight?: string | null;
+  /** @nullable */
+  defaultColor?: string | null;
+  /** @nullable */
+  isActive?: boolean | null;
 }
 
 export interface ProductInput {
@@ -369,6 +392,7 @@ export interface ProductInput {
   defaultGst?: number | null;
   /** @nullable */
   status?: string | null;
+  variants?: ProductVariantInput[];
 }
 
 export interface ProductUpdate {
@@ -401,6 +425,7 @@ export interface ProductUpdate {
   defaultGst?: number | null;
   /** @nullable */
   status?: string | null;
+  variants?: ProductVariantInput[];
 }
 
 export type DealStage = typeof DealStage[keyof typeof DealStage];
@@ -695,6 +720,16 @@ export interface OwnerStat {
   totalWonValue: number;
 }
 
+export interface ProductVariantStat {
+  /** @nullable */
+  weight?: string | null;
+  /** @nullable */
+  colour?: string | null;
+  dealCount: number;
+  totalQuantity: number;
+  totalValue: number;
+}
+
 export interface ProductStat {
   productId: number;
   productName: string;
@@ -702,6 +737,7 @@ export interface ProductStat {
   totalQuantity: number;
   totalValue: number;
   dealCount: number;
+  variants?: ProductVariantStat[];
 }
 
 export interface CityStat {

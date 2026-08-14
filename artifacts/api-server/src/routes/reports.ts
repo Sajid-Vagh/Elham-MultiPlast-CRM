@@ -278,34 +278,53 @@ router.get("/reports/by-product", async (req, res) => {
     // Aggregate products across both sources where deal products live:
     //   - deal_products (manually attached products)
     //   - proforma_invoice_items (products entered on the deal's proforma invoices)
+    // Rows group by MASTER product (product_id), with a `variants` breakdown by
+    // weight + colour so weight/colour combinations are individually inspectable.
     const { rows } = await db.execute(sql`
       WITH allowed_deals AS (
         SELECT id FROM deals WHERE ${where}
-      )
-      SELECT
-        t.product_id AS "productId",
-        t.product_name AS "productName",
-        t.product_code AS "productCode",
-        count(DISTINCT t.deal_id)::int AS "dealCount",
-        coalesce(sum(t.quantity), 0)::float AS "totalQuantity",
-        coalesce(sum(t.value), 0)::float AS "totalValue"
-      FROM (
-        SELECT ad.id AS deal_id, dp.product_id AS product_id, p.name AS product_name,
+      ),
+      src AS (
+        SELECT ad.id AS deal_id, dp.product_id AS product_id,
+               coalesce(p.name, 'Unknown') AS product_name,
                p.product_code AS product_code,
+               NULL::text AS weight, NULL::text AS colour,
                dp.quantity AS quantity, dp.quantity * coalesce(dp.unit_price, 0) AS value
         FROM deal_products dp
         JOIN allowed_deals ad ON ad.id = dp.deal_id
         LEFT JOIN products p ON p.id = dp.product_id
         UNION ALL
-        SELECT ad.id AS deal_id, pii.product_id AS product_id, btrim(pii.product_name) AS product_name,
+        SELECT ad.id AS deal_id, pii.product_id AS product_id,
+               coalesce(p.name, btrim(pii.product_name)) AS product_name,
                p.product_code AS product_code,
+               btrim(pii.weight) AS weight, btrim(pii.bottle_colour) AS colour,
                pii.quantity AS quantity,
                coalesce(pii.amount, pii.quantity * coalesce(pii.rate, 0)) AS value
         FROM proforma_invoice_items pii
         JOIN proforma_invoices pi ON pi.id = pii.invoice_id AND pi.is_deleted = false
         JOIN allowed_deals ad ON ad.id = pi.deal_id
         LEFT JOIN products p ON p.id = pii.product_id
-      ) t
+      )
+      SELECT t.product_id AS "productId",
+             t.product_name AS "productName",
+             t.product_code AS "productCode",
+             count(DISTINCT t.deal_id)::int AS "dealCount",
+             coalesce(sum(t.quantity), 0)::float AS "totalQuantity",
+             coalesce(sum(t.value), 0)::float AS "totalValue",
+             coalesce(
+               (SELECT jsonb_agg(v.* ORDER BY (v."totalValue") DESC)
+                FROM (
+                  SELECT s.weight AS "weight", s.colour AS "colour",
+                         count(DISTINCT s.deal_id)::int AS "dealCount",
+                         coalesce(sum(s.quantity), 0)::float AS "totalQuantity",
+                         coalesce(sum(s.value), 0)::float AS "totalValue"
+                  FROM src s
+                  WHERE s.product_id IS NOT DISTINCT FROM t.product_id
+                  GROUP BY s.weight, s.colour
+                ) v),
+               '[]'::jsonb
+             ) AS "variants"
+      FROM src t
       GROUP BY t.product_id, t.product_name, t.product_code
       ORDER BY "totalValue" DESC
     `);

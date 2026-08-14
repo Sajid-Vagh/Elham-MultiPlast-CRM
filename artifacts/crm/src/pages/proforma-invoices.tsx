@@ -137,6 +137,8 @@ function formatItemDescription(item: any): string {
 interface InvoiceItem {
   productName: string;
   productId?: number;
+  masterName?: string;
+  variants?: { id?: number; weight?: string | null; defaultColor?: string | null; isActive?: boolean }[];
   hsnCode: string;
   quantity: number;
   unit: string;
@@ -834,6 +836,8 @@ export default function ProformaInvoicesPage() {
     PP: "39269099",
   };
 
+const COMMON_COLOURS = ["Dark Blue", "White", "Purple", "Green", "Red", "Yellow", "Orange", "Pink", "Black", "Clear", "Transparent", "Blue", "Silver", "Gold", "Sky Blue", "Golden", "Natural", "Milky"];
+
 const productDisplayName = (product: any) => {
   if (!product?.name) return "";
   const parts: string[] = [];
@@ -843,18 +847,45 @@ const productDisplayName = (product: any) => {
   return `${product.name}${suffix}`;
 };
 
+const formatWeight = (w: string) => {
+  const s = String(w).trim();
+  if (!s) return "";
+  return /[a-z]/i.test(s) ? s : `${s}g`;
+};
+
+// Base name (master) + chosen weight/colour, e.g. "1L Lubricant (80g, Sky Blue)".
+const displayNameFor = (item: InvoiceItem) => {
+  if (!item.productId) return item.productName;
+  const base = item.masterName || formatItemDescription(item) || item.productName;
+  const parts: string[] = [];
+  if (item.weight) parts.push(formatWeight(item.weight));
+  if (item.bottleColour) parts.push(item.bottleColour);
+  const suffix = parts.length > 0 ? ` (${parts.join(", ")})` : "";
+  return `${base}${suffix}`;
+};
+
+const activeVariants = (product: any) => (product?.variants || []).filter((v: any) => v.isActive !== false);
+
 const selectProduct = (idx: number, product: any) => {
   setItems(prev => prev.map((item, i) => {
     if (i !== idx) return item;
-    const next = { ...item, productName: productDisplayName(product), productId: product.id };
+    const variants = activeVariants(product);
+    const variant = variants[0] || null;
+    const next: InvoiceItem = {
+      ...item,
+      masterName: product.name,
+      productId: product.id,
+      variants: variants.length ? variants : undefined,
+      weight: (variant?.weight || product.bottleWeight || "") || undefined,
+      bottleColour: (variant?.defaultColor || product.bottleColour || "") || undefined,
+      bottleType: product.materialType || item.bottleType,
+    };
+    next.productName = displayNameFor(next);
     const hsn = product.hsnCode || (product.materialType ? MATERIAL_HSN[product.materialType] : "") || "";
     if (hsn) next.hsnCode = hsn;
     if (product.defaultUnit) next.unit = product.defaultUnit;
     if (product.defaultGst != null) next.gstPercent = Number(product.defaultGst);
     if (product.pricePerUnit) next.rate = Number(product.pricePerUnit);
-    if (product.bottleWeight) next.weight = product.bottleWeight;
-    if (product.materialType) next.bottleType = product.materialType;
-    if (product.bottleColour) next.bottleColour = product.bottleColour;
     return recalcItem(next);
   }));
     setShowProductSearch(false);
@@ -862,6 +893,25 @@ const selectProduct = (idx: number, product: any) => {
     setActiveProductIdx(-1);
     setProductSearchPos({ top: 0, left: 0, width: 0 });
   };
+
+const changeWeight = (idx: number, weight: string) => {
+  setItems(prev => prev.map((item, i) => {
+    if (i !== idx) return item;
+    const variant = (item.variants || []).find(v => v.weight === weight && v.isActive !== false) || (item.variants || []).find(v => v.weight === weight);
+    const next = { ...item, weight: weight || undefined, ...(variant?.defaultColor ? { bottleColour: variant.defaultColor } : {}) };
+    if (next.productId) next.productName = displayNameFor(next);
+    return recalcItem(next);
+  }));
+};
+
+const setItemDisplay = (idx: number, patch: Partial<InvoiceItem>) => {
+  setItems(prev => prev.map((item, i) => {
+    if (i !== idx) return item;
+    const next = { ...item, ...patch };
+    if (next.productId) next.productName = displayNameFor(next);
+    return recalcItem(next);
+  }));
+};
 
   const parseAddressString = (addr: string) => {
     const parts = addr.split(",").map((s: string) => s.trim()).filter(Boolean);
@@ -2677,7 +2727,12 @@ ${pagesHtml}
                   <span>✓ Customer Master: {existingCustomer.companyName}</span>
                 </div>
               </div>
-            )}
+          )}
+          <datalist id="pi-bottle-colour-options">
+            {[...new Set([...COMMON_COLOURS, ...items.flatMap(it => (it.variants || []).map(v => v.defaultColor).filter((c): c is string => !!c))])].map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
           </CardContent>
         </Card>
 
@@ -2759,6 +2814,7 @@ ${pagesHtml}
                 <colgroup>
                   <col className="w-8" />
                   <col />
+                  <col className="w-[88px]" />
                   <col className="w-[120px]" />
                   <col className="w-[88px]" />
                   <col className="w-[72px]" />
@@ -2771,6 +2827,7 @@ ${pagesHtml}
                   <TableRow>
                     <TableHead className="w-8">#</TableHead>
                     <TableHead>Product Name</TableHead>
+                    <TableHead className="w-[88px]">Weight</TableHead>
                     <TableHead className="w-[120px]">Bottle Colour</TableHead>
                     <TableHead className="w-[88px]">HSN</TableHead>
                     <TableHead className="w-[72px]">Qty</TableHead>
@@ -2798,18 +2855,34 @@ ${pagesHtml}
                           )}
                         </TableCell>
                       <TableCell>
-                        <Select value={item.bottleColour || ""} onValueChange={(v) => updateItem(idx, "bottleColour", v || undefined)}>
-                          <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="Color" /></SelectTrigger>
-                          <SelectContent>
-                            {(() => {
-                              const resultColors = productSearchResults.filter(r => r.id === item.productId || r.name?.toLowerCase() === item.productName?.toLowerCase() || productDisplayName(r)?.toLowerCase() === item.productName?.toLowerCase()).map((r: any) => r.bottleColour).filter(Boolean);
-                              const allColors = [...new Set([...(item.bottleColour ? [item.bottleColour] : []), ...resultColors, "Dark Blue", "White", "Purple", "Green", "Red", "Yellow", "Orange", "Pink", "Black", "Clear", "Transparent", "Blue", "Silver", "Gold"])];
-                              return allColors.map((c: string) => (
-                                <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
-                              ));
-                            })()}
-                          </SelectContent>
-                        </Select>
+                        {(() => {
+                          const variantWeights = [...new Set((item.variants || []).filter(v => v.weight && v.isActive !== false).map(v => v.weight as string))];
+                          if (item.weight && !variantWeights.includes(item.weight)) variantWeights.push(item.weight);
+                          if (variantWeights.length > 0) {
+                            return (
+                              <Select value={item.weight || ""} onValueChange={(v) => changeWeight(idx, v)}>
+                                <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="Weight" /></SelectTrigger>
+                                <SelectContent>
+                                  {variantWeights.map((w) => (
+                                    <SelectItem key={w} value={w} className="text-xs">{w}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            );
+                          }
+                          return (
+                            <Input value={item.weight || ""} onChange={(e) => changeWeight(idx, e.target.value)} placeholder="Wt" className="h-8 w-full text-xs" />
+                          );
+                        })()}
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          list="pi-bottle-colour-options"
+                          value={item.bottleColour || ""}
+                          onChange={(e) => setItemDisplay(idx, { bottleColour: e.target.value || undefined })}
+                          placeholder="Color"
+                          className="h-8 w-full text-xs"
+                        />
                       </TableCell>
                       <TableCell>
                         <Input value={item.hsnCode} onChange={(e) => updateItem(idx, "hsnCode", e.target.value)} placeholder="HSN" className="h-8 w-full" />
@@ -2850,19 +2923,13 @@ ${pagesHtml}
           {showProductSearch && productSearchResults.length > 0 && activeProductIdx >= 0 && productSearchPos.width > 0 && (
   <div style={{ position: 'fixed', top: productSearchPos.top, left: productSearchPos.left, width: productSearchPos.width }} className="z-[9999] bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
     {productSearchResults.map((p: any) => {
-      const variantParts = [p.bottleWeight ? `${p.bottleWeight}g` : "", p.bottleColour || "", p.materialType || ""].filter(Boolean);
+      const vCount = (p.variants || []).filter((v: any) => v.isActive !== false).length;
       return (
         <div key={p.id} className="px-3 py-2 hover:bg-muted cursor-pointer text-sm" onMouseDown={(e) => { e.preventDefault(); selectProduct(activeProductIdx, p); }}>
           <div className="font-medium flex items-center gap-1.5">
-            {p.bottleColourCode && (
-              <span
-                className="w-2 h-2 rounded-full border shrink-0 inline-block"
-                style={{ backgroundColor: p.bottleColourCode === "#FFFFFF" ? "#f3f4f6" : p.bottleColourCode, borderColor: p.bottleColourCode === "#FFFFFF" ? "#d1d5db" : p.bottleColourCode }}
-              />
-            )}
             <span>{p.name}</span>
-            {variantParts.length > 0 && (
-              <span className="text-muted-foreground font-normal">— {variantParts.join(", ")}</span>
+            {vCount > 0 && (
+              <Badge variant="secondary" className="text-[10px]">{vCount} weight{vCount > 1 ? "s" : ""}</Badge>
             )}
           </div>
           <div className="text-xs text-muted-foreground">{[p.productCode, p.pricePerUnit ? `₹${Number(p.pricePerUnit).toFixed(2)}` : ""].filter(Boolean).join(" · ")}</div>

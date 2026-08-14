@@ -13,7 +13,9 @@ import { useToast } from "@/hooks/use-toast";
 import { onProductChange } from "@/lib/query-invalidation";
 import { INDUSTRIES } from "@/lib/constants";
 
-type Product = { id: number; name: string; category?: string | null; industry?: string | null; machineType?: string | null; pricePerUnit?: number | null; productCode?: string | null; bottleWeight?: string | null; bottleColour?: string | null; bottleColourCode?: string | null; capColour?: string | null; materialType?: string | null; hsnCode?: string | null; defaultUnit?: string | null; defaultGst?: number | null; status?: string | null };
+type ProductVariant = { id: number; productId: number; weight?: string | null; defaultColor?: string | null; isActive: boolean };
+type VariantRow = { weight: string; colour: string; code: string };
+type Product = { id: number; name: string; category?: string | null; industry?: string | null; machineType?: string | null; pricePerUnit?: number | null; productCode?: string | null; bottleWeight?: string | null; bottleColour?: string | null; bottleColourCode?: string | null; capColour?: string | null; materialType?: string | null; hsnCode?: string | null; defaultUnit?: string | null; defaultGst?: number | null; status?: string | null; variants?: ProductVariant[]; variantCount?: number };
 
 const COLOUR_PRESETS: { name: string; hex: string }[] = [
   { name: "Purple", hex: "#800080" },
@@ -68,6 +70,138 @@ const COLOUR_PRESETS: { name: string; hex: string }[] = [
 
 const COLOUR_MAP = new Map(COLOUR_PRESETS.map(c => [c.name.toLowerCase(), c.hex]));
 
+function ColourInput({ value, onChange }: { value: string; onChange: (name: string, code: string) => void }) {
+  const [colourQuery, setColourQuery] = useState(value);
+  const [showColourDropdown, setShowColourDropdown] = useState(false);
+  const [activeColourIdx, setActiveColourIdx] = useState(-1);
+  const colourInputRef = useRef<HTMLInputElement>(null);
+  const colourDropdownRef = useRef<HTMLDivElement>(null);
+
+  const filteredColours = colourQuery.trim()
+    ? COLOUR_PRESETS.filter(c => c.name.toLowerCase().includes(colourQuery.toLowerCase()))
+    : COLOUR_PRESETS;
+
+  useEffect(() => {
+    setColourQuery(value);
+  }, [value]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (colourDropdownRef.current && !colourDropdownRef.current.contains(e.target as Node) &&
+          colourInputRef.current && !colourInputRef.current.contains(e.target as Node)) {
+        setShowColourDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const selectColour = (name: string, hex: string) => {
+    setColourQuery(name);
+    onChange(name, hex);
+    setShowColourDropdown(false);
+    setActiveColourIdx(-1);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!showColourDropdown) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        setShowColourDropdown(true);
+        setActiveColourIdx(0);
+        e.preventDefault();
+      }
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveColourIdx(i => (i + 1) % filteredColours.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveColourIdx(i => (i - 1 + filteredColours.length) % filteredColours.length);
+    } else if (e.key === "Enter" && activeColourIdx >= 0) {
+      e.preventDefault();
+      const c = filteredColours[activeColourIdx];
+      if (c) selectColour(c.name, c.hex);
+    } else if (e.key === "Escape") {
+      setShowColourDropdown(false);
+      setActiveColourIdx(-1);
+    }
+  };
+
+  const handleInputChange = (val: string) => {
+    setColourQuery(val);
+    const matched = COLOUR_MAP.get(val.toLowerCase());
+    onChange(val, matched || "");
+    setShowColourDropdown(true);
+    setActiveColourIdx(-1);
+  };
+
+  const resolvedColourCode = COLOUR_MAP.get(colourQuery.toLowerCase()) || "";
+
+  return (
+    <div className="relative">
+      <div className="flex items-center gap-2">
+        {resolvedColourCode && (
+          <span
+            className="w-4 h-4 rounded border shrink-0"
+            style={{
+              backgroundColor: resolvedColourCode === "transparent" ? "#f3f4f6" : resolvedColourCode,
+              borderColor: resolvedColourCode === "transparent" ? "#d1d5db" : resolvedColourCode === "#FFFFFF" ? "#d1d5db" : resolvedColourCode,
+            }}
+          />
+        )}
+        <input
+          ref={colourInputRef}
+          type="text"
+          value={colourQuery}
+          onChange={(e) => handleInputChange(e.target.value)}
+          onFocus={() => { setShowColourDropdown(true); setActiveColourIdx(-1); }}
+          onKeyDown={handleKeyDown}
+          placeholder="Type a colour name..."
+          className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground"
+        />
+      </div>
+      {showColourDropdown && filteredColours.length > 0 && (
+        <div ref={colourDropdownRef} className="absolute z-50 mt-1 w-full max-h-40 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md">
+          {filteredColours.map((c, i) => (
+            <button
+              key={c.name}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); selectColour(c.name, c.hex); }}
+              onMouseEnter={() => setActiveColourIdx(i)}
+              className={`flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left ${
+                i === activeColourIdx ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+              }`}
+            >
+              <span
+                className="w-3.5 h-3.5 rounded-full border shrink-0"
+                style={{
+                  backgroundColor: c.hex === "transparent" ? "#f3f4f6" : c.hex,
+                  borderColor: c.hex === "transparent" ? "#d1d5db" : c.hex === "#FFFFFF" ? "#d1d5db" : c.hex,
+                }}
+              />
+              {c.name}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-2 mt-1.5">
+        <label className="text-[11px] text-muted-foreground flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="color"
+            value={value && COLOUR_MAP.has(value.toLowerCase()) ? COLOUR_MAP.get(value.toLowerCase())! : (value ? "" : "#800080")}
+            onChange={(e) => {
+              onChange(colourQuery || "Custom", e.target.value);
+            }}
+            className="h-5 w-5 rounded border border-input cursor-pointer p-0"
+          />
+          Custom hex
+        </label>
+      </div>
+    </div>
+  );
+}
+
 const HSN_BY_MATERIAL: Record<string, string> = {
   PET: "39239090",
   HDPE: "39233090",
@@ -103,12 +237,22 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
     materialType: initial?.materialType || "",
     hsnCode: initial?.hsnCode || "",
     defaultUnit: initial?.defaultUnit || "Pcs",
-    bottleWeight: initial?.bottleWeight || "",
-    bottleColour: initial?.bottleColour || "",
-    bottleColourCode: initial?.bottleColourCode || "",
     capColour: initial?.capColour || "",
     status: initial?.status || "active",
   });
+  const [variants, setVariants] = useState<VariantRow[]>(() => {
+    const v = initial?.variants || [];
+    if (v.length) {
+      return v.filter(x => x.isActive !== false).map(x => ({ weight: x.weight || "", colour: x.defaultColor || "", code: (x.defaultColor && COLOUR_MAP.has(x.defaultColor.toLowerCase())) ? COLOUR_MAP.get(x.defaultColor.toLowerCase())! : "" }));
+    }
+    if (initial?.bottleWeight || initial?.bottleColour) {
+      return [{ weight: initial.bottleWeight || "", colour: initial.bottleColour || "", code: initial.bottleColourCode || (initial.bottleColour && COLOUR_MAP.has(initial.bottleColour.toLowerCase()) ? COLOUR_MAP.get(initial.bottleColour.toLowerCase())! : "") }];
+    }
+    return [];
+  });
+  const updateVariant = (i: number, patch: Partial<VariantRow>) => setVariants(prev => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const addVariant = () => setVariants(prev => [...prev, { weight: "", colour: "", code: "" }]);
+  const removeVariant = (i: number) => setVariants(prev => prev.filter((_, idx) => idx !== i));
   const f = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm(p => ({ ...p, [k]: e.target.value }));
   const handleMaterialChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const mat = e.target.value;
@@ -125,86 +269,23 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
   const machineRequired = needsMachine(form.materialType);
   const canSave = form.name && form.industry && form.materialType && form.defaultUnit && (isPet || (machineRequired ? form.machineType : true));
 
-  const [colourQuery, setColourQuery] = useState(initial?.bottleColour || "");
-  const [showColourDropdown, setShowColourDropdown] = useState(false);
-  const [activeColourIdx, setActiveColourIdx] = useState(-1);
-  const colourInputRef = useRef<HTMLInputElement>(null);
-  const colourDropdownRef = useRef<HTMLDivElement>(null);
-
-  const filteredColours = colourQuery.trim()
-    ? COLOUR_PRESETS.filter(c => c.name.toLowerCase().includes(colourQuery.toLowerCase()))
-    : COLOUR_PRESETS;
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (colourDropdownRef.current && !colourDropdownRef.current.contains(e.target as Node) &&
-          colourInputRef.current && !colourInputRef.current.contains(e.target as Node)) {
-        setShowColourDropdown(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const selectColour = (name: string, hex: string) => {
-    setColourQuery(name);
-    setForm(p => ({ ...p, bottleColour: name, bottleColourCode: hex }));
-    setShowColourDropdown(false);
-    setActiveColourIdx(-1);
+  const handleSubmit = () => {
+    const rows = variants.filter(r => r.weight.trim() || r.colour.trim());
+    onSave({
+      ...form,
+      productCode: form.productCode || null,
+      industry: form.industry || null,
+      machineType: isP(form.materialType) ? "Outsourced" : (form.machineType || null),
+      materialType: form.materialType || null,
+      hsnCode: form.hsnCode || null,
+      defaultUnit: form.defaultUnit || null,
+      bottleWeight: rows[0]?.weight.trim() || null,
+      bottleColour: rows[0]?.colour.trim() || null,
+      bottleColourCode: rows[0]?.code || null,
+      capColour: form.capColour || null,
+      variants: rows.map(r => ({ weight: r.weight.trim() || null, defaultColor: r.colour.trim() || null })),
+    });
   };
-
-  const handleColourKeyDown = (e: React.KeyboardEvent) => {
-    if (!showColourDropdown) {
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        setShowColourDropdown(true);
-        setActiveColourIdx(0);
-        e.preventDefault();
-      }
-      return;
-    }
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setActiveColourIdx(i => (i + 1) % filteredColours.length);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setActiveColourIdx(i => (i - 1 + filteredColours.length) % filteredColours.length);
-    } else if (e.key === "Enter" && activeColourIdx >= 0) {
-      e.preventDefault();
-      const c = filteredColours[activeColourIdx];
-      if (c) selectColour(c.name, c.hex);
-    } else if (e.key === "Escape") {
-      setShowColourDropdown(false);
-      setActiveColourIdx(-1);
-    }
-  };
-
-  const handleColourInputChange = (val: string) => {
-    setColourQuery(val);
-    const matched = COLOUR_MAP.get(val.toLowerCase());
-    if (matched) {
-      setForm(p => ({ ...p, bottleColour: val, bottleColourCode: matched }));
-    } else {
-      setForm(p => ({ ...p, bottleColour: val, bottleColourCode: "" }));
-    }
-    setShowColourDropdown(true);
-    setActiveColourIdx(-1);
-  };
-
-  const resolvedColourCode = COLOUR_MAP.get(colourQuery.toLowerCase()) || form.bottleColourCode || null;
-
-  const handleSubmit = () => onSave({
-    ...form,
-    productCode: form.productCode || null,
-    industry: form.industry || null,
-    machineType: isP(form.materialType) ? "Outsourced" : (form.machineType || null),
-    materialType: form.materialType || null,
-    hsnCode: form.hsnCode || null,
-    defaultUnit: form.defaultUnit || null,
-    bottleWeight: form.bottleWeight || null,
-    bottleColour: form.bottleColour || null,
-    bottleColourCode: form.bottleColourCode || null,
-    capColour: form.capColour || null,
-  });
 
   return (
     <>
@@ -255,73 +336,28 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
               {UNIT_OPTIONS.filter(Boolean).map(o => <option key={o} value={o}>{o}</option>)}
             </select>
           </div>
-          <div><Label>Bottle Weight</Label><Input value={form.bottleWeight} onChange={f("bottleWeight")} /></div>
-          <div className="sm:col-span-2"><Label>Bottle Colour</Label>
-            <div className="relative mt-1">
-              <div className="flex items-center gap-2">
-                {resolvedColourCode && (
-                  <span
-                    className="w-5 h-5 rounded border shrink-0 mt-0.5"
-                    style={{
-                      backgroundColor: resolvedColourCode === "transparent" ? "#f3f4f6" : resolvedColourCode,
-                      borderColor: resolvedColourCode === "transparent" ? "#d1d5db" : resolvedColourCode === "#FFFFFF" ? "#d1d5db" : resolvedColourCode,
-                    }}
+          <div className="sm:col-span-2"><Label>Variants (weight / colour)</Label>
+            <div className="space-y-2 mt-1">
+              {variants.length === 0 && (
+                <p className="text-xs text-muted-foreground">No variants. Add a weight + colour combination below.</p>
+              )}
+              {variants.map((v, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <Input
+                    value={v.weight}
+                    onChange={(e) => updateVariant(i, { weight: e.target.value })}
+                    placeholder="Weight (e.g. 80g)"
+                    className="w-36 shrink-0"
                   />
-                )}
-                <input
-                  ref={colourInputRef}
-                  type="text"
-                  value={colourQuery}
-                  onChange={(e) => handleColourInputChange(e.target.value)}
-                  onFocus={() => { setShowColourDropdown(true); setActiveColourIdx(-1); }}
-                  onKeyDown={handleColourKeyDown}
-                  placeholder="Type a colour name..."
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground"
-                />
-              </div>
-              {showColourDropdown && filteredColours.length > 0 && (
-                <div ref={colourDropdownRef} className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md">
-                  {filteredColours.map((c, i) => (
-                    <button
-                      key={c.name}
-                      type="button"
-                      onMouseDown={(e) => { e.preventDefault(); selectColour(c.name, c.hex); }}
-                      onMouseEnter={() => setActiveColourIdx(i)}
-                      className={`flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left ${
-                        i === activeColourIdx ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
-                      }`}
-                    >
-                      <span
-                        className="w-3.5 h-3.5 rounded-full border shrink-0"
-                        style={{
-                          backgroundColor: c.hex === "transparent" ? "#f3f4f6" : c.hex,
-                          borderColor: c.hex === "transparent" ? "#d1d5db" : c.hex === "#FFFFFF" ? "#d1d5db" : c.hex,
-                        }}
-                      />
-                      {c.name}
-                    </button>
-                  ))}
+                  <div className="flex-1"><ColourInput value={v.colour} onChange={(name, code) => updateVariant(i, { colour: name, code })} /></div>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-destructive" onClick={() => removeVariant(i)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
-              )}
-            </div>
-            <div className="flex items-center gap-2 mt-2">
-              <label className="text-xs text-muted-foreground flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="color"
-                  value={form.bottleColourCode || "#800080"}
-                  onChange={(e) => {
-                    setForm(p => ({ ...p, bottleColourCode: e.target.value }));
-                    setColourQuery("");
-                  }}
-                  className="h-6 w-6 rounded border border-input cursor-pointer p-0"
-                />
-                Custom hex (optional)
-              </label>
-              {form.bottleColourCode && form.bottleColour && (
-                <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                  {form.bottleColour} = {form.bottleColourCode}
-                </Badge>
-              )}
+              ))}
+              <Button variant="outline" size="sm" onClick={addVariant}>
+                <Plus className="h-3.5 w-3.5 mr-1" /> Add Variant
+              </Button>
             </div>
           </div>
           <div><Label>Cap Colour</Label><Input value={form.capColour} onChange={f("capColour")} /></div>
@@ -439,6 +475,7 @@ export default function Products() {
               <TableHead>HSN</TableHead>
               <TableHead>Unit</TableHead>
               <TableHead>Bottle</TableHead>
+              <TableHead>Variants</TableHead>
               <TableHead>Cap</TableHead>
               <TableHead>Status</TableHead>
               {canManage && <TableHead className="w-20" />}
@@ -446,9 +483,9 @@ export default function Products() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={canManage ? 11 : 10} className="text-center py-8">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={canManage ? 12 : 11} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : products?.length === 0 ? (
-              <TableRow><TableCell colSpan={canManage ? 11 : 10} className="text-center py-8 text-muted-foreground">No products yet.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={canManage ? 12 : 11} className="text-center py-8 text-muted-foreground">No products yet.</TableCell></TableRow>
             ) : (
               products?.map(p => (
                 <TableRow key={p.id}>
@@ -475,6 +512,22 @@ export default function Products() {
                       )}
                       <span>{[p.bottleWeight, p.bottleColour].filter(Boolean).join(" · ") || "-"}</span>
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    {p.variants && p.variants.length > 0 ? (
+                      <div className="flex flex-col gap-1">
+                        <Badge variant="secondary" className="text-[10px] w-fit">{p.variants.length} variant{p.variants.length > 1 ? "s" : ""}</Badge>
+                        <div className="flex flex-wrap gap-1">
+                          {p.variants.map(v => (
+                            <span key={v.id} className="text-[10px] text-muted-foreground border rounded px-1.5 py-0.5 whitespace-nowrap">
+                              {[v.weight, v.defaultColor].filter(Boolean).join(" · ")}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">-</span>
+                    )}
                   </TableCell>
                   <TableCell>{p.capColour || "-"}</TableCell>
                   <TableCell>

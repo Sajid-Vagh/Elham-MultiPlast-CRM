@@ -538,7 +538,12 @@ export const CreateProductBody = zod.object({
   "hsnCode": zod.string().nullish(),
   "defaultUnit": zod.string().nullish(),
   "defaultGst": zod.number().nullish(),
-  "status": zod.string().nullish()
+  "status": zod.string().nullish(),
+  "variants": zod.array(zod.object({
+    "weight": zod.string().nullish(),
+    "defaultColor": zod.string().nullish(),
+    "isActive": zod.boolean().nullish()
+  })).nullish()
 })
 
 export const CreateProductResponse = zod.object({
@@ -558,7 +563,17 @@ export const CreateProductResponse = zod.object({
   "defaultUnit": zod.string().nullish(),
   "defaultGst": zod.number().nullish(),
   "status": zod.string().nullish(),
-  "createdAt": zod.string().optional()
+  "createdAt": zod.string().optional(),
+  "variants": zod.array(zod.object({
+    "id": zod.number(),
+    "productId": zod.number(),
+    "weight": zod.string().nullish(),
+    "defaultColor": zod.string().nullish(),
+    "isActive": zod.boolean(),
+    "createdAt": zod.string().optional(),
+    "updatedAt": zod.string().optional()
+  })).optional(),
+  "variantCount": zod.number().optional()
 })
 
 
@@ -583,7 +598,17 @@ export const GetProductResponse = zod.object({
   "defaultUnit": zod.string().nullish(),
   "defaultGst": zod.number().nullish(),
   "status": zod.string().nullish(),
-  "createdAt": zod.string().optional()
+  "createdAt": zod.string().optional(),
+  "variants": zod.array(zod.object({
+    "id": zod.number(),
+    "productId": zod.number(),
+    "weight": zod.string().nullish(),
+    "defaultColor": zod.string().nullish(),
+    "isActive": zod.boolean(),
+    "createdAt": zod.string().optional(),
+    "updatedAt": zod.string().optional()
+  })).optional(),
+  "variantCount": zod.number().optional()
 })
 
 
@@ -606,7 +631,12 @@ export const UpdateProductBody = zod.object({
   "hsnCode": zod.string().nullish(),
   "defaultUnit": zod.string().nullish(),
   "defaultGst": zod.number().nullish(),
-  "status": zod.string().nullish()
+  "status": zod.string().nullish(),
+  "variants": zod.array(zod.object({
+    "weight": zod.string().nullish(),
+    "defaultColor": zod.string().nullish(),
+    "isActive": zod.boolean().nullish()
+  })).nullish()
 })
 
 export const UpdateProductResponse = zod.object({
@@ -626,7 +656,17 @@ export const UpdateProductResponse = zod.object({
   "defaultUnit": zod.string().nullish(),
   "defaultGst": zod.number().nullish(),
   "status": zod.string().nullish(),
-  "createdAt": zod.string().optional()
+  "createdAt": zod.string().optional(),
+  "variants": zod.array(zod.object({
+    "id": zod.number(),
+    "productId": zod.number(),
+    "weight": zod.string().nullish(),
+    "defaultColor": zod.string().nullish(),
+    "isActive": zod.boolean(),
+    "createdAt": zod.string().optional(),
+    "updatedAt": zod.string().optional()
+  })).optional(),
+  "variantCount": zod.number().optional()
 })
 
 
@@ -1188,7 +1228,14 @@ export const GetReportByProductResponseItem = zod.object({
   "productCode": zod.string().optional(),
   "totalQuantity": zod.number(),
   "totalValue": zod.number(),
-  "dealCount": zod.number()
+  "dealCount": zod.number(),
+  "variants": zod.array(zod.object({
+    "weight": zod.string().nullish(),
+    "colour": zod.string().nullish(),
+    "dealCount": zod.number(),
+    "totalQuantity": zod.number(),
+    "totalValue": zod.number()
+  })).optional()
 })
 export const GetReportByProductResponse = zod.array(GetReportByProductResponseItem)
 

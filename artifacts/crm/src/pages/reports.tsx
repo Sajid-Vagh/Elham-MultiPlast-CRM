@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, Fragment } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from "@/components/ui/sheet";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, PieChart, Pie, Legend, Tooltip, Sector } from "recharts";
-import { TrendingUp, Users, Briefcase, DollarSign, XCircle, Download, Search, Phone, ExternalLink, Eye, Copy } from "lucide-react";
+import { TrendingUp, Users, Briefcase, DollarSign, XCircle, Download, Search, Phone, ExternalLink, Eye, Copy, ChevronDown, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { UserAvatar } from "@/components/user-avatar";
 import { STAGE_CHART_COLORS } from "@/lib/deal-stages";
@@ -48,7 +48,10 @@ const PIE_COLORS = ["#f87171","#fb923c","#fbbf24","#a3e635","#34d399","#60a5fa",
 
 function downloadCSV(data: any[], filename: string) {
   if (!data.length) return;
-  const headers = Object.keys(data[0]);
+  const headers = Object.keys(data[0]).filter(h => {
+    const v = data[0][h];
+    return typeof v !== "object" || v == null;
+  });
   const csv = [
     headers.join(","),
     ...data.map(row =>
@@ -85,6 +88,7 @@ export default function Reports() {
   const [detailSearch, setDetailSearch] = useState("");
   const [detailData, setDetailData] = useState<{ data?: any[]; records?: any[]; total: number } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
   const [, navigate] = useLocation();
 
   const { data: summary } = useQuery({
@@ -496,6 +500,7 @@ export default function Reports() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-8"></TableHead>
                     <TableHead>Product</TableHead>
                     <TableHead>Code</TableHead>
                     <TableHead>Deals</TableHead>
@@ -504,18 +509,61 @@ export default function Reports() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {byProduct?.sort((a, b) => b.totalValue - a.totalValue).map(row => (
-                    <TableRow key={`${row.productId ?? "na"}-${row.productName}`}>
-                      <TableCell className="font-medium">{row.productName}</TableCell>
-                      <TableCell className="text-muted-foreground font-mono text-sm">{row.productCode}</TableCell>
-                      <TableCell>{row.dealCount}</TableCell>
-                      <TableCell>{row.totalQuantity}</TableCell>
-                      <TableCell>₹{Number(row.totalValue).toLocaleString()}</TableCell>
-                    </TableRow>
-                  ))}
+                  {byProduct?.sort((a, b) => b.totalValue - a.totalValue).map(row => {
+                    const key = `${row.productId ?? "na"}-${row.productName}`;
+                    const variants = row.variants || [];
+                    const hasVariants = variants.length > 0;
+                    const isOpen = expandedProduct === key;
+                    return (
+                      <Fragment key={key}>
+                        <TableRow className="cursor-pointer" onClick={() => hasVariants && setExpandedProduct(isOpen ? null : key)}>
+                          <TableCell>
+                            {hasVariants ? (
+                              isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="font-medium">{row.productName}</TableCell>
+                          <TableCell className="text-muted-foreground font-mono text-sm">{row.productCode || "-"}</TableCell>
+                          <TableCell>{row.dealCount}</TableCell>
+                          <TableCell>{row.totalQuantity}</TableCell>
+                          <TableCell>₹{Number(row.totalValue).toLocaleString()}</TableCell>
+                        </TableRow>
+                        {isOpen && hasVariants && (
+                          <TableRow>
+                            <TableCell colSpan={6} className="bg-muted/30 p-2">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Weight</TableHead>
+                                    <TableHead>Colour</TableHead>
+                                    <TableHead>Deals</TableHead>
+                                    <TableHead>Total Qty</TableHead>
+                                    <TableHead>Total Value</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {variants.map((v, vi) => (
+                                    <TableRow key={vi}>
+                                      <TableCell className="text-sm">{v.weight || "-"}</TableCell>
+                                      <TableCell className="text-sm">{v.colour || "-"}</TableCell>
+                                      <TableCell className="text-sm">{v.dealCount}</TableCell>
+                                      <TableCell className="text-sm">{v.totalQuantity}</TableCell>
+                                      <TableCell className="text-sm">₹{Number(v.totalValue).toLocaleString()}</TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                   {(!byProduct || byProduct.length === 0) && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                         No products found for the selected filters.
                       </TableCell>
                     </TableRow>

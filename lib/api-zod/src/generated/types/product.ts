@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
+import type { ProductVariant } from "./productVariant";
+
 export interface Product {
   id: number;
   name: string;
@@ -25,4 +27,6 @@ export interface Product {
   /** @nullable */
   status?: string | null;
   createdAt?: string;
+  variants?: ProductVariant[];
+  variantCount?: number;
 }

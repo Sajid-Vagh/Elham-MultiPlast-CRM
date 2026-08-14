@@ -6,6 +6,16 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export interface ProductVariantStat {
+  /** @nullable */
+  weight?: string | null;
+  /** @nullable */
+  colour?: string | null;
+  dealCount: number;
+  totalQuantity: number;
+  totalValue: number;
+}
+
 export interface ProductStat {
   productId: number;
   productName: string;
@@ -13,4 +23,5 @@ export interface ProductStat {
   totalQuantity: number;
   totalValue: number;
   dealCount: number;
+  variants?: ProductVariantStat[];
 }
