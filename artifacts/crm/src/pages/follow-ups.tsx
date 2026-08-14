@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { onActivityChange } from "@/lib/query-invalidation";
 import { dedupeById } from "@/lib/parse-notes";
+import { useActivityCountSync } from "@/lib/activity-count-context";
 import { CategoryBadge } from "@/components/category-badge";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { useActiveUnits } from "@/lib/use-active-units";
@@ -409,6 +410,16 @@ export default function FollowUps() {
       setPage(1);
     }
   }, [filteredActivities.length, page]);
+
+  // Keep the sidebar "Activity" badge in sync with the filtered table rows.
+  // The effect dependency is the filtered length itself, so it only runs when
+  // the visible count actually changes — no infinite render loop. On unmount
+  // the count is reset so the sidebar falls back to the global pending count.
+  const syncActivityCount = useActivityCountSync();
+  useEffect(() => {
+    syncActivityCount(filteredActivities.length);
+    return () => syncActivityCount(null);
+  }, [filteredActivities.length, syncActivityCount]);
 
   const todayDate = todayStr();
 

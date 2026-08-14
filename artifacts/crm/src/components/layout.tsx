@@ -6,6 +6,7 @@ import { Link, useLocation } from "wouter";
 import { playFollowUpSound, showBrowserNotification } from "@/lib/notification-sound";
 import { NotificationProvider, useNotifications, groupConversations } from "@/lib/notification-context";
 import { dedupeById, parseNotesText } from "@/lib/parse-notes";
+import { ActivityCountProvider, useActivityCount } from "@/lib/activity-count-context";
 import { NotificationPopup } from "./notification-popup";
 import { useToast } from "@/hooks/use-toast";
 import { NotificationSidePanel } from "./notification-side-panel";
@@ -126,10 +127,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   return (
-    <NotificationProvider userId={user.id}>
-      <LayoutMain user={user}>{children}</LayoutMain>
-      <NotificationSidePanel />
-    </NotificationProvider>
+    <ActivityCountProvider>
+      <NotificationProvider userId={user.id}>
+        <LayoutMain user={user}>{children}</LayoutMain>
+        <NotificationSidePanel />
+      </NotificationProvider>
+    </ActivityCountProvider>
   );
 }
 
@@ -208,6 +211,12 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     if (!upcomingActivities) return 0;
     return upcomingActivities.filter(a => a.callStatus === "Pending").length;
   }, [upcomingActivities]);
+
+  // The Activity list page publishes its filtered row count here. When the page
+  // is mounted, the sidebar badge matches exactly what is visible in the table;
+  // otherwise it falls back to the global pending count.
+  const publishedActivityCount = useActivityCount();
+  const activityBadgeCount = publishedActivityCount ?? followUpCount;
 
   const d = new Date();
   const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -415,9 +424,9 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
                 >
                   <item.icon className="h-4 w-4 flex-shrink-0" style={!isActive ? { color: item.color } : {}} />
                   <span className="text-sm font-medium flex-1">{item.label}</span>
-                  {item.href === "/follow-ups" && followUpCount > 0 && (
+                  {item.href === "/follow-ups" && activityBadgeCount > 0 && (
                     <Badge className="text-[10px] h-5 min-w-5 px-1.5 flex items-center justify-center bg-orange-500 text-white border-0">
-                      {followUpCount}
+                      {activityBadgeCount}
                     </Badge>
                   )}
                 </div>
