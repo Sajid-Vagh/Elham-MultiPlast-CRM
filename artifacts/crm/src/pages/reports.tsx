@@ -14,13 +14,22 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from "@/components/ui/sheet";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, PieChart, Pie, Legend, Tooltip, Sector } from "recharts";
-import { TrendingUp, Users, Briefcase, DollarSign, XCircle, Download, Search, Phone, ExternalLink, Eye, Copy, ChevronDown, ChevronRight } from "lucide-react";
+import { TrendingUp, Users, Briefcase, DollarSign, XCircle, Download, Search, Phone, ExternalLink, Eye, Copy, ChevronDown, ChevronRight, FileSpreadsheet, FileText } from "lucide-react";
+import * as XLSX from "xlsx";
 import { useToast } from "@/hooks/use-toast";
 import { UserAvatar } from "@/components/user-avatar";
 import { STAGE_CHART_COLORS } from "@/lib/deal-stages";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
-import { ExportDropdown } from "@/components/export-dropdown";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { useDateFilter } from "@/lib/use-date-filter";
@@ -46,17 +55,12 @@ function UnitPicker({ value, onChange }: { value: string; onChange: (v: string) 
 
 const PIE_COLORS = ["#f87171","#fb923c","#fbbf24","#a3e635","#34d399","#60a5fa","#a78bfa","#f472b6","#94a3b8"];
 
-function downloadCSV(data: any[], filename: string) {
-  if (!data.length) return;
-  const headers = Object.keys(data[0]).filter(h => {
-    const v = data[0][h];
-    return typeof v !== "object" || v == null;
-  });
+function downloadCSV(headers: string[], rows: any[][], filename: string) {
+  if (!headers.length && !rows.length) return;
   const csv = [
     headers.join(","),
-    ...data.map(row =>
-      headers.map(h => {
-        const val = row[h];
+    ...rows.map(r =>
+      r.map(val => {
         const str = val == null ? "" : String(val);
         return str.includes(",") || str.includes('"') || str.includes("\n")
           ? `"${str.replace(/"/g, '""')}"`
@@ -73,6 +77,15 @@ function downloadCSV(data: any[], filename: string) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+function downloadExcel(sheets: { name: string; headers: string[]; rows: any[][] }[], filename: string) {
+  const wb = XLSX.utils.book_new();
+  for (const s of sheets) {
+    const ws = XLSX.utils.aoa_to_sheet([s.headers, ...s.rows]);
+    XLSX.utils.book_append_sheet(wb, ws, s.name.slice(0, 31));
+  }
+  XLSX.writeFile(wb, filename);
 }
 
 export default function Reports() {
@@ -128,31 +141,110 @@ export default function Reports() {
     navigate(`/deals?${p.toString()}`);
   };
 
-  const getCurrentTabData = useCallback(() => {
-    switch (activeTab) {
-      case "pipeline": return pipeline;
-      case "by-owner": return byOwner;
-      case "by-city": return byCity;
-      case "by-state": return dealsByState;
-      case "by-product": return byProduct;
-      case "lost-reasons": return lostReasons;
-      default: return [];
+  const ALL_TABS = ["pipeline", "by-owner", "by-city", "by-state", "by-product", "lost-reasons"];
+
+  const buildTabSheet = (tab: string): { name: string; headers: string[]; rows: any[][] } => {
+    switch (tab) {
+      case "pipeline": {
+        const d = pipeline ?? [];
+        return {
+          name: "Pipeline Report",
+          headers: ["Stage", "Deals", "Total Value", "Probability %"],
+          rows: d.map(r => [r.stage, r.count, r.totalValue ?? 0, r.probability ?? ""]),
+        };
+      }
+      case "by-owner": {
+        const d = byOwner ?? [];
+        return {
+          name: "Performance by Owner",
+          headers: ["Owner", "Total Deals", "Active Deals", "Won Deals", "Lost Deals", "Won Value"],
+          rows: d.map(r => [r.userName, r.totalDeals, r.activeDeals, r.wonDeals, r.lostDeals, r.totalWonValue ?? 0]),
+        };
+      }
+      case "by-city": {
+        const d = [...(byCity ?? [])].sort((a, b) => (b.totalWonValue ?? 0) - (a.totalWonValue ?? 0));
+        return {
+          name: "Performance by City",
+          headers: ["City", "Total Deals", "Won Deals", "Won Value", "Lost Deals"],
+          rows: d.map(r => [r.city, r.totalDeals, r.wonDeals, r.totalWonValue ?? 0, r.lostDeals]),
+        };
+      }
+      case "by-state": {
+        const d = [...dealsByState].sort((a, b) => (b.totalWonValue ?? 0) - (a.totalWonValue ?? 0));
+        return {
+          name: "Performance by State",
+          headers: ["State", "Total Deals", "Won Deals", "Won Value", "Lost Deals"],
+          rows: d.map(r => [r.state, r.totalDeals, r.wonDeals, r.totalWonValue ?? 0, r.lostDeals]),
+        };
+      }
+      case "by-product": {
+        const d = [...(byProduct ?? [])].sort((a, b) => (b.totalValue ?? 0) - (a.totalValue ?? 0));
+        const rows: any[][] = [];
+        for (const r of d) {
+          rows.push([r.productName, r.productCode ?? "-", r.dealCount, r.totalQuantity ?? 0, r.totalValue ?? 0]);
+          for (const v of r.variants ?? []) {
+            rows.push([`${r.productName} - ${v.weight ?? "-"} / ${v.colour ?? "-"}`, "", v.dealCount, v.totalQuantity ?? 0, v.totalValue ?? 0]);
+          }
+        }
+        return {
+          name: "Performance by Product",
+          headers: ["Product", "Code", "Deals", "Total Qty", "Total Value"],
+          rows,
+        };
+      }
+      case "lost-reasons": {
+        const d = lostReasons ?? [];
+        const total = d.reduce((s, r) => s + (r.count ?? 0), 0);
+        return {
+          name: "Lost Reasons",
+          headers: ["Reason", "Deals", "Share %"],
+          rows: d.map(r => [r.reason, r.count, total > 0 ? Math.round((r.count / total) * 100) : 0]),
+        };
+      }
+      default:
+        return { name: "Report", headers: ["Report"], rows: [] };
     }
-  }, [activeTab, pipeline, byOwner, byCity, dealsByState, byProduct, lostReasons]);
+  };
 
-  const exportCSV = useCallback(() => {
-    const data = getCurrentTabData() ?? [];
-    downloadCSV(data, `report-${activeTab}.csv`);
-  }, [getCurrentTabData, activeTab]);
+  const doQuickExport = (format: "xlsx" | "csv") => {
+    const sheet = buildTabSheet(activeTab);
+    const date = new Date().toISOString().split("T")[0];
+    const fname = `report-${activeTab}_${date}`;
+    if (format === "xlsx") {
+      if (!sheet.rows.length) {
+        toast({ title: "Nothing to export", description: "No data in the current view.", variant: "destructive" });
+        return;
+      }
+      downloadExcel([sheet], `${fname}.xlsx`);
+    } else {
+      downloadCSV(sheet.headers, sheet.rows, `${fname}.csv`);
+    }
+    toast({ title: "Export completed", description: `Quick ${format.toUpperCase()} downloaded (${sheet.name}).` });
+  };
 
-  const exportPrint = useCallback(() => {
-    window.print();
-  }, []);
-
-  const exportExcel = useCallback(() => {
-    const data = getCurrentTabData() ?? [];
-    downloadCSV(data, `report-${activeTab}.csv`);
-  }, [getCurrentTabData, activeTab]);
+  const doDetailedExport = (format: "xlsx" | "csv") => {
+    const date = new Date().toISOString().split("T")[0];
+    const fname = `reports-complete_${date}`;
+    const allSheets = ALL_TABS.map(tab => buildTabSheet(tab)).filter(s => s.rows.length > 0);
+    if (!allSheets.length) {
+      toast({ title: "Nothing to export", description: "No report data for the current filters.", variant: "destructive" });
+      return;
+    }
+    if (format === "xlsx") {
+      downloadExcel(allSheets, `${fname}.xlsx`);
+    } else {
+      const headers = ["Report", ...Array.from(new Set(allSheets.flatMap(s => s.headers)))];
+      const rows = allSheets.flatMap(s =>
+        s.rows.map(r => {
+          const cell: Record<string, any> = {};
+          s.headers.forEach((h, i) => { cell[h] = r[i]; });
+          return [s.name, ...headers.slice(1).map(h => cell[h] ?? "")];
+        })
+      );
+      downloadCSV(headers, rows, `${fname}.csv`);
+    }
+    toast({ title: "Export completed", description: `Detailed ${format.toUpperCase()} downloaded (complete report).` });
+  };
 
   const fetchLostDetail = useCallback(async (reason: string) => {
     setDetailLoading(true);
@@ -272,10 +364,44 @@ export default function Reports() {
 
         {/* Export buttons */}
         <div className="flex gap-2 flex-wrap mb-4">
-          <ExportDropdown
-            exportUrl="/api/exports/reports"
-            filename="Pipeline_Report"
-          />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Download className="h-4 w-4 mr-2" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <FileText className="h-4 w-4 mr-2" />
+                  <span>Quick Export (Current View)</span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem onClick={() => doQuickExport("xlsx")}>
+                    <FileSpreadsheet className="h-4 w-4 mr-2" /> Excel (.xlsx)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => doQuickExport("csv")}>
+                    <FileText className="h-4 w-4 mr-2" /> CSV (.csv)
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  <span>Detailed Export (Complete Report)</span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem onClick={() => doDetailedExport("xlsx")}>
+                    <FileSpreadsheet className="h-4 w-4 mr-2" /> Excel (.xlsx)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => doDetailedExport("csv")}>
+                    <FileText className="h-4 w-4 mr-2" /> CSV (.csv)
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* ── PIPELINE TAB ── */}
