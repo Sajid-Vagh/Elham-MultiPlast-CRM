@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, activitiesTable, usersTable, contactsTable, dealsTable, notificationsTable } from "@workspace/db";
-import { eq, and, or, gte, lte, isNull, SQL, sql, desc } from "drizzle-orm";
+import { eq, and, or, gte, lte, isNull, inArray, SQL, sql, desc } from "drizzle-orm";
 import { CreateActivityBody, UpdateActivityBody, ListActivitiesQueryParams, UpdateActivityParams, DeleteActivityParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -258,6 +258,7 @@ router.post("/activities", async (req, res) => {
     if (!currentUser) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     let activity: typeof activitiesTable.$inferSelect | undefined;
+    let completedExistingFollowUp = false;
 
     // Upsert: ensure only one FollowUp per deal
     if (parsed.data.type === "FollowUp" && parsed.data.dealId) {
@@ -337,6 +338,70 @@ router.post("/activities", async (req, res) => {
       }
     }
 
+    // Same-day dedup: when an activity (Call/WhatsApp/Email/...) is logged for a
+    // deal on the same day as its scheduled Follow-up, they represent the SAME
+    // follow-up event. Merge into the existing row instead of inserting a second
+    // one, so a single scheduled+completed call is never counted twice by the
+    // dashboard cards or the activity list. The reverse direction is covered
+    // too (scheduling a Follow-up on the same day a Call was already logged).
+    if (!activity && parsed.data.dealId && parsed.data.followUpDate) {
+      const [sameDay] = await db.select()
+        .from(activitiesTable)
+        .where(and(
+          eq(activitiesTable.dealId, parsed.data.dealId),
+          eq(activitiesTable.followUpDate, parsed.data.followUpDate),
+          inArray(activitiesTable.type, ["Call", "FollowUp"]),
+        ))
+        .orderBy(desc(activitiesTable.createdAt))
+        .limit(1);
+
+      if (sameDay) {
+        const mergeData: Record<string, any> = {
+          contactId: parsed.data.contactId ?? sameDay.contactId ?? null,
+          notes: parsed.data.notes !== undefined
+            ? appendNotesHistory(sameDay.notes, parsed.data.notes, currentUser)
+            : sameDay.notes,
+          followUpDate: parsed.data.followUpDate,
+          followUpType: parsed.data.followUpType ?? sameDay.followUpType ?? null,
+          followUpTime: parsed.data.followUpTime ?? sameDay.followUpTime ?? null,
+          updatedAt: new Date(),
+          updatedBy: currentUser.id,
+          isEdited: true,
+        };
+
+        if (sameDay.type === "FollowUp" && parsed.data.type !== "FollowUp") {
+          // The scheduled follow-up was fulfilled by this activity log — complete it
+          // (preserve its type/scheduling fields rather than overwriting them).
+          mergeData.callStatus = "Completed";
+          completedExistingFollowUp = true;
+        } else {
+          mergeData.type = parsed.data.type;
+          mergeData.callStatus = parsed.data.callStatus ?? sameDay.callStatus ?? "Pending";
+        }
+
+        const [merged] = await db.update(activitiesTable)
+          .set(mergeData)
+          .where(eq(activitiesTable.id, sameDay.id))
+          .returning();
+        if (merged) {
+          activity = merged;
+
+          if (completedExistingFollowUp) {
+            // Mirror PATCH completion side-effects: dismiss any unread
+            // "Follow-up Scheduled" notification for the completed follow-up.
+            await db
+              .update(notificationsTable)
+              .set({ notificationSeen: true, notificationSeenAt: new Date(), readAt: new Date() })
+              .where(and(
+                eq(notificationsTable.relatedId, sameDay.id),
+                eq(notificationsTable.relatedType, "activity"),
+                isNull(notificationsTable.readAt),
+              ));
+          }
+        }
+      }
+    }
+
     // If no upsert happened, insert new record
     if (!activity) {
       const notesValue = (parsed.data.type === "FollowUp" && parsed.data.notes)
@@ -393,7 +458,7 @@ router.post("/activities", async (req, res) => {
         }
       }
       // Only create notification for Regular Follow up leads or if follow-up date is set
-      if (contactOwnerId && activity.followUpDate) {
+      if (contactOwnerId && activity.followUpDate && !completedExistingFollowUp) {
         if (contactCategory === "Regular Follow up" || parsed.data.type !== "FollowUp") {
           const displayNotes = notesToDisplay(activity.notes).slice(0, 150);
           await createNotification({
