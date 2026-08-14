@@ -1392,7 +1392,7 @@ async function updateInvoiceHandler(req: any, res: any) {
       return;
     }
 
-    const { customerName, companyName, tradeName, contactId, dealId, address, addressLine1, addressLine2, addressLine3, city, district, state, pincode, gstNumber, gstStatus, mobile, taxableAmount, freight, cgst, sgst, igst, cgstPercent, sgstPercent, igstPercent, grandTotal, amountInWords, notes, items, customerType, idProofType, idProofNumber, invoiceNumber, terms, companyGstin, companyAddress, companyEmail, bankDetails, disclaimer, customerMasterId, revisionReason, wonAmountAdjustment } = req.body;
+    const { customerName, companyName, tradeName, contactId, dealId, address, addressLine1, addressLine2, addressLine3, city, district, state, pincode, gstNumber, gstStatus, mobile, taxableAmount, freight, cgst, sgst, igst, cgstPercent, sgstPercent, igstPercent, grandTotal, amountInWords, notes, items, customerType, idProofType, idProofNumber, invoiceNumber, terms, companyGstin, companyAddress, companyEmail, bankDetails, disclaimer, customerMasterId, revisionReason, wonAmountAdjustment, status: requestedStatus } = req.body;
 
     if (mobile !== undefined && !mobile.trim()) {
       res.status(400).json({ error: "Mobile number is required" });
@@ -1445,7 +1445,7 @@ async function updateInvoiceHandler(req: any, res: any) {
         grandTotal: String(grandTotal ?? existing.grandTotal ?? 0),
         amountInWords: amountInWords || existing.amountInWords || "",
         notes: notes !== undefined ? notes : existing.notes,
-        status: "Draft" as const,
+        status: requestedStatus === "Sent" ? "Sent" as const : "Draft" as const,
         version: nextVersion,
         isActive: true,
         revisionReason: revisionReason || null,
@@ -1686,7 +1686,6 @@ async function updateInvoiceHandler(req: any, res: any) {
     if (notes !== undefined) updateData.notes = notes;
 
     // Handle status transition: Draft → Sent ("Update & Send" in edit mode)
-    const requestedStatus = req.body.status;
     if (requestedStatus && requestedStatus === "Sent" && existing.status === "Draft") {
       updateData.status = "Sent";
     }
