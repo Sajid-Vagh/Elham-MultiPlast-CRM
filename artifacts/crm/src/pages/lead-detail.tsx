@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, ChevronDown, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText, Search } from "lucide-react";
+import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText, Search } from "lucide-react";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -33,31 +33,6 @@ import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { INDUSTRIES } from "@/lib/constants";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { onContactChange, onDealChange, onActivityChange } from "@/lib/query-invalidation";
-
-const TIMELINE_ICONS: Record<string, { bg: string; icon: string }> = {
-  "lead_created":    { bg: "#dbeafe", icon: "ðŸ†•" },
-  "follow_up":       { bg: "#ffedd5", icon: "ðŸ””" },
-  "call":            { bg: "#dcfce7", icon: "ðŸ“ž" },
-  "whatsapp":        { bg: "#ccfbf1", icon: "ðŸ’¬" },
-  "email":           { bg: "#dbeafe", icon: "âœ‰ï¸" },
-  "note":            { bg: "#fef9c3", icon: "ðŸ“" },
-  "activity":        { bg: "#f3f4f6", icon: "â€¢" },
-  "category_change": { bg: "#f3e8ff", icon: "ðŸ·ï¸" },
-  "comment_updated": { bg: "#e0f2fe", icon: "ðŸ’¬" },
-  "deal_created":    { bg: "#d1fae5", icon: "ðŸ¤" },
-  "deal_updated":    { bg: "#e0e7ff", icon: "ðŸ“Š" },
-  "document_uploaded": { bg: "#fef9c3", icon: "ðŸ“„" },
-  "document_replaced": { bg: "#fce7f3", icon: "ðŸ”„" },
-  "unit_change":       { bg: "#fef3c7", icon: "ðŸ­" },
-};
-
-const ACT_STYLE: Record<string, { bg: string; fg: string; icon: string }> = {
-  "Call":     { bg: "#dcfce7", fg: "#15803d", icon: "ðŸ“ž" },
-  "WhatsApp": { bg: "#ccfbf1", fg: "#0f766e", icon: "ðŸ’¬" },
-  "Email":    { bg: "#dbeafe", fg: "#1d4ed8", icon: "âœ‰ï¸" },
-  "Note":     { bg: "#fef9c3", fg: "#a16207", icon: "ðŸ“" },
-  "FollowUp": { bg: "#ffedd5", fg: "#c2410c", icon: "ðŸ””" },
-};
 
 function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -126,11 +101,8 @@ export default function LeadDetail() {
   const [activityModalOpen, setActivityModalOpen] = useState(false);
   const [completingActivity, setCompletingActivity] = useState<any>(null);
 
-  const [expandedTimelineEvent, setExpandedTimelineEvent] = useState<number | null>(null);
   const [expandedDeals, setExpandedDeals] = useState<string[]>([]);
-  const [expandedSubGroups, setExpandedSubGroups] = useState<string[]>([]);
   const [timelineSearch, setTimelineSearch] = useState("");
-  const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteActId, setDeleteActId] = useState<number | null>(null);
@@ -257,138 +229,114 @@ export default function LeadDetail() {
     }
   };
 
-  const mergedTimeline = useMemo(() => {
-    const items: Array<{
-      key: string; type: string; icon: string; bg: string; description: string;
-      createdAt: string; userName: string | null; notes: string | null;
-      activityId?: number; callStatus?: string | null; followUpDate?: string | null; isEdited?: boolean | null; dealStage?: string;
-      dealId?: number | null;
-    }> = [];
-
-    if (activities) {
-      for (const act of activities) {
-        const st = ACT_STYLE[act.type] || { bg: "#f3f4f6", icon: "â€¢", fg: "#333" };
-        items.push({
-          key: `act-${act.id}`, type: act.type, icon: st.icon, bg: st.bg,
-          description: act.type === "FollowUp" ? "Follow-up Scheduled" : `${act.type} Logged`,
-          createdAt: act.createdAt, userName: act.user?.name || null,
-          notes: parseNote(act.notes) || parseNote((act as any).notesDisplay) || null,
-          activityId: act.id, callStatus: act.callStatus, followUpDate: act.followUpDate, isEdited: act.isEdited,
-          dealId: act.dealId || null,
-        });
-      }
-    }
-    if (timeline) {
-      for (const ev of timeline) {
-        if (["follow_up","call","whatsapp","email","note","activity"].includes(ev.type)) continue;
-        const ts = TIMELINE_ICONS[ev.type] || { bg: "#f3f4f6", icon: "â€¢" };
-        // Match timeline events to deals
-        let eventDealId: number | null = null;
-        if (ev.type === "deal_created" || ev.type === "deal_updated") {
-          const matchingDeal = deals?.find(d => ev.description.includes(d.title || `Deal #${d.id}`));
-          eventDealId = matchingDeal?.id || null;
-        }
-        items.push({
-          key: `tl-${items.length}`, type: ev.type, icon: ts.icon, bg: ts.bg,
-          description: ev.description, createdAt: ev.createdAt, userName: ev.user?.name || null,
-          notes: parseNote(ev.notes) || null, dealStage: ev.dealStage, dealId: eventDealId,
-        });
-      }
-    }
-    // Filter by date range
-    let filtered = items;
-    if (actFromDate) filtered = filtered.filter(i => i.createdAt.slice(0, 10) >= actFromDate);
-    if (actToDate) filtered = filtered.filter(i => i.createdAt.slice(0, 10) <= actToDate);
-    // Sort newest first
-    filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    // Deduplicate identical events (same type + description + timestamp)
-    const seen = new Set<string>();
-    filtered = filtered.filter(item => {
-      const key = `${item.type}|${item.description}|${item.createdAt}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
+  // Deal-centric timeline: flat chronological list per deal (no General group, no nested drawers)
+  const dealTimeline = useMemo(() => {
+    type FlatEvent = {
+      key: string; date: string; kind: "lead" | "deal" | "followup" | "pi" | "won" | "lost" | "activity";
+      label: string; detail?: string | null; meta?: string | null; activityId?: number;
+    };
+    const formatDay = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    const dateOk = (d: string) => {
+      const day = d.slice(0, 10);
+      if (actFromDate && day < actFromDate) return false;
+      if (actToDate && day > actToDate) return false;
       return true;
-    });
-    return filtered;
-  }, [activities, timeline, actFromDate, actToDate, deals]);
-
-  // Group timeline events by deal
-  type TimelineEvent = typeof mergedTimeline[number];
-  type SubGroupKey = "calls" | "notes" | "followUps" | "production" | "documents" | "other";
-  type DealGroup = {
-    dealId: number | null;
-    deal: typeof deals extends (infer D)[] | undefined ? D | null : null;
-    events: TimelineEvent[];
-    subGroups: Record<SubGroupKey, TimelineEvent[]>;
-    totalCount: number;
-    lastActivity: string | null;
-  };
-
-  const groupedByDeal = useMemo(() => {
-    const groupMap = new Map<number | null, DealGroup>();
-
-    // Initialize groups for existing deals
-    if (deals) {
-      for (const d of deals) {
-        groupMap.set(d.id, {
-          dealId: d.id, deal: d, events: [],
-          subGroups: { calls: [], notes: [], followUps: [], production: [], documents: [], other: [] },
-          totalCount: 0, lastActivity: null,
-        });
-      }
-    }
-
-    // Search filter
+    };
     const searchLower = timelineSearch.toLowerCase();
-    const filtered = timelineSearch
-      ? mergedTimeline.filter(e =>
-          e.description.toLowerCase().includes(searchLower) ||
-          (e.notes || "").toLowerCase().includes(searchLower) ||
-          e.type.toLowerCase().includes(searchLower))
-      : mergedTimeline;
+    const matchesSearch = (e: FlatEvent) =>
+      !timelineSearch ||
+      e.label.toLowerCase().includes(searchLower) ||
+      (e.detail || "").toLowerCase().includes(searchLower) ||
+      (e.meta || "").toLowerCase().includes(searchLower);
 
-    for (const event of filtered) {
-      const dId = event.dealId ?? null;
-      if (!groupMap.has(dId)) {
-        groupMap.set(dId, {
-          dealId: dId, deal: null, events: [],
-          subGroups: { calls: [], notes: [], followUps: [], production: [], documents: [], other: [] },
-          totalCount: 0, lastActivity: null,
+    const groups: Array<{ deal: (typeof deals extends (infer D)[] | undefined ? D : never) | null; events: FlatEvent[]; lastActivity: string | null }> = [];
+
+    const existing = [...(deals || [])].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+    // Always open with a lead-created marker so the lead's origin is visible
+    const leadDate = contact?.createdAt;
+
+    for (const deal of existing) {
+      const events: FlatEvent[] = [];
+
+      if (leadDate && dateOk(leadDate)) {
+        events.push({
+          key: `lead-${deal.id}`, date: leadDate, kind: "lead",
+          label: `Lead created on ${formatDay(leadDate)}`,
         });
       }
-      const group = groupMap.get(dId)!;
-      group.events.push(event);
-      group.totalCount++;
 
-      // Sub-group classification
-      const t = event.type;
-      if (t === "Call") group.subGroups.calls.push(event);
-      else if (t === "Note") group.subGroups.notes.push(event);
-      else if (t === "FollowUp") group.subGroups.followUps.push(event);
-      else if (["production_order_created", "production_status_change", "category_change", "unit_change"].includes(t)
-        || t.toLowerCase().includes("production") || t.toLowerCase().includes("dispatch")) {
-        group.subGroups.production.push(event);
-      } else if (["document_uploaded", "document_replaced"].includes(t)) {
-        group.subGroups.documents.push(event);
-      } else {
-        group.subGroups.other.push(event);
+      const dealCreated = deal.createdAt;
+      if (dateOk(dealCreated)) {
+        events.push({
+          key: `deal-created-${deal.id}`, date: dealCreated, kind: "deal",
+          label: `Deal created on ${formatDay(dealCreated)}`,
+          detail: deal.title || null,
+        });
       }
 
-      if (!group.lastActivity || event.createdAt > group.lastActivity) {
-        group.lastActivity = event.createdAt;
+      // Follow-ups from scheduled/completed Call/Meeting/FollowUp activities, numbered sequentially
+      const dealActs = (activities || [])
+        .filter(a => a.dealId === deal.id)
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      let followUpNum = 0;
+      for (const act of dealActs) {
+        const isFollowUp = act.type === "Call" || act.type === "Meeting" || act.type === "FollowUp";
+        if (!dateOk(act.createdAt)) continue;
+        if (isFollowUp) followUpNum++;
+        events.push({
+          key: `act-${act.id}`, date: act.createdAt,
+          kind: isFollowUp ? "followup" : "activity",
+          label: isFollowUp ? `Follow-up ${followUpNum}` : `${act.type} Logged`,
+          detail: parseNote(act.notes) || parseNote((act as any).notesDisplay) || null,
+          meta: act.callStatus || null,
+          activityId: act.id,
+        });
       }
+
+      // Proforma invoices for this deal
+      for (const pi of (contactProformas || [])) {
+        const piDealId = (pi as any).dealId;
+        if (piDealId !== deal.id || !dateOk(pi.createdAt || "")) continue;
+        events.push({
+          key: `pi-${pi.id}`, date: pi.createdAt || dealCreated, kind: "pi",
+          label: "Proforma Invoice sent",
+          detail: pi.invoiceNumber || null,
+          meta: pi.status || null,
+        });
+      }
+
+      // Won / Lost terminal events
+      if (deal.stage === "Won" && deal.completedAt) {
+        events.push({
+          key: `won-${deal.id}`, date: deal.completedAt, kind: "won",
+          label: `Deal won on ${formatDay(deal.completedAt)}`,
+          meta: deal.totalValue ? `₹${Number(deal.totalValue).toLocaleString()}` : null,
+        });
+      } else if (deal.stage === "Lost" && deal.completedAt) {
+        events.push({
+          key: `lost-${deal.id}`, date: deal.completedAt, kind: "lost",
+          label: `Deal lost on ${formatDay(deal.completedAt)}`,
+          meta: deal.lostReason || null,
+        });
+      }
+
+      const filtered = events
+        .filter(matchesSearch)
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      groups.push({
+        deal,
+        events: filtered,
+        lastActivity: filtered.length > 0 ? filtered[filtered.length - 1].date : null,
+      });
     }
 
-    // Sort: deal groups by most recent activity (newest first), general last
-    const groups = Array.from(groupMap.values()).filter(g => g.events.length > 0);
-    groups.sort((a, b) => {
-      if (a.dealId === null) return 1;
-      if (b.dealId === null) return -1;
-      return new Date(b.lastActivity || 0).getTime() - new Date(a.lastActivity || 0).getTime();
-    });
-
-    return groups;
-  }, [mergedTimeline, deals, timelineSearch]);
+    // Sort deal groups newest-first by their most recent event; groups with no events drop out
+    const withEvents = groups.filter(g => g.events.length > 0);
+    withEvents.sort((a, b) => new Date(b.lastActivity || 0).getTime() - new Date(a.lastActivity || 0).getTime());
+    return withEvents;
+  }, [contact, deals, activities, contactProformas, actFromDate, actToDate, timelineSearch]);
 
   if (isLoading) return <div className="p-8">Loading...</div>;
   if (!contact) return <div className="p-8">Contact not found.</div>;
@@ -856,7 +804,7 @@ export default function LeadDetail() {
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
                   <ListOrdered className="h-3.5 w-3.5" /> Activity Timeline
-                  <Badge variant="outline" className="text-[10px] font-normal ml-1">{mergedTimeline.length}</Badge>
+                  <Badge variant="outline" className="text-[10px] font-normal ml-1">{dealTimeline.reduce((n, g) => n + g.events.length, 0)}</Badge>
                 </CardTitle>
                 <Button size="sm" variant="outline" onClick={() => { setActDealId(deal?.id?.toString() || ""); setActivityModalOpen(true); }}>
                   <Plus className="h-4 w-4 mr-1" /> Activity
@@ -882,69 +830,25 @@ export default function LeadDetail() {
                 </div>
               </div>
 
-              {/* Grouped Accordion Timeline */}
-              {groupedByDeal.length === 0 ? (
+              {/* Deal-centric Accordion Timeline */}
+              {dealTimeline.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-6 border rounded-lg bg-card">
-                  {actQuick !== "all" || timelineSearch ? "No events match your filters." : "No timeline events yet."}
+                  {actQuick !== "all" || timelineSearch ? "No events match your filters." : "No deals yet. Create a deal to see its timeline."}
                 </p>
               ) : (
                 <Accordion type="multiple" value={expandedDeals} onValueChange={setExpandedDeals} className="space-y-2">
-                  {groupedByDeal.map((group) => {
-                    const gKey = group.dealId ?? "general";
-                    const accordionVal = `deal-${gKey}`;
+                  {dealTimeline.map((group, gi) => {
+                    const accordionVal = `deal-${group.deal?.id}`;
                     const formatDate = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-                    const formatTime = (d: string) => new Date(d).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
 
-                    const SUBGROUP_META: Record<SubGroupKey, { label: string; icon: string; color: string }> = {
-                      calls: { label: "Calls", icon: "ðŸ“ž", color: "bg-green-50 text-green-700 border-green-200" },
-                      notes: { label: "Notes", icon: "ðŸ“", color: "bg-yellow-50 text-yellow-700 border-yellow-200" },
-                      followUps: { label: "Follow Ups", icon: "ðŸ””", color: "bg-orange-50 text-orange-700 border-orange-200" },
-                      production: { label: "Production & Status", icon: "ðŸ­", color: "bg-blue-50 text-blue-700 border-blue-200" },
-                      documents: { label: "Documents", icon: "ðŸ“„", color: "bg-purple-50 text-purple-700 border-purple-200" },
-                      other: { label: "Other", icon: "â€¢", color: "bg-gray-50 text-gray-700 border-gray-200" },
-                    };
-
-                    const renderEvent = (event: TimelineEvent, eventIdx: number) => {
-                      const uniqueKey = `${gKey}-${event.key}-${eventIdx}`;
-                      const isExpanded = expandedTimelineEvent === eventIdx;
-                      return (
-                        <div key={uniqueKey} className="flex items-start gap-2 py-1.5 px-2 rounded hover:bg-muted/30 transition-colors cursor-pointer group/event"
-                          onClick={() => setExpandedTimelineEvent(isExpanded ? null : eventIdx)}>
-                          <div className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] ring-1 ring-background" style={{ backgroundColor: event.bg }}>
-                            {event.icon}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-[11px] font-medium">{event.description}</span>
-                              <span className="text-[10px] text-muted-foreground">
-                                {formatDate(event.createdAt)} â€¢ {formatTime(event.createdAt)}
-                              </span>
-                              {event.type === "FollowUp" && event.callStatus && (
-                                <Badge variant="outline" className={`text-[9px] px-1 py-0 ${event.callStatus === "Completed" ? "border-green-300 text-green-700" : event.callStatus === "Cancelled" ? "border-red-300 text-red-700" : "border-orange-300 text-orange-700"}`}>
-                                  {event.callStatus}
-                                </Badge>
-                              )}
-                            </div>
-                            {isExpanded && (
-                              <div className="mt-1 pl-3 space-y-0.5 text-[11px] text-muted-foreground border-l-2 border-border ml-0.5">
-                                {event.userName && <p><span className="font-medium text-foreground">By:</span> {event.userName}</p>}
-                                {event.notes && <p className="whitespace-pre-wrap"><span className="font-medium text-foreground">Notes:</span> {event.notes}</p>}
-                                {event.dealStage && <p><span className="font-medium text-foreground">Stage:</span> <Badge variant="outline" className="text-[9px]">{event.dealStage}</Badge></p>}
-                                {event.followUpDate && <p><span className="font-medium text-foreground">Follow-up:</span> {event.followUpDate}</p>}
-                              </div>
-                            )}
-                          </div>
-                          {event.activityId && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setDeleteActId(event.activityId!); }}
-                              className="h-5 w-5 rounded hover:bg-red-50 flex items-center justify-center text-muted-foreground hover:text-red-600 opacity-0 group-hover/event:opacity-100 transition-opacity shrink-0 mt-0.5"
-                              title="Delete activity"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
-                      );
+                    const KIND_STYLE: Record<string, { dot: string; text: string; badge?: string }> = {
+                      lead:     { dot: "bg-blue-500", text: "text-blue-700" },
+                      deal:     { dot: "bg-emerald-500", text: "text-emerald-700" },
+                      followup: { dot: "bg-orange-500", text: "text-orange-700" },
+                      pi:       { dot: "bg-indigo-500", text: "text-indigo-700" },
+                      won:      { dot: "bg-green-600", text: "text-green-700" },
+                      lost:     { dot: "bg-red-500", text: "text-red-700" },
+                      activity: { dot: "bg-gray-400", text: "text-gray-600" },
                     };
 
                     return (
@@ -953,65 +857,52 @@ export default function LeadDetail() {
                           <div className="flex-1 flex items-center justify-between mr-2">
                             <div className="flex items-center gap-2 min-w-0">
                               <FolderTree className="h-4 w-4 text-amber-600 shrink-0" />
-                              {group.deal ? (
+                              {group.deal && (
                                 <div className="min-w-0">
-                                  <span className="text-sm font-semibold truncate block">{group.deal.title || `Deal #${group.deal.id}`}</span>
+                                  <span className="text-sm font-semibold truncate block">Deal {gi + 1} {group.deal.title ? `(${group.deal.title})` : ""}</span>
                                   <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                                     <span>{formatDate(group.deal.createdAt)}</span>
-                                    {group.deal.totalValue && <span className="font-medium text-foreground">â‚¹{Number(group.deal.totalValue).toLocaleString()}</span>}
+                                    {group.deal.totalValue && <span className="font-medium text-foreground">₹{Number(group.deal.totalValue).toLocaleString()}</span>}
                                     <span className={`px-1.5 py-0 rounded-full font-medium ${STAGE_BADGE_COLORS[group.deal.stage] || "bg-gray-100"}`}>{group.deal.stage}</span>
                                   </div>
                                 </div>
-                              ) : (
-                                <span className="text-sm font-semibold">General</span>
                               )}
                             </div>
                             <div className="flex items-center gap-3 text-[10px] text-muted-foreground shrink-0">
                               {group.lastActivity && <span>Last: {formatDate(group.lastActivity)}</span>}
-                              <Badge variant="outline" className="text-[10px]">{group.totalCount} activities</Badge>
+                              <Badge variant="outline" className="text-[10px]">{group.events.length} events</Badge>
                             </div>
                           </div>
                         </AccordionTrigger>
                         <AccordionContent className="px-3 pb-3 pt-0">
-                          <div className="space-y-2 mt-1">
-                            {(Object.keys(group.subGroups) as SubGroupKey[]).map(sgKey => {
-                              const sgEvents = group.subGroups[sgKey];
-                              if (sgEvents.length === 0) return null;
-                              const meta = SUBGROUP_META[sgKey];
-                              const sgAccordionVal = `${accordionVal}-${sgKey}`;
-                              const isVisible = expandedSubGroups.includes(sgAccordionVal);
-                              const showCount = visibleCounts[sgAccordionVal] || 5;
+                          <div className="mt-1">
+                            {group.events.map((ev) => {
+                              const st = KIND_STYLE[ev.kind] || KIND_STYLE.lead;
                               return (
-                                <div key={sgKey} className="border rounded-md overflow-hidden">
-                                  <button
-                                    className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium hover:bg-muted/30 transition-colors"
-                                    onClick={() => {
-                                      setExpandedSubGroups(prev =>
-                                        prev.includes(sgAccordionVal)
-                                          ? prev.filter(s => s !== sgAccordionVal)
-                                          : [...prev, sgAccordionVal]
-                                      );
-                                    }}
-                                  >
-                                    <div className="flex items-center gap-1.5">
-                                      <span>{meta.icon}</span>
-                                      <span>{meta.label}</span>
-                                      <Badge variant="outline" className={`text-[9px] px-1 py-0 ${meta.color}`}>{sgEvents.length}</Badge>
-                                    </div>
-                                    <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform duration-200 ${isVisible ? "" : "-rotate-90"}`} />
-                                  </button>
-                                  {isVisible && (
-                                    <div className="border-t bg-muted/10">
-                                      {sgEvents.slice(0, showCount).map((ev, i) => renderEvent(ev, i))}
-                                      {sgEvents.length > showCount && (
-                                        <button
-                                          className="w-full text-center text-[11px] text-primary hover:underline py-1.5 font-medium"
-                                          onClick={() => setVisibleCounts(prev => ({ ...prev, [sgAccordionVal]: (prev[sgAccordionVal] || 5) + 10 }))}
-                                        >
-                                          Show More ({sgEvents.length - showCount} remaining)
-                                        </button>
+                                <div key={ev.key} className="flex items-start gap-2 py-1.5 group/event">
+                                  <div className="flex flex-col items-center pt-1.5">
+                                    <span className={`w-2.5 h-2.5 rounded-full ring-2 ring-background ${st.dot}`} />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className={`text-[11px] font-medium ${st.text}`}>{ev.label}</span>
+                                      <span className="text-[10px] text-muted-foreground">{formatDate(ev.date)}</span>
+                                      {ev.meta && (
+                                        <Badge variant="outline" className={`text-[9px] px-1 py-0 ${ev.kind === "followup" && ev.meta === "Completed" ? "border-green-300 text-green-700" : ev.kind === "followup" && ev.meta === "Cancelled" ? "border-red-300 text-red-700" : ev.kind === "followup" ? "border-orange-300 text-orange-700" : "border-gray-300 text-gray-600"}`}>
+                                          {ev.meta}
+                                        </Badge>
                                       )}
                                     </div>
+                                    {ev.detail && <p className="text-[11px] text-muted-foreground whitespace-pre-wrap mt-0.5">{ev.detail}</p>}
+                                  </div>
+                                  {ev.activityId && (
+                                    <button
+                                      onClick={() => setDeleteActId(ev.activityId!)}
+                                      className="h-5 w-5 rounded hover:bg-red-50 flex items-center justify-center text-muted-foreground hover:text-red-600 opacity-0 group-hover/event:opacity-100 transition-opacity shrink-0 mt-1"
+                                      title="Delete activity"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </button>
                                   )}
                                 </div>
                               );
