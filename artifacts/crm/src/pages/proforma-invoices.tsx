@@ -5,7 +5,6 @@ import { useGetMe } from "@workspace/api-client-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Card, CardContent, CardHeader, CardTitle,
@@ -23,7 +22,7 @@ import {
   Plus, Download, Printer, Share2, Mail, Eye, FileText, Save, ArrowLeft, Trash2, Search,
   ChevronLeft, ChevronRight, Send, Loader2, CheckCircle2, RefreshCw, Building2, Calendar, Clock,
   Shield, Store, MapPin, Verified, History, GitBranch, ArrowRight, Link as LinkIcon, Copy,
-  AlertTriangle, XCircle, Mic,
+  AlertTriangle, XCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { CancelOrderModal } from "@/components/cancel-order-modal";
@@ -33,8 +32,6 @@ import { customerLabel } from "@/lib/customer-label";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useStatusFilter } from "@/lib/global-filters";
 import { ClearFiltersButton } from "@/components/clear-filters-button";
-import { VoiceRecorder } from "@/components/voice-recorder";
-import { DealWonCelebration } from "@/components/deal-won-celebration";
 import { CreatableSelect } from "@/components/creatable-select";
 const STATUS_COLORS: Record<string, string> = {
   "Draft": "bg-gray-100 text-gray-700",
@@ -159,7 +156,6 @@ export default function ProformaInvoicesPage() {
   const queryClient = useQueryClient();
   const token = localStorage.getItem("crm_token");
   const { units: activeUnits } = useActiveUnits();
-  const WON_UNITS = useMemo(() => activeUnits.filter(u => u !== "Not Sure"), [activeUnits]);
   const urlContactId = (() => {
     if (typeof window === "undefined") return null;
     const p = new URLSearchParams(window.location.search).get("contactId");
@@ -284,22 +280,8 @@ export default function ProformaInvoicesPage() {
   const statusFilter = globalStatus === "All" ? "all" : (INVOICE_STATUSES as string[]).includes(globalStatus) ? globalStatus : "all";
   const setStatusFilter = (v: string) => setGlobalStatus(v === "all" ? "All" : v);
   const [orderTypeFilter, setOrderTypeFilter] = useState<string | null>(urlOrderType);
-  const [pendingWonAdjustment, setPendingWonAdjustment] = useState<{ status: string; originalTaxableAmount: number; newTaxableAmount: number } | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
-  const [markWonDialog, setMarkWonDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
-  const [markWonUnit, setMarkWonUnit] = useState("");
-  const [markWonAmount, setMarkWonAmount] = useState("");
-  const [markWonSalesNotes, setMarkWonSalesNotes] = useState("");
-  const [wonSubmitting, setWonSubmitting] = useState(false);
-  const [wonDealForCelebration, setWonDealForCelebration] = useState<any>(null);
-  const [wonTodayCount, setWonTodayCount] = useState(1);
-
-  // Voice note state (captured during the Mark Won flow)
-  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
-  const [voiceNoteBlob, setVoiceNoteBlob] = useState<Blob | null>(null);
-  const [voiceNoteTranscript, setVoiceNoteTranscript] = useState("");
-  const [voiceNoteDurationMs, setVoiceNoteDurationMs] = useState(0);
-  const [voiceNoteId, setVoiceNoteId] = useState<number | null>(null);
+  const [pendingWonAdjustment, setPendingWonAdjustment] = useState<{ status: string; originalTaxableAmount: number; newTaxableAmount: number } | null>(null);
 
   const ensureArray = (json: any): any[] => {
     if (Array.isArray(json)) return json;
@@ -1751,102 +1733,6 @@ const setItemDisplay = (idx: number, patch: Partial<InvoiceItem>) => {
     window.open(`mailto:?subject=${subject}&body=${body}`, "_blank");
   };
 
-  const handleMarkWonCancel = () => {
-    setMarkWonDialog({ open: false, invoice: null });
-    setMarkWonUnit("");
-    setMarkWonAmount("");
-    setMarkWonSalesNotes("");
-    setShowVoiceRecorder(false);
-    setVoiceNoteBlob(null);
-    setVoiceNoteTranscript("");
-    setVoiceNoteDurationMs(0);
-    setVoiceNoteId(null);
-  };
-
-  const handleMarkWonSubmit = async () => {
-    const inv = markWonDialog.invoice;
-    if (!inv?.dealId) return;
-    const amount = Number(markWonAmount);
-    if (!markWonAmount || isNaN(amount) || amount <= 0) {
-      toast({ title: "Validation Error", description: "Won Amount must be greater than 0", variant: "destructive" });
-      return;
-    }
-
-    setWonSubmitting(true);
-
-    // Upload voice note (if any) BEFORE the mark-won call so we can link it directly
-    let uploadedVoiceNoteId: number | null = null;
-    if (voiceNoteBlob) {
-      try {
-        const formData = new FormData();
-        formData.append("file", voiceNoteBlob, `voice-note-${Date.now()}.webm`);
-        formData.append("dealId", String(inv.dealId));
-        if (voiceNoteTranscript) formData.append("transcript", voiceNoteTranscript);
-        if (voiceNoteDurationMs) formData.append("durationMs", String(voiceNoteDurationMs));
-        const res = await fetch("/api/voice-notes", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-        });
-        if (res.ok) {
-          const data = await res.json();
-          uploadedVoiceNoteId = data.id;
-        }
-      } catch (err) {
-        console.error("[Mark Won voice note upload]", err);
-      }
-    }
-
-    try {
-      const result = await customFetch<any>(`/deals/${inv.dealId}/mark-won`, {
-        method: "POST",
-        body: JSON.stringify({
-          wonAmount: amount,
-          productionUnit: markWonUnit || undefined,
-          salesNotes: markWonSalesNotes || null,
-          voiceNoteId: uploadedVoiceNoteId ?? null,
-        }),
-      });
-      setWonSubmitting(false);
-      handleMarkWonCancel();
-      toast({
-        title: "Deal Won!",
-        description: `Order ${result.orderNumber} created automatically. Production team notified.`,
-      });
-      fetchInvoices();
-      onPIChange(queryClient, inv.dealId, inv.contactId || undefined);
-      onDealChange(queryClient, inv.dealId, inv.contactId || undefined);
-      onProductionChange(queryClient);
-      if (mode === "detail") {
-        fetch(`/api/proforma-invoices/${inv.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-          .then(r => r.ok ? r.json() : null)
-          .then(updated => { if (updated) setSelectedInvoice(updated); })
-          .catch(() => {});
-      }
-
-      // Trigger celebration
-      const celebKey = `deal_won_celebrated_${inv.dealId}`;
-      if (!sessionStorage.getItem(celebKey) && localStorage.getItem("crm_dealWonCelebration") !== "off") {
-        sessionStorage.setItem(celebKey, "true");
-        setWonTodayCount(result.todayWonCount ?? 1);
-        setWonDealForCelebration({
-          id: inv.dealId,
-          contactId: inv.contactId,
-          contact: { name: inv.customerName, companyName: inv.companyName },
-          totalValue: inv.grandTotal,
-          wonAmount: amount,
-          salesOwner: me,
-          orderId: result.orderId,
-        });
-      }
-    } catch (err: any) {
-      setWonSubmitting(false);
-      toast({ title: "Error", description: err?.message || "Failed to mark deal as Won", variant: "destructive" });
-    }
-  };
-
   const renderInvoicePreviewHtml = (inv: any) => {
     const cgstPct = Number(inv.cgstPercent || 0);
     const sgstPct = Number(inv.sgstPercent || 0);
@@ -3087,14 +2973,6 @@ ${pagesHtml}
           }}>
             <FileText className="h-4 w-4 mr-1" /> Edit
           </Button>
-          {inv.dealId && (
-            <Button variant="outline" size="sm" onClick={() => {
-              setMarkWonUnit(inv.productionUnit || "");
-              setMarkWonDialog({ open: true, invoice: inv });
-            }} disabled={!!inv.productionOrder}>
-              {inv.productionOrder ? "Production Active" : "Mark Deal as Won"}
-            </Button>
-          )}
           {inv.orderId && (
             <Button variant="destructive" size="sm" onClick={() => setCancelInvoice(inv)}>
               <XCircle className="h-4 w-4 mr-1" /> Cancel Order
@@ -3288,66 +3166,6 @@ ${pagesHtml}
           contactId={cancelInvoice?.contactId}
           dealId={cancelInvoice?.dealId}
         />
-
-        <Dialog open={markWonDialog.open} onOpenChange={(o) => { if (!o) handleMarkWonCancel(); }}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader><DialogTitle>Mark Deal as Won</DialogTitle></DialogHeader>
-            <div className="space-y-3">
-              <div>
-                <Label>Production Unit</Label>
-                <Select value={markWonUnit} onValueChange={setMarkWonUnit}>
-                  <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
-                  <SelectContent>
-                    {WON_UNITS.map((u) => (
-                      <SelectItem key={u} value={u}>{u}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Won Amount (₹) *</Label>
-                <Input type="number" min="0" step="0.01" value={markWonAmount} onChange={(e) => setMarkWonAmount(e.target.value)} placeholder="Enter won amount" />
-              </div>
-              <div>
-                <Label>Sales Notes (optional)</Label>
-                <Textarea value={markWonSalesNotes} onChange={(e) => setMarkWonSalesNotes(e.target.value)} rows={2} placeholder="Note for the sales team" />
-              </div>
-              {!showVoiceRecorder && (
-                <Button type="button" variant="outline" size="sm" onClick={() => setShowVoiceRecorder(true)}>
-                  <Mic className="h-4 w-4 mr-1" /> Add Voice Note
-                </Button>
-              )}
-              {showVoiceRecorder && (
-                <VoiceRecorder
-                  onCancel={() => { setShowVoiceRecorder(false); setVoiceNoteBlob(null); setVoiceNoteTranscript(""); setVoiceNoteDurationMs(0); }}
-                  onRecordingComplete={(blob, transcript, durationMs) => {
-                    setVoiceNoteBlob(blob);
-                    setVoiceNoteTranscript(transcript);
-                    setVoiceNoteDurationMs(durationMs);
-                  }}
-                />
-              )}
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={handleMarkWonCancel} disabled={wonSubmitting}>Cancel</Button>
-              <Button onClick={handleMarkWonSubmit} disabled={wonSubmitting || !markWonAmount || Number(markWonAmount) <= 0}>
-                {wonSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
-                {wonSubmitting ? "Moving to Won..." : "Confirm & Move to Won"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {wonDealForCelebration && (
-          <DealWonCelebration
-            deal={wonDealForCelebration}
-            open
-            todayWonCount={wonTodayCount}
-            onClose={() => setWonDealForCelebration(null)}
-            onViewOrder={() => { setLocation(`/orders/${wonDealForCelebration.orderId ?? ""}`); setWonDealForCelebration(null); }}
-            onGoToProduction={() => { setLocation("/production/orders"); setWonDealForCelebration(null); }}
-          />
-        )}
       </div>
     );
   }
