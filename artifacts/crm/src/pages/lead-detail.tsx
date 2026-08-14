@@ -444,7 +444,7 @@ export default function LeadDetail() {
     <div className="flex items-center justify-between group">
       <div>
         <span className="text-xs text-muted-foreground">{label}: </span>
-        <span>{value || "â€”"}</span>
+        <span>{value || "-"}</span>
       </div>
       <Button variant="ghost" size="icon" className="h-5 w-5 opacity-0 group-hover:opacity-100" onClick={() => { setEditField(field); setEditValue(value || ""); setEditDialogOpen(true); }} title={`Edit ${label}`}>
         <Pencil className="h-3 w-3" />
@@ -473,7 +473,7 @@ export default function LeadDetail() {
                     style={{ backgroundColor: `${CATEGORY_COLORS["My Client"]}20`, color: CATEGORY_COLORS["My Client"] }}
                     title={`Customer since ${(contact as any).customerSince}`}
                   >
-                    â­ My Client
+                    My Client
                   </Badge>
                 )}
                 {contact.tags && <Badge variant="outline" className="text-[10px]">{contact.tags}</Badge>}
@@ -790,7 +790,7 @@ export default function LeadDetail() {
 
         {/* ========== RIGHT CONTENT ========== */}
         <div className="lg:col-span-2 space-y-4">
-          {/* â•â•â• GROUPED ACTIVITY TIMELINE â•â•â• */}
+          {/* ===== GROUPED ACTIVITY TIMELINE ===== */}
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
@@ -813,7 +813,7 @@ export default function LeadDetail() {
                 ))}
                 <span className="text-muted-foreground text-xs ml-1">|</span>
                 <Input type="date" value={actFromDate} onChange={e => { setActFromDate(e.target.value); setActQuick("custom"); }} className="h-7 w-36 text-xs" />
-                <span className="text-xs text-muted-foreground">â€“</span>
+                <span className="text-xs text-muted-foreground">to</span>
                 <Input type="date" value={actToDate} onChange={e => { setActToDate(e.target.value); setActQuick("custom"); }} className="h-7 w-36 text-xs" />
                 <div className="relative ml-auto min-w-[160px] max-w-[200px]">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
