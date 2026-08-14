@@ -15,5 +15,6 @@ export const INDUSTRIES: string[] = [
   "Edible Oil",
   "Chemicals",
   "Cosmetics",
+  "Pharmaceutical",
   "Other",
 ];
