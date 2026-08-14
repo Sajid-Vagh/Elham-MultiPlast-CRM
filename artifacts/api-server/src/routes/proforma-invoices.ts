@@ -196,11 +196,13 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
     return `<table class="items">
       <thead>
         <tr>
-          <th style="width:5%">S.N.</th>
-          <th style="width:30%">Description of Goods</th>
-          <th style="width:12%">HSN/SAC Code</th>
-          <th style="width:9%">Qty</th>
-          <th style="width:8%">Unit</th>
+          <th style="width:4%">S.N.</th>
+          <th style="width:22%">Description of Goods</th>
+          <th style="width:8%">Weight</th>
+          <th style="width:10%">Colour</th>
+          <th style="width:11%">HSN/SAC Code</th>
+          <th style="width:8%">Qty</th>
+          <th style="width:6%">Unit</th>
           <th style="width:10%">Price</th>
           <th style="width:12%">Amount</th>
         </tr>
@@ -292,13 +294,15 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
     // Brought Forward row on pages after the first
     const prevPt = pi > 0 ? pageTotals[pi - 1] : null;
     const bdRow = prevPt
-      ? `<tr><td colspan="3" style="text-align:left;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">b/d</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevPt.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevPt.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevPt.amt.toFixed(2)}</td></tr>`
+      ? `<tr><td colspan="5" style="text-align:left;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">b/d</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevPt.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevPt.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevPt.amt.toFixed(2)}</td></tr>`
       : "";
 
     const rows = pageItems.map((item: any, ri: number) => `
       <tr>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${b.start + ri + 1}</td>
         <td style="text-align:left;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;word-break:break-word;white-space:normal;">${formatItemDescription(item)}</td>
+        <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.weight || "-"}</td>
+        <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.bottleColour || "-"}</td>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.hsnCode || "-"}</td>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.quantity}</td>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.unit}</td>
@@ -309,7 +313,7 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
     // Carry Forward row on non-last pages
     const pt = pageTotals[pi];
     const cfRow = !b.last
-      ? `<tr><td colspan="3" style="text-align:left;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">Totals c/o</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${pt.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${pt.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${pt.amt.toFixed(2)}</td></tr>`
+      ? `<tr><td colspan="5" style="text-align:left;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">Totals c/o</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${pt.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${pt.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${pt.amt.toFixed(2)}</td></tr>`
       : "";
 
     const pageStyle = pi < pageBoundaries.length - 1

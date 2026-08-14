@@ -25,6 +25,7 @@ import { VoiceNotePlayer } from "@/components/voice-note-player";
 import { VoiceNoteUploader } from "@/components/voice-note-uploader";
 import { useVoiceNotes, type VoiceNoteData } from "@/lib/use-voice-notes";
 import { useActiveUnits } from "@/lib/use-active-units";
+import { cleanProductName } from "@/lib/product-name";
 import { ArrowLeft, Plus, Clock, User, Send, MessageSquare, Truck, Calendar, Factory, ClipboardList, CheckCircle2, AlertTriangle, CircleDot, ChevronDown, Mic, ArrowRightLeft, Zap } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -351,7 +352,7 @@ export default function ProductionOrderDetail() {
       const oqty = Number(p.orderedQuantity || 0);
       const rqty = Number(p.readyQuantity || 0);
       return {
-        productName: p.productName || matched?.productName,
+        productName: cleanProductName(p.productName || matched?.productName),
         materialType: p.materialType || matched?.materialType,
         bottleColour: p.bottleColour || matched?.bottleColour,
         bottleWeight: p.bottleWeight || matched?.bottleWeight,

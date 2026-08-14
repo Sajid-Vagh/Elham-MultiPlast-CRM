@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useLocation } from "wouter";
 import { Package, X, AlertTriangle, Settings2, Truck } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
+import { cleanProductName } from "@/lib/product-name";
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
@@ -256,7 +257,7 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                               onClick={() => setDrawerGroup(g)}
                             >
                               <div className="flex items-start justify-between">
-                                <p className="font-semibold text-sm leading-tight">{g.productName}</p>
+                                <p className="font-semibold text-sm leading-tight">{cleanProductName(g.productName)}</p>
                                 <Badge variant="outline" className={`text-[10px] ${colors.bg} ${colors.text} ${colors.border} border shrink-0 ml-2`}>
                                   {g.materialType}
                                 </Badge>
@@ -315,7 +316,7 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
               <div className="sticky top-0 z-10 bg-background border-b px-6 py-4 flex items-center justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-semibold truncate">{drawerGroup.productName}</h2>
+                    <h2 className="text-lg font-semibold truncate">{cleanProductName(drawerGroup.productName)}</h2>
                     <Badge variant="outline" className={`text-[10px] ${(MATERIAL_COLORS[drawerGroup.materialType] || MATERIAL_COLORS["HDPE"]).bg} ${(MATERIAL_COLORS[drawerGroup.materialType] || MATERIAL_COLORS["HDPE"]).text} ${(MATERIAL_COLORS[drawerGroup.materialType] || MATERIAL_COLORS["HDPE"]).border} border`}>
                       {drawerGroup.materialType}
                     </Badge>
