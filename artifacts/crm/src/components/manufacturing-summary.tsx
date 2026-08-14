@@ -20,6 +20,40 @@ const MATERIAL_COLORS: Record<string, { bg: string; text: string; border: string
   "PET": { bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200", icon: "text-amber-500" },
 };
 
+const COLOUR_HEX: Record<string, string> = {
+  "natural": "#d9c9a3",
+  "transparent": "#e5e7eb",
+  "milky": "#f5f5f0",
+  "white": "#ffffff",
+  "off white": "#f8f8f4",
+  "off-white": "#f8f8f4",
+  "sky blue": "#87ceeb",
+  "blue": "#3b82f6",
+  "silver": "#c0c0c0",
+  "golden": "#ffd700",
+  "red": "#ef4444",
+  "rose": "#fb7185",
+  "green": "#22c55e",
+  "yellow": "#eab308",
+  "black": "#111827",
+  "orange": "#f97316",
+  "pink": "#f472b6",
+  "grey": "#9ca3af",
+  "gray": "#9ca3af",
+  "brown": "#92400e",
+  "purple": "#a855f7",
+  "navy": "#1e3a8a",
+  "maroon": "#800000",
+  "beige": "#f5f5dc",
+  "cream": "#fffdd0",
+};
+
+function colourBg(colour: string, colourCode: string | null | undefined): string {
+  if (colourCode) return colourCode;
+  const key = String(colour || "").trim().toLowerCase();
+  return COLOUR_HEX[key] || "#d1d5db";
+}
+
 function formatWeight(w: string | null | undefined): string {
   if (!w || w === "-" || w === "N/A") return "N/A";
   if (/gram|gm|g$/i.test(w.trim())) return w.trim();
@@ -242,7 +276,7 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                                     Color:
                                     <span
                                       className="w-2.5 h-2.5 rounded-full border shrink-0"
-                                      style={{ backgroundColor: g.colourCode || (g.colour !== "N/A" ? g.colour.toLowerCase() : "#d1d5db"), borderColor: g.colour === "White" ? "#d1d5db" : undefined }}
+                                      style={{ backgroundColor: colourBg(g.colour, g.colourCode), borderColor: g.colour === "White" ? "#d1d5db" : undefined }}
                                     />
                                     <span className="font-semibold text-foreground">{g.colour}</span>
                                   </div>
@@ -295,7 +329,7 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                         Bottle Color:
                         <span
                           className="w-2.5 h-2.5 rounded-full border shrink-0"
-                          style={{ backgroundColor: drawerGroup.colourCode || (drawerGroup.colour !== "N/A" ? drawerGroup.colour.toLowerCase() : "#d1d5db"), borderColor: drawerGroup.colour === "White" ? "#d1d5db" : undefined }}
+                          style={{ backgroundColor: colourBg(drawerGroup.colour, drawerGroup.colourCode), borderColor: drawerGroup.colour === "White" ? "#d1d5db" : undefined }}
                         />
                         <span className="font-semibold text-foreground">{drawerGroup.colour}</span>
                       </div>

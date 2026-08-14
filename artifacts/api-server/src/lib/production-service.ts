@@ -3551,12 +3551,15 @@ export async function getManufacturingSummary(
         poi.production_status,
         poi.ordered_quantity,
         poi.ready_quantity,
-        COALESCE(NULLIF(pii.weight, ''), '-') AS weight,
-        COALESCE(NULLIF(p.bottle_colour, ''), 'N/A') AS colour,
+        COALESCE(NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, ''), '-') AS weight,
+        COALESCE(NULLIF(pii.bottle_colour, ''), NULLIF(p.bottle_colour, ''), 'N/A') AS colour,
         COALESCE(NULLIF(p.bottle_colour_code, ''), '') AS colour_code,
         ${materialExpr} AS material_type,
-        TRIM(LOWER(COALESCE(NULLIF(pii.weight, ''), '-'))) AS weight_norm,
-        TRIM(LOWER(COALESCE(NULLIF(p.bottle_colour, ''), 'N/A'))) AS colour_norm,
+        TRIM(LOWER(COALESCE(NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, ''), '-'))) AS weight_norm,
+        TRIM(LOWER(COALESCE(NULLIF(pii.bottle_colour, ''), NULLIF(p.bottle_colour, ''), 'N/A'))) AS colour_norm,
+        COALESCE(pii.product_id, (
+          SELECT p2.id FROM products p2 WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(poi.product_name)) LIMIT 1
+        )) AS product_id,
         INITCAP(TRIM(
           regexp_replace(
             regexp_replace(
@@ -3586,6 +3589,7 @@ export async function getManufacturingSummary(
     SELECT
       product_family AS "productFamily",
       product_name AS "productName",
+      MAX(product_id) AS "productId",
       MAX(weight) AS weight,
       MAX(colour) AS colour,
       MAX(colour_code) AS "colourCode",
@@ -3594,7 +3598,7 @@ export async function getManufacturingSummary(
       COUNT(DISTINCT po_id) AS "orderCount",
       array_agg(DISTINCT po_id) AS "orderIds"
     FROM product_lines
-    GROUP BY product_family, product_name, weight_norm, colour_norm, capacity_sort
+    GROUP BY product_family, product_name, product_id, weight_norm, colour_norm, capacity_sort
     HAVING SUM((ordered_quantity - ready_quantity)::numeric) > 0
     ORDER BY product_family, capacity_sort, colour_norm, weight_norm
   `);
@@ -3602,6 +3606,7 @@ export async function getManufacturingSummary(
   const groups = (results.rows || []).map((r: any) => ({
     productFamily: r.productFamily || r.productName,
     productName: r.productName,
+    productId: r.productId ?? null,
     weight: r.weight,
     colour: r.colour,
     colourCode: r.colourCode || null,
@@ -3637,11 +3642,11 @@ export async function getManufacturingSummaryDetail(
 
   if ("productName" in filter) {
     const colourFilter = filter.colour === "N/A"
-      ? sql`(p.bottle_colour IS NULL OR p.bottle_colour = '')`
-      : sql`lower(TRIM(COALESCE(NULLIF(p.bottle_colour, ''), 'N/A'))) = lower(TRIM(${filter.colour}))`;
+      ? sql`(COALESCE(NULLIF(pii.bottle_colour, ''), NULLIF(p.bottle_colour, '')) IS NULL OR COALESCE(NULLIF(pii.bottle_colour, ''), NULLIF(p.bottle_colour, '')) = '')`
+      : sql`lower(TRIM(COALESCE(NULLIF(pii.bottle_colour, ''), NULLIF(p.bottle_colour, ''), 'N/A'))) = lower(TRIM(${filter.colour}))`;
     const weightFilter = filter.weight === "-"
-      ? sql`(COALESCE(NULLIF(pii.weight, ''), p.bottle_weight) IS NULL OR COALESCE(NULLIF(pii.weight, ''), p.bottle_weight) = '')`
-      : sql`lower(TRIM(COALESCE(NULLIF(pii.weight, ''), p.bottle_weight, ''))) = lower(TRIM(${filter.weight}))`;
+      ? sql`(COALESCE(NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, '')) IS NULL OR COALESCE(NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, '')) = '')`
+      : sql`lower(TRIM(COALESCE(NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, ''), '-'))) = lower(TRIM(${filter.weight}))`;
 
     results = await db.execute(sql`
       WITH active_orders AS (
