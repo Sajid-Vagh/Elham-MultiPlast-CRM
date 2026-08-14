@@ -751,21 +751,25 @@ export default function ProformaInvoicesPage() {
             const latest = prev[0];
             // Copy products from latest PI
             if (latest.items && latest.items.length > 0) {
-              setItems(latest.items.map((it: any) => ({
-                productName: it.productName,
-                productId: it.productId || undefined,
-                hsnCode: it.hsnCode || "",
-                quantity: Number(it.quantity),
-                unit: it.unit || "Pcs",
-                rate: Number(it.rate),
-                gstPercent: Number(it.gstPercent || 0),
-                amount: Number(it.amount),
-                weight: it.weight || undefined,
-                bottleType: it.bottleType || undefined,
-                bottleColour: it.bottleColour || undefined,
-                capacity: it.capacity || undefined,
-                variants: it.variants || undefined,
-              })));
+              setItems(latest.items.map((it: any) => {
+                const item: InvoiceItem = {
+                  productName: it.productName,
+                  productId: it.productId || undefined,
+                  hsnCode: it.hsnCode || "",
+                  quantity: Number(it.quantity),
+                  unit: it.unit || "Pcs",
+                  rate: Number(it.rate),
+                  gstPercent: Number(it.gstPercent || 0),
+                  amount: Number(it.amount),
+                  weight: it.weight || undefined,
+                  bottleType: it.bottleType || undefined,
+                  bottleColour: it.bottleColour || undefined,
+                  capacity: it.capacity || undefined,
+                  variants: it.variants || undefined,
+                };
+                item.productName = displayNameFor(item);
+                return item;
+              }));
             }
             if (latest.freight) setFreight(Number(latest.freight));
             if (latest.notes) setNotes(latest.notes);
@@ -857,21 +861,11 @@ const productDisplayName = (product: any) => {
   return `${product.name}${suffix}`;
 };
 
-const formatWeight = (w: string) => {
-  const s = String(w).trim();
-  if (!s) return "";
-  return /[a-z]/i.test(s) ? s : `${s}g`;
-};
-
-// Base name (master) + chosen weight/colour, e.g. "1L Lubricant (80g, Sky Blue)".
+// Base name (master) only — Weight and Bottle Colour now have dedicated columns,
+// so the bracketed "(80g, Sky Blue)" suffix is no longer embedded in the product name.
 const displayNameFor = (item: InvoiceItem) => {
   if (!item.productId) return item.productName;
-  const base = item.masterName || formatItemDescription(item) || item.productName;
-  const parts: string[] = [];
-  if (item.weight) parts.push(formatWeight(item.weight));
-  if (item.bottleColour) parts.push(item.bottleColour);
-  const suffix = parts.length > 0 ? ` (${parts.join(", ")})` : "";
-  return `${base}${suffix}`;
+  return item.masterName || formatItemDescription(item) || item.productName;
 };
 
 const activeVariants = (product: any) => (product?.variants || []).filter((v: any) => v.isActive !== false);
@@ -2200,21 +2194,25 @@ ${pagesHtml}
                         const latest = previousInvoices[0];
                         // Copy products
                         if (latest.items && latest.items.length > 0) {
-                          setItems(latest.items.map((it: any) => ({
-                            productName: it.productName,
-                            productId: it.productId || undefined,
-                            hsnCode: it.hsnCode || "",
-                            quantity: Number(it.quantity),
-                            unit: it.unit || "Pcs",
-                            rate: Number(it.rate),
-                            gstPercent: Number(it.gstPercent || 0),
-                            amount: Number(it.amount),
-                            weight: it.weight || undefined,
-                            bottleType: it.bottleType || undefined,
-                            bottleColour: it.bottleColour || undefined,
-                            capacity: it.capacity || undefined,
-                            variants: it.variants || undefined,
-                          })));
+                          setItems(latest.items.map((it: any) => {
+                            const item: InvoiceItem = {
+                              productName: it.productName,
+                              productId: it.productId || undefined,
+                              hsnCode: it.hsnCode || "",
+                              quantity: Number(it.quantity),
+                              unit: it.unit || "Pcs",
+                              rate: Number(it.rate),
+                              gstPercent: Number(it.gstPercent || 0),
+                              amount: Number(it.amount),
+                              weight: it.weight || undefined,
+                              bottleType: it.bottleType || undefined,
+                              bottleColour: it.bottleColour || undefined,
+                              capacity: it.capacity || undefined,
+                              variants: it.variants || undefined,
+                            };
+                            item.productName = displayNameFor(item);
+                            return item;
+                          }));
                         }
                         // Copy freight and notes (business data only)
                         if (latest.freight) setFreight(Number(latest.freight));
@@ -3057,21 +3055,25 @@ ${pagesHtml}
             setSgstPct(Number(inv.sgstPercent || 0));
             setIgstPct(Number(inv.igstPercent || 0));
             setNotes(inv.notes || "");
-            setItems((inv.items || []).map((i: any) => ({
-              productName: i.productName,
-              productId: i.productId || undefined,
-              hsnCode: i.hsnCode || "",
-              quantity: Number(i.quantity),
-              unit: i.unit || "Pcs",
-              rate: Number(i.rate),
-              gstPercent: Number(i.gstPercent || 0),
-              amount: Number(i.amount),
-              weight: i.weight || undefined,
-              bottleType: i.bottleType || undefined,
-              bottleColour: i.bottleColour || undefined,
-              capacity: i.capacity || undefined,
-              variants: i.variants || undefined,
-            })));
+            setItems((inv.items || []).map((i: any) => {
+              const it: InvoiceItem = {
+                productName: i.productName,
+                productId: i.productId || undefined,
+                hsnCode: i.hsnCode || "",
+                quantity: Number(i.quantity),
+                unit: i.unit || "Pcs",
+                rate: Number(i.rate),
+                gstPercent: Number(i.gstPercent || 0),
+                amount: Number(i.amount),
+                weight: i.weight || undefined,
+                bottleType: i.bottleType || undefined,
+                bottleColour: i.bottleColour || undefined,
+                capacity: i.capacity || undefined,
+                variants: i.variants || undefined,
+              };
+              it.productName = displayNameFor(it);
+              return it;
+            }));
             setEditMode(true);
             setMode("create");
             if (inv.contactId) {

@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 import { Check, Plus } from "lucide-react";
 
 interface CreatableSelectProps {
@@ -14,11 +15,15 @@ export function CreatableSelect({ value, onChange, options, placeholder, classNa
   const [query, setQuery] = useState(value);
   const [open, setOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState(-1);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const blurTimerRef = useRef<number | null>(null);
 
-  useEffect(() => {
+  // Sync the typed query with the incoming `value` (e.g. when an existing
+  // invoice loads into the form) BEFORE paint so the saved colour is never
+  // rendered as blank for a frame.
+  useLayoutEffect(() => {
     setQuery(value);
   }, [value]);
 
@@ -30,6 +35,32 @@ export function CreatableSelect({ value, onChange, options, placeholder, classNa
 
   const exactMatch = filtered.some(o => o.toLowerCase() === query.trim().toLowerCase());
   const isCustom = query.trim() !== "" && !exactMatch;
+
+  const menuHeight = Math.min(Math.max(filtered.length + (isCustom ? 1 : 0), 1) * 32 + 10, 176);
+
+  // Position the menu at fixed viewport coordinates so it escapes any ancestor
+  // with overflow:hidden/auto and flips upward when there isn't room below.
+  const reposition = useCallback(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    const rect = input.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom - 4;
+    const top = spaceBelow < menuHeight
+      ? Math.max(4, rect.top - 4 - menuHeight)
+      : rect.bottom + 4;
+    setMenuPos({ top, left: rect.left, width: rect.width });
+  }, [menuHeight]);
+
+  useEffect(() => {
+    if (!open) { setMenuPos(null); return; }
+    reposition();
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [open, reposition]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -110,8 +141,12 @@ export function CreatableSelect({ value, onChange, options, placeholder, classNa
         placeholder={placeholder}
         className={className || "flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground"}
       />
-      {open && !disabled && (
-        <div ref={dropdownRef} className="absolute z-50 mt-1 w-full max-h-40 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md">
+      {open && !disabled && menuPos && createPortal(
+        <div
+          ref={dropdownRef}
+          style={{ position: "fixed", top: menuPos.top, left: menuPos.left, width: menuPos.width, zIndex: 9999 }}
+          className="max-h-44 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md"
+        >
           {filtered.length === 0 && !isCustom && (
             <div className="px-3 py-2 text-sm text-muted-foreground">No options</div>
           )}
@@ -138,7 +173,8 @@ export function CreatableSelect({ value, onChange, options, placeholder, classNa
               <span className="truncate">Use &quot;{query.trim()}&quot;</span>
             </button>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
