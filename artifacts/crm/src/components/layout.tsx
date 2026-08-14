@@ -5,6 +5,7 @@ import { onActivityChange } from "@/lib/query-invalidation";
 import { Link, useLocation } from "wouter";
 import { playFollowUpSound, showBrowserNotification } from "@/lib/notification-sound";
 import { NotificationProvider, useNotifications, groupConversations } from "@/lib/notification-context";
+import { dedupeById, parseNotesText } from "@/lib/parse-notes";
 import { NotificationPopup } from "./notification-popup";
 import { useToast } from "@/hooks/use-toast";
 import { NotificationSidePanel } from "./notification-side-panel";
@@ -212,7 +213,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const todayActivities = useMemo(() => {
     if (!upcomingActivities) return [];
-    return upcomingActivities.filter(a => a.followUpDate === today && !dismissedToday.has(a.id) && a.callStatus === "Pending");
+    return dedupeById(upcomingActivities).filter(a => a.followUpDate === today && !dismissedToday.has(a.id) && a.callStatus === "Pending");
   }, [upcomingActivities, today, dismissedToday]);
 
   const unreadCount = sseUnreadCount;
@@ -475,7 +476,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
                   <Clock className="h-4 w-4 text-amber-500 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{name}</p>
-                    <p className="text-xs text-muted-foreground truncate">{a.notes || "Follow-up call"}</p>
+                    <p className="text-xs text-muted-foreground truncate">{parseNotesText(a.notes) || "Follow-up call"}</p>
                   </div>
                   <span className="text-xs font-medium text-amber-600 flex-shrink-0">{time}</span>
                 </div>
@@ -579,7 +580,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
                         <Clock className="h-4 w-4 mt-0.5 text-amber-500 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{name}</p>
-                          <p className="text-xs text-muted-foreground">{a.notes || "Follow-up call"}</p>
+                          <p className="text-xs text-muted-foreground">{parseNotesText(a.notes) || "Follow-up call"}</p>
                           <p className="text-xs text-amber-600 font-medium mt-0.5">{time}</p>
                         </div>
                         <div className="flex gap-1 flex-shrink-0">

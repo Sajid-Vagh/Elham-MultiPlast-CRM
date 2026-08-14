@@ -9,6 +9,7 @@ import {
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { onDealChange, onActivityChange, onProductionChange } from "@/lib/query-invalidation";
+import { dedupeById } from "@/lib/parse-notes";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -170,7 +171,7 @@ export default function DealDetail() {
 
   const filteredActivities = useMemo(() => {
     if (!activities) return [];
-    let list = [...activities].reverse();
+    let list = dedupeById(activities).reverse();
     if (actFromDate) list = list.filter(a => a.createdAt.slice(0, 10) >= actFromDate);
     if (actToDate)   list = list.filter(a => a.createdAt.slice(0, 10) <= actToDate);
     return list;

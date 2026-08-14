@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { onActivityChange } from "@/lib/query-invalidation";
+import { parseNotesDisplay } from "@/lib/parse-notes";
 import { Calendar, Clock, Phone, MessageSquare, Video, Users, MapPin, Mail, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
 import { FlexibleTimeInput } from "@/components/flexible-time-input";
 
@@ -204,9 +205,9 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
       setSaving(false);
     }
   };
+  const currentNotes = parseNotesDisplay(activity?.notes, activity?.notesDisplay) || "";
 
-  const currentNotes = activity?.notesDisplay || activity?.notes;
-  const prevNotes = lastCallActivity?.notesDisplay || lastCallActivity?.notes;
+  const prevNotes = parseNotesDisplay(lastCallActivity?.notes, lastCallActivity?.notesDisplay) || "";
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>

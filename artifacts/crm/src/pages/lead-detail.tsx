@@ -33,6 +33,7 @@ import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { INDUSTRIES } from "@/lib/constants";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { onContactChange, onDealChange, onActivityChange } from "@/lib/query-invalidation";
+import { parseNotesText, parseNotesDisplay, dedupeById } from "@/lib/parse-notes";
 
 function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -216,18 +217,7 @@ export default function LeadDetail() {
     else { setActFromDate(""); setActToDate(""); }
   };
 
-  const parseNote = (notes: string | null | undefined): string | null => {
-    if (!notes) return null;
-    try {
-      const parsed = JSON.parse(notes);
-      if (Array.isArray(parsed)) {
-        return parsed.map((item: any) => item.text ?? item).filter(Boolean).join("\n");
-      }
-      return notes;
-    } catch {
-      return notes;
-    }
-  };
+  const parseNote = (notes: string | null | undefined): string | null => parseNotesText(notes);
 
   // Deal-centric timeline: flat chronological list per deal (no General group, no nested drawers)
   const dealTimeline = useMemo(() => {
@@ -280,7 +270,7 @@ export default function LeadDetail() {
       // user's actual comment/notes. System audit logs (Note rows auto-generated
       // for "changed Follow-up Date/Status", "PI Sent", "Deal Stage Changed", etc.)
       // are hidden entirely so the timeline stays a clean story.
-      const dealActs = (activities || [])
+      const dealActs = dedupeById(activities || [])
         .filter(a => a.dealId === deal.id && (a.type === "Call" || a.type === "Meeting" || a.type === "FollowUp"))
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
       let followUpNum = 0;
@@ -625,7 +615,7 @@ export default function LeadDetail() {
                     </div>
                   )}
                   {upcomingFollowUp.notes && (
-                    <p className="text-xs text-muted-foreground whitespace-pre-wrap bg-muted/30 p-2.5 rounded-md">{upcomingFollowUp.notes}</p>
+                    <p className="text-xs text-muted-foreground whitespace-pre-wrap bg-muted/30 p-2.5 rounded-md">{parseNotesDisplay(upcomingFollowUp.notes, upcomingFollowUp.notesDisplay)}</p>
                   )}
                   <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                     <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => { setActDealId(deal?.id?.toString() || ""); setCompletingActivity(upcomingFollowUp); setActivityModalOpen(true); }}>

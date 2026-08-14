@@ -260,9 +260,9 @@ export function NotificationProvider({ userId, children }: { userId: number | un
           const n: Notification = JSON.parse(event.data);
           setNotifications((prev) => {
             if (prev.some(p => p.id === n.id)) return prev;
+            setTotal((t) => t + 1);
             return [n, ...prev].slice(0, MAX_NOTIFICATIONS);
           });
-          setTotal((prev) => prev + 1);
           lastKnownMaxIdRef.current = Math.max(lastKnownMaxIdRef.current ?? 0, n.id);
           invalidateChatLists(n);
 

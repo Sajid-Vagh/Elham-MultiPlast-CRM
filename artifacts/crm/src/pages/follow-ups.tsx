@@ -16,6 +16,7 @@ import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { onActivityChange } from "@/lib/query-invalidation";
+import { dedupeById } from "@/lib/parse-notes";
 import { CategoryBadge } from "@/components/category-badge";
 import { ExportDropdown } from "@/components/export-dropdown";
 import { useActiveUnits } from "@/lib/use-active-units";
@@ -303,7 +304,7 @@ export default function FollowUps() {
   // Filters, search, sort
   const filteredActivities = useMemo(() => {
     if (!activities) return [];
-    let list = [...activities];
+    let list = dedupeById(activities);
 
     // Unit filter
     if (unitFilter !== "All") {

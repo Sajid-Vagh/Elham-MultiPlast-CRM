@@ -23,6 +23,7 @@ import { useDateFilter, getLabel } from "@/lib/use-date-filter";
 import { useOwnerFilter } from "@/lib/global-filters";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { ClearFiltersButton } from "@/components/clear-filters-button";
+import { dedupeById } from "@/lib/parse-notes";
 
 function daysDiff(dateStr: string): number {
   const today = new Date();
@@ -143,7 +144,7 @@ export default function Dashboard() {
     if (!dueContacts) return [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    return dueContacts
+    return dedupeById(dueContacts)
       .filter(c => {
         if (!c.nextCallDate) return false;
         const d = new Date(c.nextCallDate);
@@ -153,9 +154,13 @@ export default function Dashboard() {
       .sort((a, b) => new Date(a.nextCallDate).getTime() - new Date(b.nextCallDate).getTime());
   }, [dueContacts]);
 
-  const filteredDueContacts = followUpDateFilter
-    ? dueContacts?.filter(c => c.nextCallDate === followUpDateFilter)
-    : dueContacts;
+  const filteredDueContacts = useMemo(() => {
+    if (!dueContacts) return undefined;
+    const deduped = dedupeById(dueContacts);
+    return followUpDateFilter
+      ? deduped.filter(c => c.nextCallDate === followUpDateFilter)
+      : deduped;
+  }, [dueContacts, followUpDateFilter]);
 
   return (
     <div className="p-8 space-y-8">
