@@ -232,8 +232,8 @@ export default function LeadDetail() {
   // Deal-centric timeline: flat chronological list per deal (no General group, no nested drawers)
   const dealTimeline = useMemo(() => {
     type FlatEvent = {
-      key: string; date: string; kind: "lead" | "deal" | "followup" | "pi" | "won" | "lost" | "activity";
-      label: string; detail?: string | null; meta?: string | null; activityId?: number;
+      key: string; date: string; kind: "lead" | "deal" | "followup" | "pi" | "won" | "lost";
+      label: string; detail?: string | null; meta?: string | null; activityId?: number; dateInLabel?: boolean;
     };
     const formatDay = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
     const dateOk = (d: string) => {
@@ -263,6 +263,7 @@ export default function LeadDetail() {
         events.push({
           key: `lead-${deal.id}`, date: leadDate, kind: "lead",
           label: `Lead created on ${formatDay(leadDate)}`,
+          dateInLabel: true,
         });
       }
 
@@ -270,24 +271,25 @@ export default function LeadDetail() {
       if (dateOk(dealCreated)) {
         events.push({
           key: `deal-created-${deal.id}`, date: dealCreated, kind: "deal",
-          label: `Deal created on ${formatDay(dealCreated)}`,
-          detail: deal.title || null,
+          label: `Deal created: ${deal.title || "Untitled Deal"} on ${formatDay(dealCreated)}`,
+          dateInLabel: true,
         });
       }
 
-      // Follow-ups from scheduled/completed Call/Meeting/FollowUp activities, numbered sequentially
+      // Only human-input follow-up activities (Call/Meeting/FollowUp) with the
+      // user's actual comment/notes. System audit logs (Note rows auto-generated
+      // for "changed Follow-up Date/Status", "PI Sent", "Deal Stage Changed", etc.)
+      // are hidden entirely so the timeline stays a clean story.
       const dealActs = (activities || [])
-        .filter(a => a.dealId === deal.id)
+        .filter(a => a.dealId === deal.id && (a.type === "Call" || a.type === "Meeting" || a.type === "FollowUp"))
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
       let followUpNum = 0;
       for (const act of dealActs) {
-        const isFollowUp = act.type === "Call" || act.type === "Meeting" || act.type === "FollowUp";
         if (!dateOk(act.createdAt)) continue;
-        if (isFollowUp) followUpNum++;
+        followUpNum++;
         events.push({
-          key: `act-${act.id}`, date: act.createdAt,
-          kind: isFollowUp ? "followup" : "activity",
-          label: isFollowUp ? `Follow-up ${followUpNum}` : `${act.type} Logged`,
+          key: `act-${act.id}`, date: act.createdAt, kind: "followup",
+          label: `Follow-up ${followUpNum}`,
           detail: parseNote(act.notes) || parseNote((act as any).notesDisplay) || null,
           meta: act.callStatus || null,
           activityId: act.id,
@@ -310,13 +312,13 @@ export default function LeadDetail() {
       if (deal.stage === "Won" && deal.completedAt) {
         events.push({
           key: `won-${deal.id}`, date: deal.completedAt, kind: "won",
-          label: `Deal won on ${formatDay(deal.completedAt)}`,
+          label: "Deal Won",
           meta: deal.totalValue ? `₹${Number(deal.totalValue).toLocaleString()}` : null,
         });
       } else if (deal.stage === "Lost" && deal.completedAt) {
         events.push({
           key: `lost-${deal.id}`, date: deal.completedAt, kind: "lost",
-          label: `Deal lost on ${formatDay(deal.completedAt)}`,
+          label: "Deal Lost",
           meta: deal.lostReason || null,
         });
       }
@@ -848,7 +850,6 @@ export default function LeadDetail() {
                       pi:       { dot: "bg-indigo-500", text: "text-indigo-700" },
                       won:      { dot: "bg-green-600", text: "text-green-700" },
                       lost:     { dot: "bg-red-500", text: "text-red-700" },
-                      activity: { dot: "bg-gray-400", text: "text-gray-600" },
                     };
 
                     return (
@@ -886,7 +887,7 @@ export default function LeadDetail() {
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-1.5 flex-wrap">
                                       <span className={`text-[11px] font-medium ${st.text}`}>{ev.label}</span>
-                                      <span className="text-[10px] text-muted-foreground">{formatDate(ev.date)}</span>
+                                      {!ev.dateInLabel && <span className="text-[10px] text-muted-foreground">{formatDate(ev.date)}</span>}
                                       {ev.meta && (
                                         <Badge variant="outline" className={`text-[9px] px-1 py-0 ${ev.kind === "followup" && ev.meta === "Completed" ? "border-green-300 text-green-700" : ev.kind === "followup" && ev.meta === "Cancelled" ? "border-red-300 text-red-700" : ev.kind === "followup" ? "border-orange-300 text-orange-700" : "border-gray-300 text-gray-600"}`}>
                                           {ev.meta}
