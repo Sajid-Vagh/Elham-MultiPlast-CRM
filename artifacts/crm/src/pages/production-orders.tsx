@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Search, ArrowLeft, ArrowRight, Download, FileSpreadsheet, Clock, CalendarDays, MessageCircle } from "lucide-react";
 import { useUserUnits } from "@/lib/use-user-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
-import { useStatusFilter } from "@/lib/global-filters";
+import { useProductionFilters, useProductionStatusFilter, useProductionDispatchFilter, useProductionPriorityFilter, useProductionOriginFilter, useProductionSearchFilter, useProductionPageFilter } from "@/lib/production-filters";
 import { ClearFiltersButton } from "@/components/clear-filters-button";
 import { useToast } from "@/hooks/use-toast";
 
@@ -82,22 +82,29 @@ export default function ProductionOrders() {
   const [selectedUnit, setSelectedUnit] = useUnitFilter();
   const { toast } = useToast();
 
-  const [globalStatus, setGlobalStatus] = useStatusFilter();
+  const [globalStatus, setGlobalStatus] = useProductionStatusFilter();
   const statusSeeded = useRef(false);
   useEffect(() => {
     if (statusSeeded.current) return;
     statusSeeded.current = true;
     const s = params.get("status");
     if (s && (STATUSES as string[]).includes(s)) setGlobalStatus(s === "all" ? "All" : s);
+    const d = params.get("dispatchStatus");
+    if (d && (DISPATCH_STATUSES as string[]).includes(d)) setDispatchStatus(d);
+    const q = params.get("search");
+    if (q !== null && q !== undefined) setSearch(q);
+    const p = Number(params.get("page"));
+    if (Number.isFinite(p) && p > 0) setPage(p);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const status = globalStatus === "All" ? "all" : (STATUSES as string[]).includes(globalStatus) ? globalStatus : "all";
   const setStatus = (v: string) => setGlobalStatus(v === "all" ? "All" : v);
-  const [dispatchStatus, setDispatchStatus] = useState(params.get("dispatchStatus") || "all");
-  const [priority, setPriority] = useState("all");
-  const [origin, setOrigin] = useState("all");
-  const [search, setSearch] = useState(params.get("search") || "");
-  const [page, setPage] = useState(Number(params.get("page")) || 1);
+  const [dispatchStatus, setDispatchStatus] = useProductionDispatchFilter();
+  const [priority, setPriority] = useProductionPriorityFilter();
+  const [origin, setOrigin] = useProductionOriginFilter();
+  const [search, setSearch] = useProductionSearchFilter();
+  const [page, setPage] = useProductionPageFilter();
+  const { clearAll: clearProductionFilters } = useProductionFilters();
   const [sheetDownloading, setSheetDownloading] = useState(false);
   const [sheetDateDialogOpen, setSheetDateDialogOpen] = useState(false);
   const [sheetDateFrom, setSheetDateFrom] = useState("");
@@ -256,7 +263,7 @@ export default function ProductionOrders() {
             </SelectContent>
           </Select>
         )}
-        <ClearFiltersButton onClear={() => { setSearch(""); setDispatchStatus("all"); setPriority("all"); setOrigin("all"); setPage(1); }} />
+        <ClearFiltersButton onClear={clearProductionFilters} />
       </div>
 
       {/* Table */}
@@ -380,7 +387,7 @@ export default function ProductionOrders() {
               variant="outline"
               size="sm"
               disabled={page <= 1}
-              onClick={() => setPage(p => p - 1)}
+              onClick={() => setPage(page - 1)}
             >
               <ArrowLeft className="h-4 w-4 mr-1" /> Previous
             </Button>
@@ -388,7 +395,7 @@ export default function ProductionOrders() {
               variant="outline"
               size="sm"
               disabled={page >= data.totalPages}
-              onClick={() => setPage(p => p + 1)}
+              onClick={() => setPage(page + 1)}
             >
               Next <ArrowRight className="h-4 w-4 ml-1" />
             </Button>
