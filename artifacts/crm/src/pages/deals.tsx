@@ -21,7 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { X, GripVertical, Loader2 } from "lucide-react";
 import { CategoryBadge } from "@/components/category-badge";
 import { useToast } from "@/hooks/use-toast";
-import { DEAL_STAGES } from "@/lib/deal-stages";
+import { DEAL_STAGES, STAGE_PROBS } from "@/lib/deal-stages";
 import { customerLabel } from "@/lib/customer-label";
 import DealDetailDrawer from "@/components/deal-detail-drawer";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
@@ -507,7 +507,9 @@ export default function Deals() {
               return (
                 <DroppableColumn key={stage} stage={stage}>
                   <div className="flex justify-between items-center mb-3 px-1">
-                    <h3 className="font-semibold text-sm">{stage}</h3>
+                    <h3 className="text-lg font-bold text-slate-800 tracking-wide">
+                      {stage} <span className="text-sm font-semibold text-gray-500 ml-1">({STAGE_PROBS[stage] ?? 0}%)</span>
+                    </h3>
                     <Badge variant="secondary" className="text-xs">{stageDeals.length}</Badge>
                   </div>
                   <div className="flex-1 overflow-y-auto space-y-3">
