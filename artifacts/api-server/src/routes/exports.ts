@@ -844,7 +844,7 @@ router.get("/activities", async (req, res) => {
 
     const sheets: SheetDef[] = [
       { name: "Follow-up Details", headers: detailHeaders, rows: detailRows },
-      { name: "History", headers: historyHeaders, rows: historyRows },
+      { name: "Activity Log", headers: historyHeaders, rows: historyRows },
     ];
     const wb = buildWorkbook(sheets, `Activities (Detailed) — ${todayStr()}`);
     await sendWorkbook(res, wb, csvFilename("activities-detailed"), format);
