@@ -402,7 +402,19 @@ export default function Leads() {
               <CheckCheck className="mr-2 h-4 w-4" /> Mark All Read
             </Button>
           )}
-          <ExportButton exportUrl="/api/exports/contacts" filename="Leads" />
+          <ExportButton
+            exportUrl="/api/exports/contacts"
+            filename="Leads"
+            onBeforeExport={() => ({
+              category: categoryFilter || "",
+              search,
+              ownerId: salesOwnerId ? String(salesOwnerId) : "",
+              unit: unitFilter && unitFilter !== "All" ? unitFilter : "",
+              city: city || "",
+              dateFrom: dateFilter.startDate || "",
+              dateTo: dateFilter.endDate || "",
+            })}
+          />
           <Link href="/leads/new">
             <Button>
               <Plus className="mr-2 h-4 w-4" /> New Lead

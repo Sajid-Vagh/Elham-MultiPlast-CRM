@@ -191,7 +191,17 @@ export default function DispatchPage() {
           <p className="text-sm text-muted-foreground mt-1">Manage dispatch workflow for Ready To Dispatch orders</p>
         </div>
         <div className="flex items-center gap-2">
-          <ExportButton exportUrl="/api/exports/dispatch" filename="Dispatch" />
+          <ExportButton
+            exportUrl="/api/exports/dispatch"
+            filename="Dispatch"
+            onBeforeExport={() => ({
+              status: statusFilter === "all" ? "" : statusFilter,
+              search,
+              unit: selectedUnit && selectedUnit !== "All" ? selectedUnit : "",
+              dispatchDateFrom,
+              dispatchDateTo,
+            })}
+          />
           <Button variant="outline" size="sm" onClick={() => setLocation("/support/dashboard")}>
             <ArrowLeft className="h-4 w-4 mr-1" /> Support Dashboard
           </Button>

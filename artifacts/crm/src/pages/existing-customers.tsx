@@ -79,7 +79,16 @@ export default function ExistingCustomers() {
           <h1 className="text-2xl font-bold tracking-tight">Existing Customers</h1>
           <p className="text-sm text-muted-foreground mt-1">Manage and view all existing customers</p>
         </div>
-        <ExportButton exportUrl="/api/exports/existing-customers" filename="Existing_Customers" />
+        <ExportButton
+          exportUrl="/api/exports/existing-customers"
+          filename="Existing_Customers"
+          onBeforeExport={() => ({
+            status: statusFilter === "All" ? "" : statusFilter,
+            search,
+            dateFrom: dateFilter.startDate || "",
+            dateTo: dateFilter.endDate || "",
+          })}
+        />
       </div>
 
       {/* KPI Cards */}

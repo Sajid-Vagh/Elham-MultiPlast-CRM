@@ -16,6 +16,8 @@ import {
   existingCustomersTable,
   categoryHistoryTable,
   orderTimelineTable,
+  proformaInvoicesTable,
+  proformaInvoiceItemsTable,
 } from "@workspace/db";
 import { eq, and, SQL, inArray, sql } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
@@ -46,7 +48,16 @@ function parseQueryParams(req: any) {
   const search = (req.query.search as string) || undefined;
   const category = (req.query.category as string) || undefined;
   const stage = (req.query.stage as string) || undefined;
-  return { format, mode, dateFrom, dateTo, ownerId, unit, status, search, category, stage };
+  const city = (req.query.city as string) || undefined;
+  const type = (req.query.type as string) || undefined;
+  const priority = (req.query.priority as string) || undefined;
+  const origin = (req.query.origin as string) || undefined;
+  const dispatchStatus = (req.query.dispatchStatus as string) || undefined;
+  const orderType = (req.query.orderType as string) || undefined;
+  const createdById = req.query.createdById ? Number(req.query.createdById) : undefined;
+  const dispatchDateFrom = (req.query.dispatchDateFrom as string) || undefined;
+  const dispatchDateTo = (req.query.dispatchDateTo as string) || undefined;
+  return { format, mode, dateFrom, dateTo, ownerId, unit, status, search, category, stage, city, type, priority, origin, dispatchStatus, orderType, createdById, dispatchDateFrom, dispatchDateTo };
 }
 
 function matchesDateRange(dateVal: string | Date | null | undefined, from?: string, to?: string): boolean {
@@ -273,7 +284,7 @@ router.get("/contacts", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { format, mode, dateFrom, dateTo, ownerId, unit: requestedUnit, status, search, category } = parseQueryParams(req);
+    const { format, mode, dateFrom, dateTo, ownerId, unit: requestedUnit, status, search, category, city } = parseQueryParams(req);
     const unit = (user.unit === "All" || user.role === "admin") ? requestedUnit : user.unit;
 
     const contactConditions: SQL[] = [];
@@ -287,7 +298,24 @@ router.get("/contacts", async (req, res) => {
     if (ownerId) filtered = filtered.filter(c => c.salesOwnerId === ownerId);
     if (unit) filtered = filtered.filter(c => c.unit === unit);
     if (status) filtered = filtered.filter(c => c.customerStatus === status);
-    if (category) filtered = filtered.filter(c => c.category === category);
+
+    if (category === "Regular Follow up") {
+      // Virtual RFU: My Client contacts with active deals appear alongside physical RFU
+      const allDeals = await db.select().from(dealsTable);
+      const activeDealContactIds = new Set(
+        allDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").map(d => d.contactId)
+      );
+      filtered = filtered.filter(c =>
+        c.category === "Regular Follow up" || (c.category === "My Client" && activeDealContactIds.has(c.id))
+      );
+    } else if (category === "Existing Client") {
+      // Existing Client tab: all My Client contacts (owner filter bypassed in UI)
+      filtered = filtered.filter(c => c.category === "My Client");
+    } else if (category) {
+      filtered = filtered.filter(c => c.category === category);
+    }
+
+    if (city) filtered = filtered.filter(c => matchesSearch(c.city, city));
     if (search) {
       filtered = filtered.filter(c =>
         matchesSearch(c.name, search) ||
@@ -500,7 +528,7 @@ router.get("/deals", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { format, mode, dateFrom, dateTo, ownerId, stage, search } = parseQueryParams(req);
+    const { format, mode, dateFrom, dateTo, ownerId, unit, stage, search } = parseQueryParams(req);
 
     const accessibleUnits = getAccessibleUnits(user);
     const contactUnitCond = accessibleUnits ? inArray(contactsTable.unit, accessibleUnits) : undefined;
@@ -522,6 +550,11 @@ router.get("/deals", async (req, res) => {
     const users = await db.select().from(usersTable);
     const contactMap = new Map(contacts.map(c => [c.id, c]));
     const userMap = new Map(users.map(u => [u.id, u]));
+
+    if (unit) {
+      const unitContactIds = new Set(contacts.filter(c => c.unit === unit).map(c => c.id));
+      filtered = filtered.filter(d => unitContactIds.has(d.contactId));
+    }
 
     if (accessibleUnits) {
       const allowedContactIds = new Set(contacts.map(c => c.id));
@@ -679,7 +712,7 @@ router.get("/activities", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { format, mode, dateFrom, dateTo, ownerId, status, search } = parseQueryParams(req);
+    const { format, mode, dateFrom, dateTo, ownerId, unit, status, search, type } = parseQueryParams(req);
 
     const accessibleUnits = getAccessibleUnits(user);
     const contactUnitCond = accessibleUnits ? inArray(contactsTable.unit, accessibleUnits) : undefined;
@@ -694,6 +727,7 @@ router.get("/activities", async (req, res) => {
     let filtered = allActivities.filter(a => matchesDateRange(a.createdAt, dateFrom, dateTo));
     if (ownerId) filtered = filtered.filter(a => a.assignedTo === ownerId || a.createdBy === ownerId);
     if (status) filtered = filtered.filter(a => a.callStatus === status);
+    if (type) filtered = filtered.filter(a => a.type === type);
 
     const contacts = contactUnitCond
       ? await db.select().from(contactsTable).where(contactUnitCond)
@@ -701,6 +735,11 @@ router.get("/activities", async (req, res) => {
     const users = await db.select().from(usersTable);
     const contactMap = new Map(contacts.map(c => [c.id, c]));
     const userMap = new Map(users.map(u => [u.id, u]));
+
+    if (unit) {
+      const unitContactIds = new Set(contacts.filter(c => c.unit === unit).map(c => c.id));
+      filtered = filtered.filter(a => a.contactId && unitContactIds.has(a.contactId));
+    }
 
     if (accessibleUnits) {
       const allowedContactIds = new Set(contacts.map(c => c.id));
@@ -1008,7 +1047,7 @@ router.get("/production", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { format, mode, dateFrom, dateTo, status, search } = parseQueryParams(req);
+    const { format, mode, dateFrom, dateTo, status, priority, dispatchStatus, origin, createdById, unit, search } = parseQueryParams(req);
 
     const accessibleUnits = getAccessibleUnits(user);
     const prodUnitCond = accessibleUnits ? inArray(productionOrdersTable.productionUnit, accessibleUnits) : undefined;
@@ -1026,6 +1065,11 @@ router.get("/production", async (req, res) => {
 
     let filtered = prodOrders.filter(po => matchesDateRange(po.createdAt, dateFrom, dateTo));
     if (status) filtered = filtered.filter(po => po.status === status);
+    if (dispatchStatus) filtered = filtered.filter(po => po.dispatchStatus === dispatchStatus);
+    if (priority) filtered = filtered.filter(po => po.priority === priority);
+    if (origin) filtered = filtered.filter(po => po.createdByRole === origin);
+    if (createdById) filtered = filtered.filter(po => po.createdById === createdById);
+    if (unit) filtered = filtered.filter(po => po.productionUnit === unit);
 
     const users = await db.select().from(usersTable);
     const userMap = new Map(users.map(u => [u.id, u]));
@@ -1123,20 +1167,26 @@ router.get("/dispatch", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { format, mode, dateFrom, dateTo, status, search } = parseQueryParams(req);
+    const { format, mode, dateFrom, dateTo, status, search, unit, dispatchDateFrom, dispatchDateTo } = parseQueryParams(req);
 
     const accessibleUnits = getAccessibleUnits(user);
 
     let dispatchList = await db.select().from(dispatchTable);
     let filtered = dispatchList.filter(d => matchesDateRange(d.createdAt, dateFrom, dateTo));
     if (status) filtered = filtered.filter(d => d.status === status);
+    if (dispatchDateFrom) filtered = filtered.filter(d => d.dispatchDate && d.dispatchDate >= dispatchDateFrom);
+    if (dispatchDateTo) filtered = filtered.filter(d => d.dispatchDate && d.dispatchDate <= dispatchDateTo);
 
-    if (accessibleUnits) {
+    const unitCond: SQL[] = [];
+    if (accessibleUnits) unitCond.push(inArray(ordersTable.productionUnit, accessibleUnits));
+    if (unit) unitCond.push(eq(ordersTable.productionUnit, unit));
+
+    if (unitCond.length) {
       const dispatchOrderIds = nonNullIds(filtered.map(d => d.orderId));
       if (dispatchOrderIds.length) {
         const dispatchOrders = await db.select().from(ordersTable).where(and(
           inArray(ordersTable.id, dispatchOrderIds),
-          inArray(ordersTable.productionUnit, accessibleUnits),
+          ...unitCond,
         ));
         const allowedOrderIds = new Set(dispatchOrders.map(o => o.id));
         filtered = filtered.filter(d => allowedOrderIds.has(d.orderId));
@@ -1514,6 +1564,132 @@ router.get("/leads", async (req, res) => {
     await sendWorkbook(res, wb, csvFilename("leads-detailed"), format);
   } catch (err: any) {
     console.error("[exports/leads]", err);
+    res.status(500).json({ error: err.message || "Export failed" });
+  }
+});
+
+// ── Proforma Invoices ─────────────────────────────────────────────────
+router.get("/proforma-invoices", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const { format, mode, dateFrom, dateTo, status, orderType, search } = parseQueryParams(req);
+
+    const accessibleUnits = getAccessibleUnits(user);
+    const contactUnitCond = accessibleUnits ? inArray(contactsTable.unit, accessibleUnits) : undefined;
+
+    const contacts = contactUnitCond
+      ? await db.select().from(contactsTable).where(contactUnitCond)
+      : await db.select().from(contactsTable);
+    const contactMap = new Map(contacts.map(c => [c.id, c]));
+    const allowedContactIds = new Set(contacts.map(c => c.id));
+
+    const piConditions: SQL[] = [eq(proformaInvoicesTable.isDeleted, false)];
+    if (user.role === "sales") piConditions.push(eq(proformaInvoicesTable.createdBy, user.id));
+
+    const allInvoices = await db.select().from(proformaInvoicesTable).where(and(...piConditions));
+
+    const users = await db.select().from(usersTable);
+    const userMap = new Map(users.map(u => [u.id, u]));
+
+    const allOrders = await db.select().from(ordersTable).where(eq(ordersTable.isDeleted, false));
+    const orderTypeDealIds = new Map<string, Set<number | null>>();
+    allOrders.forEach(o => {
+      if (!o.orderType) return;
+      const set = orderTypeDealIds.get(o.orderType) || new Set<number | null>();
+      if (o.dealId != null) set.add(o.dealId);
+      orderTypeDealIds.set(o.orderType, set);
+    });
+
+    let filtered = allInvoices.filter(inv => matchesDateRange(inv.createdAt, dateFrom, dateTo));
+    if (accessibleUnits) {
+      filtered = filtered.filter(inv => inv.contactId != null && allowedContactIds.has(inv.contactId));
+    }
+    if (status && status !== "all") filtered = filtered.filter(inv => inv.status === status);
+    if (orderType === "NEW" || orderType === "REPEAT") {
+      const dealIds = orderTypeDealIds.get(orderType) || new Set<number | null>();
+      filtered = filtered.filter(inv => inv.dealId != null && dealIds.has(inv.dealId));
+    }
+    if (search) {
+      const s = search.toLowerCase();
+      filtered = filtered.filter(inv =>
+        safeStr(inv.invoiceNumber).toLowerCase().includes(s) ||
+        safeStr(inv.customerName).toLowerCase().includes(s) ||
+        safeStr(inv.companyName).toLowerCase().includes(s) ||
+        safeStr(inv.tradeName).toLowerCase().includes(s) ||
+        safeStr(inv.mobile).toLowerCase().includes(s) ||
+        safeStr(inv.gstNumber).toLowerCase().includes(s)
+      );
+    }
+
+    const invoiceIds = nonNullIds(filtered.map(inv => inv.id));
+    const items = invoiceIds.length
+      ? await db.select().from(proformaInvoiceItemsTable).where(inArray(proformaInvoiceItemsTable.invoiceId, invoiceIds))
+      : [];
+    const itemsMap = new Map<number, any[]>();
+    items.forEach(it => {
+      const arr = itemsMap.get(it.invoiceId) || [];
+      arr.push(it);
+      itemsMap.set(it.invoiceId, arr);
+    });
+
+    // ── Quick ───────────────────────────────────────────────────────────
+    if (mode === "quick") {
+      const headers = ["Invoice #", "Customer", "Company", "Mobile", "Status", "Grand Total", "Created"];
+      const rows = filtered.map(inv => [
+        safeStr(inv.invoiceNumber), safeStr(inv.customerName), safeStr(inv.companyName),
+        safeStr(inv.mobile), safeStr(inv.status), safeNum(inv.grandTotal), safeDate(inv.createdAt),
+      ]);
+      const sheets: SheetDef[] = [{ name: "Proforma Invoices", headers, rows }];
+      const wb = buildWorkbook(sheets, `Proforma Invoices — ${todayStr()}`);
+      await sendWorkbook(res, wb, csvFilename("proforma-invoices"), format);
+      return;
+    }
+
+    // ── Detailed ────────────────────────────────────────────────────────
+    const invHeaders = [
+      "Invoice #", "Customer", "Company", "Trade Name", "Mobile", "GSTIN",
+      "City", "State", "Status", "Version", "Taxable", "Freight",
+      "CGST", "SGST", "IGST", "Grand Total", "Sales Owner", "Contact", "Created", "Updated",
+    ];
+    const invRows = filtered.map(inv => {
+      const owner = inv.salesOwnerId ? userMap.get(inv.salesOwnerId) : null;
+      const contact = inv.contactId != null ? contactMap.get(inv.contactId) : undefined;
+      return [
+        safeStr(inv.invoiceNumber), safeStr(inv.customerName), safeStr(inv.companyName),
+        safeStr(inv.tradeName), safeStr(inv.mobile), safeStr(inv.gstNumber),
+        safeStr(inv.city), safeStr(inv.state), safeStr(inv.status), safeNum(inv.version),
+        safeNum(inv.taxableAmount), safeNum(inv.freight),
+        safeNum(inv.cgst), safeNum(inv.sgst), safeNum(inv.igst), safeNum(inv.grandTotal),
+        safeStr(owner?.name), safeStr(contact?.name), safeDate(inv.createdAt), safeDate(inv.updatedAt),
+      ];
+    });
+
+    const itemHeaders = [
+      "Invoice #", "Product", "HSN", "Bottle Type", "Bottle Colour", "Capacity",
+      "Weight", "Quantity", "Unit", "Rate", "Discount %", "GST %", "Amount",
+    ];
+    const itemRows: any[][] = [];
+    filtered.forEach(inv => {
+      (itemsMap.get(inv.id) || []).forEach(it => {
+        itemRows.push([
+          safeStr(inv.invoiceNumber), safeStr(it.productName), safeStr(it.hsnCode),
+          safeStr(it.bottleType), safeStr(it.bottleColour), safeStr(it.capacity),
+          safeStr(it.weight), safeNum(it.quantity), safeStr(it.unit),
+          safeNum(it.rate), safeNum(it.discountPercent), safeNum(it.gstPercent), safeNum(it.amount),
+        ]);
+      });
+    });
+
+    const sheets: SheetDef[] = [
+      { name: "Invoices", headers: invHeaders, rows: invRows },
+      { name: "Items", headers: itemHeaders, rows: itemRows },
+    ];
+    const wb = buildWorkbook(sheets, `Proforma Invoices (Detailed) — ${todayStr()}`);
+    await sendWorkbook(res, wb, csvFilename("proforma-invoices-detailed"), format);
+  } catch (err: any) {
+    console.error("[exports/proforma-invoices]", err);
     res.status(500).json({ error: err.message || "Export failed" });
   }
 });

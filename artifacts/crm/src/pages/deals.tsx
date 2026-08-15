@@ -445,7 +445,17 @@ export default function Deals() {
           <h1 className="text-3xl font-bold tracking-tight">Pipeline</h1>
           <p className="text-muted-foreground mt-1">Manage deals across stages.</p>
         </div>
-        <ExportButton exportUrl="/api/exports/deals" filename="Pipeline_Deals" />
+        <ExportButton
+          exportUrl="/api/exports/deals"
+          filename="Pipeline_Deals"
+          onBeforeExport={() => ({
+            stage: stageFilter,
+            ownerId: ownerFilter || "",
+            unit: unitFilter && unitFilter !== "All" ? unitFilter : "",
+            dateFrom: dateFilter.startDate || "",
+            dateTo: dateFilter.endDate || "",
+          })}
+        />
       </div>
 
       <div className="flex items-center gap-3 shrink-0">

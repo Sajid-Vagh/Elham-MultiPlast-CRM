@@ -27,6 +27,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { CancelOrderModal } from "@/components/cancel-order-modal";
 import { WonAmountAdjustmentModal } from "@/components/won-amount-adjustment-modal";
+import { ExportButton } from "@/components/export-button";
 import { onPIChange, onDealChange, onProductionChange } from "@/lib/query-invalidation";
 import { customerLabel } from "@/lib/customer-label";
 import { parseNotesText } from "@/lib/parse-notes";
@@ -3179,9 +3180,20 @@ ${pagesHtml}
           <h1 className="text-2xl font-bold">Proforma Invoices</h1>
           <p className="text-sm text-muted-foreground">Create and manage proforma invoices</p>
         </div>
-        <Button onClick={() => { resetForm(); setMode("create"); }}>
-          <Plus className="h-4 w-4 mr-1" /> New Invoice
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportButton
+            exportUrl="/api/exports/proforma-invoices"
+            filename="Proforma_Invoices"
+            onBeforeExport={() => ({
+              status: statusFilter === "all" ? "" : statusFilter,
+              orderType: orderTypeFilter || "",
+              search,
+            })}
+          />
+          <Button onClick={() => { resetForm(); setMode("create"); }}>
+            <Plus className="h-4 w-4 mr-1" /> New Invoice
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-3">

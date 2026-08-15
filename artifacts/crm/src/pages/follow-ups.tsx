@@ -438,7 +438,19 @@ export default function FollowUps() {
             <p className="text-sm text-muted-foreground">View and manage all scheduled activities.</p>
           </div>
         </div>
-        <ExportButton exportUrl="/api/exports/activities" filename="Activities" />
+        <ExportButton
+          exportUrl="/api/exports/activities"
+          filename="Activities"
+          onBeforeExport={() => ({
+            status: statusFilter === "all" ? "" : statusFilter,
+            ownerId: ownerFilter || "",
+            unit: unitFilter && unitFilter !== "All" ? unitFilter : "",
+            search: searchQuery,
+            type: typeFilter === "all" ? "" : typeFilter,
+            dateFrom: dateFilter.startDate || "",
+            dateTo: dateFilter.endDate || "",
+          })}
+        />
       </div>
 
       {/* Filters Card */}

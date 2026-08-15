@@ -23,6 +23,7 @@ import { useUserUnits } from "@/lib/use-user-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 import { useProductionFilters, useProductionStatusFilter, useProductionDispatchFilter, useProductionPriorityFilter, useProductionOriginFilter, useProductionSearchFilter, useProductionPageFilter } from "@/lib/production-filters";
 import { ClearFiltersButton } from "@/components/clear-filters-button";
+import { ExportButton } from "@/components/export-button";
 import { useToast } from "@/hooks/use-toast";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -168,6 +169,18 @@ export default function ProductionOrders() {
           <p className="text-sm text-muted-foreground mt-1">Manage and track all production orders</p>
         </div>
         <div className="flex items-center gap-2">
+          <ExportButton
+            exportUrl="/api/exports/production"
+            filename="Production_Orders"
+            onBeforeExport={() => ({
+              status: globalStatus === "All" ? "" : globalStatus,
+              dispatchStatus: dispatchStatus === "all" ? "" : dispatchStatus,
+              priority: priority === "all" ? "" : priority,
+              origin: origin === "all" ? "" : origin,
+              unit: selectedUnit && selectedUnit !== "All" ? selectedUnit : "",
+              search,
+            })}
+          />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" disabled={sheetDownloading}>
