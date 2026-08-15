@@ -12,8 +12,8 @@ import { useUserUnits } from "@/lib/use-user-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 import { useStatusFilter } from "@/lib/global-filters";
 import { ClearFiltersButton } from "@/components/clear-filters-button";
+import { useActiveMachines } from "@/lib/use-machines";
 
-const MACHINE_TYPES = ["All", "250ml Machine", "1L Machine", "5L Machine"];
 const STATUS_OPTIONS = ["All", "Pending", "Production On Going"];
 const MATERIAL_OPTIONS = ["All", "HDPE", "PET", "PP"];
 
@@ -29,6 +29,7 @@ interface ReportData {
 export default function MachineReport() {
   const { data: user } = useGetMe();
   const { units: accessibleUnits, locked: unitLocked } = useUserUnits();
+  const { machines: machineNames, isLoading: machinesLoading } = useActiveMachines();
   const [unitFilter, setUnitFilter] = useUnitFilter();
   const [machineFilter, setMachineFilter] = useState("All");
   const [globalStatus, setGlobalStatus] = useStatusFilter();
@@ -116,10 +117,10 @@ export default function MachineReport() {
             {unitLocked && <span className="text-xs text-muted-foreground">Locked</span>}
           </div>
         )}
-        <Select value={machineFilter} onValueChange={setMachineFilter}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="All Machines" /></SelectTrigger>
+        <Select value={machineFilter} onValueChange={setMachineFilter} disabled={machinesLoading}>
+          <SelectTrigger className="w-44"><SelectValue placeholder={machinesLoading ? "Loading..." : "All Machines"} /></SelectTrigger>
           <SelectContent>
-            {MACHINE_TYPES.map(m => <SelectItem key={m} value={m}>{m === "All" ? "All Machines" : m}</SelectItem>)}
+            {["All", ...machineNames].map(m => <SelectItem key={m} value={m}>{m === "All" ? "All Machines" : m}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>

@@ -12,6 +12,7 @@ import { Plus, Pencil, Trash2, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { onProductChange } from "@/lib/query-invalidation";
 import { INDUSTRIES } from "@/lib/constants";
+import { useActiveMachines } from "@/lib/use-machines";
 
 type ProductVariant = { id: number; productId: number; weight?: string | null; defaultColor?: string | null; isActive: boolean };
 type VariantRow = { weight: string };
@@ -28,12 +29,6 @@ const HSN_OPTIONS = [
   { value: "39233090", label: "HDPE → 39233090" },
 ];
 
-const MACHINE_TYPE_OPTIONS = [
-  "250ml Machine",
-  "1L Machine",
-  "5L Machine",
-];
-
 const MATERIAL_OPTIONS = ["PET", "HDPE", "PP", "Other"];
 
 const isP = (m: string) => m === "PET";
@@ -44,6 +39,7 @@ const UNIT_OPTIONS = ["", "Pcs", "Kg", "Gms", "Ltr", "Mtr", "Box", "Pack", "Nos"
 const SELECT_CLASS = "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors";
 
 function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial<Product>; onSave: (d: any) => void; onCancel: () => void; loading: boolean }) {
+  const { machines: machineNames, isLoading: machinesLoading } = useActiveMachines();
   const [form, setForm] = useState({
     name: initial?.name || "",
     productCode: initial?.productCode || "",
@@ -123,9 +119,9 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
           </div>
           {!isPet && (
             <div><Label>Machine Type {machineRequired ? "*" : ""}</Label>
-              <select value={form.machineType} onChange={f("machineType")} className={SELECT_CLASS} disabled={!machineRequired && !!form.materialType}>
-                <option value="">{machineRequired ? "Select Machine" : "Select (Optional)"}</option>
-                {MACHINE_TYPE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+              <select value={form.machineType} onChange={f("machineType")} className={SELECT_CLASS} disabled={(!machineRequired && !!form.materialType) || machinesLoading}>
+                <option value="">{machinesLoading ? "Loading..." : (machineRequired ? "Select Machine" : "Select (Optional)")}</option>
+                {machineNames.map(o => <option key={o} value={o}>{o}</option>)}
               </select>
             </div>
           )}

@@ -16,6 +16,7 @@ import { onUserChange, syncMe } from "@/lib/query-invalidation";
 import { UserAvatar } from "@/components/user-avatar";
 import { EditProfileModal } from "@/components/edit-profile-modal";
 import { useActiveUnits, useAllUnits } from "@/lib/use-active-units";
+import { useAllMachines } from "@/lib/use-machines";
 
 const COLOR_PALETTE = ["#6366f1","#ec4899","#f59e0b","#10b981","#3b82f6","#ef4444","#8b5cf6","#14b8a6","#f97316","#84cc16"];
 
@@ -469,10 +470,12 @@ export default function Settings() {
   const { toast } = useToast();
   const { units: activeUnitNames } = useActiveUnits();
   const { units: allUnits, refetch: refetchUnits } = useAllUnits();
+  const { machines: allMachines, refetch: refetchMachines } = useAllMachines();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
   const [newUnitName, setNewUnitName] = useState("");
+  const [newMachineName, setNewMachineName] = useState("");
 
   const [autoCap, setAutoCap] = useState(() => localStorage.getItem("crm_autocap") !== "off");
   const handleAutoCapToggle = (val: boolean) => {
@@ -595,6 +598,65 @@ export default function Settings() {
       refetchUnits();
     } catch {
       toast({ title: "Error deleting unit", variant: "destructive" });
+    }
+  };
+
+  const handleCreateMachine = async () => {
+    const name = newMachineName.trim();
+    if (!name) return;
+    const token = localStorage.getItem("crm_token");
+    try {
+      const res = await fetch("/api/machines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        toast({ title: data.error || "Failed to create machine", variant: "destructive" });
+        return;
+      }
+      toast({ title: `Machine "${name}" created` });
+      setNewMachineName("");
+      refetchMachines();
+    } catch {
+      toast({ title: "Error creating machine", variant: "destructive" });
+    }
+  };
+
+  const handleToggleMachine = async (id: string, currentActive: boolean) => {
+    const token = localStorage.getItem("crm_token");
+    try {
+      const res = await fetch(`/api/machines/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ isActive: !currentActive }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      toast({ title: currentActive ? "Machine deactivated" : "Machine activated" });
+      refetchMachines();
+    } catch {
+      toast({ title: "Error updating machine", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteMachine = async (id: string, name: string) => {
+    if (!confirm(`Delete machine "${name}"? This cannot be undone.`)) return;
+    const token = localStorage.getItem("crm_token");
+    try {
+      const res = await fetch(`/api/machines/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        toast({ title: data.error || "Failed to delete machine", variant: "destructive" });
+        return;
+      }
+      toast({ title: `Machine "${name}" deleted` });
+      refetchMachines();
+    } catch {
+      toast({ title: "Error deleting machine", variant: "destructive" });
     }
   };
 
@@ -766,6 +828,66 @@ export default function Settings() {
                             <Switch checked={u.isActive} className="scale-75" />
                           </Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDeleteUnit(u.id, u.name)}>
+                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Manage Machines (Admin only) */}
+      {isAdmin && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Settings2 className="h-4 w-4 text-primary" />
+              Manage Machines
+            </CardTitle>
+            <CardDescription>Add, activate, or deactivate machine types used across the CRM.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                value={newMachineName}
+                onChange={e => setNewMachineName(e.target.value)}
+                placeholder="New machine name (e.g., 2L Machine)"
+                onKeyDown={e => { if (e.key === "Enter") handleCreateMachine(); }}
+                className="max-w-xs"
+              />
+              <Button size="sm" onClick={handleCreateMachine} disabled={!newMachineName.trim()}>
+                <Plus className="h-4 w-4 mr-1" /> Add Machine
+              </Button>
+            </div>
+            <div className="bg-card border rounded-lg shadow-sm overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Machine Name</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-28">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {allMachines.map(m => (
+                    <TableRow key={m.id}>
+                      <TableCell className="font-medium">{m.name}</TableCell>
+                      <TableCell>
+                        <Badge variant={m.isActive ? "default" : "outline"} className={m.isActive ? "bg-green-100 text-green-700 border-green-200" : "bg-gray-100 text-gray-500"}>
+                          {m.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleToggleMachine(m.id, m.isActive)}>
+                            <Switch checked={m.isActive} className="scale-75" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDeleteMachine(m.id, m.name)}>
                             <Trash2 className="h-3.5 w-3.5 text-destructive" />
                           </Button>
                         </div>
