@@ -1,3 +1,5 @@
+export const CHAT_NOTIFICATION_SOUND_URL = "/assets/chat-notification.wav";
+
 export function playNotificationSoundForType(type: string) {
   if (isNotificationSoundMuted()) return;
   const soundMap: Record<string, string> = {
@@ -18,7 +20,11 @@ export function playNotificationSoundForType(type: string) {
     invoice_deleted: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
     user_created: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
   product_added: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
-  production_message: "https://assets.mixkit.co/active_storage/sfx/2011/2011-preview.mp3",
+  // Order conversation chat (Production + Sales order messages & voice notes)
+  // uses a dedicated professional sound — kept distinct from all system alerts
+  // (leads, enquiries, follow-ups, deals, etc.) above.
+  production_message: CHAT_NOTIFICATION_SOUND_URL,
+  voice_note: CHAT_NOTIFICATION_SOUND_URL,
   repeat_enquiry: "https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3",
 };
   const url = soundMap[type] || "https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3";
@@ -54,6 +60,7 @@ export const playFollowUpSound = playNotificationSound;
 export const playDealWonSound = () => playNotificationSoundForType("deal_won");
 export const playDealLostSound = () => playNotificationSoundForType("deal_lost");
 export const playGenericNotificationSound = playNotificationSound;
+export const playChatNotificationSound = () => playNotificationSoundForType("production_message");
 
 export function showBrowserNotification(title: string, body: string, tag?: string) {
   if (!("Notification" in window)) return;
