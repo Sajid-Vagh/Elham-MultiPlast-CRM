@@ -468,8 +468,8 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
                     >
                       <p className="text-sm font-medium truncate flex items-center gap-1.5">
                         <span
-                          className={`w-2 h-2 rounded-full flex-shrink-0 ${n.type === "repeat_enquiry" ? "bg-yellow-500" : "bg-blue-500"}`}
-                          title={n.type === "repeat_enquiry" ? "Repeat enquiry" : "New lead"}
+                          className={`w-2 h-2 rounded-full flex-shrink-0 ${n.type === "repeat_enquiry" ? "bg-yellow-500" : n.type === "retention_alert" ? "bg-red-500" : "bg-blue-500"}`}
+                          title={n.type === "repeat_enquiry" ? "Repeat enquiry" : n.type === "retention_alert" ? "Retention alert" : "New lead"}
                         />
                         {n.title}
                       </p>

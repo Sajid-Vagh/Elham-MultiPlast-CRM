@@ -20,6 +20,7 @@ function deriveModule(type: string): string {
   if (type.startsWith("follow_up")) return "Follow-up";
   if (type.startsWith("deal_")) return "Deal";
   if (type === "assignment") return "Lead";
+  if (type === "retention_alert") return "Lead";
   if (type.startsWith("production_")) return "Production";
   if (type.startsWith("invoice_")) return "Invoice";
   if (type.startsWith("user_")) return "User";

@@ -19,7 +19,8 @@ export function NotificationPopup({ id, title, message, link, type, position = "
   const isEnquiry = type === "enquiry_assigned";
   const isRepeatEnquiry = type === "repeat_enquiry";
   const isReminder = type === "follow_up";
-  const accent = isRepeatEnquiry ? "bg-yellow-50 border-yellow-200" : isEnquiry ? "bg-blue-50 border-blue-200" : isReminder ? "bg-violet-50 border-violet-200" : "bg-white";
+  const isRetentionAlert = type === "retention_alert";
+  const accent = isRepeatEnquiry ? "bg-yellow-50 border-yellow-200" : isRetentionAlert ? "bg-red-50 border-red-200" : isEnquiry ? "bg-blue-50 border-blue-200" : isReminder ? "bg-violet-50 border-violet-200" : "bg-white";
   const showLabeled = isEnquiry || isRepeatEnquiry;
   const positionClass = position === "top-right" ? "fixed top-20 right-4" : "fixed bottom-4 right-4";
 
@@ -36,7 +37,7 @@ export function NotificationPopup({ id, title, message, link, type, position = "
             onClick={handleClick}
           >
             <p className="text-sm font-semibold text-gray-900">
-              {isRepeatEnquiry ? "Repeat Enquiry" : title}
+              {isRepeatEnquiry ? "Repeat Enquiry" : isRetentionAlert ? "Retention Alert" : title}
             </p>
             <div className="text-xs text-gray-500 mt-0.5 whitespace-pre-line">
               {showLabeled ? (
@@ -73,7 +74,7 @@ export function NotificationPopup({ id, title, message, link, type, position = "
             className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-100/50 border-t border-blue-100 transition-colors"
           >
             <ExternalLink className="h-3 w-3" />
-            {isRepeatEnquiry ? "Open Repeat Enquiry" : isEnquiry ? "Open Lead" : "Open"}
+            {isRepeatEnquiry ? "Open Repeat Enquiry" : isEnquiry ? "Open Lead" : isRetentionAlert ? "Open Lead" : "Open"}
           </button>
         )}
       </div>

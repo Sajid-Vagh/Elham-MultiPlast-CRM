@@ -41,6 +41,7 @@ const TYPE_ICONS: Record<string, string> = {
   product_added: "📦",
   production_message: "💬",
   lead_transfer_requested: "🔁",
+  retention_alert: "⚠️",
 };
 
 function isToday(d: Date) {
@@ -245,8 +246,8 @@ export default function NotificationsPage() {
                     <p className={`text-sm truncate ${isUnread ? "font-semibold" : ""}`}>{n.title}</p>
                     {isUnread && (
                       <span
-                        className={`w-2 h-2 rounded-full flex-shrink-0 ${n.type === "repeat_enquiry" ? "bg-yellow-500" : "bg-blue-500"}`}
-                        title={n.type === "repeat_enquiry" ? "Repeat enquiry" : "New lead"}
+                        className={`w-2 h-2 rounded-full flex-shrink-0 ${n.type === "repeat_enquiry" ? "bg-yellow-500" : n.type === "retention_alert" ? "bg-red-500" : "bg-blue-500"}`}
+                        title={n.type === "repeat_enquiry" ? "Repeat enquiry" : n.type === "retention_alert" ? "Retention alert" : "New lead"}
                       />
                     )}
                   </div>

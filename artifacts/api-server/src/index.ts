@@ -154,6 +154,25 @@ async function main() {
   }, VOICE_NOTE_CLEANUP_INTERVAL);
   logger.info("Voice note orphan cleanup scheduled (every 24h)");
 
+  // Client retention sweep — daily, plus one run shortly after boot so alerts
+  // fire without waiting a full day. Generates at most ONE "Retention Alert"
+  // per My Client per lapse cycle (deduped inside retention-service).
+  const RETENTION_CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
+  const runRetentionCheck = async () => {
+    try {
+      const { runRetentionAlertCheck } = await import("./lib/retention-service");
+      const result = await runRetentionAlertCheck();
+      if (result.alerted > 0) {
+        logger.info(result, "Client retention alert check completed");
+      }
+    } catch (err) {
+      logger.error({ err }, "Client retention alert check failed");
+    }
+  };
+  setTimeout(runRetentionCheck, 30_000);
+  setInterval(runRetentionCheck, RETENTION_CHECK_INTERVAL);
+  logger.info("Client retention alert check scheduled (every 24h)");
+
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "Shutting down gracefully...");
     server.close(async () => {

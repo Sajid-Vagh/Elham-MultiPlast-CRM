@@ -7,6 +7,7 @@ import { getAccessibleUnits } from "../lib/unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 import { parseEndDate } from "../lib/parse-end-date";
 import { normalizeProfilePhotoUrl } from "../lib/storage";
+import { daysSinceLastOrderOfDeals } from "../lib/retention-service";
 
 const router: IRouter = Router();
 
@@ -231,10 +232,13 @@ router.get("/categories/:category/contacts", async (req, res) => {
 
     res.json(contacts.map(c => {
       const { dealStage, sortedDeals } = sortDealsByRecent(dealsByContact.get(c.id) ?? []);
+      // "My Client" is the DB category behind both "My Client" and "Existing Client" views
+      const showRetention = isExistingClient || category === "My Client";
       return {
         ...c,
         salesOwner: userMap.get(c.salesOwnerId) ?? null,
         dealStage,
+        daysSinceLastOrder: showRetention ? daysSinceLastOrderOfDeals(dealsByContact.get(c.id) ?? []) : null,
         deals: sortedDeals.map(d => ({
           ...d,
           products: (dealProductsByDeal.get(d.id) ?? []).map(dp => ({

@@ -147,6 +147,11 @@ export default function CategoriesPage() {
   const totalPages = Math.ceil(filteredContacts.length / perPage);
   const paginatedContacts = filteredContacts.slice((page - 1) * perPage, page * perPage);
 
+  // "Days Since Last Order" is only meaningful for client categories (My Client /
+  // Existing Client, both backed by category = "My Client" server-side).
+  const showRetentionColumn = activeCategory === "My Client" || activeCategory === "Existing Client";
+  const columnCount = 10 + (showRetentionColumn ? 1 : 0);
+
   const toggleSelect = (id: number) => {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
@@ -164,6 +169,7 @@ export default function CategoriesPage() {
   const exportCsv = () => {
     const isCategoryABC = activeCategory && ["Category A", "Category B", "Category C"].includes(activeCategory);
     const isMyClient = activeCategory === "My Client";
+    const isRetentionView = isMyClient || activeCategory === "Existing Client";
 
     const esc = (val: string | number | null | undefined): string => {
       if (val == null) return "";
@@ -183,7 +189,7 @@ export default function CategoriesPage() {
 
     const baseHeaders = [
       "Name", "Company", "Mobile", "City", "Unit", "Category", "Assigned To",
-      "Latest Deal Stage", "Lost Reason", "Last Follow-up", "Next Follow-up",
+      "Latest Deal Stage", "Lost Reason",
       "Latest Comment", "Sales Notes", "Last Updated", "Created Date",
       "Priority", "Lead Source", "Interested Products"
     ];
@@ -193,7 +199,8 @@ export default function CategoriesPage() {
     ];
     const myClientHeaders = [
       "Products Purchased", "Bottle Type", "Bottle Size",
-      "Monthly Requirement", "Last Order Date", "Payment Terms", "Customer Since"
+      "Monthly Requirement", "Last Order Date", "Payment Terms", "Customer Since",
+      "Days Since Last Order"
     ];
 
     let headers = [...baseHeaders];
@@ -201,6 +208,8 @@ export default function CategoriesPage() {
       headers.push(...categoryABCHeaders);
     } else if (isMyClient) {
       headers.push(...myClientHeaders);
+    } else if (isRetentionView) {
+      headers.push("Days Since Last Order");
     }
 
     const rows = contacts.map((c: any) => {
@@ -243,7 +252,7 @@ export default function CategoriesPage() {
         c.name, c.companyName || "", c.mobile, c.city || "", c.unit || "",
         c.category || "",
         c.salesOwner?.name || "", c.dealStage ?? deals[0]?.stage ?? "",
-        lostReason, fmtDate(c.lastCallDate), fmtDate(c.nextCallDate),
+        lostReason,
         latestComment, salesNotes, lastUpdated, createdDate,
         priority, leadSource, interestedProducts
       ];
@@ -285,7 +294,9 @@ export default function CategoriesPage() {
         const paymentTerms = "";
         const customerSince = c.customerSince || "";
 
-        row.push(productsPurchased, bottleTypes, bottleSizes, monthlyRequirement, lastOrderDate, paymentTerms, customerSince);
+        row.push(productsPurchased, bottleTypes, bottleSizes, monthlyRequirement, lastOrderDate, paymentTerms, customerSince, c.daysSinceLastOrder ?? "-");
+      } else if (isRetentionView) {
+        row.push(c.daysSinceLastOrder ?? "-");
       }
 
       return row.map(esc);
@@ -422,14 +433,13 @@ export default function CategoriesPage() {
                     <TableHead>Category</TableHead>
                     <TableHead>Latest Deal Stage</TableHead>
                     <TableHead>Lost Reason</TableHead>
-                    <TableHead>Last Follow-up</TableHead>
-                    <TableHead>Next Follow-up</TableHead>
+                    {showRetentionColumn && <TableHead>Days Since Last Order</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paginatedContacts.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={columnCount} className="text-center py-8 text-muted-foreground">
                         No records found
                       </TableCell>
                     </TableRow>
@@ -460,8 +470,15 @@ export default function CategoriesPage() {
                               })()
                             : "-"}
                         </TableCell>
-                        <TableCell>{c.lastCallDate ? new Date(c.lastCallDate).toLocaleDateString() : "-"}</TableCell>
-                        <TableCell>{c.nextCallDate ? new Date(c.nextCallDate).toLocaleDateString() : "-"}</TableCell>
+                        {showRetentionColumn && (
+                          <TableCell>
+                            {c.daysSinceLastOrder != null ? (
+                              <span className={c.daysSinceLastOrder > 60 ? "text-red-600 font-bold" : ""}>
+                                {c.daysSinceLastOrder}
+                              </span>
+                            ) : "-"}
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))
                   )}
