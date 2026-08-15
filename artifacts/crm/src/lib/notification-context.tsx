@@ -65,11 +65,18 @@ function addSoundPlayedId(id: number) {
 
 const MAX_NOTIFICATIONS = 500;
 
-// Persistent global "Owners" filter for the Admin. Acts as a master gatekeeper
-// across ALL notification surfaces (toasts, bell dropdown, history). Survives
-// page reloads, logouts and browser restarts via localStorage.
-const OWNER_FILTER_KEY = "admin_notification_filter";
+// Persistent global "Owners" filter. Acts as a master gatekeeper across ALL
+// notification surfaces (toasts, bell dropdown, history). Survives page reloads
+// via localStorage. IMPORTANT: the key is namespaced PER USER (userId) so a
+// filter chosen by one user (e.g. an Admin) is NEVER inherited by another user
+// logging in on the same browser — a leftover owner filter used to blank the
+// bell dropdown + history + toasts for the next user (e.g. a Production manager).
+const OWNER_FILTER_KEY_PREFIX = "admin_notification_filter";
 const OWNER_FILTER_ALL = "ALL";
+
+function ownerFilterStorageKey(userId?: number): string {
+  return userId ? `${OWNER_FILTER_KEY_PREFIX}_${userId}` : OWNER_FILTER_KEY_PREFIX;
+}
 
 function matchesOwnerFilter(n: Notification, filter: string): boolean {
   if (!filter || filter === OWNER_FILTER_ALL) return true;
@@ -141,9 +148,9 @@ export function conversationMessageCount(list: Notification[], representative: N
   return count;
 }
 
-function loadOwnerFilter(): string {
+function loadOwnerFilter(userId?: number): string {
   try {
-    return localStorage.getItem(OWNER_FILTER_KEY) || OWNER_FILTER_ALL;
+    return localStorage.getItem(ownerFilterStorageKey(userId)) || OWNER_FILTER_ALL;
   } catch {
     return OWNER_FILTER_ALL;
   }
@@ -160,7 +167,7 @@ export function NotificationProvider({ userId, children }: { userId: number | un
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const mountedRef = useRef(true);
   const lastKnownMaxIdRef = useRef<number | null>(null);
-  const [ownerFilter, setOwnerFilterState] = useState<string>(loadOwnerFilter);
+  const [ownerFilter, setOwnerFilterState] = useState<string>(() => loadOwnerFilter(userId));
   const ownerFilterRef = useRef(ownerFilter);
   const queryClient = useQueryClient();
 
@@ -182,11 +189,11 @@ export function NotificationProvider({ userId, children }: { userId: number | un
   const setOwnerFilter = useCallback((ownerId: string) => {
     setOwnerFilterState(ownerId);
     try {
-      localStorage.setItem(OWNER_FILTER_KEY, ownerId);
+      localStorage.setItem(ownerFilterStorageKey(userId), ownerId);
     } catch {
       /* localStorage unavailable — ignore */
     }
-  }, []);
+  }, [userId]);
 
   const getHeaders = useCallback((): Record<string, string> => {
     const t = localStorage.getItem("crm_token");
@@ -215,8 +222,33 @@ export function NotificationProvider({ userId, children }: { userId: number | un
           // appear in History when the filter is changed back to All.
           if (!isInitial && maxId > (lastKnownMaxIdRef.current ?? 0)) {
             const newest = fetched.find(n => n.id === maxId);
-            if (newest && !newest.readAt && !newest.notificationSeen && matchesOwnerFilter(newest, ownerFilterRef.current)) setLatestNotification(newest);
-            if (newest) invalidateChatLists(newest);
+            if (newest) {
+              // New chat messages / voice notes should surface immediately on the
+              // Sales and Production order lists (green unread-message icon).
+              invalidateChatLists(newest);
+              // Only surface a NEW unread + unseen notification via popup/browser.
+              // Seen/read items must never re-trigger popups. The persistent
+              // "Owners" filter also blocks toasts for actors that do not match
+              // the selected owner — the raw list still stores them so they appear
+              // in History when the filter is changed back to All.
+              if (!newest.readAt && !newest.notificationSeen && matchesOwnerFilter(newest, ownerFilterRef.current)) {
+                setLatestNotification(newest);
+                // Polling fallback must ALSO play the sound. The SSE path is the
+                // primary trigger, but when the stream is down (flaky network,
+                // multi-tab, mobile) this 60s poll is the only way a notification
+                // reaches the client — without this, users get the popup but no
+                // sound. sessionStorage dedup prevents double-sound if both paths
+                // deliver the same id.
+                const playedSet = getSoundPlayedSet();
+                if (!playedSet.has(newest.id)) {
+                  playNotificationSoundForType(newest.type);
+                  addSoundPlayedId(newest.id);
+                  fetch(`/api/notifications/${newest.id}/mark-sound-played`, {
+                    method: "PATCH", headers: getHeaders(),
+                  }).catch(() => {});
+                }
+              }
+            }
           }
           lastKnownMaxIdRef.current = maxId;
         }

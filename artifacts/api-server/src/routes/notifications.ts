@@ -448,9 +448,27 @@ export async function createNotification(params: {
 
   const [n] = await db.insert(notificationsTable).values({ ...params, createdAt: new Date() }).returning();
   if (n) {
-    notificationEmitter.emit(NOTIFICATION_EVENT, await withCustomerInfo(n));
+    await emitNotificationEvent(n);
   }
   return n;
+}
+
+/**
+ * Push an already-persisted notification row over the SSE stream so connected
+ * clients receive it in real time (toast + sound + dropdown).
+ *
+ * Some notification paths insert directly into `notificationsTable` (bypassing
+ * `createNotification`'s dedup) so consecutive status changes on the same
+ * order are never swallowed. Those paths MUST call this after the insert,
+ * otherwise the event exists only in the DB and shows up no earlier than the
+ * frontend's 60s polling fallback — no real-time alert, no sound.
+ *
+ * Role-agnostic: delivery is scoped per-user by the stream's userId filter,
+ * so this works identically for admin, sales, production and support roles.
+ */
+export async function emitNotificationEvent(row: any) {
+  if (!row) return;
+  notificationEmitter.emit(NOTIFICATION_EVENT, await withCustomerInfo(row));
 }
 
 // Cron endpoint retained for backward compatibility (Vercel cron / CRON_SECRET

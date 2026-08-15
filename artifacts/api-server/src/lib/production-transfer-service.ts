@@ -6,6 +6,7 @@ import {
 import { eq, or, desc } from "drizzle-orm";
 import { enrichProductionOrder } from "./production-service";
 import { notifyProductionUsers } from "./notification-service";
+import { emitNotificationEvent } from "../routes/notifications";
 import { formatTimestamp } from "./activity-logger";
 import { type PermissionUser, isProductionUser, isAdmin } from "./permission-service";
 
@@ -85,13 +86,14 @@ export async function transferOrder(
     if (tu.id !== user.id) {
       const userUnit = tu.unit || "All";
       if (userUnit === "All" || userUnit === targetUnit || tu.role === "admin") {
-        await db.insert(notificationsTable).values({
+        const [row] = await db.insert(notificationsTable).values({
           userId: tu.id, type: "production_unit_transfer",
           title: "Production Order Transferred",
           message: `Order ${invoice?.invoiceNumber || `#${orderId}`} transferred from ${previousUnit} to ${targetUnit} by ${user.name}. Reason: ${reason}`,
           link: `/production/orders/${orderId}`,
           relatedId: orderId, relatedType: "production_order",
-        });
+        }).returning();
+        if (row) await emitNotificationEvent(row);
       }
     }
   }

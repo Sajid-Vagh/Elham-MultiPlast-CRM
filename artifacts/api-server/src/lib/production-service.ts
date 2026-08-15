@@ -11,7 +11,7 @@ import {
 import { eq, and, desc, sql, gte, lte, or, inArray, notInArray, ilike, isNull, isNotNull, asc, type SQL } from "drizzle-orm";
 import { getActivePiForDeal } from "./proforma-service";
 import { notifyProductionUsers, notifyDealEvent } from "./notification-service";
-import { createNotification } from "../routes/notifications";
+import { createNotification, emitNotificationEvent } from "../routes/notifications";
 import { logActivity, formatTimestamp } from "./activity-logger";
 import { canAccessProduction, type PermissionUser } from "./permission-service";
 import { maskContactForProduction, maskInvoiceForProduction, isProductionOnlyRole } from "./customer-mask";
@@ -162,7 +162,7 @@ async function notifySalesOfProductionEvent(params: {
   }
 
   for (const uid of userIds) {
-    await db.insert(notificationsTable).values({
+    const [row] = await db.insert(notificationsTable).values({
       userId: uid,
       type: "production_status",
       title,
@@ -170,7 +170,43 @@ async function notifySalesOfProductionEvent(params: {
       link: `/production/orders/${productionOrderId}`,
       relatedId: productionOrderId,
       relatedType: "production_order",
-    });
+    }).returning();
+    if (row) await emitNotificationEvent(row);
+  }
+
+  // Production-role users (pure Production Manager, `role === "production"`)
+  // must ALSO receive status updates. Previously every production_status
+  // notification went only to Sales + Support/Admin — production managers never
+  // saw progress changes in the bell/History and got no real-time alert or
+  // sound. Unit-scoped exactly like notifyProductionUsers so a Surat-only
+  // production user is not spammed with Himatnagar orders.
+  if (productionOrderId) {
+    const [order] = await db
+      .select({ productionUnit: productionOrdersTable.productionUnit })
+      .from(productionOrdersTable)
+      .where(eq(productionOrdersTable.id, productionOrderId));
+    const orderUnit = order?.productionUnit || "Himatnagar";
+
+    const prodTeam = await db
+      .select({ id: usersTable.id, unit: usersTable.unit })
+      .from(usersTable)
+      .where(eq(usersTable.role, "production"));
+
+    for (const pt of prodTeam) {
+      if (pt.id === excludeUserId || userIds.has(pt.id)) continue;
+      const userUnit = pt.unit || "All";
+      if (userUnit !== "All" && userUnit !== orderUnit && orderUnit !== "Himatnagar") continue;
+      const [row] = await db.insert(notificationsTable).values({
+        userId: pt.id,
+        type: "production_status",
+        title,
+        message,
+        link: `/production/orders/${productionOrderId}`,
+        relatedId: productionOrderId,
+        relatedType: "production_order",
+      }).returning();
+      if (row) await emitNotificationEvent(row);
+    }
   }
 }
 
@@ -190,7 +226,7 @@ async function notifySupportOfReadyForDispatch(params: {
 
   for (const su of supportUsers) {
     if (su.id !== excludeUserId) {
-      await db.insert(notificationsTable).values({
+      const [row] = await db.insert(notificationsTable).values({
         userId: su.id,
         type: "production_status",
         title,
@@ -198,7 +234,8 @@ async function notifySupportOfReadyForDispatch(params: {
         link: `/production/orders/${productionOrderId}`,
         relatedId: productionOrderId,
         relatedType: "production_order",
-      });
+      }).returning();
+      if (row) await emitNotificationEvent(row);
     }
   }
 }
@@ -773,13 +810,14 @@ export async function updateProductLineStatus(
       .where(or(eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
     for (const su of supportUsers) {
       if (su.id !== user.id) {
-        await db.insert(notificationsTable).values({
+        const [row] = await db.insert(notificationsTable).values({
           userId: su.id, type: "production_status",
           title: "Product Ready",
           message: `${item.productName} is Ready — Order #${orderId} — Ready for Dispatch`,
           link: `/production/orders/${orderId}`,
           relatedId: orderId, relatedType: "production_order",
-        });
+        }).returning();
+        if (row) await emitNotificationEvent(row);
       }
     }
   }
@@ -817,19 +855,26 @@ export async function notifyProductionUsersOfProductReady(params: {
   excludeUserId: number;
 }) {
   const { productionOrderId, productName, excludeUserId } = params;
+  // The production team is production + support + admin. The pure `production`
+  // role MUST be included here (it was previously excluded).
   const supportUsers = await db
     .select({ id: usersTable.id })
     .from(usersTable)
-    .where(or(eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
+    .where(or(
+      eq(usersTable.role, "production"),
+      eq(usersTable.role, "production_and_support"),
+      eq(usersTable.role, "admin"),
+    ));
   for (const su of supportUsers) {
     if (su.id !== excludeUserId) {
-      await db.insert(notificationsTable).values({
+      const [row] = await db.insert(notificationsTable).values({
         userId: su.id, type: "production_status",
         title: "Product Ready",
         message: `${productName} is Ready — Order #${productionOrderId}`,
         link: `/production/orders/${productionOrderId}`,
         relatedId: productionOrderId, relatedType: "production_order",
-      });
+      }).returning();
+      if (row) await emitNotificationEvent(row);
     }
   }
 }

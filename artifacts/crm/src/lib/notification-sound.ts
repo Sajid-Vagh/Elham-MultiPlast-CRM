@@ -15,6 +15,14 @@ export function playNotificationSoundForType(type: string) {
     deal_reopened: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
     assignment: "https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3",
     production_status: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
+    // Production order lifecycle events — same system alert as production_status.
+    // These are the alerts the Production role depends on (new order, PI change,
+    // unit transfer, PI revision), so they must have explicit, distinct sound
+    // mappings instead of silently falling through to the default.
+    production_order_created: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
+    production_pi_modified: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
+    production_unit_transfer: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
+    pi_revision: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
     invoice_created: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
     invoice_updated: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
     invoice_deleted: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
