@@ -16,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 import { useAllUsers } from "@/lib/use-all-users";
-import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import { PENDING_UNIT_ASSIGNMENT, isPendingUnit } from "@/lib/unit-constants";
 import { usePrivacyMode } from "@/lib/use-privacy-mode";
 import { customerLabel } from "@/lib/customer-label";
 import { useDateFilter, getLabel } from "@/lib/use-date-filter";
@@ -37,6 +37,16 @@ function todayStr(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+
+type OverdueActivity = {
+  id: number;
+  callStatus?: string | null;
+  followUpDate?: string | null;
+  contactId?: number | null;
+  dealId?: number | null;
+  contact?: { id?: number; name?: string; mobile?: string; unit?: string; customerCode?: string | null; salesOwnerId?: number | null } | null;
+  deal?: { id?: number; contactId?: number; contact?: { id?: number; name?: string; mobile?: string; unit?: string; customerCode?: string | null; salesOwnerId?: number | null } | null } | null;
+};
 
 const PIE_COLORS = ["#f87171","#fb923c","#fbbf24","#a3e635","#34d399","#60a5fa","#a78bfa","#f472b6","#94a3b8"];
 
@@ -62,6 +72,7 @@ export default function Dashboard() {
       if (unitFilter !== "All") params.set("unit", unitFilter);
       if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
       if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
+      params.set("today", todayStr());
       const res = await fetch(`/api/dashboard/kpi?${params.toString()}`, { headers: authHeaders });
       if (!res.ok) return null;
       return res.json() as Promise<{
@@ -134,6 +145,23 @@ export default function Dashboard() {
     staleTime: 30_000,
   });
 
+  const { data: overdueActivities } = useQuery<OverdueActivity[]>({
+    queryKey: ["dashboard-overdue-activities", ownerFilter, unitFilter, dateFilter.preset, dateFilter.startDate, dateFilter.endDate],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
+      if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
+      if (!isAdmin && me?.id) params.set("userId", String(me.id));
+      if (isAdmin && ownerFilter) params.set("salesPersonId", ownerFilter);
+      params.set("callStatus", "Pending");
+      const res = await fetch(`/api/activities?${params.toString()}`, { headers: authHeaders });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!token,
+    staleTime: 30_000,
+  });
+
   const { data: users } = useAllUsers(isAdmin);
 
   const unitStats = useMemo(() => {
@@ -141,18 +169,23 @@ export default function Dashboard() {
   }, [kpi]);
 
   const overdueList = useMemo(() => {
-    if (!dueContacts) return [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return dedupeById(dueContacts)
-      .filter(c => {
-        if (!c.nextCallDate) return false;
-        const d = new Date(c.nextCallDate);
-        d.setHours(0, 0, 0, 0);
-        return d < today;
-      })
-      .sort((a, b) => new Date(a.nextCallDate).getTime() - new Date(b.nextCallDate).getTime());
-  }, [dueContacts]);
+    if (!overdueActivities) return [];
+    // Mirror the Activity page's "Overdue" filter exactly (follow-ups.tsx):
+    // followUpDate < today && callStatus === "Pending" (date-only, local today).
+    const today = todayStr();
+    let list = dedupeById(overdueActivities).filter(a =>
+      !!a.followUpDate && a.followUpDate < today && (a.callStatus || "Pending") === "Pending"
+    );
+    // Unit filter — same as the Activity page (contact unit, pending-unit = no unit)
+    if (unitFilter !== "All") {
+      list = list.filter(a => {
+        const contactUnit = a.contact?.unit || a.deal?.contact?.unit;
+        if (unitFilter === PENDING_UNIT_ASSIGNMENT) return isPendingUnit(contactUnit);
+        return contactUnit === unitFilter;
+      });
+    }
+    return list.sort((a, b) => (a.followUpDate || "").localeCompare(b.followUpDate || ""));
+  }, [overdueActivities, unitFilter]);
 
   const filteredDueContacts = useMemo(() => {
     if (!dueContacts) return undefined;
@@ -386,20 +419,23 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {overdueList.slice(0, 9).map(contact => {
-                const diff = contact.nextCallDate ? daysDiff(contact.nextCallDate) : 0;
+              {overdueList.slice(0, 9).map(a => {
+                const contact = a.contact || a.deal?.contact;
+                const owner = contact?.salesOwnerId ? users.find(u => u.id === contact.salesOwnerId) : undefined;
+                const diff = a.followUpDate ? daysDiff(a.followUpDate) : 0;
+                const contactId = contact?.id || a.contactId || a.deal?.contactId;
                 return (
-                  <Link key={contact.id} href={`/leads/${contact.id}`}>
+                  <Link key={a.id} href={contactId ? `/leads/${contactId}` : "/follow-ups"}>
                     <div className="flex items-center gap-3 p-3 bg-white border border-red-200 rounded-md hover:bg-red-50 transition-colors cursor-pointer">
                       <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-red-100">
                         <PhoneCall className="h-4 w-4 text-red-600" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{customerLabel(contact.name, (contact as any).customerCode)}</p>
-                        {contact.salesOwner && (
+                        <p className="font-medium text-sm truncate">{customerLabel(contact?.name || "Unknown", (contact as any)?.customerCode)}</p>
+                        {owner && (
                           <div className="flex items-center gap-1">
-                            <UserAvatar profilePhoto={contact.salesOwner.profilePhoto} name={contact.salesOwner.name} className="w-2 h-2" />
-                            <span className="text-xs text-muted-foreground">{contact.salesOwner.name}</span>
+                            <UserAvatar profilePhoto={owner.profilePhoto} name={owner.name} className="w-2 h-2" />
+                            <span className="text-xs text-muted-foreground">{owner.name}</span>
                           </div>
                         )}
                       </div>
@@ -407,7 +443,7 @@ export default function Dashboard() {
                         <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">
                           {Math.abs(diff)}d overdue
                         </span>
-                        {contact.mobile && (
+                        {contact?.mobile && (
                           <p className="text-xs text-muted-foreground mt-0.5">{contact.mobile}</p>
                         )}
                       </div>

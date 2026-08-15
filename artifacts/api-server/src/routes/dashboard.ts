@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable, dealsTable, usersTable, activitiesTable, ordersTable, productionOrdersTable, CATEGORIES, DEAL_STAGES } from "@workspace/db";
-import { eq, inArray, and, desc, gte, lte } from "drizzle-orm";
+import { eq, inArray, and, desc, gte, lte, or } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 import { getAccessibleUnits } from "../lib/unit-filter";
@@ -20,6 +20,93 @@ function filterDealsByUnit(deals: (typeof dealsTable.$inferSelect)[], unit: stri
   if (!unit) return deals;
   const contactIds = new Set(filterContactsByUnit(allContacts, unit).map(c => c.id));
   return deals.filter(d => contactIds.has(d.contactId));
+}
+
+// Local yyyy-MM-dd date string in the SERVER's timezone. The frontend passes its
+// own local `today` when available so follow-up dates are never compared against
+// a UTC-derived date (which is off-by-one during morning hours for +05:30 / +05:45).
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Scopes activities to the current user + optional unit/owner filters, resolving
+// each activity's effective contact via its deal when it has no direct contactId.
+// The scoping mirrors the Activity page EXACTLY (activities.ts + follow-ups.tsx):
+//   - sales / production            → activities the user CREATED (createdBy)
+//   - production_and_support        → createdBy OR assignedTo
+//   - admin with ownerFilter        → activities whose effective contact's
+//                                     salesOwnerId matches (same as salesPersonId)
+//   - unit filter                   → effective contact's unit (Pending-Unit keeps
+//                                     contacts with NO unit)
+// Shared by the KPI counts and any future list endpoint so both can NEVER disagree
+// about what an activity is — the root cause of the previous bug where the counter
+// used contacts.nextCallDate while the Activity page used activities.followUpDate.
+async function getScopedActivities(
+  user: { id: number; role: string },
+  adminOwnerId: number | undefined,
+  unitFilter: string | undefined,
+  activityDateConds: any[]
+) {
+  const conditions: any[] = [];
+  if (user.role === "sales" || user.role === "production") {
+    conditions.push(eq(activitiesTable.createdBy, user.id));
+  } else if (user.role === "production_and_support") {
+    conditions.push(or(
+      eq(activitiesTable.createdBy, user.id),
+      eq(activitiesTable.assignedTo, user.id),
+    )!);
+  }
+  // Admin sees all — owner filter applied below via effective contact
+  if (activityDateConds.length > 0) conditions.push(...activityDateConds);
+
+  const activitiesQueryResult = conditions.length > 0
+    ? await db.select().from(activitiesTable).where(and(...conditions))
+    : await db.select().from(activitiesTable);
+
+  // Activities may be linked to a contact directly, or only via their deal.
+  // Resolve each activity's effective contact id (same resolution the
+  // Activity page uses: activity.contactId ?? activity.deal.contactId) so the
+  // unit + owner filters behave identically to the table.
+  const dealIdSet = new Set(activitiesQueryResult.map(a => a.dealId).filter(Boolean)) as Set<number>;
+  let dealContactMap = new Map<number, number>();
+  if (dealIdSet.size > 0) {
+    const deals = await db
+      .select({ id: dealsTable.id, contactId: dealsTable.contactId })
+      .from(dealsTable)
+      .where(inArray(dealsTable.id, [...dealIdSet]));
+    dealContactMap = new Map(deals.map(d => [d.id, d.contactId]));
+  }
+
+  const effectiveContactIds = new Set<number>();
+  for (const a of activitiesQueryResult) {
+    const cid = a.contactId ?? (a.dealId ? dealContactMap.get(a.dealId) : undefined);
+    if (cid) effectiveContactIds.add(cid);
+  }
+  let contactMap = new Map<number, (typeof contactsTable.$inferSelect)>();
+  if (effectiveContactIds.size > 0) {
+    const contacts = await db
+      .select()
+      .from(contactsTable)
+      .where(inArray(contactsTable.id, [...effectiveContactIds]));
+    contactMap = new Map(contacts.map(c => [c.id, c]));
+  }
+
+  return activitiesQueryResult.filter(a => {
+    const cid = a.contactId ?? (a.dealId ? dealContactMap.get(a.dealId) : undefined);
+    const contact = cid ? contactMap.get(cid) : undefined;
+    if (user.role === "admin" && adminOwnerId) {
+      if (!contact || contact.salesOwnerId !== adminOwnerId) return false;
+    }
+    if (unitFilter) {
+      const contactUnit = contact?.unit;
+      if (unitFilter === PENDING_UNIT_ASSIGNMENT) {
+        if (contactUnit) return false;
+      } else if (contactUnit !== unitFilter) {
+        return false;
+      }
+    }
+    return true;
+  });
 }
 
 async function getUser(req: any) {
@@ -53,10 +140,9 @@ router.get("/dashboard/kpi", async (req, res) => {
     // Build date conditions for SQL-level filtering
     const contactDateConds: any[] = [];
     const dealDateConds: any[] = [];
-    const activityDateConds: any[] = [];
     const orderDateConds: any[] = [];
-    if (startDate) { contactDateConds.push(gte(contactsTable.createdAt, new Date(startDate))); dealDateConds.push(gte(dealsTable.createdAt, new Date(startDate))); activityDateConds.push(gte(activitiesTable.createdAt, new Date(startDate))); orderDateConds.push(gte(ordersTable.createdAt, new Date(startDate))); }
-    if (endDate) { const end = new Date(endDate); end.setHours(23, 59, 59, 999); contactDateConds.push(lte(contactsTable.createdAt, end)); dealDateConds.push(lte(dealsTable.createdAt, end)); activityDateConds.push(lte(activitiesTable.createdAt, end)); orderDateConds.push(lte(ordersTable.createdAt, end)); }
+    if (startDate) { contactDateConds.push(gte(contactsTable.createdAt, new Date(startDate))); dealDateConds.push(gte(dealsTable.createdAt, new Date(startDate))); orderDateConds.push(gte(ordersTable.createdAt, new Date(startDate))); }
+    if (endDate) { const end = new Date(endDate); end.setHours(23, 59, 59, 999); contactDateConds.push(lte(contactsTable.createdAt, end)); dealDateConds.push(lte(dealsTable.createdAt, end)); orderDateConds.push(lte(ordersTable.createdAt, end)); }
 
     const allContacts = effectiveOwnerId
       ? await db.select().from(contactsTable).where(and(eq(contactsTable.salesOwnerId, effectiveOwnerId), ...contactDateConds))
@@ -75,7 +161,13 @@ router.get("/dashboard/kpi", async (req, res) => {
     const filteredDeals = filterDealsByUnit(allDeals, unitFilter, allContacts);
 
     const now = new Date();
-    const today = now.toISOString().split("T")[0]!;
+    // Use the client's local date string when supplied (frontend sends its own
+    // todayStr()) so "today"/"overdue" are decided in the SAME timezone the
+    // Activity page table uses. Fall back to the server-local date otherwise.
+    // Never toISOString(): that yields the UTC date, which is wrong for
+    // +05:30/+05:45 regions between midnight and ~05:30 local.
+    const rawToday = req.query.today as string | undefined;
+    const today = rawToday && /^\d{4}-\d{2}-\d{2}$/.test(rawToday) ? rawToday : localDateStr(now);
 
     const totalContacts = filteredContacts.length;
     const totalDeals = filteredDeals.length;
@@ -103,28 +195,32 @@ router.get("/dashboard/kpi", async (req, res) => {
       unitStats[u] = (unitStats[u] || 0) + 1;
     }
 
-    // Activities: scope to owner and apply unit filter via contacts
-    const activityConditions: any[] = [];
-    if (effectiveOwnerId) {
-      const userContactIds = (await db.select({ id: contactsTable.id }).from(contactsTable).where(eq(contactsTable.salesOwnerId, effectiveOwnerId))).map(c => c.id);
-      if (userContactIds.length > 0) {
-        activityConditions.push(inArray(activitiesTable.contactId, userContactIds));
-      } else {
-        activityConditions.push(eq(activitiesTable.contactId, -1)); // no results
-      }
-    }
-    if (activityDateConds.length > 0) activityConditions.push(...activityDateConds);
-    const activitiesQueryResult = activityConditions.length > 0
-      ? await db.select().from(activitiesTable).where(and(...activityConditions))
-      : await db.select().from(activitiesTable);
+    // Activities: scope to owner and apply unit filter via contacts.
+    // The date-range filter matches the Activity page (activities.ts): it applies
+    // to followUpDate, NOT record createdAt, so the cards reflect exactly what the
+    // table shows for the same selected date range.
+    const activityDateCondsLocal: any[] = [];
+    if (startDate) activityDateCondsLocal.push(gte(activitiesTable.followUpDate, startDate));
+    if (endDate) activityDateCondsLocal.push(lte(activitiesTable.followUpDate, endDate));
+    const scopedActivities = await getScopedActivities(
+      user,
+      isAdmin ? effectiveOwnerId : undefined,
+      unitFilter,
+      activityDateCondsLocal
+    );
 
-    const todayActivities = activitiesQueryResult.filter(a => a.followUpDate === today);
+    const todayActivities = scopedActivities.filter(a => a.followUpDate === today);
     const todayTotal = todayActivities.length;
     const todayCompleted = todayActivities.filter(a => a.callStatus === "Completed").length;
     const todayPending = todayActivities.filter(a => a.callStatus === "Pending").length;
 
-    const dueContacts = filteredContacts.filter(c => c.nextCallDate && c.nextCallDate < today);
-    const overdueCount = dueContacts.length;
+    // Overdue mirrors the Activity page's "Overdue" status filter exactly
+    // (follow-ups.tsx): followUpDate < today && callStatus === "Pending".
+    // followUpDate is a yyyy-MM-dd string, so a plain string comparison is both
+    // timezone-safe and identical to the frontend's date-only comparison.
+    const overdueCount = scopedActivities.filter(a =>
+      !!a.followUpDate && a.followUpDate < today && a.callStatus === "Pending"
+    ).length;
 
     const newLeadsThisMonth = filteredContacts.length;
 
