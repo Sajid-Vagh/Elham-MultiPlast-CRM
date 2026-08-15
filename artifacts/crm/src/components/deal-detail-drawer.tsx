@@ -229,7 +229,7 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
                   {deal.stage !== "Won" && <Button size="sm" variant="outline" className="text-green-700 border-green-300 hover:bg-green-50" onClick={() => { setWonAmount(""); setWonConfirmOpen(true); }}><CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Won</Button>}
                   {deal.stage !== "Lost" && <Button size="sm" variant="outline" className="text-red-700 border-red-300 hover:bg-red-50" onClick={() => setLostOpen(true)}><X className="h-3.5 w-3.5 mr-1" /> Lost</Button>}
                   <Button size="sm" variant="outline" onClick={() => { setFuNotes(""); setFuDate(""); setFuTime(""); setFuType("Call"); setFollowUpOpen(true); }}><Calendar className="h-3.5 w-3.5 mr-1" /> Follow-up</Button>
-                  {contact && <Link href={`/leads/${contact.id}`}><Button size="sm" variant="outline"><ExternalLink className="h-3.5 w-3.5 mr-1" /> View Lead</Button></Link>}
+                  {contact && <Link href={`/leads/${contact.id}`}><Button size="sm" variant="default" className="bg-primary text-white hover:bg-primary/90"><ExternalLink className="h-3.5 w-3.5 mr-1" /> View Full Lead</Button></Link>}
                 </div>
 
                 {/* Contact Info */}

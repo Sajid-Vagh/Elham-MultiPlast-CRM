@@ -530,7 +530,7 @@ export default function Deals() {
                       <DraggableCard key={deal.id} deal={deal}>
                         <div
                           className="bg-card p-3 rounded shadow-sm border cursor-pointer hover:border-primary transition-colors"
-                          onClick={() => navigate(`/leads/${deal.contactId}`)}
+                          onClick={() => setDrawerDealId(deal.id)}
                         >
                           <div className="font-semibold text-sm line-clamp-1 mb-1" title={dealTitle}>
                             {dealTitle}
