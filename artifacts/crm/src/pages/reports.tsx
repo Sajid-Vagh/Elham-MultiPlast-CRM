@@ -1,4 +1,4 @@
-import { useState, useCallback, Fragment } from "react";
+import { useState, useCallback, useMemo, Fragment } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -14,11 +14,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from "@/components/ui/sheet";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, PieChart, Pie, Legend, Tooltip, Sector } from "recharts";
-import { TrendingUp, Users, Briefcase, DollarSign, XCircle, Download, Search, Phone, ExternalLink, Eye, Copy, ChevronDown, ChevronRight, FileSpreadsheet, FileText, CalendarIcon } from "lucide-react";
+import { TrendingUp, Users, Briefcase, DollarSign, XCircle, Download, Search, Phone, ExternalLink, Eye, Copy, ChevronDown, ChevronRight, FileSpreadsheet, FileText, CalendarIcon, ListFilter } from "lucide-react";
 import * as XLSX from "xlsx";
 import { useToast } from "@/hooks/use-toast";
 import { UserAvatar } from "@/components/user-avatar";
-import { STAGE_CHART_COLORS } from "@/lib/deal-stages";
+import { STAGE_CHART_COLORS, STAGE_BADGE_COLORS } from "@/lib/deal-stages";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 import {
@@ -155,6 +155,70 @@ export default function Reports() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
   const [, navigate] = useLocation();
+
+  // ── Drill-down (By City / State / Owner / Product) ──────────────────────
+  type DrillKind = "city" | "state" | "owner" | "product";
+  const [drill, setDrill] = useState<{ open: boolean; kind: DrillKind; title: string; value: string }>(
+    { open: false, kind: "city", title: "", value: "" }
+  );
+  const openDrill = (kind: DrillKind, title: string, value: string) => {
+    setDrill({ open: true, kind, title, value });
+  };
+
+  // The By City / By State aggregations ignore the unit filter (their backend
+  // endpoints don't receive it), while By Owner / By Product apply it — so the
+  // drill-down fetch mirrors the source tab's filters to keep row counts exact.
+  const drillParams = useMemo(() => {
+    const p: Record<string, string> = {};
+    if (ownerId) p.salesOwnerId = ownerId;
+    if ((drill.kind === "owner" || drill.kind === "product") && unit !== "All") p.unit = unit;
+    if (dateFilter.startDate) p.startDate = dateFilter.startDate;
+    if (dateFilter.endDate) p.endDate = dateFilter.endDate;
+    return p;
+  }, [ownerId, unit, dateFilter.startDate, dateFilter.endDate, drill.kind]);
+  const drillFilterKey = useMemo(() => JSON.stringify(drillParams), [drillParams]);
+
+  const { data: drillSource, isLoading: drillLoading } = useQuery({
+    queryKey: ["report-drill-deals", drillFilterKey],
+    queryFn: async () => {
+      const token = localStorage.getItem("crm_token");
+      const params = new URLSearchParams(drillParams);
+      const res = await fetch(`/api/reports/raw-deals?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) return [];
+      const json = await res.json();
+      return (json?.data ?? []) as any[];
+    },
+    enabled: drill.open && !!localStorage.getItem("crm_token"),
+    staleTime: 30_000,
+  });
+
+  const drillDeals = useMemo(() => {
+    const all = drillSource ?? [];
+    const v = drill.value;
+    switch (drill.kind) {
+      case "city":
+        return all.filter(r => (r.cityName ?? "Unknown") === v);
+      case "state":
+        return all.filter(r => (r.state ?? "Unknown") === v);
+      case "owner":
+        return all.filter(r => r.salesOwnerId != null && String(r.salesOwnerId) === v);
+      case "product":
+        return all.filter(r => (Array.isArray(r.products) ? r.products : []).includes(v));
+      default:
+        return [];
+    }
+  }, [drillSource, drill.kind, drill.value]);
+
+  const drillSummary = useMemo(() => {
+    const won = drillDeals.filter(d => d.stage === "Won");
+    const lost = drillDeals.filter(d => d.stage === "Lost");
+    return {
+      total: drillDeals.length,
+      won: won.length,
+      lost: lost.length,
+      wonValue: won.reduce((s, d) => s + Number(d.value ?? 0), 0),
+    };
+  }, [drillDeals]);
 
   const { data: summary } = useQuery({
     queryKey: ["report-summary", ownerId, unit, dateFilter.preset],
@@ -578,7 +642,11 @@ export default function Reports() {
                 </TableHeader>
                 <TableBody>
                   {byOwner?.map(row => (
-                    <TableRow key={row.userId}>
+                    <TableRow
+                      key={row.userId}
+                      className="cursor-pointer hover:bg-primary/5 transition-colors"
+                      onClick={() => openDrill("owner", `${row.userName} Deals`, String(row.userId))}
+                    >
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <UserAvatar profilePhoto={(row as any).profilePhoto} name={row.userName} className="w-3 h-3" />
@@ -587,28 +655,28 @@ export default function Reports() {
                       </TableCell>
                       <TableCell
                         className="cursor-pointer hover:underline hover:text-primary font-medium"
-                        onClick={() => goDeals(undefined, row.userId)}
+                        onClick={e => { e.stopPropagation(); goDeals(undefined, row.userId); }}
                         title="View all deals for this owner"
                       >
                         {row.totalDeals}
                       </TableCell>
                       <TableCell
                         className="cursor-pointer hover:underline hover:text-blue-600"
-                        onClick={() => navigate(`/deals?owner=${row.userId}`)}
+                        onClick={e => { e.stopPropagation(); navigate(`/deals?owner=${row.userId}`); }}
                         title="View active deals"
                       >
                         {row.activeDeals}
                       </TableCell>
                       <TableCell
                         className="text-green-600 font-medium cursor-pointer hover:underline"
-                        onClick={() => goDeals("Won", row.userId)}
+                        onClick={e => { e.stopPropagation(); goDeals("Won", row.userId); }}
                         title="View won deals"
                       >
                         {row.wonDeals}
                       </TableCell>
                       <TableCell
                         className="text-red-500 cursor-pointer hover:underline"
-                        onClick={() => goDeals("Lost", row.userId)}
+                        onClick={e => { e.stopPropagation(); goDeals("Lost", row.userId); }}
                         title="View lost deals"
                       >
                         {row.lostDeals}
@@ -627,6 +695,7 @@ export default function Reports() {
           <Card>
             <CardHeader><CardTitle>Performance by City</CardTitle></CardHeader>
             <CardContent>
+              <p className="text-xs text-muted-foreground text-center mb-2">Click any row to view those deals →</p>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -638,8 +707,12 @@ export default function Reports() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {byCity?.sort((a, b) => b.totalWonValue - a.totalWonValue).map(row => (
-                    <TableRow key={row.city}>
+                  {[...(byCity ?? [])].sort((a, b) => b.totalWonValue - a.totalWonValue).map(row => (
+                    <TableRow
+                      key={row.city}
+                      className="cursor-pointer hover:bg-primary/5 transition-colors"
+                      onClick={() => openDrill("city", `${row.city} Deals`, row.city)}
+                    >
                       <TableCell className="font-medium">{row.city}</TableCell>
                       <TableCell>{row.totalDeals}</TableCell>
                       <TableCell className="text-green-600 font-medium">{row.wonDeals}</TableCell>
@@ -647,6 +720,13 @@ export default function Reports() {
                       <TableCell className="text-red-500 font-medium">{row.lostDeals}</TableCell>
                     </TableRow>
                   ))}
+                  {(!byCity || byCity.length === 0) && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                        No deals found for the selected filters.
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -700,7 +780,11 @@ export default function Reports() {
                     </TableHeader>
                     <TableBody>
                       {[...dealsByState].sort((a, b) => b.totalWonValue - a.totalWonValue).map(row => (
-                        <TableRow key={row.state}>
+                        <TableRow
+                          key={row.state}
+                          className="cursor-pointer hover:bg-primary/5 transition-colors"
+                          onClick={() => openDrill("state", `${row.state} Deals`, row.state)}
+                        >
                           <TableCell className="font-medium">{row.state}</TableCell>
                           <TableCell>{row.totalDeals}</TableCell>
                           <TableCell className="text-green-600 font-medium">{row.wonDeals}</TableCell>
@@ -730,6 +814,7 @@ export default function Reports() {
                     <TableHead>Deals</TableHead>
                     <TableHead>Total Qty</TableHead>
                     <TableHead>Total Value</TableHead>
+                    <TableHead className="text-right">View</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -753,10 +838,21 @@ export default function Reports() {
                           <TableCell>{row.dealCount}</TableCell>
                           <TableCell>{row.totalQuantity}</TableCell>
                           <TableCell>₹{Number(row.totalValue).toLocaleString()}</TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              title={`View deals for ${row.productName}`}
+                              onClick={e => { e.stopPropagation(); openDrill("product", `${row.productName} Deals`, row.productName); }}
+                            >
+                              <Eye className="h-4 w-4 text-primary" />
+                            </Button>
+                          </TableCell>
                         </TableRow>
                         {isOpen && hasVariants && (
                           <TableRow>
-                            <TableCell colSpan={6} className="bg-muted/30 p-2">
+                            <TableCell colSpan={7} className="bg-muted/30 p-2">
                               <Table>
                                 <TableHeader>
                                   <TableRow>
@@ -787,7 +883,7 @@ export default function Reports() {
                   })}
                   {(!byProduct || byProduct.length === 0) && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                         No products found for the selected filters.
                       </TableCell>
                     </TableRow>
@@ -1134,6 +1230,72 @@ export default function Reports() {
               })()}
             </div>
           ) : null}
+        </SheetContent>
+      </Sheet>
+
+      {/* ── DRILL-DOWN DRAWER (By City / State / Owner / Product) ── */}
+      <Sheet open={drill.open} onOpenChange={(o) => setDrill(d => ({ ...d, open: o }))}>
+        <SheetContent className="sm:max-w-2xl max-w-[90vw] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2 text-xl">
+              <ListFilter className="h-5 w-5 text-primary" />
+              {drill.title}
+            </SheetTitle>
+          </SheetHeader>
+
+          {drillLoading ? (
+            <div className="flex items-center justify-center py-20"><p className="text-muted-foreground">Loading deals...</p></div>
+          ) : drillDeals.length === 0 ? (
+            <div className="flex items-center justify-center py-20"><p className="text-muted-foreground">No deals found for the selected filters.</p></div>
+          ) : (
+            <div className="mt-4 space-y-4">
+              {/* Won / Lost summary */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Total Deals</p><p className="text-xl font-bold">{drillSummary.total}</p></CardContent></Card>
+                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Won</p><p className="text-xl font-bold text-green-600">{drillSummary.won}</p></CardContent></Card>
+                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Lost</p><p className="text-xl font-bold text-red-500">{drillSummary.lost}</p></CardContent></Card>
+                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Won Value</p><p className="text-lg font-bold">₹{drillSummary.wonValue.toLocaleString()}</p></CardContent></Card>
+              </div>
+
+              <p className="text-xs text-muted-foreground">{drillDeals.length} deal{drillDeals.length !== 1 ? "s" : ""} in this {drill.kind}</p>
+              <div className="border rounded-lg overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Deal Name</TableHead>
+                      <TableHead>Client</TableHead>
+                      <TableHead>Stage</TableHead>
+                      <TableHead className="text-right">Value</TableHead>
+                      <TableHead>Owner</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {drillDeals.map((r: any, i: number) => (
+                      <TableRow key={`${r.dealId ?? "d"}-${r.contactId ?? "c"}-${i}`}>
+                        <TableCell className="font-medium whitespace-nowrap max-w-[220px] truncate" title={r.dealName}>
+                          {r.dealName || "—"}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          <Link to={`/leads/${r.contactId}`} className="hover:underline text-primary">
+                            {r.clientName}
+                          </Link>
+                        </TableCell>
+                        <TableCell>
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STAGE_BADGE_COLORS[r.stage] || "bg-slate-100 text-slate-700"}`}>
+                            {r.stage}
+                          </span>
+                        </TableCell>
+                        <TableCell className={`text-right whitespace-nowrap font-medium ${r.stage === "Won" ? "text-green-600" : r.stage === "Lost" ? "text-red-500" : ""}`}>
+                          {r.value ? `₹${Number(r.value).toLocaleString()}` : "—"}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">{r.salesPerson || "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
         </SheetContent>
       </Sheet>
     </div>

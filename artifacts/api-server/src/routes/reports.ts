@@ -652,6 +652,29 @@ router.get("/reports/raw-deals", async (req, res) => {
     const allUsers = await db.select().from(usersTable);
     const userMap = new Map(allUsers.map(u => [u.id, u]));
 
+    // Product names per deal (deal_products + proforma_invoice_items) so the
+    // "By Product" report rows can drill down to the underlying deals.
+    const productMap = new Map<number, Set<string>>();
+    try {
+      const { rows: prodRows } = await db.execute(sql`
+        SELECT dp.deal_id AS "dealId", coalesce(p.name, 'Unknown') AS "productName"
+        FROM deal_products dp
+        LEFT JOIN products p ON p.id = dp.product_id
+        UNION ALL
+        SELECT pi.deal_id AS "dealId", coalesce(p.name, btrim(pii.product_name)) AS "productName"
+        FROM proforma_invoice_items pii
+        JOIN proforma_invoices pi ON pi.id = pii.invoice_id AND pi.is_deleted = false
+        LEFT JOIN products p ON p.id = pii.product_id
+        WHERE pi.deal_id IS NOT NULL
+      `);
+      for (const row of (prodRows ?? []) as any[]) {
+        const id = row.dealId;
+        if (id == null) continue;
+        if (!productMap.has(id)) productMap.set(id, new Set());
+        productMap.get(id)!.add(row.productName);
+      }
+    } catch { /* products are optional for the drill-down */ }
+
     // Mirror the pipeline report filters so the raw rows match the report metrics
     if (params.success) {
       if (params.data.salesOwnerId) {
@@ -676,12 +699,13 @@ router.get("/reports/raw-deals", async (req, res) => {
       const contact = contactMap.get(d.contactId);
       const owner = d.salesOwnerId ? userMap.get(d.salesOwnerId) : undefined;
       const state = contact?.state ? normalizeState(contact.state) : null;
-      const stateKey = (state ?? (contact?.city ? inferStateFromCity(contact.city) : null)) ?? "";
+      const stateKey = (state ?? (contact?.city ? inferStateFromCity(contact.city) : null)) ?? "Unknown";
       return {
         clientName: contact?.name ?? "Unknown",
         company: contact?.companyName ?? "",
         mobile: contact?.mobile ?? "",
         city: contact?.city ?? "",
+        cityName: (contact?.city ? normalizeCity(contact.city) : null) ?? "Unknown",
         state: stateKey,
         dealName: d.title ?? "",
         stage: d.stage,
@@ -689,6 +713,8 @@ router.get("/reports/raw-deals", async (req, res) => {
         probability: d.probability ?? "",
         lostReason: d.lostReason ?? "",
         salesPerson: owner?.name ?? "",
+        salesOwnerId: d.salesOwnerId ?? null,
+        products: [...(productMap.get(d.id) ?? [])],
         createdDate: d.createdAt ? new Date(d.createdAt).toISOString() : "",
         contactId: d.contactId,
         dealId: d.id,
