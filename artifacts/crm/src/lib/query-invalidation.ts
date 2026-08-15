@@ -60,6 +60,7 @@ export function onDealChange(queryClient: QueryClient, dealId?: number, contactI
 
 export function onActivityChange(queryClient: QueryClient, dealId?: number, contactId?: number) {
   queryClient.invalidateQueries({ queryKey: ["follow-up-activities"] });
+  queryClient.invalidateQueries({ queryKey: ["activity-badge-count"] });
   queryClient.invalidateQueries({ queryKey: ["category-counts"] });
   queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
   queryClient.invalidateQueries({ queryKey: ["dashboard-kpi"] });

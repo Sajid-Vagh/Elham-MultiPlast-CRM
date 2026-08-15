@@ -17,7 +17,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { onActivityChange } from "@/lib/query-invalidation";
 import { dedupeById } from "@/lib/parse-notes";
-import { useActivityCountSync } from "@/lib/activity-count-context";
 import { CategoryBadge } from "@/components/category-badge";
 import { ExportButton } from "@/components/export-button";
 import { useActiveUnits } from "@/lib/use-active-units";
@@ -110,7 +109,7 @@ const SORT_OPTIONS = [
 ];
 
 export default function FollowUps() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const [dateFilter, setDateFilter] = useDateFilter();
   const [unitFilter, setUnitFilter] = useUnitFilter();
   const [globalOwner, setGlobalOwner] = useOwnerFilter();
@@ -132,6 +131,23 @@ export default function FollowUps() {
   const { data: users } = useCustomerFacingUsers();
   const isAdmin = me?.role === "admin";
   const { units: activeUnits } = useActiveUnits();
+
+  // Deep-link support: the Dashboard's metric cards navigate here with a
+  // `?status=` query param (Overdue / Pending / Today). Read it from the URL
+  // and apply it to the Status dropdown so the page loads with exactly the
+  // clicked category pre-filtered. Re-runs whenever the param changes, so
+  // clicking another card while already on this page also re-filters.
+  const statusParam = useMemo(() => {
+    const qs = location.split("?")[1];
+    if (!qs) return null;
+    return new URLSearchParams(qs).get("status");
+  }, [location]);
+
+  useEffect(() => {
+    if (!statusParam) return;
+    setGlobalStatus(statusParam === "all" ? "All" : statusParam);
+    setPage(1);
+  }, [statusParam, setGlobalStatus]);
 
   type FollowUpActivity = {
     id: number; type: string; notes?: string | null;
@@ -411,16 +427,6 @@ export default function FollowUps() {
       setPage(1);
     }
   }, [filteredActivities.length, page]);
-
-  // Keep the sidebar "Activity" badge in sync with the filtered table rows.
-  // The effect dependency is the filtered length itself, so it only runs when
-  // the visible count actually changes — no infinite render loop. On unmount
-  // the count is reset so the sidebar falls back to the global pending count.
-  const syncActivityCount = useActivityCountSync();
-  useEffect(() => {
-    syncActivityCount(filteredActivities.length);
-    return () => syncActivityCount(null);
-  }, [filteredActivities.length, syncActivityCount]);
 
   const todayDate = todayStr();
 

@@ -6,7 +6,7 @@ import { Link, useLocation } from "wouter";
 import { NotificationProvider, useNotifications, groupConversations } from "@/lib/notification-context";
 import { dedupeById, parseNotesText } from "@/lib/parse-notes";
 import { showBrowserNotification } from "@/lib/notification-sound";
-import { ActivityCountProvider, useActivityCount } from "@/lib/activity-count-context";
+import { useActivityBadgeCount } from "@/lib/use-activity-badge-count";
 import { useActivityReminders } from "@/lib/use-activity-reminder";
 import { NotificationPopup } from "./notification-popup";
 import { NotificationSidePanel } from "./notification-side-panel";
@@ -44,12 +44,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   return (
-    <ActivityCountProvider>
-      <NotificationProvider userId={user.id}>
-        <LayoutMain user={user}>{children}</LayoutMain>
-        <NotificationSidePanel />
-      </NotificationProvider>
-    </ActivityCountProvider>
+    <NotificationProvider userId={user.id}>
+      <LayoutMain user={user}>{children}</LayoutMain>
+      <NotificationSidePanel />
+    </NotificationProvider>
   );
 }
 
@@ -124,16 +122,12 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { upcoming: true },
     { query: { enabled: !!user, staleTime: 30 * 1000, queryKey: getListActivitiesQueryKey({ upcoming: true }) } }
   );
-  const followUpCount = useMemo(() => {
-    if (!upcomingActivities) return 0;
-    return upcomingActivities.filter(a => a.callStatus === "Pending").length;
-  }, [upcomingActivities]);
 
-  // The Activity list page publishes its filtered row count here. When the page
-  // is mounted, the sidebar badge matches exactly what is visible in the table;
-  // otherwise it falls back to the global pending count.
-  const publishedActivityCount = useActivityCount();
-  const activityBadgeCount = publishedActivityCount ?? followUpCount;
+  // Single global source for the sidebar "Activity" badge (Pending + Overdue).
+  // Computed by `useActivityBadgeCount` from one stable React Query key on every
+  // page, so the number is identical on the Dashboard and the Activity page and
+  // never flickers between them.
+  const activityBadgeCount = useActivityBadgeCount();
 
   const d = new Date();
   const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -335,7 +329,11 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
 
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
           {navItems.map((item) => {
-            const isActive = location === item.href || location.startsWith(`${item.href}/`);
+            // Compare against the pathname only so query-string navigation
+            // (e.g. `/follow-ups?status=Overdue` from a Dashboard card) keeps
+            // the matching nav item highlighted.
+            const pathname = location.split("?")[0];
+            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
               <Link key={item.href} href={item.href}>
                 <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all cursor-pointer ${

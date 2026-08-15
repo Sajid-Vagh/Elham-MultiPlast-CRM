@@ -282,7 +282,7 @@ export default function Dashboard() {
 
       {/* Today's Calls + Additional KPI mini-cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        <Link href="/follow-ups" className="block">
+        <Link href="/follow-ups?status=Today" className="block">
           <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out border-blue-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-xs font-medium">Today's Calls</CardTitle>
@@ -304,7 +304,7 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </Link>
-        <Link href="/follow-ups" className="block">
+        <Link href="/follow-ups?status=Pending" className="block">
           <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out border-orange-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-xs font-medium">Pending</CardTitle>
@@ -315,7 +315,7 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </Link>
-        <Link href="/follow-ups" className="block">
+        <Link href="/follow-ups?status=Overdue" className="block">
           <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out border-red-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-xs font-medium">Overdue</CardTitle>
@@ -453,7 +453,7 @@ export default function Dashboard() {
               })}
             </div>
             {overdueList.length > 9 && (
-              <Link href="/follow-ups">
+              <Link href="/follow-ups?status=Overdue">
                 <p className="text-sm text-red-600 text-center mt-3 hover:underline cursor-pointer">
                   View all {overdueList.length} overdue follow-ups <ChevronRight className="h-3 w-3 inline" />
                 </p>
