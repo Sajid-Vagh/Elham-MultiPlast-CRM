@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Search, ArrowLeft, Package, Truck, CheckCircle2, Filter, X } from "lucide-react";
-import { ExportDropdown } from "@/components/export-dropdown";
+import { ExportButton } from "@/components/export-button";
 import { useToast } from "@/hooks/use-toast";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useUserUnits } from "@/lib/use-user-units";
@@ -191,7 +191,7 @@ export default function DispatchPage() {
           <p className="text-sm text-muted-foreground mt-1">Manage dispatch workflow for Ready To Dispatch orders</p>
         </div>
         <div className="flex items-center gap-2">
-          <ExportDropdown exportUrl="/api/exports/dispatch" filename="Dispatch" />
+          <ExportButton exportUrl="/api/exports/dispatch" filename="Dispatch" />
           <Button variant="outline" size="sm" onClick={() => setLocation("/support/dashboard")}>
             <ArrowLeft className="h-4 w-4 mr-1" /> Support Dashboard
           </Button>

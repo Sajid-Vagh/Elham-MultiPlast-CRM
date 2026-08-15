@@ -336,6 +336,12 @@ router.get("/contacts", async (req, res) => {
     // ── Detailed: 4 sheets ──────────────────────────────────────────────
     const contactIds = nonNullIds(filtered.map(c => c.id));
 
+    // Converted to Deal flag: any contact that has at least one deal linked.
+    const contactDeals = contactIds.length
+      ? await db.select({ id: dealsTable.id, contactId: dealsTable.contactId }).from(dealsTable).where(inArray(dealsTable.contactId, contactIds))
+      : [];
+    const convertedToDealIds = new Set(contactDeals.map(d => d.contactId));
+
     const orderCounts = contactIds.length ? await db.select({
       contactId: ordersTable.contactId,
       count: sql<number>`count(*)`,
@@ -344,10 +350,11 @@ router.get("/contacts", async (req, res) => {
     const orderMap = new Map(orderCounts.map(o => [o.contactId, o]));
 
     const detailHeaders = [
-      "ID", "Customer Name", "Company", "Contact Person", "Phone", "Alternate Phone", "Email",
+      "ID", "Customer Name", "Company", "Customer Code", "Contact Person", "Phone", "Alternate Phone", "Email",
       "Address", "City", "State",
       "Industry", "Sales Owner",
-      "Status", "Customer Since", "Last Order", "Total Orders", "Repeat Orders", "Notes", "Created",
+      "Current Category", "Converted to Deal", "Status", "Lead Source", "Customer Since",
+      "Last Order", "Total Orders", "Repeat Orders", "Notes", "Created", "Updated",
     ];
     const detailRows = filtered.map(c => {
       const owner = userMap.get(c.salesOwnerId);
@@ -355,6 +362,7 @@ router.get("/contacts", async (req, res) => {
         `C-${c.id}`,
         safeStr(c.name),
         safeStr(c.companyName),
+        safeStr(c.customerCode),
         safeStr(c.name),
         safeStr(c.mobile),
         safeStr(c.otherPhone),
@@ -364,13 +372,17 @@ router.get("/contacts", async (req, res) => {
         safeStr(c.state),
         safeStr(c.industry),
         safeStr(owner?.name),
+        safeStr(c.category),
+        convertedToDealIds.has(c.id) ? "Yes" : "No",
         safeStr(c.customerStatus),
+        safeStr(c.leadSource),
         safeStr(c.customerSince),
         safeStr(orderMap.get(c.id)?.lastDate || ""),
         safeNum(orderMap.get(c.id)?.count || 0),
         0,
         safeStr(c.customerComments),
         safeDate(c.createdAt),
+        safeDate(c.updatedAt),
       ];
     });
 
@@ -559,10 +571,10 @@ router.get("/deals", async (req, res) => {
 
     // ── Detailed: 3 sheets ──────────────────────────────────────────────
     const dealHeaders = [
-      "Deal #", "Title", "Customer", "Company", "Phone", "City",
+      "Deal #", "Title", "Customer", "Company", "Phone", "Email", "City", "State",
       "Stage", "Probability %", "Deal Value", "Won Amount",
-      "Lost Reason", "Lost Notes", "Owner", "Category",
-      "Created", "Completed", "Notes",
+      "Lost Reason", "Lost Notes", "Owner", "Unit", "Category",
+      "Created", "Completed", "Updated", "Notes",
     ];
     const dealRows = filtered.map(d => {
       const c = contactMap.get(d.contactId);
@@ -573,7 +585,9 @@ router.get("/deals", async (req, res) => {
         safeStr(c?.name),
         safeStr(c?.companyName),
         safeStr(c?.mobile),
+        safeStr(c?.email),
         safeStr(c?.city),
+        safeStr(c?.state),
         safeStr(d.stage),
         safeNum(d.probability),
         safeNum(d.totalValue),
@@ -581,9 +595,11 @@ router.get("/deals", async (req, res) => {
         safeStr(d.lostReason),
         safeStr(d.lostNotes),
         safeStr(owner?.name),
+        safeStr(d.productionUnit),
         safeStr(d.category),
         safeDate(d.createdAt),
         safeDate(d.completedAt),
+        safeDate(d.updatedAt),
         safeStr(d.notes),
       ];
     });
@@ -1444,8 +1460,8 @@ router.get("/leads", async (req, res) => {
 
     const detailHeaders = [
       "ID", "Name", "Company", "Mobile", "Email", "City", "State",
-      "Industry", "Unit", "Category", "Lead Source", "Owner",
-      "Customer Since", "Status", "Created",
+      "Industry", "Unit", "Category", "Converted to Deal", "Lead Source", "Owner",
+      "Customer Since", "Status", "Created", "Updated",
     ];
     const detailRows = filtered.map(l => {
       const owner = l.salesOwnerId ? userMap.get(l.salesOwnerId) : null;
@@ -1453,9 +1469,9 @@ router.get("/leads", async (req, res) => {
         `L-${l.id}`, safeStr(l.name), safeStr(l.companyName),
         safeStr(l.mobile), safeStr(l.email), safeStr(l.city),
         safeStr(l.state), safeStr(l.industry), safeStr(l.unit),
-        safeStr(l.category), safeStr(l.leadSource),
+        safeStr(l.category), (dealMap.get(l.id)?.length ? "Yes" : "No"), safeStr(l.leadSource),
         safeStr(owner?.name), safeStr(l.customerSince),
-        safeStr(l.customerStatus), safeDate(l.createdAt),
+        safeStr(l.customerStatus), safeDate(l.createdAt), safeDate(l.updatedAt),
       ];
     });
 

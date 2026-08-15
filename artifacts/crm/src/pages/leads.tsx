@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { CATEGORIES, CATEGORY_COLORS } from "@/lib/categories";
 import { onContactChange, onDealChange } from "@/lib/query-invalidation";
 import { UserAvatar } from "@/components/user-avatar";
-import { ExportDropdown } from "@/components/export-dropdown";
+import { ExportButton } from "@/components/export-button";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 import { useDateFilter } from "@/lib/use-date-filter";
@@ -402,7 +402,7 @@ export default function Leads() {
               <CheckCheck className="mr-2 h-4 w-4" /> Mark All Read
             </Button>
           )}
-          <ExportDropdown exportUrl="/api/exports/contacts" filename="Leads" />
+          <ExportButton exportUrl="/api/exports/contacts" filename="Leads" />
           <Link href="/leads/new">
             <Button>
               <Plus className="mr-2 h-4 w-4" /> New Lead

@@ -19,7 +19,7 @@ import { onActivityChange } from "@/lib/query-invalidation";
 import { dedupeById } from "@/lib/parse-notes";
 import { useActivityCountSync } from "@/lib/activity-count-context";
 import { CategoryBadge } from "@/components/category-badge";
-import { ExportDropdown } from "@/components/export-dropdown";
+import { ExportButton } from "@/components/export-button";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 import { PENDING_UNIT_ASSIGNMENT, isPendingUnit } from "@/lib/unit-constants";
@@ -438,7 +438,7 @@ export default function FollowUps() {
             <p className="text-sm text-muted-foreground">View and manage all scheduled activities.</p>
           </div>
         </div>
-        <ExportDropdown exportUrl="/api/exports/activities" filename="Activities" />
+        <ExportButton exportUrl="/api/exports/activities" filename="Activities" />
       </div>
 
       {/* Filters Card */}

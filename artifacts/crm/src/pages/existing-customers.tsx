@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ExportDropdown } from "@/components/export-dropdown";
+import { ExportButton } from "@/components/export-button";
 import { Search, Users, Factory, Truck, AlertTriangle, Clock, CheckCircle2, XCircle, Phone } from "lucide-react";
 import { useDateFilter } from "@/lib/use-date-filter";
 import { useStatusFilter } from "@/lib/global-filters";
@@ -79,7 +79,7 @@ export default function ExistingCustomers() {
           <h1 className="text-2xl font-bold tracking-tight">Existing Customers</h1>
           <p className="text-sm text-muted-foreground mt-1">Manage and view all existing customers</p>
         </div>
-        <ExportDropdown exportUrl="/api/exports/existing-customers" filename="Existing_Customers" />
+        <ExportButton exportUrl="/api/exports/existing-customers" filename="Existing_Customers" />
       </div>
 
       {/* KPI Cards */}

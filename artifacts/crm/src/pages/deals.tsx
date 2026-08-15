@@ -27,7 +27,7 @@ import DealDetailDrawer from "@/components/deal-detail-drawer";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
 import { DealWonCelebration } from "@/components/deal-won-celebration";
 import { onDealChange, onProductionChange } from "@/lib/query-invalidation";
-import { ExportDropdown } from "@/components/export-dropdown";
+import { ExportButton } from "@/components/export-button";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { PiSentDialog } from "@/components/pi-sent-dialog";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
@@ -445,7 +445,7 @@ export default function Deals() {
           <h1 className="text-3xl font-bold tracking-tight">Pipeline</h1>
           <p className="text-muted-foreground mt-1">Manage deals across stages.</p>
         </div>
-        <ExportDropdown exportUrl="/api/exports/deals" filename="Pipeline_Deals" />
+        <ExportButton exportUrl="/api/exports/deals" filename="Pipeline_Deals" />
       </div>
 
       <div className="flex items-center gap-3 shrink-0">
