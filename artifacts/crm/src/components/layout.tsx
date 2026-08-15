@@ -149,12 +149,10 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   // Global Real-time Activity / Call-Due Reminder service (mounted on every page).
   const { reminders: activityReminders, dismiss: dismissActivityReminder } = useActivityReminders();
 
-  // Auto-dismiss each reminder popup strictly 5 seconds after it appears.
-  useEffect(() => {
-    if (!activityReminders.length) return;
-    const timers = activityReminders.map((r) => setTimeout(() => dismissActivityReminder(r.key), 5000));
-    return () => timers.forEach((t) => clearTimeout(t));
-  }, [activityReminders, dismissActivityReminder]);
+  // Activity / Call-Due reminder popups intentionally have NO auto-dismiss.
+  // They persist on screen until the user manually clicks the X (onDismiss) or
+  // opens the linked lead/follow-up (onOpen). Timers must NOT be added here —
+  // stepping away from the desk must never silently drop a scheduled reminder.
 
   useEffect(() => {
     if (user) {
