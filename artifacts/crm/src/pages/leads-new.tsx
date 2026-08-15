@@ -32,6 +32,7 @@ export default function LeadsNew() {
       salesOwnerId: Number(data.salesOwnerId),
       leadSource: data.leadSource || null,
       city: data.city || null,
+      state: data.state || null,
       address: data.address || null,
       unit: data.unit || null,
       industry: data.industry || null,

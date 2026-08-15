@@ -10,6 +10,7 @@ import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 import { generateCustomerCode } from "../lib/customer-code-generator";
 import { parseEndDate } from "../lib/parse-end-date";
 import { normalizeProfilePhotoUrl } from "../lib/storage";
+import { normalizeStateCity } from "../utils/geoMapping";
 
 const router: IRouter = Router();
 
@@ -254,6 +255,12 @@ router.post("/contacts", async (req, res) => {
     return;
   }
   const values = parsed.data;
+  // Standardize city/state (auto-fills state from a known city when missing)
+  if (values.city || values.state) {
+    const geo = normalizeStateCity({ city: values.city, state: values.state });
+    values.city = geo.city ?? values.city ?? null;
+    values.state = geo.state ?? values.state ?? null;
+  }
   // Sales users auto-assign to themselves
   if (user.role === "sales") {
     values.salesOwnerId = user.id;
@@ -737,6 +744,13 @@ router.patch("/contacts/:id", async (req, res) => {
     // Handle customer comments separately with history tracking
     const { customerComments, unitChangeReason, ...restUpdate } = parsed.data;
     const updatePayload = { ...restUpdate } as Record<string, any>;
+
+    // Standardize city/state (auto-fills state from a known city when missing)
+    if (parsed.data.city !== undefined || parsed.data.state !== undefined) {
+      const geo = normalizeStateCity({ city: parsed.data.city, state: parsed.data.state });
+      if (geo.city !== null || parsed.data.city !== undefined) updatePayload.city = geo.city ?? null;
+      if (geo.state !== null || parsed.data.state !== undefined) updatePayload.state = geo.state ?? null;
+    }
 
     if (customerComments !== undefined) {
       const now = new Date();

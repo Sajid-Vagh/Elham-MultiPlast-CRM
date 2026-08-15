@@ -5,6 +5,7 @@ import { GetPipelineReportQueryParams, GetReportByOwnerQueryParams, GetReportByP
 import { getUserFromRequest } from "./auth";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 import { normalizeProfilePhotoUrl } from "../lib/storage";
+import { normalizeState, normalizeCity, inferStateFromCity } from "../utils/geoMapping";
 
 const router: IRouter = Router();
 
@@ -639,6 +640,69 @@ router.get("/reports/stage-detail", async (req, res) => {
   }
 });
 
+router.get("/reports/raw-deals", async (req, res) => {
+  try {
+    const params = GetPipelineReportQueryParams.safeParse(req.query);
+    const user = await restrictToOwnDeals(req, params.data ?? {});
+    if (!user) { res.status(403).json({ error: "Unauthorized" }); return; }
+
+    let deals = await db.select().from(dealsTable);
+    const allContacts = await db.select().from(contactsTable);
+    const contactMap = new Map(allContacts.map(c => [c.id, c]));
+    const allUsers = await db.select().from(usersTable);
+    const userMap = new Map(allUsers.map(u => [u.id, u]));
+
+    // Mirror the pipeline report filters so the raw rows match the report metrics
+    if (params.success) {
+      if (params.data.salesOwnerId) {
+        deals = deals.filter(d => d.salesOwnerId === params.data.salesOwnerId);
+      }
+      const { startDate, endDate } = getDateRange(req);
+      if (startDate || endDate) {
+        deals = deals.filter(d => {
+          const created = new Date(d.createdAt);
+          if (startDate && created < startDate) return false;
+          if (endDate && created > endDate) return false;
+          return true;
+        });
+      }
+      if (params.data.unit) {
+        const unitContactIds = await getUnitContactIds(params.data.unit);
+        deals = deals.filter(d => unitContactIds.has(d.contactId));
+      }
+    }
+
+    const records = deals.map(d => {
+      const contact = contactMap.get(d.contactId);
+      const owner = d.salesOwnerId ? userMap.get(d.salesOwnerId) : undefined;
+      const state = contact?.state ? normalizeState(contact.state) : null;
+      const stateKey = (state ?? (contact?.city ? inferStateFromCity(contact.city) : null)) ?? "";
+      return {
+        clientName: contact?.name ?? "Unknown",
+        company: contact?.companyName ?? "",
+        mobile: contact?.mobile ?? "",
+        city: contact?.city ?? "",
+        state: stateKey,
+        dealName: d.title ?? "",
+        stage: d.stage,
+        value: d.stage === "Won" ? Number(d.wonAmount ?? d.totalValue ?? 0) : Number(d.totalValue ?? 0),
+        probability: d.probability ?? "",
+        lostReason: d.lostReason ?? "",
+        salesPerson: owner?.name ?? "",
+        createdDate: d.createdAt ? new Date(d.createdAt).toISOString() : "",
+        contactId: d.contactId,
+        dealId: d.id,
+      };
+    });
+
+    res.json({ success: true, data: records, total: records.length });
+  } catch (err) {
+    console.error("Raw deals export error:", err instanceof Error ? err.message : "");
+    req.log.error({ err }, "Raw deals export error");
+    res.json({ success: true, data: [], total: 0 });
+  }
+});
+
 router.get("/reports/by-city", async (req, res) => {
   try {
     const params = GetReportByCityQueryParams.safeParse(req.query);
@@ -664,7 +728,7 @@ router.get("/reports/by-city", async (req, res) => {
     const cityMap = new Map<string, { totalDeals: number; wonDeals: number; lostDeals: number; totalWonValue: number }>();
     for (const deal of deals) {
       const contact = contactMap.get(deal.contactId);
-      const city = contact?.city ?? "Unknown";
+      const city = (contact?.city ? normalizeCity(contact.city) : null) ?? "Unknown";
       if (!cityMap.has(city)) cityMap.set(city, { totalDeals: 0, wonDeals: 0, lostDeals: 0, totalWonValue: 0 });
       const s = cityMap.get(city)!;
       s.totalDeals++;
@@ -709,9 +773,10 @@ router.get("/reports/by-state", async (req, res) => {
     const stateMap = new Map<string, { totalDeals: number; wonDeals: number; lostDeals: number; totalWonValue: number }>();
     for (const deal of deals) {
       const contact = contactMap.get(deal.contactId);
-      const state = contact?.state ?? "Unknown";
-      if (!stateMap.has(state)) stateMap.set(state, { totalDeals: 0, wonDeals: 0, lostDeals: 0, totalWonValue: 0 });
-      const s = stateMap.get(state)!;
+      const state = contact?.state ? normalizeState(contact.state) : null;
+      const stateKey = (state ?? (contact?.city ? inferStateFromCity(contact.city) : null)) ?? "Unknown";
+      if (!stateMap.has(stateKey)) stateMap.set(stateKey, { totalDeals: 0, wonDeals: 0, lostDeals: 0, totalWonValue: 0 });
+      const s = stateMap.get(stateKey)!;
       s.totalDeals++;
       if (deal.stage === "Won") {
         s.wonDeals++;

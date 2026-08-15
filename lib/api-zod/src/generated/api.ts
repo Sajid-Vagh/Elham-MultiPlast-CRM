@@ -229,6 +229,7 @@ export const CreateContactBody = zod.object({
   "otherEmail": zod.string().nullish(),
   "leadSource": zod.string().nullish(),
   "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
   "address": zod.string().nullish(),
   "unit": zod.string().nullish(),
   "industry": zod.string().nullish(),

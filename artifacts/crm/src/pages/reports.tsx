@@ -102,6 +102,7 @@ const TAB_FILE_NAMES: Record<string, string> = {
   "by-product": "By_Product",
   "lost-reasons": "Lost_Reasons",
   "all-reports": "All_Reports",
+  "raw-deals": "Raw_Deals",
 };
 
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -272,27 +273,64 @@ export default function Reports() {
     toast({ title: "Export completed", description: `Quick ${format.toUpperCase()} downloaded (${sheet.name}).` });
   };
 
-  const doDetailedExport = (format: "xlsx" | "csv") => {
-    const fname = buildExportFileName("all-reports", dateFilter, format);
-    const allSheets = ALL_TABS.map(tab => buildTabSheet(tab)).filter(s => s.rows.length > 0);
-    if (!allSheets.length) {
-      toast({ title: "Nothing to export", description: "No report data for the current filters.", variant: "destructive" });
-      return;
+  const DETAILED_EXPORT_HEADERS = [
+    "Client Name",
+    "Company",
+    "Mobile",
+    "City",
+    "State",
+    "Deal Name",
+    "Stage",
+    "Value",
+    "Probability",
+    "Lost Reason",
+    "Sales Person",
+    "Created Date",
+  ];
+
+  const doDetailedExport = async (format: "xlsx" | "csv") => {
+    try {
+      const token = localStorage.getItem("crm_token");
+      const params = new URLSearchParams();
+      if (ownerId) params.set("salesOwnerId", ownerId);
+      if (unit !== "All") params.set("unit", unit);
+      if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
+      if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
+      const res = await fetch(`/api/reports/raw-deals?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) {
+        toast({ title: "Export failed", description: "Could not fetch raw deal data.", variant: "destructive" });
+        return;
+      }
+      const json = await res.json();
+      const rows: any[] = json?.data ?? [];
+      if (!rows.length) {
+        toast({ title: "Nothing to export", description: "No deal records match the current filters.", variant: "destructive" });
+        return;
+      }
+      const sheetRows = rows.map(r => [
+        r.clientName,
+        r.company,
+        r.mobile,
+        r.city,
+        r.state,
+        r.dealName,
+        r.stage,
+        r.value,
+        r.probability,
+        r.lostReason,
+        r.salesPerson,
+        r.createdDate ? new Date(r.createdDate).toLocaleDateString("en-IN") : "",
+      ]);
+      const fname = buildExportFileName("raw-deals", dateFilter, format);
+      if (format === "xlsx") {
+        downloadExcel([{ name: "Raw Deals", headers: DETAILED_EXPORT_HEADERS, rows: sheetRows }], fname);
+      } else {
+        downloadCSV(DETAILED_EXPORT_HEADERS, sheetRows, fname);
+      }
+      toast({ title: "Export completed", description: `Detailed ${format.toUpperCase()} downloaded (${rows.length} deal records).` });
+    } catch {
+      toast({ title: "Export failed", description: "Could not fetch raw deal data.", variant: "destructive" });
     }
-    if (format === "xlsx") {
-      downloadExcel(allSheets, fname);
-    } else {
-      const headers = ["Report", ...Array.from(new Set(allSheets.flatMap(s => s.headers)))];
-      const rows = allSheets.flatMap(s =>
-        s.rows.map(r => {
-          const cell: Record<string, any> = {};
-          s.headers.forEach((h, i) => { cell[h] = r[i]; });
-          return [s.name, ...headers.slice(1).map(h => cell[h] ?? "")];
-        })
-      );
-      downloadCSV(headers, rows, fname);
-    }
-    toast({ title: "Export completed", description: `Detailed ${format.toUpperCase()} downloaded (complete report).` });
   };
 
   const fetchLostDetail = useCallback(async (reason: string) => {

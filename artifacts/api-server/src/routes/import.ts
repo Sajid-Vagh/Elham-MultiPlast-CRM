@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { normalizeProfilePhotoUrl } from "../lib/storage";
+import { normalizeStateCity } from "../utils/geoMapping";
 
 const router: IRouter = Router();
 
@@ -187,13 +188,14 @@ router.post("/import/excel", async (req, res) => {
           .from(usersTable).where(eq(usersTable.id, existing[0]!.salesOwnerId)).limit(1);
 
         try {
+          const geo = normalizeStateCity({ city: row.city, state: row.state });
           await db.update(contactsTable)
             .set({
               name: contactName,
               email: row.email?.trim() ?? null,
               companyName: row.companyName?.trim() ?? null,
-              city: row.city?.trim() ?? null,
-              state: row.state?.trim() ?? null,
+              city: geo.city,
+              state: geo.state,
               inquiryDate: row.inquiryDate?.trim() ?? null,
               lastCallDate: row.lastCallDate?.trim() ?? null,
               nextCallDate: row.nextCallDate?.trim() ?? null,
@@ -261,13 +263,15 @@ router.post("/import/excel", async (req, res) => {
         const ownerUnit = userIdToUnitMap.get(salesOwnerId);
         if (ownerUnit) effectiveUnit = ownerUnit;
       }
+      // Standardize city/state (auto-fills state from a known city when missing)
+      const geo = normalizeStateCity({ city: row.city, state: row.state });
       await db.insert(contactsTable).values({
         name: contactName,
         mobile: contactMobile,
         email: row.email?.trim() ?? null,
         companyName: row.companyName?.trim() ?? null,
-        city: row.city?.trim() ?? null,
-        state: row.state?.trim() ?? null,
+        city: geo.city,
+        state: geo.state,
         salesOwnerId,
         inquiryDate: row.inquiryDate?.trim() ?? null,
         lastCallDate: row.lastCallDate?.trim() ?? null,
@@ -389,13 +393,14 @@ router.post("/import/indiamart", async (req, res) => {
       }
     }
 
+    const geo = normalizeStateCity({ city: fields.city, state: fields.state });
     const [contact] = await db.insert(contactsTable).values({
       name: contactName,
       mobile: contactMobile,
       email: fields.email?.trim() ?? null,
       companyName: fields.companyName?.trim() ?? null,
-      city: fields.city?.trim() ?? null,
-      state: fields.state?.trim() ?? null,
+      city: geo.city,
+      state: geo.state,
       salesOwnerId: ownerId,
       leadSource: "IndiaMart",
       inquiryDate: new Date().toISOString().split("T")[0]!,

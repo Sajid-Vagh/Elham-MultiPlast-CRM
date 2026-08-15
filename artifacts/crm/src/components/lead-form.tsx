@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { UserAvatar } from "@/components/user-avatar";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
-import { INDUSTRIES } from "@/lib/constants";
+import { INDUSTRIES, INDIAN_STATES } from "@/lib/constants";
 import { DuplicateWarningDialog, type DuplicateLeadInfo } from "@/components/duplicate-warning-dialog";
 import { AlertTriangle, ExternalLink } from "lucide-react";
 
@@ -24,6 +24,7 @@ const schema = z.object({
   salesOwnerId: z.string().min(1, "Required"),
   leadSource: z.string().optional(),
   city: z.string().optional(),
+  state: z.string().optional(),
   unit: z.string().optional(),
   industry: z.string().optional(),
   tags: z.string().optional(),
@@ -138,7 +139,7 @@ export default function LeadForm({
     resolver: zodResolver(schema),
     defaultValues: {
       name: "", mobile: "", otherPhone: "", email: "", companyName: "", salesOwnerId: "",
-      leadSource: "", city: "", unit: PENDING_UNIT_ASSIGNMENT, industry: "", tags: "", address: "",
+      leadSource: "", city: "", state: "", unit: PENDING_UNIT_ASSIGNMENT, industry: "", tags: "", address: "",
       ...initialData,
     },
   });
@@ -147,7 +148,7 @@ export default function LeadForm({
     if (initialData) {
       form.reset({
         name: "", mobile: "", otherPhone: "", email: "", companyName: "", salesOwnerId: "",
-        leadSource: "", city: "", unit: PENDING_UNIT_ASSIGNMENT, industry: "", tags: "", address: "",
+        leadSource: "", city: "", state: "", unit: PENDING_UNIT_ASSIGNMENT, industry: "", tags: "", address: "",
         ...initialData,
       });
     }
@@ -351,6 +352,20 @@ export default function LeadForm({
                 <FormItem>
                   <FormLabel>City</FormLabel>
                   <FormControl><Input placeholder="City" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="state" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>State</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Select state" /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      {INDIAN_STATES.map(s => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )} />

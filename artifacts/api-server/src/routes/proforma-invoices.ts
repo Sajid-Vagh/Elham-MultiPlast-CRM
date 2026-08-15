@@ -16,6 +16,7 @@ import { convertContactToMyClient } from "../lib/won-service";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 import { findLinkedProductionOrder, canModifyPiForProductionStatus, PI_LOCKED_ERROR, syncOrderItemsFromPi } from "../lib/production-service";
+import { normalizeStateCity } from "../utils/geoMapping";
 
 const router: IRouter = Router();
 
@@ -2106,12 +2107,13 @@ router.post("/proforma-invoices/:id/status", async (req, res) => {
           autoContactId = existingContact.id;
         } else {
           const addressStr = [invoice.addressLine1, invoice.addressLine2, invoice.addressLine3].filter(Boolean).join(", ") || null;
+          const geo = normalizeStateCity({ city: invoice.city, state: invoice.state });
           const [newContact] = await tx.insert(contactsTable).values({
             name: invoice.customerName,
             mobile: invoice.mobile,
             companyName: invoice.companyName || null,
-            city: invoice.city || null,
-            state: invoice.state || null,
+            city: geo.city,
+            state: geo.state,
             address: addressStr,
             salesOwnerId: user.id,
             category: "New",

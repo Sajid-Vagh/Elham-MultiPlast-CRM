@@ -17,6 +17,7 @@ import { eq, or, and, desc, sql, count, ilike } from "drizzle-orm";
 import { z } from "zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
+import { normalizeStateCity } from "../utils/geoMapping";
 import {
   parseEnquiry,
   storeImportSession,
@@ -137,12 +138,13 @@ router.post("/import/confirm", async (req, res) => {
     // Handle merge
     if (existing.length > 0 && fields.duplicateAction === "merge") {
       const target = existing[0]!;
+      const geo = normalizeStateCity({ city: fields.finalData.city, state: fields.finalData.state });
       await db.update(contactsTable).set({
         name: contactName,
         email: fields.finalData.email?.trim() ?? target.email,
         companyName: fields.finalData.companyName?.trim() ?? target.companyName,
-        city: fields.finalData.city?.trim() ?? target.city,
-        state: fields.finalData.state?.trim() ?? target.state,
+        city: geo.city ?? target.city,
+        state: geo.state ?? target.state,
         address: fields.finalData.address?.trim() ?? target.address,
         industry: fields.finalData.industry?.trim() ?? target.industry,
         customerComments: fields.finalData.requirement?.trim() ?? target.customerComments,
@@ -193,13 +195,14 @@ router.post("/import/confirm", async (req, res) => {
       }
     }
 
+    const geo = normalizeStateCity({ city: fields.finalData.city, state: fields.finalData.state });
     const [contact] = await db.insert(contactsTable).values({
       name: contactName,
       mobile: contactMobile,
       email: fields.finalData.email?.trim() ?? null,
       companyName: fields.finalData.companyName?.trim() ?? null,
-      city: fields.finalData.city?.trim() ?? null,
-      state: fields.finalData.state?.trim() ?? null,
+      city: geo.city,
+      state: geo.state,
       address: fields.finalData.address?.trim() ?? null,
       salesOwnerId: ownerId,
       leadSource: "IndiaMart",
