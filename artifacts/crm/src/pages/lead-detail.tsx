@@ -791,6 +791,7 @@ export default function LeadDetail() {
             onOpenChange={setPiSentDialogOpen}
             contactId={contactId}
             dealId={piSentDealId || deal?.id}
+            mobile={contact?.mobile}
           />
         </div>
 

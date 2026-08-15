@@ -152,7 +152,7 @@ interface InvoiceItem {
 }
 
 export default function ProformaInvoicesPage() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { toast } = useToast();
   const { data: me } = useGetMe();
   const queryClient = useQueryClient();
@@ -178,6 +178,13 @@ export default function ProformaInvoicesPage() {
     if (t === "new" || t === "repeat") return t.toUpperCase();
     return null;
   })();
+  const urlMobile = (() => {
+    if (typeof window === "undefined") return null;
+    const m = new URLSearchParams(window.location.search).get("mobile");
+    return m ? m.trim() : null;
+  })();
+  // /proforma-invoices/new opens directly in creation mode (no list / manual click).
+  const isNewPath = location.split("?")[0].replace(/\/+$/, "") === "/proforma-invoices/new";
 
   // True while the form is being hydrated from ?dealId= / ?contactId= URL params.
   // Gates the debounced mobile-search effect so it never overwrites the deal we
@@ -203,7 +210,7 @@ export default function ProformaInvoicesPage() {
   const [page, setPage] = useState(1);
   const perPage = 15;
 
-  const [mode, setMode] = useState<"list" | "create" | "detail">("list");
+  const [mode, setMode] = useState<"list" | "create" | "detail">(isNewPath ? "create" : "list");
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [cancelInvoice, setCancelInvoice] = useState<any>(null);
   const [versionHistory, setVersionHistory] = useState<any[]>([]);
@@ -785,7 +792,8 @@ export default function ProformaInvoicesPage() {
         const contact = await customFetch<any>(`/contacts/${contactId}`);
         if (cancelled) return;
         setSelectedLead(contact);
-        if (contact.mobile) setMobile(String(contact.mobile).trim());
+        if (urlMobile) setMobile(urlMobile);
+        else if (contact.mobile) setMobile(String(contact.mobile).trim());
         await loadCustomerGstProfile(contactId);
       } catch { /* leave the form untouched on failure */ }
     };
@@ -805,7 +813,8 @@ export default function ProformaInvoicesPage() {
           const dealContact = deal.contact || deal.lead || null;
           if (dealContact) {
             setSelectedLead(dealContact);
-            if (dealContact.mobile) setMobile(String(dealContact.mobile).trim());
+            if (urlMobile) setMobile(urlMobile);
+            else if (dealContact.mobile) setMobile(String(dealContact.mobile).trim());
             await loadCustomerGstProfile(dealContact.id);
           } else if (urlContactId) {
             await hydrateFromContact(urlContactId);
@@ -818,7 +827,7 @@ export default function ProformaInvoicesPage() {
 
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urlDealId, urlContactId, token]);
+  }, [urlDealId, urlContactId, urlMobile, token]);
 
   const MATERIAL_HSN: Record<string, string> = {
     PET: "39233090",

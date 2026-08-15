@@ -7,9 +7,10 @@ interface PiSentDialogProps {
   onOpenChange: (open: boolean) => void;
   contactId?: number | null;
   dealId?: number | null;
+  mobile?: string | null;
 }
 
-export function PiSentDialog({ open, onOpenChange, contactId, dealId }: PiSentDialogProps) {
+export function PiSentDialog({ open, onOpenChange, contactId, dealId, mobile }: PiSentDialogProps) {
   const [, navigate] = useLocation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -25,9 +26,10 @@ export function PiSentDialog({ open, onOpenChange, contactId, dealId }: PiSentDi
           <Button onClick={() => {
             onOpenChange(false);
             const params = new URLSearchParams();
+            if (mobile) params.set("mobile", String(mobile));
             if (contactId) params.set("contactId", String(contactId));
             if (dealId) params.set("dealId", String(dealId));
-            navigate(`/proforma-invoices${params.toString() ? `?${params.toString()}` : ""}`);
+            navigate(`/proforma-invoices/new${params.toString() ? `?${params.toString()}` : ""}`);
           }}>Create Proforma</Button>
         </DialogFooter>
       </DialogContent>

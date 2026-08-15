@@ -167,6 +167,11 @@ function Router() {
           <RoleGuard allowedRoles={[...SUPPORT_ROLES, "production"]}><Products /></RoleGuard>
         </ProtectedLayout>
       </Route>
+      <Route path="/proforma-invoices/new">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={SUPPORT_ROLES}><ProformaInvoices /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
       <Route path="/proforma-invoices">
         <ProtectedLayout>
           <RoleGuard allowedRoles={SUPPORT_ROLES}><ProformaInvoices /></RoleGuard>

@@ -1058,6 +1058,7 @@ export default function DealDetail() {
         onOpenChange={setPiSentDialogOpen}
         contactId={deal.contactId}
         dealId={deal.id}
+        mobile={deal.contact?.mobile}
       />
 
       {/* Change Production Unit Dialog */}
