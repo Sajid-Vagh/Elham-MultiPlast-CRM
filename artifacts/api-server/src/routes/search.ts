@@ -104,6 +104,7 @@ router.get("/search", async (req, res) => {
             .limit(1);
           return {
             id: d.id,
+            contactId: d.contactId,
             name: d.title || (contact ? `${contact.name} — Deal #${d.id}` : `Deal #${d.id}`),
             companyName: contact?.companyName || null,
             stage: d.stage,

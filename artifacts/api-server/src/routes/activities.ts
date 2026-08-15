@@ -445,6 +445,7 @@ router.post("/activities", async (req, res) => {
     if (activity && (activity.contactId || activity.dealId)) {
       let contactOwnerId: number | null = null;
       let contactCategory: string | null = null;
+      let linkContactId: number | null = activity.contactId ?? null;
       if (activity.contactId) {
         const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId, category: contactsTable.category }).from(contactsTable).where(eq(contactsTable.id, activity.contactId));
         if (contact?.salesOwnerId) contactOwnerId = contact.salesOwnerId;
@@ -452,6 +453,7 @@ router.post("/activities", async (req, res) => {
       } else if (activity.dealId) {
         const [deal] = await db.select({ contactId: dealsTable.contactId }).from(dealsTable).where(eq(dealsTable.id, activity.dealId));
         if (deal) {
+          linkContactId = deal.contactId ?? null;
           const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId, category: contactsTable.category }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
           if (contact?.salesOwnerId) contactOwnerId = contact.salesOwnerId;
           if (contact?.category) contactCategory = contact.category;
@@ -469,7 +471,7 @@ router.post("/activities", async (req, res) => {
             message: activity.followUpDate
               ? `Follow-up on ${activity.followUpDate}${activity.followUpTime ? ` at ${activity.followUpTime}` : ""}\nType: ${activity.type}${displayNotes ? `\nNotes: ${displayNotes}` : ""}\nBy: ${currentUser.name || "System"}`
               : `New ${activity.type} activity recorded`,
-            link: activity.dealId ? `/deals/${activity.dealId}` : activity.contactId ? `/leads/${activity.contactId}` : "#",
+            link: linkContactId ? `/leads/${linkContactId}` : "#",
             relatedId: activity.id,
             relatedType: "activity",
           });
@@ -575,12 +577,14 @@ router.patch("/activities/:id", async (req, res) => {
         if (parsed.data.callStatus === "Completed") {
           let contactOwnerId: number | null = null;
           let contactName = "Unknown";
+          let linkContactId: number | null = existingActivity.contactId ?? null;
           if (existingActivity.contactId) {
             const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId, name: contactsTable.name }).from(contactsTable).where(eq(contactsTable.id, existingActivity.contactId));
             if (contact) { contactOwnerId = contact.salesOwnerId; contactName = contact.name; }
           } else if (existingActivity.dealId) {
             const [deal] = await db.select({ contactId: dealsTable.contactId }).from(dealsTable).where(eq(dealsTable.id, existingActivity.dealId));
             if (deal) {
+              linkContactId = deal.contactId ?? null;
               const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId, name: contactsTable.name }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
               if (contact) { contactOwnerId = contact.salesOwnerId; contactName = contact.name; }
             }
@@ -592,7 +596,7 @@ router.patch("/activities/:id", async (req, res) => {
               type: "follow_up_completed",
               title: "Follow-up Completed",
               message: `Follow-up for ${contactName} has been marked as Completed.\nCompleted By: ${user.name}`,
-              link: existingActivity.contactId ? `/leads/${existingActivity.contactId}` : existingActivity.dealId ? `/deals/${existingActivity.dealId}` : "#",
+              link: linkContactId ? `/leads/${linkContactId}` : "#",
               relatedId: params.data.id,
               relatedType: "activity",
             });

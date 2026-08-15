@@ -418,7 +418,7 @@ router.post("/deals", async (req, res) => {
         type: "deal_created",
         title: "New Deal Created",
         message: `Deal "${deal!.title || `#${deal!.id}`}" has been created for ${contact?.name || "Unknown"}\nStage: ${deal!.stage}\nCreated By: ${user.name}`,
-        link: `/deals/${deal!.id}`,
+        link: `/leads/${deal!.contactId}`,
         relatedId: deal!.id,
         relatedType: "deal",
       });
@@ -727,7 +727,7 @@ router.patch("/deals/:id", async (req, res) => {
           type: "assignment",
           title: "Deal Assigned",
           message: `Deal for ${deal.title || `Deal #${deal.id}`}\nAssigned By: ${assignedByName}`,
-          link: `/deals/${deal.id}`,
+          link: `/leads/${deal.contactId}`,
           relatedId: deal.id,
           relatedType: "deal",
         });
@@ -771,7 +771,7 @@ router.patch("/deals/:id", async (req, res) => {
           type: "deal_won",
           title: "Deal Won! 🎉",
           message: `Deal "${deal.title || `#${deal.id}`}" has been marked as Won.\nBy: ${assignedByName}`,
-          link: `/deals/${deal.id}`,
+          link: `/leads/${deal.contactId}`,
           relatedId: deal.id,
           relatedType: "deal",
         });
@@ -785,7 +785,7 @@ router.patch("/deals/:id", async (req, res) => {
               type: "deal_won",
               title: "Deal Won",
               message: `Deal "${deal.title || `#${deal.id}`}" won for ${contact?.name || "Unknown"}\nBy: ${assignedByName}`,
-              link: `/deals/${deal.id}`,
+              link: `/leads/${deal.contactId}`,
               relatedId: deal.id,
               relatedType: "deal",
             });
@@ -798,7 +798,7 @@ router.patch("/deals/:id", async (req, res) => {
           type: "deal_lost",
           title: "Deal Lost",
           message: `Deal "${deal.title || `#${deal.id}`}" has been marked as Lost.\nBy: ${assignedByName}`,
-          link: `/deals/${deal.id}`,
+          link: `/leads/${deal.contactId}`,
           relatedId: deal.id,
           relatedType: "deal",
         });
@@ -809,7 +809,7 @@ router.patch("/deals/:id", async (req, res) => {
           type: "deal_reopened",
           title: "Deal Reopened",
           message: `Deal "${deal.title || `#${deal.id}`}" has been reopened from "${oldDeal.stage}" to "${stage}".\nBy: ${assignedByName}`,
-          link: `/deals/${deal.id}`,
+          link: `/leads/${deal.contactId}`,
           relatedId: deal.id,
           relatedType: "deal",
         });
@@ -821,7 +821,7 @@ router.patch("/deals/:id", async (req, res) => {
           type: "deal_stage_changed",
           title: "Deal Stage Updated",
           message: `Deal "${deal.title || `#${deal.id}`}" moved from "${oldDeal.stage}" to "${stage}".\nBy: ${assignedByName}`,
-          link: `/deals/${deal.id}`,
+          link: `/leads/${deal.contactId}`,
           relatedId: deal.id,
           relatedType: "deal",
         });

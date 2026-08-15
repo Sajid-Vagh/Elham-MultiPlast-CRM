@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ArrowLeft, Phone, PhoneOff, Search, Eye, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { onActivityChange } from "@/lib/query-invalidation";
@@ -110,6 +110,7 @@ const SORT_OPTIONS = [
 ];
 
 export default function FollowUps() {
+  const [, setLocation] = useLocation();
   const [dateFilter, setDateFilter] = useDateFilter();
   const [unitFilter, setUnitFilter] = useUnitFilter();
   const [globalOwner, setGlobalOwner] = useOwnerFilter();
@@ -621,7 +622,7 @@ export default function FollowUps() {
                         <TableCell className="hidden xl:table-cell text-sm">{salesPerson}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-0.5 justify-end" onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => handleOpenCustomerDrawer(activity)} title="Customer Profile">
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => { if (contactId) setLocation(`/leads/${contactId}`); else handleOpenCustomerDrawer(activity); }} title="Customer Profile">
                               <Eye className="h-3.5 w-3.5" />
                             </Button>
                             <Button variant="ghost" size="icon" className={`h-7 w-7 ${activity.callStatus === "Pending" ? "text-orange-600" : "text-muted-foreground"}`} onClick={() => handlePhoneAction(activity.id, activity.callStatus)} title={activity.callStatus === "Pending" ? "Mark as Completed" : "Mark as Pending"}>

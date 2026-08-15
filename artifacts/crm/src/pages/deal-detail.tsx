@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import {
   useGetDeal, useUpdateDeal, useDeleteDeal, useListDealProducts, useAddDealProduct, useRemoveDealProduct,
@@ -178,6 +178,13 @@ export default function DealDetail() {
   }, [activities, actFromDate, actToDate]);
 
   const WON_UNITS = useMemo(() => activeUnits.filter(u => u !== "Not Sure"), [activeUnits]);
+
+  // Deal Details page is deprecated — redirect straight to the parent Lead page.
+  useEffect(() => {
+    if (deal?.contactId) {
+      setLocation(`/leads/${deal.contactId}`, { replace: true });
+    }
+  }, [deal?.contactId, setLocation]);
 
   if (isLoading) return <div className="p-8">Loading...</div>;
   if (!deal) return <div className="p-8">Deal not found.</div>;
@@ -1041,7 +1048,7 @@ export default function DealDetail() {
           open
           todayWonCount={wonTodayCount}
           onClose={() => setWonDealForCelebration(null)}
-          onViewOrder={() => { setLocation(`/deals/${wonDealForCelebration.id}`); setWonDealForCelebration(null); }}
+          onViewOrder={() => { setLocation(`/leads/${wonDealForCelebration.contactId}`); setWonDealForCelebration(null); }}
           onGoToProduction={() => { setLocation("/production/orders"); setWonDealForCelebration(null); }}
         />
       )}

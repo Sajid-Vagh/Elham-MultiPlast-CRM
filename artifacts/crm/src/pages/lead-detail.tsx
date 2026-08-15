@@ -680,7 +680,7 @@ export default function LeadDetail() {
                       <span className="text-xs">{new Date(deal.updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
                     </div>
                   )}
-                  <Link href={`/deals/${deal.id}`}>
+                  <Link href={`/leads/${contactId}`}>
                     <Button size="sm" variant="outline" className="w-full h-7 text-xs mt-2">
                       <ExternalLink className="h-3 w-3 mr-1" /> Open Deal
                     </Button>
@@ -1002,7 +1002,7 @@ export default function LeadDetail() {
             <div className="space-y-2">
               {deals?.length === 0 && <p className="text-sm text-muted-foreground text-center py-4 border rounded-lg bg-card">No deals yet.</p>}
               {deals?.map(d => (
-                <Link key={d.id} href={`/deals/${d.id}`}>
+                <Link key={d.id} href={`/leads/${contactId}`}>
                   <div className="flex items-center justify-between p-3 border rounded-lg bg-card hover:bg-accent transition-colors cursor-pointer">
                     <div>
                       <p className="font-medium text-sm">{d.title || `Deal #${d.id}`}</p>

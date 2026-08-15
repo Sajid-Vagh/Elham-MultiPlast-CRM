@@ -59,7 +59,7 @@ export default function GlobalSearch() {
       {data && (
         <div className="grid grid-cols-2 gap-4">
           <Section icon={Users} title="Customers" items={data.contacts || []} onNavigate={item => setLocation(`/leads/${item.id}`)} />
-          <Section icon={TrendingUp} title="Deals" items={data.deals || []} onNavigate={item => setLocation(`/deals/${item.id}`)} />
+          <Section icon={TrendingUp} title="Deals" items={data.deals || []} onNavigate={item => setLocation(`/leads/${item.contactId}`)} />
           <Section icon={Package} title="Products" items={data.products || []} onNavigate={item => setLocation("/products")} />
         </div>
       )}

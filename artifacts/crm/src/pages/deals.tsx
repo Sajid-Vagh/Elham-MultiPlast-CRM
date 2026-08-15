@@ -530,7 +530,7 @@ export default function Deals() {
                       <DraggableCard key={deal.id} deal={deal}>
                         <div
                           className="bg-card p-3 rounded shadow-sm border cursor-pointer hover:border-primary transition-colors"
-                          onClick={() => setDrawerDealId(deal.id)}
+                          onClick={() => navigate(`/leads/${deal.contactId}`)}
                         >
                           <div className="font-semibold text-sm line-clamp-1 mb-1" title={dealTitle}>
                             {dealTitle}
@@ -788,7 +788,7 @@ export default function Deals() {
           open
           todayWonCount={wonTodayCount}
           onClose={() => setWonDealForCelebration(null)}
-          onViewOrder={() => { navigate(`/deals/${wonDealForCelebration.id}`); setWonDealForCelebration(null); }}
+          onViewOrder={() => { navigate(`/leads/${wonDealForCelebration.contactId}`); setWonDealForCelebration(null); }}
           onGoToProduction={() => { navigate("/production/orders"); setWonDealForCelebration(null); }}
         />
       )}

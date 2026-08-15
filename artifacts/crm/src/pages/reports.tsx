@@ -1101,7 +1101,7 @@ export default function Reports() {
                                       title="Open Deal"
                                       asChild
                                     >
-                                      <Link to={`/deals/${r.dealId}`}>
+                                      <Link to={`/leads/${r.contactId}`}>
                                         <Eye className="h-3.5 w-3.5" />
                                       </Link>
                                     </Button>
