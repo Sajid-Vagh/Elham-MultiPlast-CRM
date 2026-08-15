@@ -467,7 +467,12 @@ export default function DealDetail() {
         </Button>
         <div className="flex-1">
           <div className="flex items-center gap-3">
-            {owner && <UserAvatar profilePhoto={owner.profilePhoto} name={owner.name} className="w-4 h-4 shadow-sm" />}
+            {owner && (
+              <div className="flex items-center gap-2" title={owner.name}>
+                <UserAvatar profilePhoto={owner.profilePhoto} name={owner.name} className="w-6 h-6 shadow-sm" />
+                <span className="text-sm font-medium text-gray-700 whitespace-nowrap">{owner.name}</span>
+              </div>
+            )}
             <h1 className="text-2xl font-bold">{deal.title || `Deal #${deal.id}`}</h1>
             <CategoryBadge category={contact?.category} />
             <span className={`text-sm px-2.5 py-1 rounded-full font-medium ${STAGE_BADGE_COLORS[deal.stage] || "bg-gray-100"}`}>{deal.stage}</span>
