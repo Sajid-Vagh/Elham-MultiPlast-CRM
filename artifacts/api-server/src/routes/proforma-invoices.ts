@@ -137,23 +137,49 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
   const terms = (invoice.terms || COMPANY_DEFAULTS.defaultTerms).join("<br>");
   const bankDetails = invoice.bankDetails || COMPANY_DEFAULTS;
 
-  const HEADER_PT = 215;
-  const ROW_PT = 21;
-  const FOOTER_PT = 315;
-  const PAGE_PT = 790;
+  // ── Page chunking ──
+  // First page has header + party details + order text, so fewer item rows fit.
+  // Subsequent pages have a smaller header (just company + order info) and more
+  // room for items. We use a conservative item-count constant to avoid
+  // overflow — the PDF renderer picks up page-break CSS for pagination.
+  const FIRST_PAGE_MAX = 9;
+  const SUBSEQUENT_PAGE_MAX = 14;
 
-  const perPageNoFooter = Math.floor((PAGE_PT - HEADER_PT) / ROW_PT);
-  const perPageWithFooter = Math.max(1, Math.floor((PAGE_PT - HEADER_PT - FOOTER_PT) / ROW_PT));
-
-  const pageBoundaries: { start: number; end: number; last: boolean }[] = [];
+  const chunks: { start: number; end: number; isLast: boolean }[] = [];
   let cursor = 0;
+  let pageIdx = 0;
   while (cursor < items.length) {
+    const maxOnPage = pageIdx === 0 ? FIRST_PAGE_MAX : SUBSEQUENT_PAGE_MAX;
     const remaining = items.length - cursor;
-    const canFitWithFooter = remaining <= perPageWithFooter;
-    const take = canFitWithFooter ? remaining : perPageNoFooter;
-    pageBoundaries.push({ start: cursor, end: cursor + take, last: canFitWithFooter });
-    cursor += take;
+    const take = Math.min(remaining, maxOnPage);
+    const end = cursor + take;
+    const isLast = end >= items.length;
+    chunks.push({ start: cursor, end, isLast });
+    cursor = end;
+    pageIdx++;
   }
+  // Edge case: no items → single empty page
+  if (chunks.length === 0) {
+    chunks.push({ start: 0, end: 0, isLast: true });
+  }
+
+  // Pre-compute cumulative totals at each page boundary (for b/d / c/o rows)
+  const cumulativeTotals = chunks.map((ch) => {
+    const pageItems = items.slice(ch.start, ch.end);
+    const qty = pageItems.reduce((s: number, it: any) => s + Number(it.quantity || 0), 0);
+    const amt = pageItems.reduce((s: number, it: any) => s + Number(it.amount || 0), 0);
+    const units = [...new Set(pageItems.map((it: any) => it.unit).filter(Boolean))];
+    return { qty, amt, unit: units.length === 1 ? units[0] : "" };
+  });
+
+  // Running cumulative totals (sum up to and including this page)
+  const runningTotals = cumulativeTotals.reduce<{ qty: number; amt: number; unit: string }[]>((acc, cur) => {
+    const prev = acc.length > 0 ? acc[acc.length - 1] : { qty: 0, amt: 0, unit: "" };
+    acc.push({ qty: prev.qty + cur.qty, amt: prev.amt + cur.amt, unit: cur.unit || prev.unit });
+    return acc;
+  }, []);
+
+  // ── Reusable HTML fragments ──
 
   function headerHtml(): string {
     return `
@@ -211,8 +237,44 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
       <tbody>`;
   }
 
-  function footerHtml(): string {
-    return `</tbody></table>
+  /** Bank Details + Disclaimer + Signature — shown on every page */
+  function commonFooterHtml(): string {
+    return `
+    <div class="footer-section">
+      <table>
+        <tr>
+          <td style="border-right:1.5px solid #000;">
+            <div class="bank-details">
+              <strong>Bank Details</strong><br>
+              ${bankDetails.bankName || "ICICI BANK, HIMATNAGAR"}<br>
+              A/C NO: ${bankDetails.accountNo || "045205014806"}<br>
+              IFSC: ${bankDetails.ifsc || "ICIC0000452"}
+            </div>
+          </td>
+          <td>
+            <div class="terms">
+              <strong>Terms &amp; Conditions</strong>
+              <div>${terms}</div>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+    <div class="disclaimer">
+      <strong>DISCLAIMER : </strong>${invoice.disclaimer || COMPANY_DEFAULTS.disclaimer}
+    </div>
+    <div class="signature-section">
+      <div class="sign-left">Receiver Signature</div>
+      <div class="sign-right">
+        <div class="for-company">for ${COMPANY_DEFAULTS.name}</div>
+        <div class="authorised">Authorised Signatory</div>
+      </div>
+    </div>`;
+  }
+
+  /** Tax summary + Grand Total + Amount in Words — only on the final page */
+  function totalsBlockHtml(): string {
+    return `
     <div class="totals-block">
       <table class="summary-table">
         <tr><td class="sum-label">Product Total</td><td class="sum-value">${taxableAmount.toFixed(2)}</td></tr>
@@ -246,61 +308,26 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
       <div class="amount-words">
         <strong>Amount in Words :</strong> ${invoice.amountInWords || ""}
       </div>
-    </div>
-    <div class="footer-section">
-      <table>
-        <tr>
-          <td style="border-right:1.5px solid #000;">
-            <div class="bank-details">
-              <strong>Bank Details</strong><br>
-              ${bankDetails.bankName || "ICICI BANK, HIMATNAGAR"}<br>
-              A/C NO: ${bankDetails.accountNo || "045205014806"}<br>
-              IFSC: ${bankDetails.ifsc || "ICIC0000452"}
-            </div>
-          </td>
-          <td>
-            <div class="terms">
-              <strong>Terms &amp; Conditions</strong>
-              <div>${terms}</div>
-            </div>
-          </td>
-        </tr>
-      </table>
-    </div>
-    <div class="disclaimer">
-      <strong>DISCLAIMER : </strong>${invoice.disclaimer || COMPANY_DEFAULTS.disclaimer}
-    </div>
-    <div class="signature-section">
-      <div class="sign-left">Receiver Signature</div>
-      <div class="sign-right">
-        <div class="for-company">for ${COMPANY_DEFAULTS.name}</div>
-        <div class="authorised">Authorised Signatory</div>
-      </div>
     </div>`;
   }
 
-  // Pre-compute per-page totals for Carry Forward / Brought Forward
-  const pageTotals = pageBoundaries.map((b) => {
-    const pageItems = items.slice(b.start, b.end);
-    const qty = pageItems.reduce((sum: number, item: any) => sum + Number(item.quantity || 0), 0);
-    const amt = pageItems.reduce((sum: number, item: any) => sum + Number(item.amount || 0), 0);
-    const pageUnits = [...new Set(pageItems.map((item: any) => item.unit).filter(Boolean))];
-    const unit = pageUnits.length === 1 ? pageUnits[0] : "";
-    return { qty, amt, unit };
-  });
+  // ── Build pages ──
 
-  const pagesHtml = pageBoundaries.map((b, pi) => {
-    const pageItems = items.slice(b.start, b.end);
+  const pagesHtml = chunks.map((ch, pi) => {
+    const pageItems = items.slice(ch.start, ch.end);
+    const running = runningTotals[pi];
+    const isLast = ch.isLast;
 
-    // Brought Forward row on pages after the first
-    const prevPt = pi > 0 ? pageTotals[pi - 1] : null;
-    const bdRow = prevPt
-      ? `<tr><td colspan="5" style="text-align:left;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">b/d</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevPt.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevPt.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevPt.amt.toFixed(2)}</td></tr>`
+    // Brought-down row (pages after the first)
+    const prevRunning = pi > 0 ? runningTotals[pi - 1] : null;
+    const bdRow = prevRunning
+      ? `<tr class="cf-row"><td colspan="5" style="text-align:left;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">b/d</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevRunning.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevRunning.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${prevRunning.amt.toFixed(2)}</td></tr>`
       : "";
 
+    // Item rows
     const rows = pageItems.map((item: any, ri: number) => `
       <tr>
-        <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${b.start + ri + 1}</td>
+        <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${ch.start + ri + 1}</td>
         <td style="text-align:left;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;word-break:break-word;white-space:normal;">${formatItemDescription(item)}</td>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.weight || "-"}</td>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.bottleColour || "-"}</td>
@@ -308,26 +335,27 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.quantity}</td>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.unit}</td>
         <td style="text-align:right;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${Number(item.rate).toFixed(2)}</td>
-        <td style="text-align:right;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${Number(item.amount).toFixed(2)}</td>
+        <td style="text-align:right;vertical-align:top;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${Number(item.amount).toFixed(2)}</td>
       </tr>`).join("\n");
 
-    // Carry Forward row on non-last pages
-    const pt = pageTotals[pi];
-    const cfRow = !b.last
-      ? `<tr><td colspan="5" style="text-align:left;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">Totals c/o</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${pt.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${pt.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${pt.amt.toFixed(2)}</td></tr>`
+    // Carry-forward row (non-last pages)
+    const coRow = !isLast
+      ? `<tr class="cf-row"><td colspan="5" style="text-align:left;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">Totals c/o</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${running.amt.toFixed(2)}</td></tr>`
       : "";
 
-    const pageStyle = pi < pageBoundaries.length - 1
-      ? `page-break-after:always;min-height:100%;`
-      : `min-height:100%;`;
+    const pageStyle = !isLast
+      ? "page-break-after:always;min-height:100%;"
+      : "min-height:100%;";
 
     return `<div class="page" style="${pageStyle}">
       ${headerHtml()}
       ${tableHeaderHtml()}
       ${bdRow}
       ${rows}
-      ${cfRow}
-      ${b.last ? footerHtml() : `</tbody></table>`}
+      ${coRow}
+      </tbody></table>
+      ${isLast ? totalsBlockHtml() : ""}
+      ${commonFooterHtml()}
     </div>`;
   }).join("\n");
 
@@ -366,6 +394,10 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;marg
 table.items{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.5pt;}
 table.items th{background:#f0f0f0;border:1px solid #000;padding:4pt 4pt;text-align:center;font-weight:bold;font-size:8pt;height:22pt;overflow-wrap:break-word;}
 table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wrap:break-word;word-break:break-word;}
+/* ── Carry Forward / Brought Down rows ── */
+tr.cf-row{page-break-inside:avoid;}
+/* ── Item rows: prevent mid-row page breaks ── */
+table.items tbody tr{page-break-inside:avoid;}
 /* ── Totals Block (Summary / Tax / Grand Total / Amount in Words) ── */
 .totals-block{width:100%;}
 .summary-table{width:100%;border-collapse:collapse;border-top:1.5px solid #000;}
