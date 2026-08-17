@@ -343,6 +343,11 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
       ? `<tr class="cf-row"><td colspan="5" style="text-align:left;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">Totals c/o</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${running.amt.toFixed(2)}</td></tr>`
       : "";
 
+    // Filler row: stretches to fill remaining vertical space so table borders
+    // connect to the footer (accounting-style layout). The row has the same
+    // 9-column structure with left/right borders but no content.
+    const fillerRow = `<tr class="filler-row"><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
+
     const pageStyle = !isLast
       ? "page-break-after:always;min-height:100%;"
       : "min-height:100%;";
@@ -350,11 +355,26 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
     return `<div class="page" style="${pageStyle}">
       <div class="page-content">
         ${headerHtml()}
-        ${tableHeaderHtml()}
-        ${bdRow}
-        ${rows}
-        ${coRow}
-        </tbody></table>
+        <table class="items">
+      <thead>
+        <tr>
+          <th style="width:4%">S.N.</th>
+          <th style="width:22%">Description of Goods</th>
+          <th style="width:8%">Weight</th>
+          <th style="width:10%">Colour</th>
+          <th style="width:11%">HSN/SAC Code</th>
+          <th style="width:8%">Qty</th>
+          <th style="width:6%">Unit</th>
+          <th style="width:10%">Price</th>
+          <th style="width:12%">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+      ${bdRow}
+      ${rows}
+      ${coRow}
+      ${fillerRow}
+      </tbody></table>
       </div>
       ${isLast ? totalsBlockHtml() : ""}
       ${commonFooterHtml()}
@@ -394,9 +414,12 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;marg
 /* ── Order Text ── */
 .order-text{font-size:8.5pt;font-style:italic;text-align:center;padding:4pt 0;border-bottom:1.5px solid #000;}
 /* ── Items Table ── */
-table.items{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.5pt;}
+table.items{width:100%;height:100%;table-layout:fixed;border-collapse:collapse;font-size:8.5pt;}
 table.items th{background:#f0f0f0;border:1px solid #000;padding:4pt 4pt;text-align:center;font-weight:bold;font-size:8pt;height:22pt;overflow-wrap:break-word;}
 table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wrap:break-word;word-break:break-word;}
+/* ── Filler row: stretches to fill remaining vertical space ── */
+tr.filler-row{height:100%;}
+tr.filler-row td{border-left:1px solid #000;border-right:1px solid #000;border-top:0;border-bottom:1px solid #000;padding:0;height:100%;}
 /* ── Carry Forward / Brought Down rows ── */
 tr.cf-row{page-break-inside:avoid;}
 /* ── Item rows: prevent mid-row page breaks ── */
