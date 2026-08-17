@@ -362,7 +362,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
                 <div className="flex items-center gap-4">
                   <UserAvatar profilePhoto={form.profilePhoto} name={form.name || "?"} className="w-14 h-14 border-2 border-border shrink-0" />
                   <div className="space-y-1.5">
-                    <input ref={photoFileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                    <input ref={photoFileRef} type="file" accept="image/jpeg,image/png,image/gif" className="hidden" onChange={handlePhotoUpload} />
                     <Button variant="outline" size="sm" disabled={photoUploading} onClick={() => photoFileRef.current?.click()} className="w-full">
                       <Camera className="h-3.5 w-3.5 mr-1" />
                       {photoUploading ? "Uploading..." : form.profilePhoto ? "Change Photo" : "Upload Photo"}

@@ -7,7 +7,7 @@ import { eq, inArray } from "drizzle-orm";
 import { CreateUserBody, UpdateUserBody, GetUserParams, UpdateUserParams, DeleteUserParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
-import { storage, normalizeProfilePhotoUrl } from "../lib/storage";
+import { storage, normalizeProfilePhotoUrl, extractStoragePathFromProfilePhotoUrl } from "../lib/storage";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -180,6 +180,12 @@ router.patch("/users/:id", async (req, res) => {
   }
 });
 
+const ALLOWED_PHOTO_MIMES: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/gif": "gif",
+};
+
 // Upload profile photo — admin can upload for any user, sales can upload own
 router.post("/users/:id/photo", uploadProfilePhoto, async (req, res) => {
   try {
@@ -191,20 +197,27 @@ router.post("/users/:id/photo", uploadProfilePhoto, async (req, res) => {
       return;
     }
     if (!req.file) { res.status(400).json({ success: false, error: "No file uploaded" }); return; }
-    if (!req.file.mimetype.startsWith("image/")) {
-      res.status(400).json({ success: false, error: "Only image files are allowed" });
+    if (!(req.file.mimetype in ALLOWED_PHOTO_MIMES)) {
+      res.status(400).json({ success: false, error: "Only JPG, PNG, and GIF images are allowed" });
       return;
     }
+
+    // Fetch the current user to locate (and later delete) the old file
+    const [currentUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+
     const storagePath = await storage.save(req.file.originalname || "photo.png", req.file.buffer, "profile-photos");
-    // Persist the SAME normalized public URL that GET /auth/me and GET /users
-    // return on the next page load. Storing the raw provider URL (a relative
-    // "/api/uploads/..." when the local filesystem provider is active) makes
-    // the photo render right after upload but revert to initials on refresh,
-    // because the read path normalizes the relative path to a different
-    // (Supabase) URL where the object was never uploaded.
     const photoUrl = normalizeProfilePhotoUrl(storage.getUrl(storagePath));
     const [user] = await db.update(usersTable).set({ profilePhoto: photoUrl }).where(eq(usersTable.id, userId)).returning();
     if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+    // Best-effort cleanup of the previous photo file (ignore errors)
+    if (currentUser?.profilePhoto) {
+      const oldPath = extractStoragePathFromProfilePhotoUrl(currentUser.profilePhoto);
+      if (oldPath && oldPath !== storagePath) {
+        storage.delete(oldPath).catch(() => {});
+      }
+    }
+
     res.json({ profilePhoto: photoUrl, user: safeUser(user) });
   } catch (err) {
     req.log.error({ err }, "Failed to upload profile photo");
@@ -222,8 +235,19 @@ router.delete("/users/:id/photo", async (req, res) => {
       res.status(403).json({ error: "You can only remove your own profile photo" });
       return;
     }
+    // Fetch current photo URL before clearing so we can delete the file
+    const [currentUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
     const [user] = await db.update(usersTable).set({ profilePhoto: null }).where(eq(usersTable.id, userId)).returning();
     if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+    // Best-effort deletion of the file from storage (ignore errors)
+    if (currentUser?.profilePhoto) {
+      const storagePath = extractStoragePathFromProfilePhotoUrl(currentUser.profilePhoto);
+      if (storagePath) {
+        storage.delete(storagePath).catch(() => {});
+      }
+    }
+
     res.json(safeUser(user));
   } catch (err) {
     req.log.error({ err }, "Delete profile photo error");

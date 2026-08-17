@@ -558,6 +558,31 @@ function buildPublicObjectUrl(storagePath: string): string {
   return `/api/uploads/${storagePath}`;
 }
 
+/**
+ * Extract the storage path from a normalized profile photo URL so the caller
+ * can delete the orphaned file from storage.  Handles both Supabase public
+ * URLs (`…/storage/v1/object/public/profile-photos/…`) and legacy relative
+ * paths (`/api/uploads/profile-photos/…`).  Returns null when the URL cannot
+ * be parsed or when no storage path is present.
+ */
+export function extractStoragePathFromProfilePhotoUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+
+  // Absolute Supabase public URL: …/storage/v1/object/public/<path>
+  const supabaseMatch = url.match(/\/storage\/v1\/object\/public\/(.+)$/i);
+  if (supabaseMatch) return supabaseMatch[1];
+
+  // Legacy absolute API URL: https://<host>/api/uploads/<path>
+  const apiMatch = url.match(/\/api\/uploads\/(.+)$/);
+  if (apiMatch) return apiMatch[1];
+
+  // Relative path: /api/uploads/<path> or just <path>
+  const stripped = url.replace(/^\/+/, "").replace(/^api\/uploads\//, "");
+  if (stripped && stripped !== url) return stripped;
+
+  return null;
+}
+
 export function setStorageProvider(p: StorageProvider) {
   provider = p;
 }

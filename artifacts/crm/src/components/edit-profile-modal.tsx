@@ -294,7 +294,7 @@ export function EditProfileModal({ open, onOpenChange, me, updateUser }: Props) 
                   <p className="text-sm font-medium mb-1">Profile Photo</p>
                   <p className="text-xs text-muted-foreground mb-2">JPG, PNG or GIF. Max 5MB.</p>
                   <div className="flex gap-2">
-                    <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                    <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/gif" className="hidden" onChange={handlePhotoUpload} />
                     <Button variant="outline" size="sm" disabled={photoUploading} onClick={() => fileRef.current?.click()} className="h-8 text-xs">
                       <Camera className="h-3.5 w-3.5 mr-1.5" />
                       {photoUploading ? "Uploading..." : form.profilePhoto ? "Change" : "Upload"}
