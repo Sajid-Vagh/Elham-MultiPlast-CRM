@@ -1880,6 +1880,7 @@ async function updateInvoiceHandler(req: any, res: any) {
               productId: item.productId || null,
               hsnCode: item.hsnCode || null,
               bottleType: item.bottleType || null,
+              bottleColour: item.bottleColour || null,
               capacity: item.capacity || null,
               weight: item.weight || null,
               quantity: String(item.quantity),
