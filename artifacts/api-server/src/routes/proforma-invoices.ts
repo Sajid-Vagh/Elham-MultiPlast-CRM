@@ -138,12 +138,12 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
   const bankDetails = invoice.bankDetails || COMPANY_DEFAULTS;
 
   // ── Page chunking ──
-  // First page has header + party details + order text, so fewer item rows fit.
-  // Subsequent pages have a smaller header (just company + order info) and more
-  // room for items. We use a conservative item-count constant to avoid
-  // overflow — the PDF renderer picks up page-break CSS for pagination.
-  const FIRST_PAGE_MAX = 9;
-  const SUBSEQUENT_PAGE_MAX = 14;
+  // First page has header + party details + order text (~210pt), so fewer item
+  // rows fit. Subsequent pages have a lighter header and more room. The footer
+  // is pushed to the absolute bottom of each page via flexbox (the .page div
+  // has a fixed A4 height and the content area uses flex:1).
+  const FIRST_PAGE_MAX = 12;
+  const SUBSEQUENT_PAGE_MAX = 16;
 
   const chunks: { start: number; end: number; isLast: boolean }[] = [];
   let cursor = 0;
@@ -348,12 +348,14 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
       : "min-height:100%;";
 
     return `<div class="page" style="${pageStyle}">
-      ${headerHtml()}
-      ${tableHeaderHtml()}
-      ${bdRow}
-      ${rows}
-      ${coRow}
-      </tbody></table>
+      <div class="page-content">
+        ${headerHtml()}
+        ${tableHeaderHtml()}
+        ${bdRow}
+        ${rows}
+        ${coRow}
+        </tbody></table>
+      </div>
       ${isLast ? totalsBlockHtml() : ""}
       ${commonFooterHtml()}
     </div>`;
@@ -369,7 +371,8 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
 *{margin:0;padding:0;box-sizing:border-box;}
 html,body{height:297mm;}
 body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;margin:0;padding:5mm;}
-.page{width:100%;border:1.5px solid #000;overflow-wrap:break-word;display:flex;flex-direction:column;}
+.page{width:100%;height:287mm;border:1.5px solid #000;overflow-wrap:break-word;display:flex;flex-direction:column;}
+.page-content{flex:1;display:flex;flex-direction:column;min-height:0;}
 /* ── Header ── */
 .header{text-align:center;border-bottom:1.5px solid #000;padding:6pt 8pt 5pt 8pt;}
 .gstin-top{text-align:left;font-size:7.5pt;margin-bottom:3pt;}
@@ -399,7 +402,7 @@ tr.cf-row{page-break-inside:avoid;}
 /* ── Item rows: prevent mid-row page breaks ── */
 table.items tbody tr{page-break-inside:avoid;}
 /* ── Totals Block (Summary / Tax / Grand Total / Amount in Words) ── */
-.totals-block{width:100%;}
+.totals-block{width:100%;flex-shrink:0;}
 .summary-table{width:100%;border-collapse:collapse;border-top:1.5px solid #000;}
 .summary-table td{border:0;padding:1.5pt 6pt;font-size:8.5pt;}
 .summary-table .sum-label{text-align:right;width:76%;}
@@ -417,7 +420,7 @@ table.items tbody tr{page-break-inside:avoid;}
 .amount-words{text-align:right;padding:3pt 6pt 5pt 6pt;font-size:8.5pt;}
 .amount-words strong{font-size:9pt;}
 /* ── Footer Section ── */
-.footer-section{width:100%;border-top:1.5px solid #000;margin-top:auto;}
+.footer-section{width:100%;border-top:1.5px solid #000;flex-shrink:0;}
 .footer-section table{width:100%;border-collapse:collapse;}
 .footer-section td{vertical-align:top;padding:5pt 8pt;width:50%;border:0;}
 .bank-details{font-size:8pt;line-height:1.5;}
