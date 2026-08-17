@@ -137,54 +137,44 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
   const terms = (invoice.terms || COMPANY_DEFAULTS.defaultTerms).join("<br>");
   const bankDetails = invoice.bankDetails || COMPANY_DEFAULTS;
 
-  // ── Page chunking (3-tier) ──
-  // First page has the full company header + party details + order text, so it
-  // fits fewer items.  Middle pages only repeat a lightweight header and have
-  // more room.  The LAST page must leave enough space for the Tax Summary,
-  // Grand Total, and Amount-in-Words blocks above the footer — so we cap it
-  // at 10 items and, if necessary, force any excess onto an additional middle
-  // page so the totals block never overflows the footer.
+  // ── Page chunking (3-tier, data-driven) ──
+  // First page has full header + party details → fewer items.
+  // Middle pages have a repeated full header but no party block → more items.
+  // Last page must leave room for Tax Summary + Grand Total → capped low.
   const FIRST_PAGE_MAX = 15;
-  const MIDDLE_PAGE_MAX = 20;
+  const MIDDLE_PAGE_MAX = 18;
   const LAST_PAGE_MAX  = 10;
 
-  const chunks: { start: number; end: number; isLast: boolean }[] = [];
+  interface PageChunk { start: number; end: number; isLast: boolean }
+  const chunks: PageChunk[] = [];
   let cursor = 0;
 
   if (items.length === 0) {
     chunks.push({ start: 0, end: 0, isLast: true });
   } else {
-    // Page 1 — full header
     const firstTake = Math.min(items.length, FIRST_PAGE_MAX);
     chunks.push({ start: 0, end: firstTake, isLast: firstTake >= items.length });
     cursor = firstTake;
-
-    // Middle pages — keep consuming while the *remaining* count still exceeds
-    // LAST_PAGE_MAX (i.e. the leftovers won't fit safely on one totals page).
     while (cursor < items.length && items.length - cursor > LAST_PAGE_MAX) {
       const take = Math.min(items.length - cursor, MIDDLE_PAGE_MAX);
       const end = cursor + take;
       chunks.push({ start: cursor, end, isLast: end >= items.length });
       cursor = end;
     }
-
-    // Last page — remaining items (always ≤ LAST_PAGE_MAX) + totals block
     if (cursor < items.length) {
       chunks.push({ start: cursor, end: items.length, isLast: true });
     }
   }
 
-  // Pre-compute cumulative totals at each page boundary (for b/d / c/o rows)
-  const cumulativeTotals = chunks.map((ch) => {
-    const pageItems = items.slice(ch.start, ch.end);
-    const qty = pageItems.reduce((s: number, it: any) => s + Number(it.quantity || 0), 0);
-    const amt = pageItems.reduce((s: number, it: any) => s + Number(it.amount || 0), 0);
-    const units = [...new Set(pageItems.map((it: any) => it.unit).filter(Boolean))];
-    return { qty, amt, unit: units.length === 1 ? units[0] : "" };
+  // Per-page subtotals + running cumulative totals (for b/d / c/o rows)
+  const pageInfo = chunks.map((ch) => {
+    const pg = items.slice(ch.start, ch.end);
+    const qty = pg.reduce((s, it) => s + Number(it.quantity || 0), 0);
+    const amt = pg.reduce((s, it) => s + Number(it.amount || 0), 0);
+    const units = [...new Set(pg.map(it => it.unit).filter(Boolean))];
+    return { ...ch, qty, amt, unit: units.length === 1 ? units[0] : "" };
   });
-
-  // Running cumulative totals (sum up to and including this page)
-  const runningTotals = cumulativeTotals.reduce<{ qty: number; amt: number; unit: string }[]>((acc, cur) => {
+  const cumulative = pageInfo.reduce<{ qty: number; amt: number; unit: string }[]>((acc, cur) => {
     const prev = acc.length > 0 ? acc[acc.length - 1] : { qty: 0, amt: 0, unit: "" };
     acc.push({ qty: prev.qty + cur.qty, amt: prev.amt + cur.amt, unit: cur.unit || prev.unit });
     return acc;
@@ -228,33 +218,6 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
       </div>
     </div>
     <div class="order-text">We are pleased to receive the order for the following items</div>`;
-  }
-
-  /** Lightweight header for continuation pages (pages 2..N) */
-  function continuationHeaderHtml(): string {
-    return `
-    <div class="cont-header">
-      <div class="cont-company">${COMPANY_DEFAULTS.name}</div>
-      <div class="cont-order">Order No: ${invoice.invoiceNumber} &nbsp;&nbsp;|&nbsp;&nbsp; Date: ${dateStr}</div>
-    </div>`;
-  }
-
-  function tableHeaderHtml(): string {
-    return `<table class="items">
-      <thead>
-        <tr>
-          <th style="width:4%">S.N.</th>
-          <th style="width:22%">Description of Goods</th>
-          <th style="width:8%">Weight</th>
-          <th style="width:10%">Colour</th>
-          <th style="width:11%">HSN/SAC Code</th>
-          <th style="width:8%">Qty</th>
-          <th style="width:6%">Unit</th>
-          <th style="width:10%">Price</th>
-          <th style="width:12%">Amount</th>
-        </tr>
-      </thead>
-      <tbody>`;
   }
 
   /** Bank Details + Disclaimer + Signature — shown on every page */
@@ -331,28 +294,29 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
 
   // ── Build pages ──
 
-  const TABLE_COL_WIDTHS = [4, 22, 8, 10, 11, 8, 6, 10, 12]; // percent — sum = 91%
-  const TABLE_HEADER_ROW = `<tr>${TABLE_COL_WIDTHS.map((w, i) => {
-    const labels = ["S.N.", "Description of Goods", "Weight", "Colour", "HSN/SAC Code", "Qty", "Unit", "Price", "Amount"];
-    return `<th style="width:${w}%">${labels[i]}</th>`;
-  }).join("")}</tr>`;
+  const COL_WIDTHS = [4, 22, 8, 10, 11, 8, 6, 10, 12];
+  const TH_LABELS = ["S.N.", "Description of Goods", "Weight", "Colour", "HSN/SAC Code", "Qty", "Unit", "Price", "Amount"];
+  const THEAD = `<thead><tr>${COL_WIDTHS.map((w, i) => `<th style="width:${w}%">${TH_LABELS[i]}</th>`).join("")}</tr></thead>`;
 
-  const pagesHtml = chunks.map((ch, pi) => {
-    const pageItems = items.slice(ch.start, ch.end);
-    const running = runningTotals[pi];
+  // Filler-row <td> style: left+right borders only, no top/bottom
+  const FILL_TD = "border-left:1px solid #000;border-right:1px solid #000;border-top:0;border-bottom:0;padding:0;";
+
+  const pagesHtml = pageInfo.map((pg, pi) => {
     const isFirst = pi === 0;
-    const isLast = ch.isLast;
+    const isLast  = pg.isLast;
+    const pageItems = items.slice(pg.start, pg.end);
+    const running = cumulative[pi];
 
-    // Brought-down row (pages after the first)
-    const prevRunning = pi > 0 ? runningTotals[pi - 1] : null;
-    const bdRow = prevRunning
-      ? `<tr><td colspan="5" style="text-align:left;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">b/d</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevRunning.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevRunning.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${prevRunning.amt.toFixed(2)}</td></tr>`
+    // b/d row (pages 2..N)
+    const prevCum = pi > 0 ? cumulative[pi - 1] : null;
+    const bdRow = prevCum
+      ? `<tr style="height:1px;"><td colspan="5" style="text-align:left;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">b/d</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevCum.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevCum.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${prevCum.amt.toFixed(2)}</td></tr>`
       : "";
 
-    // Item rows
+    // item rows (height:1px → shrink-to-fit)
     const rows = pageItems.map((item: any, ri: number) => `
-      <tr>
-        <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${ch.start + ri + 1}</td>
+      <tr style="height:1px;">
+        <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${pg.start + ri + 1}</td>
         <td style="text-align:left;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;word-break:break-word;white-space:normal;">${formatItemDescription(item)}</td>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.weight || "-"}</td>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.bottleColour || "-"}</td>
@@ -363,24 +327,30 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
         <td style="text-align:right;vertical-align:top;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${Number(item.amount).toFixed(2)}</td>
       </tr>`).join("\n");
 
-    // Carry-forward row (non-last pages)
+    // c/o row (pages 1..N-1)
     const coRow = !isLast
-      ? `<tr><td colspan="5" style="text-align:left;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">Totals c/o</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${running.amt.toFixed(2)}</td></tr>`
+      ? `<tr style="height:1px;"><td colspan="5" style="text-align:left;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">Totals c/o</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${running.amt.toFixed(2)}</td></tr>`
       : "";
+
+    // Filler row: empty <td>s with left+right borders stretch to fill remaining height
+    const filler = `<tr class="filler-row"><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td></tr>`;
 
     const pageBreak = !isLast ? "page-break-after:always;" : "";
 
     return `<div class="page" style="${pageBreak}">
-      <div class="page-scroll">
-        ${isFirst ? headerHtml() : continuationHeaderHtml()}
-        <table class="items">
-          <thead>${TABLE_HEADER_ROW}</thead>
-          <tbody>
-            ${bdRow}
-            ${rows}
-            ${coRow}
-          </tbody>
-        </table>
+      <div class="page-content">
+        ${headerHtml()}
+        <div class="table-wrap">
+          <table class="items">
+            ${THEAD}
+            <tbody>
+              ${bdRow}
+              ${rows}
+              ${coRow}
+              ${filler}
+            </tbody>
+          </table>
+        </div>
         ${isLast ? totalsBlockHtml() : ""}
       </div>
       <div class="footer-fixed">
@@ -399,25 +369,23 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;}
 
-/* ── Page wrapper: position:relative so the footer can be pinned to bottom ── */
-.page{position:relative;width:210mm;min-height:297mm;overflow:hidden;border:1.5px solid #000;page-break-after:always;}
+/* ── Page: fixed A4 height, flex column ── */
+.page{height:297mm;width:210mm;display:flex;flex-direction:column;position:relative;overflow:hidden;border:1.5px solid #000;page-break-after:always;}
 .page:last-child{page-break-after:auto;}
 
-/* ── Scrollable content area — flows naturally above the footer ── */
-.page-scroll{padding:5mm 5mm 50mm 5mm;} /* bottom padding >= footer height prevents overlap */
+/* ── Content area: flex-1 pushes footer to absolute bottom ── */
+.page-content{flex:1;display:flex;flex-direction:column;min-height:0;padding:5mm 5mm 0 5mm;}
 
-/* ── Header (first page only) ── */
+/* ── Table wrapper: flex-1 so the table stretches between header and footer ── */
+.table-wrap{flex:1;display:flex;flex-direction:column;min-height:0;}
+
+/* ── Header (full, on every page) ── */
 .header{text-align:center;border-bottom:1.5px solid #000;padding:6pt 8pt 5pt 8pt;}
 .gstin-top{text-align:left;font-size:7.5pt;margin-bottom:3pt;}
 .invoice-title{font-size:13pt;font-weight:bold;margin:2pt 0 3pt 0;text-decoration:underline;}
 .company-name{font-size:16pt;font-weight:bold;letter-spacing:0.3pt;margin:0 0 2pt 0;}
 .header-address{font-size:7.5pt;line-height:1.4;color:#000;margin-bottom:1pt;}
 .header-email{font-size:7.5pt;margin-top:1pt;}
-
-/* ── Continuation header (pages 2..N) ── */
-.cont-header{text-align:center;border-bottom:1.5px solid #000;padding:4pt 8pt;}
-.cont-company{font-size:12pt;font-weight:bold;}
-.cont-order{font-size:8pt;color:#333;margin-top:2pt;}
 
 /* ── Party Section ── */
 .party-section{display:flex;border-bottom:1.5px solid #000;}
@@ -434,16 +402,19 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;}
 /* ── Order Text ── */
 .order-text{font-size:8.5pt;font-style:italic;text-align:center;padding:4pt 0;border-bottom:1.5px solid #000;}
 
-/* ── Items Table — simple block table, no flex hacks ── */
-table.items{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.5pt;}
+/* ── Items Table: border-collapse:separate required for row height stretching ── */
+table.items{width:100%;height:100%;min-height:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;font-size:8.5pt;}
 table.items th{background:#f0f0f0;border:1px solid #000;padding:4pt 4pt;text-align:center;font-weight:bold;font-size:8pt;height:22pt;overflow-wrap:break-word;}
 table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wrap:break-word;word-break:break-word;}
+
+/* ── Filler row: absorbs remaining height so vertical borders reach the footer ── */
+tr.filler-row{height:100%;}
+tr.filler-row td{height:100%;}
+
 /* ── Carry Forward / Brought Down rows ── */
-tr.cf-row{page-break-inside:avoid;}
-/* ── Item rows: prevent mid-row page breaks ── */
 table.items tbody tr{page-break-inside:avoid;}
 
-/* ── Footer: pinned to bottom of every page via absolute positioning ── */
+/* ── Footer: absolutely pinned to bottom of every page ── */
 .footer-fixed{position:absolute;bottom:0;left:0;width:100%;border-top:1.5px solid #000;padding:0;}
 .footer-table{width:100%;border-collapse:collapse;}
 .footer-table td{vertical-align:top;padding:5pt 8pt;width:50%;border:0;}
@@ -459,22 +430,17 @@ table.items tbody tr{page-break-inside:avoid;}
 .summary-table td{border:0;padding:1.5pt 6pt;font-size:8.5pt;}
 .summary-table .sum-label{text-align:right;width:76%;}
 .summary-table .sum-value{text-align:right;width:24%;font-weight:600;}
-/* ── Compact Tax Table ── */
 .tax-summary{width:100%;max-width:72%;margin-left:auto;table-layout:fixed;border-collapse:collapse;margin-top:3pt;font-size:7pt;}
 .tax-summary th{background:#f0f0f0;border:1px solid #000;padding:1.5pt 3pt;text-align:center;font-weight:bold;font-size:6.5pt;height:12pt;overflow-wrap:break-word;}
 .tax-summary td{border:1px solid #000;padding:1.5pt 3pt;text-align:center;font-size:7pt;overflow-wrap:break-word;}
-/* ── Grand Total (highlighted) ── */
 .grand-total-row{display:flex;align-items:baseline;justify-content:flex-end;gap:8pt;margin-top:3pt;padding:3pt 6pt;border-top:1.5px solid #000;border-bottom:1.5px solid #000;background:#f0f0f0;}
 .grand-total-row .gt-qty{font-size:8.5pt;font-weight:600;margin-right:auto;}
 .grand-total-row .gt-label{font-size:10.5pt;font-weight:bold;}
 .grand-total-row .gt-value{font-size:12pt;font-weight:bold;}
-/* ── Amount in Words ── */
 .amount-words{text-align:right;padding:3pt 6pt 5pt 6pt;font-size:8.5pt;}
 .amount-words strong{font-size:9pt;}
-/* ── Disclaimer ── */
 .disclaimer{border-top:1.5px solid #000;padding:4pt 8pt;font-size:7.5pt;text-align:center;line-height:1.4;}
 .disclaimer strong{font-size:8pt;}
-/* ── Signature ── */
 .signature-section{display:flex;border-top:1.5px solid #000;padding:6pt 8pt 4pt 8pt;font-size:8.5pt;}
 .sign-left{width:50%;}
 .sign-right{width:50%;text-align:right;}
