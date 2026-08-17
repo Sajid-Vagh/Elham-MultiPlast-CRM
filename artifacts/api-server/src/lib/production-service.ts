@@ -3596,12 +3596,12 @@ export async function getManufacturingSummary(
         poi.production_status,
         poi.ordered_quantity,
         poi.ready_quantity,
-        COALESCE(NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, ''), '-') AS weight,
-        COALESCE(NULLIF(pii.bottle_colour, ''), NULLIF(p.bottle_colour, ''), 'N/A') AS colour,
+        COALESCE(NULLIF(poi.bottle_weight, ''), NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, ''), '-') AS weight,
+        COALESCE(NULLIF(poi.bottle_colour, ''), NULLIF(pii.bottle_colour, ''), NULLIF(p.bottle_colour, ''), 'N/A') AS colour,
         COALESCE(NULLIF(p.bottle_colour_code, ''), '') AS colour_code,
         ${materialExpr} AS material_type,
-        TRIM(LOWER(COALESCE(NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, ''), '-'))) AS weight_norm,
-        TRIM(LOWER(COALESCE(NULLIF(pii.bottle_colour, ''), NULLIF(p.bottle_colour, ''), 'N/A'))) AS colour_norm,
+        TRIM(LOWER(COALESCE(NULLIF(poi.bottle_weight, ''), NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, ''), '-'))) AS weight_norm,
+        TRIM(LOWER(COALESCE(NULLIF(poi.bottle_colour, ''), NULLIF(pii.bottle_colour, ''), NULLIF(p.bottle_colour, ''), 'N/A'))) AS colour_norm,
         COALESCE(pii.product_id, (
           SELECT p2.id FROM products p2 WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(poi.product_name)) LIMIT 1
         )) AS product_id,
@@ -3687,11 +3687,11 @@ export async function getManufacturingSummaryDetail(
 
   if ("productName" in filter) {
     const colourFilter = filter.colour === "N/A"
-      ? sql`(COALESCE(NULLIF(pii.bottle_colour, ''), NULLIF(p.bottle_colour, '')) IS NULL OR COALESCE(NULLIF(pii.bottle_colour, ''), NULLIF(p.bottle_colour, '')) = '')`
-      : sql`lower(TRIM(COALESCE(NULLIF(pii.bottle_colour, ''), NULLIF(p.bottle_colour, ''), 'N/A'))) = lower(TRIM(${filter.colour}))`;
+      ? sql`(COALESCE(NULLIF(poi.bottle_colour, ''), NULLIF(pii.bottle_colour, ''), NULLIF(p.bottle_colour, '')) IS NULL OR COALESCE(NULLIF(poi.bottle_colour, ''), NULLIF(pii.bottle_colour, ''), NULLIF(p.bottle_colour, '')) = '')`
+      : sql`lower(TRIM(COALESCE(NULLIF(poi.bottle_colour, ''), NULLIF(pii.bottle_colour, ''), NULLIF(p.bottle_colour, ''), 'N/A'))) = lower(TRIM(${filter.colour}))`;
     const weightFilter = filter.weight === "-"
-      ? sql`(COALESCE(NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, '')) IS NULL OR COALESCE(NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, '')) = '')`
-      : sql`lower(TRIM(COALESCE(NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, ''), '-'))) = lower(TRIM(${filter.weight}))`;
+      ? sql`(COALESCE(NULLIF(poi.bottle_weight, ''), NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, '')) IS NULL OR COALESCE(NULLIF(poi.bottle_weight, ''), NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, '')) = '')`
+      : sql`lower(TRIM(COALESCE(NULLIF(poi.bottle_weight, ''), NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, ''), '-'))) = lower(TRIM(${filter.weight}))`;
 
     results = await db.execute(sql`
       WITH active_orders AS (
@@ -3717,6 +3717,7 @@ export async function getManufacturingSummaryDetail(
         pii.unit AS "unit"
       FROM active_orders ao
       JOIN production_orders po ON po.id = ao.po_id
+      JOIN production_order_items poi ON poi.production_order_id = po.id
       JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
       JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
       LEFT JOIN products p ON p.id = COALESCE(pii.product_id, (
