@@ -142,8 +142,8 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
   // rows fit. Subsequent pages have a lighter header and more room. The footer
   // is pushed to the absolute bottom of each page via flexbox (the .page div
   // has a fixed A4 height and the content area uses flex:1).
-  const FIRST_PAGE_MAX = 12;
-  const SUBSEQUENT_PAGE_MAX = 16;
+  const FIRST_PAGE_MAX = 16;
+  const SUBSEQUENT_PAGE_MAX = 20;
 
   const chunks: { start: number; end: number; isLast: boolean }[] = [];
   let cursor = 0;
