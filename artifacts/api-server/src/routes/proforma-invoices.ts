@@ -137,30 +137,41 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
   const terms = (invoice.terms || COMPANY_DEFAULTS.defaultTerms).join("<br>");
   const bankDetails = invoice.bankDetails || COMPANY_DEFAULTS;
 
-  // ── Page chunking ──
-  // First page has header + party details + order text (~210pt), so fewer item
-  // rows fit. Subsequent pages have a lighter header and more room. The footer
-  // is pushed to the absolute bottom of each page via flexbox (the .page div
-  // has a fixed A4 height and the content area uses flex:1).
-  const FIRST_PAGE_MAX = 16;
-  const SUBSEQUENT_PAGE_MAX = 20;
+  // ── Page chunking (3-tier) ──
+  // First page has the full company header + party details + order text, so it
+  // fits fewer items.  Middle pages only repeat a lightweight header and have
+  // more room.  The LAST page must leave enough space for the Tax Summary,
+  // Grand Total, and Amount-in-Words blocks above the footer — so we cap it
+  // at 10 items and, if necessary, force any excess onto an additional middle
+  // page so the totals block never overflows the footer.
+  const FIRST_PAGE_MAX = 15;
+  const MIDDLE_PAGE_MAX = 20;
+  const LAST_PAGE_MAX  = 10;
 
   const chunks: { start: number; end: number; isLast: boolean }[] = [];
   let cursor = 0;
-  let pageIdx = 0;
-  while (cursor < items.length) {
-    const maxOnPage = pageIdx === 0 ? FIRST_PAGE_MAX : SUBSEQUENT_PAGE_MAX;
-    const remaining = items.length - cursor;
-    const take = Math.min(remaining, maxOnPage);
-    const end = cursor + take;
-    const isLast = end >= items.length;
-    chunks.push({ start: cursor, end, isLast });
-    cursor = end;
-    pageIdx++;
-  }
-  // Edge case: no items → single empty page
-  if (chunks.length === 0) {
+
+  if (items.length === 0) {
     chunks.push({ start: 0, end: 0, isLast: true });
+  } else {
+    // Page 1 — full header
+    const firstTake = Math.min(items.length, FIRST_PAGE_MAX);
+    chunks.push({ start: 0, end: firstTake, isLast: firstTake >= items.length });
+    cursor = firstTake;
+
+    // Middle pages — keep consuming while the *remaining* count still exceeds
+    // LAST_PAGE_MAX (i.e. the leftovers won't fit safely on one totals page).
+    while (cursor < items.length && items.length - cursor > LAST_PAGE_MAX) {
+      const take = Math.min(items.length - cursor, MIDDLE_PAGE_MAX);
+      const end = cursor + take;
+      chunks.push({ start: cursor, end, isLast: end >= items.length });
+      cursor = end;
+    }
+
+    // Last page — remaining items (always ≤ LAST_PAGE_MAX) + totals block
+    if (cursor < items.length) {
+      chunks.push({ start: cursor, end: items.length, isLast: true });
+    }
   }
 
   // Pre-compute cumulative totals at each page boundary (for b/d / c/o rows)
@@ -219,6 +230,15 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
     <div class="order-text">We are pleased to receive the order for the following items</div>`;
   }
 
+  /** Lightweight header for continuation pages (pages 2..N) */
+  function continuationHeaderHtml(): string {
+    return `
+    <div class="cont-header">
+      <div class="cont-company">${COMPANY_DEFAULTS.name}</div>
+      <div class="cont-order">Order No: ${invoice.invoiceNumber} &nbsp;&nbsp;|&nbsp;&nbsp; Date: ${dateStr}</div>
+    </div>`;
+  }
+
   function tableHeaderHtml(): string {
     return `<table class="items">
       <thead>
@@ -240,26 +260,24 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
   /** Bank Details + Disclaimer + Signature — shown on every page */
   function commonFooterHtml(): string {
     return `
-    <div class="footer-section">
-      <table>
-        <tr>
-          <td style="border-right:1.5px solid #000;">
-            <div class="bank-details">
-              <strong>Bank Details</strong><br>
-              ${bankDetails.bankName || "ICICI BANK, HIMATNAGAR"}<br>
-              A/C NO: ${bankDetails.accountNo || "045205014806"}<br>
-              IFSC: ${bankDetails.ifsc || "ICIC0000452"}
-            </div>
-          </td>
-          <td>
-            <div class="terms">
-              <strong>Terms &amp; Conditions</strong>
-              <div>${terms}</div>
-            </div>
-          </td>
-        </tr>
-      </table>
-    </div>
+    <table class="footer-table">
+      <tr>
+        <td style="border-right:1.5px solid #000;">
+          <div class="bank-details">
+            <strong>Bank Details</strong><br>
+            ${bankDetails.bankName || "ICICI BANK, HIMATNAGAR"}<br>
+            A/C NO: ${bankDetails.accountNo || "045205014806"}<br>
+            IFSC: ${bankDetails.ifsc || "ICIC0000452"}
+          </div>
+        </td>
+        <td>
+          <div class="terms">
+            <strong>Terms &amp; Conditions</strong>
+            <div>${terms}</div>
+          </div>
+        </td>
+      </tr>
+    </table>
     <div class="disclaimer">
       <strong>DISCLAIMER : </strong>${invoice.disclaimer || COMPANY_DEFAULTS.disclaimer}
     </div>
@@ -313,21 +331,27 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
 
   // ── Build pages ──
 
+  const TABLE_COL_WIDTHS = [4, 22, 8, 10, 11, 8, 6, 10, 12]; // percent — sum = 91%
+  const TABLE_HEADER_ROW = `<tr>${TABLE_COL_WIDTHS.map((w, i) => {
+    const labels = ["S.N.", "Description of Goods", "Weight", "Colour", "HSN/SAC Code", "Qty", "Unit", "Price", "Amount"];
+    return `<th style="width:${w}%">${labels[i]}</th>`;
+  }).join("")}</tr>`;
+
   const pagesHtml = chunks.map((ch, pi) => {
     const pageItems = items.slice(ch.start, ch.end);
     const running = runningTotals[pi];
+    const isFirst = pi === 0;
     const isLast = ch.isLast;
 
-    // Brought-down row (pages after the first) — height:1px shrink-to-fit
+    // Brought-down row (pages after the first)
     const prevRunning = pi > 0 ? runningTotals[pi - 1] : null;
     const bdRow = prevRunning
-      ? `<tr class="cf-row" style="height:1px;"><td colspan="5" style="text-align:left;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">b/d</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevRunning.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevRunning.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${prevRunning.amt.toFixed(2)}</td></tr>`
+      ? `<tr><td colspan="5" style="text-align:left;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">b/d</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevRunning.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevRunning.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${prevRunning.amt.toFixed(2)}</td></tr>`
       : "";
 
-    // Item rows — height:1px so the browser only expands them to fit content;
-    // the filler row below absorbs all remaining vertical space.
+    // Item rows
     const rows = pageItems.map((item: any, ri: number) => `
-      <tr style="height:1px;">
+      <tr>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${ch.start + ri + 1}</td>
         <td style="text-align:left;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;word-break:break-word;white-space:normal;">${formatItemDescription(item)}</td>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.weight || "-"}</td>
@@ -339,49 +363,29 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
         <td style="text-align:right;vertical-align:top;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${Number(item.amount).toFixed(2)}</td>
       </tr>`).join("\n");
 
-    // Carry-forward row (non-last pages) — height:1px shrink-to-fit
+    // Carry-forward row (non-last pages)
     const coRow = !isLast
-      ? `<tr class="cf-row" style="height:1px;"><td colspan="5" style="text-align:left;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">Totals c/o</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${running.amt.toFixed(2)}</td></tr>`
+      ? `<tr><td colspan="5" style="text-align:left;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">Totals c/o</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${running.amt.toFixed(2)}</td></tr>`
       : "";
 
-    // Filler row: absorbs all remaining vertical space so table borders
-    // stretch to the footer (accounting-style layout). No height set —
-    // the row fills whatever the table's height:100% leaves after the
-    // 1px content rows. Left+right borders only; no bottom border
-    // (the footer's border-top closes the grid).
-    const fillerTdStyle = "border-left:1px solid #000;border-right:1px solid #000;border-top:0;border-bottom:0;padding:0;";
-    const fillerRow = `<tr class="filler-row"><td style="${fillerTdStyle}"></td><td style="${fillerTdStyle}"></td><td style="${fillerTdStyle}"></td><td style="${fillerTdStyle}"></td><td style="${fillerTdStyle}"></td><td style="${fillerTdStyle}"></td><td style="${fillerTdStyle}"></td><td style="${fillerTdStyle}"></td><td style="${fillerTdStyle}"></td></tr>`;
+    const pageBreak = !isLast ? "page-break-after:always;" : "";
 
-    const pageStyle = !isLast
-      ? "page-break-after:always;min-height:100%;"
-      : "min-height:100%;";
-
-    return `<div class="page" style="${pageStyle}">
-      <div class="page-content">
-        ${headerHtml()}
+    return `<div class="page" style="${pageBreak}">
+      <div class="page-scroll">
+        ${isFirst ? headerHtml() : continuationHeaderHtml()}
         <table class="items">
-      <thead>
-        <tr>
-          <th style="width:4%">S.N.</th>
-          <th style="width:22%">Description of Goods</th>
-          <th style="width:8%">Weight</th>
-          <th style="width:10%">Colour</th>
-          <th style="width:11%">HSN/SAC Code</th>
-          <th style="width:8%">Qty</th>
-          <th style="width:6%">Unit</th>
-          <th style="width:10%">Price</th>
-          <th style="width:12%">Amount</th>
-        </tr>
-      </thead>
-      <tbody>
-      ${bdRow}
-      ${rows}
-      ${coRow}
-      ${fillerRow}
-      </tbody></table>
+          <thead>${TABLE_HEADER_ROW}</thead>
+          <tbody>
+            ${bdRow}
+            ${rows}
+            ${coRow}
+          </tbody>
+        </table>
+        ${isLast ? totalsBlockHtml() : ""}
       </div>
-      ${isLast ? totalsBlockHtml() : ""}
-      ${commonFooterHtml()}
+      <div class="footer-fixed">
+        ${commonFooterHtml()}
+      </div>
     </div>`;
   }).join("\n");
 
@@ -393,17 +397,28 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
 <style>
 @page{size:A4 portrait;margin:0;}
 *{margin:0;padding:0;box-sizing:border-box;}
-html,body{height:297mm;}
-body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;margin:0;padding:5mm;}
-.page{width:100%;height:287mm;border:1.5px solid #000;overflow-wrap:break-word;display:flex;flex-direction:column;}
-.page-content{flex:1;display:flex;flex-direction:column;min-height:0;}
-/* ── Header ── */
+body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;}
+
+/* ── Page wrapper: position:relative so the footer can be pinned to bottom ── */
+.page{position:relative;width:210mm;min-height:297mm;overflow:hidden;border:1.5px solid #000;page-break-after:always;}
+.page:last-child{page-break-after:auto;}
+
+/* ── Scrollable content area — flows naturally above the footer ── */
+.page-scroll{padding:5mm 5mm 50mm 5mm;} /* bottom padding >= footer height prevents overlap */
+
+/* ── Header (first page only) ── */
 .header{text-align:center;border-bottom:1.5px solid #000;padding:6pt 8pt 5pt 8pt;}
 .gstin-top{text-align:left;font-size:7.5pt;margin-bottom:3pt;}
 .invoice-title{font-size:13pt;font-weight:bold;margin:2pt 0 3pt 0;text-decoration:underline;}
 .company-name{font-size:16pt;font-weight:bold;letter-spacing:0.3pt;margin:0 0 2pt 0;}
 .header-address{font-size:7.5pt;line-height:1.4;color:#000;margin-bottom:1pt;}
 .header-email{font-size:7.5pt;margin-top:1pt;}
+
+/* ── Continuation header (pages 2..N) ── */
+.cont-header{text-align:center;border-bottom:1.5px solid #000;padding:4pt 8pt;}
+.cont-company{font-size:12pt;font-weight:bold;}
+.cont-order{font-size:8pt;color:#333;margin-top:2pt;}
+
 /* ── Party Section ── */
 .party-section{display:flex;border-bottom:1.5px solid #000;}
 .party-left{width:60%;padding:5pt 8pt;border-right:1.5px solid #000;}
@@ -415,21 +430,31 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;marg
 .order-label{font-weight:bold;font-size:9pt;margin-bottom:3pt;}
 .order-value{font-size:9pt;margin-bottom:4pt;}
 .date-value{font-size:9pt;}
+
 /* ── Order Text ── */
 .order-text{font-size:8.5pt;font-style:italic;text-align:center;padding:4pt 0;border-bottom:1.5px solid #000;}
-/* ── Items Table ── */
-table.items{width:100%;height:100%;min-height:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;font-size:8.5pt;}
+
+/* ── Items Table — simple block table, no flex hacks ── */
+table.items{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.5pt;}
 table.items th{background:#f0f0f0;border:1px solid #000;padding:4pt 4pt;text-align:center;font-weight:bold;font-size:8pt;height:22pt;overflow-wrap:break-word;}
 table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wrap:break-word;word-break:break-word;}
-/* ── Filler row: absorbs remaining space; left+right borders only ── */
-tr.filler-row{height:100%;}
-tr.filler-row td{height:100%;}
 /* ── Carry Forward / Brought Down rows ── */
 tr.cf-row{page-break-inside:avoid;}
 /* ── Item rows: prevent mid-row page breaks ── */
 table.items tbody tr{page-break-inside:avoid;}
+
+/* ── Footer: pinned to bottom of every page via absolute positioning ── */
+.footer-fixed{position:absolute;bottom:0;left:0;width:100%;border-top:1.5px solid #000;padding:0;}
+.footer-table{width:100%;border-collapse:collapse;}
+.footer-table td{vertical-align:top;padding:5pt 8pt;width:50%;border:0;}
+.bank-details{font-size:8pt;line-height:1.5;}
+.bank-details strong{font-size:8.5pt;}
+.terms{font-size:8pt;line-height:1.5;}
+.terms strong{font-size:8.5pt;}
+.terms div{margin-top:2pt;}
+
 /* ── Totals Block (Summary / Tax / Grand Total / Amount in Words) ── */
-.totals-block{width:100%;flex-shrink:0;}
+.totals-block{width:100%;}
 .summary-table{width:100%;border-collapse:collapse;border-top:1.5px solid #000;}
 .summary-table td{border:0;padding:1.5pt 6pt;font-size:8.5pt;}
 .summary-table .sum-label{text-align:right;width:76%;}
@@ -446,15 +471,6 @@ table.items tbody tr{page-break-inside:avoid;}
 /* ── Amount in Words ── */
 .amount-words{text-align:right;padding:3pt 6pt 5pt 6pt;font-size:8.5pt;}
 .amount-words strong{font-size:9pt;}
-/* ── Footer Section ── */
-.footer-section{width:100%;border-top:1.5px solid #000;flex-shrink:0;}
-.footer-section table{width:100%;border-collapse:collapse;}
-.footer-section td{vertical-align:top;padding:5pt 8pt;width:50%;border:0;}
-.bank-details{font-size:8pt;line-height:1.5;}
-.bank-details strong{font-size:8.5pt;}
-.terms{font-size:8pt;line-height:1.5;}
-.terms strong{font-size:8.5pt;}
-.terms div{margin-top:2pt;}
 /* ── Disclaimer ── */
 .disclaimer{border-top:1.5px solid #000;padding:4pt 8pt;font-size:7.5pt;text-align:center;line-height:1.4;}
 .disclaimer strong{font-size:8pt;}
