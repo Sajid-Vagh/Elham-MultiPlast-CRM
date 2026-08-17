@@ -338,9 +338,6 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
   const TH_LABELS = ["S.N.", "Description of Goods", "Weight", "Colour", "HSN/SAC Code", "Qty", "Unit", "Price", "Amount"];
   const THEAD = `<thead><tr>${COL_WIDTHS.map((w, i) => `<th style="width:${w}%">${TH_LABELS[i]}</th>`).join("")}</tr></thead>`;
 
-  // Filler-row <td> style: left+right borders only, no top/bottom
-  const FILL_TD = "border-left:1px solid #000;border-right:1px solid #000;border-top:0;border-bottom:0;padding:0;";
-
   const pagesHtml = pageInfo.map((pg, pi) => {
     const isFirst = pi === 0;
     const isLast  = pg.isLast;
@@ -372,47 +369,24 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
       ? `<tr style="height:1px;"><td colspan="5" style="text-align:left;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">Totals c/o</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${running.amt.toFixed(2)}</td></tr>`
       : "";
 
-    // Filler row: empty <td>s with left+right borders stretch to fill remaining height (non-last only)
-    const filler = isLast ? "" : `<tr class="filler-row"><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td></tr>`;
-
     const pageBreak = !isLast ? "page-break-after:always;" : "";
 
-    if (isLast) {
-      // Last page: table takes NATURAL height (no stretching), totals + footer follow in flow.
-      // padding-bottom reserves space for the absolutely-positioned footer.
-      return `<div class="page" style="${pageBreak}">
-        <div class="page-content last-page-content">
-          ${headerHtml()}
-          <table class="items">
-            ${THEAD}
-            <tbody>
-              ${bdRow}
-              ${rows}
-            </tbody>
-          </table>
-          ${totalsBlockHtml()}
-        </div>
-        <div class="footer-fixed">
-          ${commonFooterHtml()}
-        </div>
-      </div>`;
-    }
-
-    // Non-last pages: table inside .table-wrap stretches via flex, filler absorbs remaining.
+    // Unified structure for ALL pages:
+    // .page-content (flex:1) holds header + table + spacer; footer-fixed sits outside
+    // as a flex sibling, flush with the page border edges.
     return `<div class="page" style="${pageBreak}">
       <div class="page-content">
         ${headerHtml()}
-        <div class="table-wrap">
-          <table class="items">
-            ${THEAD}
-            <tbody>
-              ${bdRow}
-              ${rows}
-              ${coRow}
-              ${filler}
-            </tbody>
-          </table>
-        </div>
+        <table class="items">
+          ${THEAD}
+          <tbody>
+            ${bdRow}
+            ${rows}
+            ${coRow}
+          </tbody>
+        </table>
+        ${isLast ? totalsBlockHtml() : ""}
+        <div class="page-spacer"></div>
       </div>
       <div class="footer-fixed">
         ${commonFooterHtml()}
@@ -431,19 +405,14 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
 body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;}
 
 /* ── Page: fixed A4 height, flex column ── */
-.page{height:297mm;width:210mm;display:flex;flex-direction:column;position:relative;overflow:hidden;border:1.5px solid #000;page-break-after:always;}
+.page{height:297mm;width:210mm;display:flex;flex-direction:column;overflow:hidden;border:1.5px solid #000;page-break-after:always;}
 .page:last-child{page-break-after:auto;}
 
-/* ── Content area: flex-1 pushes footer to absolute bottom ── */
-.page-content{flex:1;display:flex;flex-direction:column;min-height:0;padding:5mm 5mm 0 5mm;}
+/* ── Content area: flex-1 so footer sits at page bottom ── */
+.page-content{flex:1;display:flex;flex-direction:column;min-height:0;padding:5mm;overflow:hidden;}
 
-/* ── Table wrapper: flex-1 so the table stretches between header and footer (non-last pages only) ── */
-.table-wrap{flex:1;display:flex;flex-direction:column;min-height:0;}
-.table-wrap table.items{height:100%;min-height:100%;}
-
-/* ── Last-page content: reserve footer space via padding-bottom, no table stretching ── */
-.last-page-content{padding-bottom:140pt;}
-.last-page-content table.items{height:auto !important;min-height:0 !important;}
+/* ── Spacer: pushes table+header up, footer down ── */
+.page-spacer{flex:1;}
 
 /* ── Header (full, on every page) ── */
 .header{text-align:center;border-bottom:1.5px solid #000;padding:6pt 8pt 5pt 8pt;}
@@ -468,20 +437,16 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;}
 /* ── Order Text ── */
 .order-text{font-size:8.5pt;font-style:italic;text-align:center;padding:4pt 0;border-bottom:1.5px solid #000;}
 
-/* ── Items Table: border-collapse:separate required for row height stretching ── */
+/* ── Items Table: self-contained borders, natural height ── */
 table.items{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;font-size:8.5pt;}
 table.items th{background:#f0f0f0;border:1px solid #000;padding:4pt 4pt;text-align:center;font-weight:bold;font-size:8pt;height:22pt;overflow-wrap:break-word;}
 table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wrap:break-word;word-break:break-word;}
 
-/* ── Filler row: absorbs remaining height so vertical borders reach the footer ── */
-.table-wrap tr.filler-row{height:100%;}
-.table-wrap tr.filler-row td{height:100%;}
-
 /* ── Carry Forward / Brought Down rows ── */
 table.items tbody tr{page-break-inside:avoid;}
 
-/* ── Footer: absolutely pinned to bottom of every page ── */
-.footer-fixed{position:absolute;bottom:0;left:0;width:100%;border-top:1.5px solid #000;padding:0;}
+/* ── Footer: in normal flow at page bottom (sibling of .page-content) ── */
+.footer-fixed{border-top:1.5px solid #000;padding:0;}
 .footer-table{width:100%;border-collapse:collapse;}
 .footer-table td{vertical-align:top;padding:5pt 8pt;width:50%;border:0;}
 .bank-details{font-size:8pt;line-height:1.5;}

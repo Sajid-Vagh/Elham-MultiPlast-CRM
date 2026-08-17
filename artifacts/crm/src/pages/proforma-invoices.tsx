@@ -1898,21 +1898,19 @@ const setItemDisplay = (idx: number, patch: Partial<InvoiceItem>) => {
         : "";
 
       const isLastPage = b.last;
-      const pageStyle = !isLastPage
-        ? `page-break-after:always;min-height:100%;`
-        : `min-height:100%;`;
+      const pageBreak = !isLastPage ? "page-break-after:always;" : "";
 
-      if (isLastPage) {
-        // Last page: table takes natural height, totals + footer follow
-        return `<div class="page last-page" style="${pageStyle}">
+      return `<div class="page" style="${pageBreak}">
+    <div class="page-content">
       ${headerHtml()}
       <table class="items">
     <thead><tr><th style="width:4%">S.N.</th><th style="width:22%">Description of Goods</th><th style="width:8%">Weight</th><th style="width:10%">Colour</th><th style="width:11%">HSN/SAC Code</th><th style="width:8%">Qty</th><th style="width:6%">Unit</th><th style="width:10%">Price</th><th style="width:12%">Amount</th></tr></thead>
     <tbody>
       ${bdRow}
       ${rows}
+      ${cfRow}
       </tbody></table>
-    <div class="totals-block">
+      ${isLastPage ? `<div class="totals-block">
       <table class="summary-table">
         <tr><td class="sum-label">Product Total</td><td class="sum-value">${taxable.toFixed(2)}</td></tr>
         ${freight > 0 ? `<tr><td class="sum-label">Freight Charges</td><td class="sum-value">${freight.toFixed(2)}</td></tr>` : ""}
@@ -1930,27 +1928,18 @@ const setItemDisplay = (idx: number, patch: Partial<InvoiceItem>) => {
         <span class="gt-value">${grandTotal.toFixed(2)}</span>
       </div>
       <div class="amount-words"><strong>Amount in Words :</strong> ${inv.amountInWords || ""}</div>
+    </div>` : ""}
+      <div class="page-spacer"></div>
     </div>
-    <div class="footer-section"><table><tr>
+    <div class="footer-fixed">
+    <table class="footer-table"><tr>
     <td style="border-right:1.5px solid #000;"><div class="bank-details"><strong>Bank Details</strong><br>ICICI BANK, HIMATNAGAR<br>A/C NO: 045205014806<br>IFSC: ICIC0000452</div></td>
     <td><div class="terms"><strong>Terms &amp; Conditions</strong><div>${(inv.terms || defaultTerms).join("<br>")}</div></div></td>
-    </tr></table></div>
+    </tr></table>
     <div class="disclaimer"><strong>DISCLAIMER : </strong>Products supplied are generic industrial packaging developed independently by Elham Multiplast LLP for functional applications. Any branding, labeling, or market usage by the buyer shall be at the buyer's sole responsibility.</div>
     <div class="signature-section"><div class="sign-left">Receiver Signature</div><div class="sign-right"><div class="for-company">for ELHAM MULTIPLAST LLP</div><div class="authorised">Authorised Signatory</div></div></div>
-    </div>`;
-      }
-
-      // Non-last pages: table fills the page
-      return `<div class="page" style="${pageStyle}">
-      ${headerHtml()}
-      <table class="items">
-    <thead><tr><th style="width:4%">S.N.</th><th style="width:22%">Description of Goods</th><th style="width:8%">Weight</th><th style="width:10%">Colour</th><th style="width:11%">HSN/SAC Code</th><th style="width:8%">Qty</th><th style="width:6%">Unit</th><th style="width:10%">Price</th><th style="width:12%">Amount</th></tr></thead>
-    <tbody>
-      ${bdRow}
-      ${rows}
-      ${cfRow}
-      </tbody></table>
-    </div>`;
+    </div>
+  </div>`;
     }).join("\n");
 
     return `<!DOCTYPE html>
@@ -1961,7 +1950,17 @@ const setItemDisplay = (idx: number, patch: Partial<InvoiceItem>) => {
 *{margin:0;padding:0;box-sizing:border-box;}
 html,body{height:297mm;}
 body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;margin:0;padding:5mm;}
-.page{width:100%;border:1.5px solid #000;overflow-wrap:break-word;display:flex;flex-direction:column;}
+
+/* ── Page: fixed A4 height, flex column ── */
+.page{height:297mm;width:100%;display:flex;flex-direction:column;overflow:hidden;border:1.5px solid #000;page-break-after:always;}
+.page:last-child{page-break-after:auto;}
+
+/* ── Content area: flex-1 so footer sits at page bottom ── */
+.page-content{flex:1;display:flex;flex-direction:column;min-height:0;padding:5mm;overflow:hidden;}
+
+/* ── Spacer: pushes table+header up, footer down ── */
+.page-spacer{flex:1;}
+
 .header{text-align:center;border-bottom:1.5px solid #000;padding:6pt 8pt 5pt 8pt;}
 .gstin-top{text-align:left;font-size:7.5pt;margin-bottom:3pt;}
 .invoice-title{font-size:13pt;font-weight:bold;margin:2pt 0 3pt 0;text-decoration:underline;}
@@ -1979,10 +1978,13 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;marg
 .order-value{font-size:9pt;margin-bottom:4pt;}
 .date-value{font-size:9pt;}
 .order-text{font-size:8.5pt;font-style:italic;text-align:center;padding:4pt 0;border-bottom:1.5px solid #000;}
-table.items{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.5pt;}
+
+/* ── Items Table: self-contained borders, natural height ── */
+table.items{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;font-size:8.5pt;}
 table.items th{background:#f0f0f0;border:1px solid #000;padding:4pt 4pt;text-align:center;font-weight:bold;font-size:8pt;height:22pt;overflow-wrap:break-word;}
 table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wrap:break-word;word-break:break-word;}
-.page.last-page table.items{height:auto !important;min-height:0 !important;}
+table.items tbody tr{page-break-inside:avoid;}
+
 .totals-block{width:100%;}
 .summary-table{width:100%;border-collapse:collapse;border-top:1.5px solid #000;}
 .summary-table td{border:0;padding:1.5pt 6pt;font-size:8.5pt;}
@@ -1997,9 +1999,11 @@ table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wr
 .grand-total-row .gt-value{font-size:12pt;font-weight:bold;}
 .amount-words{text-align:right;padding:3pt 6pt 5pt 6pt;font-size:8.5pt;}
 .amount-words strong{font-size:9pt;}
-.footer-section{width:100%;border-top:1.5px solid #000;margin-top:auto;}
-.footer-section table{width:100%;border-collapse:collapse;}
-.footer-section td{vertical-align:top;padding:5pt 8pt;width:50%;border:0;}
+
+/* ── Footer: in normal flow at page bottom (sibling of .page-content) ── */
+.footer-fixed{border-top:1.5px solid #000;padding:0;}
+.footer-table{width:100%;border-collapse:collapse;}
+.footer-table td{vertical-align:top;padding:5pt 8pt;width:50%;border:0;}
 .bank-details{font-size:8pt;line-height:1.5;}
 .bank-details strong{font-size:8.5pt;}
 .terms{font-size:8pt;line-height:1.5;}
