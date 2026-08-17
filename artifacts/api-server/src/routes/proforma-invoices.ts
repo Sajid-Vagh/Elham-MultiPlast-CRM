@@ -404,12 +404,12 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;}
 
-/* ── Page: fixed A4 height, flex column ── */
-.page{height:297mm;width:210mm;display:flex;flex-direction:column;overflow:hidden;border:1.5px solid #000;page-break-after:always;}
+/* ── Page: slightly inset from A4 edges, fixed height, flex column ── */
+.page{width:202mm;height:289mm;margin:4mm auto;display:flex;flex-direction:column;overflow:hidden;border:1px solid #000;page-break-after:always;}
 .page:last-child{page-break-after:auto;}
 
 /* ── Content area: flex-1 so footer sits at page bottom ── */
-.page-content{flex:1;display:flex;flex-direction:column;min-height:0;padding:5mm;overflow:hidden;}
+.page-content{flex:1;display:flex;flex-direction:column;min-height:0;padding:4mm 5mm;overflow:hidden;}
 
 /* ── Spacer: pushes table+header up, footer down ── */
 .page-spacer{flex:1;}
