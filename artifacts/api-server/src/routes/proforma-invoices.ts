@@ -318,15 +318,16 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
     const running = runningTotals[pi];
     const isLast = ch.isLast;
 
-    // Brought-down row (pages after the first)
+    // Brought-down row (pages after the first) — height:1px shrink-to-fit
     const prevRunning = pi > 0 ? runningTotals[pi - 1] : null;
     const bdRow = prevRunning
-      ? `<tr class="cf-row"><td colspan="5" style="text-align:left;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">b/d</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevRunning.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevRunning.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${prevRunning.amt.toFixed(2)}</td></tr>`
+      ? `<tr class="cf-row" style="height:1px;"><td colspan="5" style="text-align:left;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">b/d</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevRunning.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${prevRunning.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${prevRunning.amt.toFixed(2)}</td></tr>`
       : "";
 
-    // Item rows
+    // Item rows — height:1px so the browser only expands them to fit content;
+    // the filler row below absorbs all remaining vertical space.
     const rows = pageItems.map((item: any, ri: number) => `
-      <tr>
+      <tr style="height:1px;">
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${ch.start + ri + 1}</td>
         <td style="text-align:left;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;word-break:break-word;white-space:normal;">${formatItemDescription(item)}</td>
         <td style="text-align:center;vertical-align:top;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${item.weight || "-"}</td>
@@ -338,15 +339,18 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
         <td style="text-align:right;vertical-align:top;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${Number(item.amount).toFixed(2)}</td>
       </tr>`).join("\n");
 
-    // Carry-forward row (non-last pages)
+    // Carry-forward row (non-last pages) — height:1px shrink-to-fit
     const coRow = !isLast
-      ? `<tr class="cf-row"><td colspan="5" style="text-align:left;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">Totals c/o</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${running.amt.toFixed(2)}</td></tr>`
+      ? `<tr class="cf-row" style="height:1px;"><td colspan="5" style="text-align:left;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">Totals c/o</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${running.amt.toFixed(2)}</td></tr>`
       : "";
 
-    // Filler row: stretches to fill remaining vertical space so table borders
-    // connect to the footer (accounting-style layout). The row has the same
-    // 9-column structure with left/right borders but no content.
-    const fillerRow = `<tr class="filler-row"><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
+    // Filler row: absorbs all remaining vertical space so table borders
+    // stretch to the footer (accounting-style layout). No height set —
+    // the row fills whatever the table's height:100% leaves after the
+    // 1px content rows. Left+right borders only; no bottom border
+    // (the footer's border-top closes the grid).
+    const fillerTdStyle = "border-left:1px solid #000;border-right:1px solid #000;border-top:0;border-bottom:0;padding:0;";
+    const fillerRow = `<tr class="filler-row"><td style="${fillerTdStyle}"></td><td style="${fillerTdStyle}"></td><td style="${fillerTdStyle}"></td><td style="${fillerTdStyle}"></td><td style="${fillerTdStyle}"></td><td style="${fillerTdStyle}"></td><td style="${fillerTdStyle}"></td><td style="${fillerTdStyle}"></td><td style="${fillerTdStyle}"></td></tr>`;
 
     const pageStyle = !isLast
       ? "page-break-after:always;min-height:100%;"
@@ -414,12 +418,12 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;marg
 /* ── Order Text ── */
 .order-text{font-size:8.5pt;font-style:italic;text-align:center;padding:4pt 0;border-bottom:1.5px solid #000;}
 /* ── Items Table ── */
-table.items{width:100%;height:100%;table-layout:fixed;border-collapse:collapse;font-size:8.5pt;}
+table.items{width:100%;height:100%;min-height:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;font-size:8.5pt;}
 table.items th{background:#f0f0f0;border:1px solid #000;padding:4pt 4pt;text-align:center;font-weight:bold;font-size:8pt;height:22pt;overflow-wrap:break-word;}
 table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wrap:break-word;word-break:break-word;}
-/* ── Filler row: stretches to fill remaining vertical space ── */
+/* ── Filler row: absorbs remaining space; left+right borders only ── */
 tr.filler-row{height:100%;}
-tr.filler-row td{border-left:1px solid #000;border-right:1px solid #000;border-top:0;border-bottom:1px solid #000;padding:0;height:100%;}
+tr.filler-row td{height:100%;}
 /* ── Carry Forward / Brought Down rows ── */
 tr.cf-row{page-break-inside:avoid;}
 /* ── Item rows: prevent mid-row page breaks ── */
