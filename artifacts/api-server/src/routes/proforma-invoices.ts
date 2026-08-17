@@ -137,40 +137,80 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
   const terms = (invoice.terms || COMPANY_DEFAULTS.defaultTerms).join("<br>");
   const bankDetails = invoice.bankDetails || COMPANY_DEFAULTS;
 
-  // ── Page chunking (3-tier, data-driven) ──
-  // First page has full header + party details → fewer items.
-  // Middle pages have a repeated full header but no party block → more items.
-  // Last page must leave room for Tax Summary + Grand Total → capped low.
-  const FIRST_PAGE_MAX = 15;
-  const MIDDLE_PAGE_MAX = 18;
-  const LAST_PAGE_MAX  = 10;
+  // ── Height-estimated page chunking ──
+  // A4 portrait: 297mm ≈ 841.9pt. All measurements in pt (1pt = 1/72in, 1mm = 2.835pt).
+  const A4_PT = 841.9;
+  const PAGE_PAD_PT = 14.2;   // 5mm top padding
+  const HEADER_PT   = 99;     // GSTIN + title + company + address + email + borders/padding
+  const PARTY_PT    = 115;    // Party details section (name, address, GSTIN, order no, date)
+  const ORDER_TXT_PT = 22;    // "We are pleased to receive…"
+  const TBL_HEAD_PT = 22;     // <thead> row
+  const CO_ROW_PT   = 18;     // "Totals c/o" row height
+  const BD_ROW_PT   = 18;     // "b/d" row height
+  const TOTALS_PT   = 120;    // Summary + tax + grand total + amount in words
+  const FOOTER_PT   = 135;    // Bank details + terms + disclaimer + signature
+  const ROW_PAD_PT  = 8;      // 4pt padding top + bottom per row
+  const LINE_H_PT   = 11.5;   // 8.5pt font × 1.35 line-height
+  const CHARS_LINE  = 20;     // approx chars that fit in the Description column
+
+  const PAGE_CONTENT_PT = A4_PT - PAGE_PAD_PT; // ~828pt
+
+  // Available height for item rows on each page type (all section heights subtracted)
+  const NONLAST_ROWS_PT = PAGE_CONTENT_PT - HEADER_PT - PARTY_PT - ORDER_TXT_PT - TBL_HEAD_PT - BD_ROW_PT - CO_ROW_PT;
+  const LAST_ROWS_PT    = PAGE_CONTENT_PT - HEADER_PT - PARTY_PT - ORDER_TXT_PT - TBL_HEAD_PT - TOTALS_PT - FOOTER_PT - BD_ROW_PT;
+
+  function estimateRowH(it: any): number {
+    const desc = formatItemDescription(it);
+    const lines = Math.max(1, Math.ceil(desc.length / CHARS_LINE));
+    return ROW_PAD_PT + lines * LINE_H_PT;
+  }
+
+  function fitRows(arr: any[], budget: number): number {
+    let used = 0;
+    for (let i = 0; i < arr.length; i++) {
+      const h = estimateRowH(arr[i]);
+      if (used + h > budget) return i;
+      used += h;
+    }
+    return arr.length;
+  }
 
   interface PageChunk { start: number; end: number; isLast: boolean }
   const chunks: PageChunk[] = [];
-  let cursor = 0;
 
   if (items.length === 0) {
     chunks.push({ start: 0, end: 0, isLast: true });
   } else {
-    const firstTake = Math.min(items.length, FIRST_PAGE_MAX);
-    chunks.push({ start: 0, end: firstTake, isLast: firstTake >= items.length });
-    cursor = firstTake;
-    while (cursor < items.length && items.length - cursor > LAST_PAGE_MAX) {
-      const take = Math.min(items.length - cursor, MIDDLE_PAGE_MAX);
-      const end = cursor + take;
-      chunks.push({ start: cursor, end, isLast: end >= items.length });
-      cursor = end;
-    }
-    if (cursor < items.length) {
-      chunks.push({ start: cursor, end: items.length, isLast: true });
+    let pos = 0;
+    while (pos < items.length) {
+      const remaining = items.length - pos;
+      const nonLastMax = fitRows(items.slice(pos), NONLAST_ROWS_PT);
+      const lastMax    = fitRows(items.slice(pos), LAST_ROWS_PT);
+
+      if (remaining <= lastMax) {
+        chunks.push({ start: pos, end: items.length, isLast: true });
+        break;
+      }
+
+      // Leave enough room so the remaining items fit on the last page
+      const take = Math.min(nonLastMax, remaining - Math.max(1, lastMax));
+      if (take <= 0 || nonLastMax <= 0) {
+        // Safety: always advance at least 1 row to avoid infinite loop
+        const isLast = remaining <= 1;
+        chunks.push({ start: pos, end: pos + 1, isLast });
+        pos++;
+      } else {
+        chunks.push({ start: pos, end: pos + take, isLast: false });
+        pos += take;
+      }
     }
   }
 
   // Per-page subtotals + running cumulative totals (for b/d / c/o rows)
   const pageInfo = chunks.map((ch) => {
     const pg = items.slice(ch.start, ch.end);
-    const qty = pg.reduce((s, it) => s + Number(it.quantity || 0), 0);
-    const amt = pg.reduce((s, it) => s + Number(it.amount || 0), 0);
+    const qty = pg.reduce((s: number, it: any) => s + Number(it.quantity || 0), 0);
+    const amt = pg.reduce((s: number, it: any) => s + Number(it.amount || 0), 0);
     const units = [...new Set(pg.map(it => it.unit).filter(Boolean))];
     return { ...ch, qty, amt, unit: units.length === 1 ? units[0] : "" };
   });
@@ -327,16 +367,38 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
         <td style="text-align:right;vertical-align:top;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${Number(item.amount).toFixed(2)}</td>
       </tr>`).join("\n");
 
-    // c/o row (pages 1..N-1)
+    // c/o row (non-last pages only)
     const coRow = !isLast
       ? `<tr style="height:1px;"><td colspan="5" style="text-align:left;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">Totals c/o</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${running.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 6pt;font-size:8.5pt;border:1px solid #000;">${running.amt.toFixed(2)}</td></tr>`
       : "";
 
-    // Filler row: empty <td>s with left+right borders stretch to fill remaining height
-    const filler = `<tr class="filler-row"><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td></tr>`;
+    // Filler row: empty <td>s with left+right borders stretch to fill remaining height (non-last only)
+    const filler = isLast ? "" : `<tr class="filler-row"><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td><td style="${FILL_TD}"></td></tr>`;
 
     const pageBreak = !isLast ? "page-break-after:always;" : "";
 
+    if (isLast) {
+      // Last page: table takes NATURAL height (no stretching), totals + footer follow in flow.
+      // padding-bottom reserves space for the absolutely-positioned footer.
+      return `<div class="page" style="${pageBreak}">
+        <div class="page-content last-page-content">
+          ${headerHtml()}
+          <table class="items">
+            ${THEAD}
+            <tbody>
+              ${bdRow}
+              ${rows}
+            </tbody>
+          </table>
+          ${totalsBlockHtml()}
+        </div>
+        <div class="footer-fixed">
+          ${commonFooterHtml()}
+        </div>
+      </div>`;
+    }
+
+    // Non-last pages: table inside .table-wrap stretches via flex, filler absorbs remaining.
     return `<div class="page" style="${pageBreak}">
       <div class="page-content">
         ${headerHtml()}
@@ -351,7 +413,6 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
             </tbody>
           </table>
         </div>
-        ${isLast ? totalsBlockHtml() : ""}
       </div>
       <div class="footer-fixed">
         ${commonFooterHtml()}
@@ -376,8 +437,13 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;}
 /* ── Content area: flex-1 pushes footer to absolute bottom ── */
 .page-content{flex:1;display:flex;flex-direction:column;min-height:0;padding:5mm 5mm 0 5mm;}
 
-/* ── Table wrapper: flex-1 so the table stretches between header and footer ── */
+/* ── Table wrapper: flex-1 so the table stretches between header and footer (non-last pages only) ── */
 .table-wrap{flex:1;display:flex;flex-direction:column;min-height:0;}
+.table-wrap table.items{height:100%;min-height:100%;}
+
+/* ── Last-page content: reserve footer space via padding-bottom, no table stretching ── */
+.last-page-content{padding-bottom:140pt;}
+.last-page-content table.items{height:auto !important;min-height:0 !important;}
 
 /* ── Header (full, on every page) ── */
 .header{text-align:center;border-bottom:1.5px solid #000;padding:6pt 8pt 5pt 8pt;}
@@ -403,13 +469,13 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;}
 .order-text{font-size:8.5pt;font-style:italic;text-align:center;padding:4pt 0;border-bottom:1.5px solid #000;}
 
 /* ── Items Table: border-collapse:separate required for row height stretching ── */
-table.items{width:100%;height:100%;min-height:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;font-size:8.5pt;}
+table.items{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;font-size:8.5pt;}
 table.items th{background:#f0f0f0;border:1px solid #000;padding:4pt 4pt;text-align:center;font-weight:bold;font-size:8pt;height:22pt;overflow-wrap:break-word;}
 table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wrap:break-word;word-break:break-word;}
 
 /* ── Filler row: absorbs remaining height so vertical borders reach the footer ── */
-tr.filler-row{height:100%;}
-tr.filler-row td{height:100%;}
+.table-wrap tr.filler-row{height:100%;}
+.table-wrap tr.filler-row td{height:100%;}
 
 /* ── Carry Forward / Brought Down rows ── */
 table.items tbody tr{page-break-inside:avoid;}

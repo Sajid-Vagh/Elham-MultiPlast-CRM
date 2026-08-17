@@ -1772,22 +1772,62 @@ const setItemDisplay = (idx: number, patch: Partial<InvoiceItem>) => {
 
     const defaultTerms = ["FREIGHT CHARGES WILL BE ADDITIONAL", "PAYMENT TERMS:", "100% UPFRONT AT TIME OF CONFIRMATION"];
 
-    const HEADER_PT = 215;
-    const ROW_PT = 21;
-    const FOOTER_PT = 315;
-    const PAGE_PT = 790;
+    // ── Height-estimated page chunking (mirrors server-side logic) ──
+    const A4_PT = 841.9;
+    const PAGE_PAD_PT = 14.2;
+    const HEADER_PT = 99;
+    const PARTY_PT = 115;
+    const ORDER_TXT_PT = 22;
+    const TBL_HEAD_PT = 22;
+    const BD_ROW_PT = 18;
+    const CO_ROW_PT = 18;
+    const TOTALS_PT = 120;
+    const FOOTER_BLOCK_PT = 135;
+    const ROW_PAD_PT = 8;
+    const LINE_H_PT = 11.5;
+    const CHARS_LINE = 20;
 
-    const perPageNoFooter = Math.floor((PAGE_PT - HEADER_PT) / ROW_PT);
-    const perPageWithFooter = Math.max(1, Math.floor((PAGE_PT - HEADER_PT - FOOTER_PT) / ROW_PT));
+    const PAGE_CONTENT_PT = A4_PT - PAGE_PAD_PT;
+    const NONLAST_ROWS_PT = PAGE_CONTENT_PT - HEADER_PT - PARTY_PT - ORDER_TXT_PT - TBL_HEAD_PT - BD_ROW_PT - CO_ROW_PT;
+    const LAST_ROWS_PT = PAGE_CONTENT_PT - HEADER_PT - PARTY_PT - ORDER_TXT_PT - TBL_HEAD_PT - TOTALS_PT - FOOTER_BLOCK_PT - BD_ROW_PT;
+
+    function estimateRowH(it: any): number {
+      const desc = formatItemDescription(it);
+      const lines = Math.max(1, Math.ceil(desc.length / CHARS_LINE));
+      return ROW_PAD_PT + lines * LINE_H_PT;
+    }
+    function fitRows(arr: any[], budget: number): number {
+      let used = 0;
+      for (let i = 0; i < arr.length; i++) {
+        const h = estimateRowH(arr[i]);
+        if (used + h > budget) return i;
+        used += h;
+      }
+      return arr.length;
+    }
 
     const pageBoundaries: { start: number; end: number; last: boolean }[] = [];
-    let cursor = 0;
-    while (cursor < itemsArr.length) {
-      const remaining = itemsArr.length - cursor;
-      const canFitWithFooter = remaining <= perPageWithFooter;
-      const take = canFitWithFooter ? remaining : perPageNoFooter;
-      pageBoundaries.push({ start: cursor, end: cursor + take, last: canFitWithFooter });
-      cursor += take;
+    if (itemsArr.length === 0) {
+      pageBoundaries.push({ start: 0, end: 0, last: true });
+    } else {
+      let pos = 0;
+      while (pos < itemsArr.length) {
+        const remaining = itemsArr.length - pos;
+        const nonLastMax = fitRows(itemsArr.slice(pos), NONLAST_ROWS_PT);
+        const lastMax = fitRows(itemsArr.slice(pos), LAST_ROWS_PT);
+        if (remaining <= lastMax) {
+          pageBoundaries.push({ start: pos, end: itemsArr.length, last: true });
+          break;
+        }
+        const take = Math.min(nonLastMax, remaining - Math.max(1, lastMax));
+        if (take <= 0 || nonLastMax <= 0) {
+          pageBoundaries.push({ start: pos, end: pos + 1, last: remaining <= 1 });
+          pos++;
+        } else {
+          pageBoundaries.push({ start: pos, end: pos + take, last: false });
+          pos += take;
+        }
+      }
     }
 
     function headerHtml(): string {
@@ -1828,41 +1868,6 @@ const setItemDisplay = (idx: number, patch: Partial<InvoiceItem>) => {
     <div class="order-text">We are pleased to receive the order for the following items</div>`;
     }
 
-    function tableHeaderHtml(): string {
-      return `<table class="items">
-    <thead><tr><th style="width:4%">S.N.</th><th style="width:22%">Description of Goods</th><th style="width:8%">Weight</th><th style="width:10%">Colour</th><th style="width:11%">HSN/SAC Code</th><th style="width:8%">Qty</th><th style="width:6%">Unit</th><th style="width:10%">Price</th><th style="width:12%">Amount</th></tr></thead>
-    <tbody>`;
-    }
-
-    function footerHtml(): string {
-      return `</tbody></table>
-    <div class="totals-block">
-      <table class="summary-table">
-        <tr><td class="sum-label">Product Total</td><td class="sum-value">${taxable.toFixed(2)}</td></tr>
-        ${freight > 0 ? `<tr><td class="sum-label">Freight Charges</td><td class="sum-value">${freight.toFixed(2)}</td></tr>` : ""}
-        ${cgstPct > 0 ? `<tr><td class="sum-label">CGST @ ${cgstPct}%</td><td class="sum-value">${cgstAmt.toFixed(2)}</td></tr>` : ""}
-        ${sgstPct > 0 ? `<tr><td class="sum-label">SGST @ ${sgstPct}%</td><td class="sum-value">${sgstAmt.toFixed(2)}</td></tr>` : ""}
-        ${igstPct > 0 ? `<tr><td class="sum-label">IGST @ ${igstPct}%</td><td class="sum-value">${igstAmt.toFixed(2)}</td></tr>` : ""}
-      </table>
-      <table class="tax-summary">
-        <thead><tr><th>Tax Rate</th><th>Taxable Amount</th><th>CGST</th><th>SGST</th><th>Total Tax</th></tr></thead>
-        <tbody>${isInterstate ? `<tr><td>IGST @ ${igstPct}%</td><td>${baseAmt.toFixed(2)}</td><td>0.00</td><td>0.00</td><td>${igstAmt.toFixed(2)}</td></tr>` : `<tr><td>CGST @ ${cgstPct}% + SGST @ ${sgstPct}%</td><td>${baseAmt.toFixed(2)}</td><td>${cgstAmt.toFixed(2)}</td><td>${sgstAmt.toFixed(2)}</td><td>${totalTax.toFixed(2)}</td></tr>`}</tbody>
-      </table>
-      <div class="grand-total-row">
-        <span class="gt-qty">${qtyDisplay}</span>
-        <span class="gt-label">Grand Total :</span>
-        <span class="gt-value">${grandTotal.toFixed(2)}</span>
-      </div>
-      <div class="amount-words"><strong>Amount in Words :</strong> ${inv.amountInWords || ""}</div>
-    </div>
-    <div class="footer-section"><table><tr>
-    <td style="border-right:1.5px solid #000;"><div class="bank-details"><strong>Bank Details</strong><br>ICICI BANK, HIMATNAGAR<br>A/C NO: 045205014806<br>IFSC: ICIC0000452</div></td>
-    <td><div class="terms"><strong>Terms &amp; Conditions</strong><div>${(inv.terms || defaultTerms).join("<br>")}</div></div></td>
-    </tr></table></div>
-    <div class="disclaimer"><strong>DISCLAIMER : </strong>Products supplied are generic industrial packaging developed independently by Elham Multiplast LLP for functional applications. Any branding, labeling, or market usage by the buyer shall be at the buyer's sole responsibility.</div>
-    <div class="signature-section"><div class="sign-left">Receiver Signature</div><div class="sign-right"><div class="for-company">for ELHAM MULTIPLAST LLP</div><div class="authorised">Authorised Signatory</div></div></div>`;
-    }
-
     // Pre-compute per-page totals for Carry Forward / Brought Forward
     const pageTotals = pageBoundaries.map((b: any) => {
       const pItems = itemsArr.slice(b.start, b.end);
@@ -1892,17 +1897,59 @@ const setItemDisplay = (idx: number, patch: Partial<InvoiceItem>) => {
         ? `<tr><td colspan="5" style="text-align:left;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;font-weight:bold;">Totals c/o</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${pt.qty.toFixed(3)}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${pt.unit}</td><td style="text-align:center;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;"></td><td style="text-align:right;padding:4pt 4pt;font-size:8.5pt;border:1px solid #000;">${pt.amt.toFixed(2)}</td></tr>`
         : "";
 
-      const pageStyle = pi < pageBoundaries.length - 1
+      const isLastPage = b.last;
+      const pageStyle = !isLastPage
         ? `page-break-after:always;min-height:100%;`
         : `min-height:100%;`;
 
+      if (isLastPage) {
+        // Last page: table takes natural height, totals + footer follow
+        return `<div class="page last-page" style="${pageStyle}">
+      ${headerHtml()}
+      <table class="items">
+    <thead><tr><th style="width:4%">S.N.</th><th style="width:22%">Description of Goods</th><th style="width:8%">Weight</th><th style="width:10%">Colour</th><th style="width:11%">HSN/SAC Code</th><th style="width:8%">Qty</th><th style="width:6%">Unit</th><th style="width:10%">Price</th><th style="width:12%">Amount</th></tr></thead>
+    <tbody>
+      ${bdRow}
+      ${rows}
+      </tbody></table>
+    <div class="totals-block">
+      <table class="summary-table">
+        <tr><td class="sum-label">Product Total</td><td class="sum-value">${taxable.toFixed(2)}</td></tr>
+        ${freight > 0 ? `<tr><td class="sum-label">Freight Charges</td><td class="sum-value">${freight.toFixed(2)}</td></tr>` : ""}
+        ${cgstPct > 0 ? `<tr><td class="sum-label">CGST @ ${cgstPct}%</td><td class="sum-value">${cgstAmt.toFixed(2)}</td></tr>` : ""}
+        ${sgstPct > 0 ? `<tr><td class="sum-label">SGST @ ${sgstPct}%</td><td class="sum-value">${sgstAmt.toFixed(2)}</td></tr>` : ""}
+        ${igstPct > 0 ? `<tr><td class="sum-label">IGST @ ${igstPct}%</td><td class="sum-value">${igstAmt.toFixed(2)}</td></tr>` : ""}
+      </table>
+      <table class="tax-summary">
+        <thead><tr><th>Tax Rate</th><th>Taxable Amount</th><th>CGST</th><th>SGST</th><th>Total Tax</th></tr></thead>
+        <tbody>${isInterstate ? `<tr><td>IGST @ ${igstPct}%</td><td>${baseAmt.toFixed(2)}</td><td>0.00</td><td>0.00</td><td>${igstAmt.toFixed(2)}</td></tr>` : `<tr><td>CGST @ ${cgstPct}% + SGST @ ${sgstPct}%</td><td>${baseAmt.toFixed(2)}</td><td>${cgstAmt.toFixed(2)}</td><td>${sgstAmt.toFixed(2)}</td><td>${totalTax.toFixed(2)}</td></tr>`}</tbody>
+      </table>
+      <div class="grand-total-row">
+        <span class="gt-qty">${qtyDisplay}</span>
+        <span class="gt-label">Grand Total :</span>
+        <span class="gt-value">${grandTotal.toFixed(2)}</span>
+      </div>
+      <div class="amount-words"><strong>Amount in Words :</strong> ${inv.amountInWords || ""}</div>
+    </div>
+    <div class="footer-section"><table><tr>
+    <td style="border-right:1.5px solid #000;"><div class="bank-details"><strong>Bank Details</strong><br>ICICI BANK, HIMATNAGAR<br>A/C NO: 045205014806<br>IFSC: ICIC0000452</div></td>
+    <td><div class="terms"><strong>Terms &amp; Conditions</strong><div>${(inv.terms || defaultTerms).join("<br>")}</div></div></td>
+    </tr></table></div>
+    <div class="disclaimer"><strong>DISCLAIMER : </strong>Products supplied are generic industrial packaging developed independently by Elham Multiplast LLP for functional applications. Any branding, labeling, or market usage by the buyer shall be at the buyer's sole responsibility.</div>
+    <div class="signature-section"><div class="sign-left">Receiver Signature</div><div class="sign-right"><div class="for-company">for ELHAM MULTIPLAST LLP</div><div class="authorised">Authorised Signatory</div></div></div>
+    </div>`;
+      }
+
+      // Non-last pages: table fills the page
       return `<div class="page" style="${pageStyle}">
       ${headerHtml()}
-      ${tableHeaderHtml()}
+      <table class="items">
+    <thead><tr><th style="width:4%">S.N.</th><th style="width:22%">Description of Goods</th><th style="width:8%">Weight</th><th style="width:10%">Colour</th><th style="width:11%">HSN/SAC Code</th><th style="width:8%">Qty</th><th style="width:6%">Unit</th><th style="width:10%">Price</th><th style="width:12%">Amount</th></tr></thead>
+    <tbody>
       ${bdRow}
       ${rows}
       ${cfRow}
-      ${b.last ? footerHtml() : `</tbody></table>`}
+      </tbody></table>
     </div>`;
     }).join("\n");
 
@@ -1935,6 +1982,7 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;marg
 table.items{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.5pt;}
 table.items th{background:#f0f0f0;border:1px solid #000;padding:4pt 4pt;text-align:center;font-weight:bold;font-size:8pt;height:22pt;overflow-wrap:break-word;}
 table.items td{border:1px solid #000;padding:4pt 4pt;font-size:8.5pt;overflow-wrap:break-word;word-break:break-word;}
+.page.last-page table.items{height:auto !important;min-height:0 !important;}
 .totals-block{width:100%;}
 .summary-table{width:100%;border-collapse:collapse;border-top:1.5px solid #000;}
 .summary-table td{border:0;padding:1.5pt 6pt;font-size:8.5pt;}
