@@ -299,6 +299,8 @@ export interface ContactUpdate {
   category?: string | null;
   /** @nullable */
   unitChangeReason?: string | null;
+  /** @nullable */
+  customerComments?: string | null;
 }
 
 export interface DuplicateGroup {

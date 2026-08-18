@@ -1116,7 +1116,7 @@ export default function LeadDetail() {
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setCommentDialogOpen(false)}>Cancel</Button>
             <Button onClick={() => {
-              updateContact.mutate({ id: contactId, data: { customerComments: editComment || null } as any }, {
+              updateContact.mutate({ id: contactId, data: { customerComments: editComment || null } }, {
                 onSuccess: () => {
                   onContactChange(queryClient, contactId);
                   toast({ title: "Customer comments updated" });
