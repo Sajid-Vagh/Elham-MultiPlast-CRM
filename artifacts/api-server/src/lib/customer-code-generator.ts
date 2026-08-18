@@ -11,13 +11,8 @@ export async function generateCustomerCode(): Promise<string> {
     .for("update");
 
   if (!counter) {
-    const existing = await db
-      .select({ maxCode: idCountersTable.counter })
-      .from(idCountersTable)
-      .where(eq(idCountersTable.prefix, prefix));
-
     await db.insert(idCountersTable).values({ prefix, counter: 1 });
-    return "EML_1";
+    return "EML_001";
   }
 
   const nextCounter = counter.counter + 1;
@@ -26,5 +21,5 @@ export async function generateCustomerCode(): Promise<string> {
     .set({ counter: nextCounter, updatedAt: new Date() })
     .where(eq(idCountersTable.prefix, prefix));
 
-  return `EML_${nextCounter}`;
+  return `EML_${String(nextCounter).padStart(3, "0")}`;
 }

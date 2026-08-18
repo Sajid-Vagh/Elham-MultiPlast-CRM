@@ -7,7 +7,6 @@ import { createNotification } from "./notifications";
 import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
-import { generateCustomerCode } from "../lib/customer-code-generator";
 import { parseEndDate } from "../lib/parse-end-date";
 import { normalizeProfilePhotoUrl } from "../lib/storage";
 import { normalizeStateCity } from "../utils/geoMapping";
@@ -279,14 +278,12 @@ router.post("/contacts", async (req, res) => {
     res.status(409).json(await buildDuplicatePayload(duplicateCheck[0]!));
     return;
   }
-  // Auto-assign customer code
-  const customerCode = await generateCustomerCode();
   // A lead created for the caller is immediately "read" for them; only cross-owner
   // assignments stay unread so the assignee sees the blue "new lead" dot.
   // readBy is the per-user equivalent of the legacy is_read flag.
+  // customerCode is NOT generated here — it is generated only when the first Deal is Won.
   const insertValues: typeof contactsTable.$inferInsert = {
     ...values,
-    customerCode,
     isRead: values.salesOwnerId === user.id,
     isRepeatEnquiry: false,
     readBy: values.salesOwnerId === user.id ? [user.id] : [],
