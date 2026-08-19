@@ -7,6 +7,7 @@ import { NotificationProvider, useNotifications, groupConversations } from "@/li
 import { dedupeById, parseNotesText } from "@/lib/parse-notes";
 import { showBrowserNotification } from "@/lib/notification-sound";
 import { useActivityBadgeCount } from "@/lib/use-activity-badge-count";
+import { useModuleBadgeCounts } from "@/lib/use-module-badge-counts";
 import { useActivityReminders } from "@/lib/use-activity-reminder";
 import { NotificationPopup } from "./notification-popup";
 import { NotificationSidePanel } from "./notification-side-panel";
@@ -128,6 +129,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   // page, so the number is identical on the Dashboard and the Activity page and
   // never flickers between them.
   const activityBadgeCount = useActivityBadgeCount();
+  const moduleBadges = useModuleBadgeCounts();
 
   const d = new Date();
   const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -212,11 +214,11 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   const salesNavItems = [
     { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", color: "#a78bfa" },
     { icon: Download, label: "Import", href: "/import", color: "#fbbf24" },
-    { icon: Users, label: "Leads", href: "/leads", color: "#60a5fa" },
+    { icon: Users, label: "Leads", href: "/leads", color: "#60a5fa", badgeKey: "leads" },
     { icon: Briefcase, label: "Deals", href: "/deals", color: "#34d399" },
     { icon: Bell, label: "Activity", href: "/follow-ups", color: "#f59e0b" },
     { icon: FolderTree, label: "Categories", href: "/categories", color: "#f97316" },
-    { icon: ShoppingCart, label: "Orders", href: "/orders", color: "#0ea5e9" },
+    { icon: ShoppingCart, label: "Orders", href: "/orders", color: "#0ea5e9", badgeKey: "orders" },
     { icon: FileText, label: "Proforma Invoices", href: "/proforma-invoices", color: "#06b6d4" },
     { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
     { icon: MapPin, label: "Freight Lookup", href: "/transport-logistics/lookup", color: "#14b8a6" },
@@ -230,7 +232,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: Truck, label: "Dispatch", href: "/dispatch", color: "#f43f5e" },
     { icon: Bell, label: "Activity", href: "/follow-ups", color: "#f59e0b" },
     { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" },
-    { icon: ShoppingCart, label: "Orders", href: "/orders", color: "#0ea5e9" },
+    { icon: ShoppingCart, label: "Orders", href: "/orders", color: "#0ea5e9", badgeKey: "orders" },
     { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
     { icon: FileText, label: "Proforma Invoices", href: "/proforma-invoices", color: "#06b6d4" },
     { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
@@ -238,8 +240,8 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
 
   const productionNavItems = [
     { icon: Factory, label: "Production Dashboard", href: "/production/dashboard", color: "#7c3aed" },
-    { icon: ClipboardList, label: "Production Orders", href: "/production/orders", color: "#7c3aed" },
-    { icon: ShoppingCart, label: "Orders", href: "/orders", color: "#0ea5e9" },
+    { icon: ClipboardList, label: "Production Orders", href: "/production/orders", color: "#7c3aed", badgeKey: "production-orders" },
+    { icon: ShoppingCart, label: "Orders", href: "/orders", color: "#0ea5e9", badgeKey: "orders" },
     { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
     { icon: Truck, label: "Dispatch", href: "/dispatch", color: "#f43f5e" },
     { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" },
@@ -345,6 +347,11 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
                 >
                   <item.icon className="h-4 w-4 flex-shrink-0" style={!isActive ? { color: item.color } : {}} />
                   <span className="text-sm font-medium flex-1">{item.label}</span>
+                  {"badgeKey" in item && item.badgeKey && (moduleBadges as Record<string, number>)[item.badgeKey as string] > 0 && (
+                    <Badge className="text-[10px] h-5 min-w-5 px-1.5 flex items-center justify-center bg-blue-500 text-white border-0">
+                      {(moduleBadges as Record<string, number>)[item.badgeKey as string]}
+                    </Badge>
+                  )}
                   {item.href === "/follow-ups" && activityBadgeCount > 0 && (
                     <Badge className="text-[10px] h-5 min-w-5 px-1.5 flex items-center justify-center bg-orange-500 text-white border-0">
                       {activityBadgeCount}

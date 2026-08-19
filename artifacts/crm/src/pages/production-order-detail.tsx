@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { DoubleTick } from "@/components/double-tick";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -299,6 +300,20 @@ export default function ProductionOrderDetail() {
     onSuccess: () => { setMessageText(""); refetchMessages(); },
     onError: () => toast({ title: "Failed to send message", variant: "destructive" }),
   });
+
+  // Mark chat messages as read when conversation is open
+  const markMessagesRead = useMutation({
+    mutationFn: () => customFetch(`/production/orders/${id}/messages/read`, {
+      method: "POST", body: JSON.stringify({}), headers: { "Content-Type": "application/json" },
+    }),
+    onSuccess: () => refetchMessages(),
+  });
+
+  useEffect(() => {
+    if (productionMessages && productionMessages.length > 0 && id && !markMessagesRead.isPending && !markMessagesRead.isSuccess) {
+      markMessagesRead.mutate();
+    }
+  }, [productionMessages?.length, id]);
 
   const handleSendMessage = () => {
     if (!messageText.trim() || sendMessage.isPending) return;
@@ -1112,7 +1127,7 @@ export default function ProductionOrderDetail() {
                             <div className={`max-w-[75%] px-3 py-2 text-[12.5px] leading-relaxed ${isMe ? "bg-violet-600 text-white rounded-2xl rounded-br-md shadow-sm" : "bg-white text-foreground border border-gray-200 rounded-2xl rounded-bl-md shadow-sm"}`}>
                               <p className="whitespace-pre-wrap break-words">{msg.message}</p>
                             </div>
-                            {isLastInGroup && <span className={`text-[9px] text-muted-foreground/60 mt-1 ${isMe ? "mr-1" : "ml-1"}`}>{timeStr}</span>}
+                            {isLastInGroup && <span className={`text-[9px] text-muted-foreground/60 mt-1 flex items-center gap-1 ${isMe ? "mr-1 flex-row-reverse" : "ml-1"}`}>{timeStr}{isMe && <DoubleTick isRead={Array.isArray(msg.readBy) && msg.readBy.length > 0} className="ml-0.5" />}</span>}
                           </div>
                         );
                       })}

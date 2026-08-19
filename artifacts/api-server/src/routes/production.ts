@@ -510,6 +510,36 @@ router.post("/production/orders/:id/messages", async (req, res) => {
   }
 });
 
+// ── Mark Messages Read ──
+// Appends the current user's ID to readBy for all messages in the conversation
+// where they are NOT the sender (i.e. messages sent to them).
+router.post("/production/orders/:id/messages/read", async (req, res) => {
+  try {
+    const user = await requireAuth(req, res);
+    if (!user) return;
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    await db.execute(sql`
+      UPDATE production_messages
+      SET read_by = (
+        SELECT array_agg(DISTINCT val)
+        FROM unnest(
+          COALESCE(read_by, '{}') || ARRAY[${sql`${user.id}`}::int]
+        ) AS val
+      )
+      WHERE production_order_id = ${id}
+        AND sender_id != ${user.id}
+        AND NOT (${sql`${user.id}`}::int = ANY(COALESCE(read_by, '{}')))
+    `);
+
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Mark messages read error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
+
 // ── Reports ──
 router.get("/production/reports", async (req, res) => {
   try {

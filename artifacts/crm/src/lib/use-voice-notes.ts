@@ -29,6 +29,7 @@ export interface VoiceNoteData {
   isReplaced: boolean;
   fileAvailable: boolean;
   createdAt: string;
+  readBy?: number[];
 }
 
 export type VoiceNoteEntityType = "deal" | "production" | "order" | "lead" | "customer" | "proforma";

@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import multer from "multer";
 import { db, voiceNotesTable, dealsTable, productionOrdersTable, contactsTable, proformaInvoicesTable, productionTimelineTable, usersTable, ordersTable } from "@workspace/db";
-import { eq, and, isNull, desc, or } from "drizzle-orm";
+import { eq, and, isNull, desc, or, sql } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { canAccessUnit } from "../lib/permission-service";
 import { createNotification } from "./notifications";
@@ -545,6 +545,35 @@ router.get("/voice-notes/diagnostics", async (req: Request, res: Response) => {
     res.json(diagnostics);
   } catch (err) {
     req.log.error({ err }, "Voice note diagnostics error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
+
+// ────────────────────────────────────────────────
+// POST /voice-notes/:id/read — Mark a voice note as read by current user
+// Appends user ID to the readBy array
+// ────────────────────────────────────────────────
+router.post("/voice-notes/:id/read", async (req: Request, res: Response) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const noteId = Number(req.params.id);
+    if (isNaN(noteId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    await db.execute(sql`
+      UPDATE voice_notes
+      SET read_by = (
+        SELECT array_agg(DISTINCT val)
+        FROM unnest(
+          COALESCE(read_by, '{}') || ARRAY[${sql`${user.id}`}::int]
+        ) AS val
+      )
+      WHERE id = ${noteId}
+    `);
+
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Mark voice note read error:");
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });

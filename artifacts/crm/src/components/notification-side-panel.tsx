@@ -19,6 +19,7 @@ import { useActiveUnits } from "@/lib/use-active-units";
 import { parseNotesText } from "@/lib/parse-notes";
 import { useGetMe } from "@workspace/api-client-react";
 import { toast } from "@/hooks/use-toast";
+import { DoubleTick } from "@/components/double-tick";
 
 function authHeaders(): Record<string, string> {
   const t = localStorage.getItem("crm_token");
@@ -287,6 +288,26 @@ function ChatPanel({ notification, onClose }: { notification: any; onClose: () =
     onError: (err: any) => toast({ title: err?.message || "Failed to send message", variant: "destructive" }),
   });
 
+  // Mark chat messages as read when conversation opens
+  const markReadMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/production/orders/${productionOrderId}/messages/read`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) return;
+      return res.json();
+    },
+    onSuccess: () => refetch(),
+  });
+
+  useEffect(() => {
+    if (messages && messages.length > 0 && productionOrderId && !markReadMutation.isPending && !markReadMutation.isSuccess) {
+      markReadMutation.mutate();
+    }
+  }, [messages?.length, productionOrderId]);
+
   useEffect(() => {
     const container = chatEndRef.current?.parentElement;
     if (!container || !messages) return;
@@ -354,7 +375,7 @@ function ChatPanel({ notification, onClose }: { notification: any; onClose: () =
                     <div className={`max-w-[80%] px-3 py-2 text-[12.5px] leading-relaxed ${isMe ? "bg-violet-600 text-white rounded-2xl rounded-br-md shadow-sm" : "bg-white text-foreground border border-gray-200 rounded-2xl rounded-bl-md shadow-sm"}`}>
                       <p className="whitespace-pre-wrap break-words">{msg.message}</p>
                     </div>
-                    {isLastInGroup && <span className={`text-[9px] text-muted-foreground/60 mt-1 ${isMe ? "mr-1" : "ml-1"}`}>{formatTime(msg.createdAt)}</span>}
+                    {isLastInGroup && <span className={`text-[9px] text-muted-foreground/60 mt-1 flex items-center gap-1 ${isMe ? "mr-1 flex-row-reverse" : "ml-1"}`}>{formatTime(msg.createdAt)}{isMe && <DoubleTick isRead={Array.isArray(msg.readBy) && msg.readBy.length > 0} className="ml-0.5" />}</span>}
                   </div>
                 );
               })}

@@ -2,8 +2,10 @@ import { useState, useRef, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "./ui/button";
 import { Play, Pause, Download, Trash2, FileText, AlertCircle, Mic, Loader2 } from "lucide-react";
+import { DoubleTick } from "@/components/double-tick";
 import type { VoiceNoteData, VoiceNoteEntityType } from "@/lib/use-voice-notes";
 import { useVoiceNotes, useDeleteVoiceNote, downloadVoiceNote, getVoiceNotesQueryKey } from "@/lib/use-voice-notes";
+import { useGetMe } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 
 function formatDuration(ms: number | null): string {
@@ -75,6 +77,31 @@ export function VoiceNotePlayer({
   const [showTranscript, setShowTranscript] = useState(false);
   const [sourceError, setSourceError] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const { data: currentUser } = useGetMe();
+  const queryClient = useQueryClient();
+
+  // Mark voice note as read when the component mounts (user views it)
+  const markReadMutation = useMutation({
+    mutationFn: async () => {
+      const token = localStorage.getItem("crm_token");
+      const res = await fetch(`/api/voice-notes/${note.id}/read`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) return;
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["voice-notes"] });
+    },
+  });
+
+  useEffect(() => {
+    if (currentUser?.id && Array.isArray(note.readBy) && !note.readBy.includes(currentUser.id) && !markReadMutation.isPending && !markReadMutation.isSuccess) {
+      markReadMutation.mutate();
+    }
+  }, [currentUser?.id, note.id]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -203,6 +230,9 @@ export function VoiceNotePlayer({
           <span>{formatFileSize(note.fileSize)}</span>
           <span>·</span>
           <span>{new Date(note.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+          {currentUser?.id && note.uploadedById !== currentUser.id && (
+            <DoubleTick isRead={Array.isArray(note.readBy) && note.readBy.includes(currentUser.id)} className="ml-0.5" />
+          )}
         </div>
 
         <div className="flex items-center gap-1">

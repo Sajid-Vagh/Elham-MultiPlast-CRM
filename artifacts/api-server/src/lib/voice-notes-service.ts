@@ -166,6 +166,7 @@ export async function getVoiceNotes(
       isReplaced: voiceNotesTable.isReplaced,
       fileAvailable: voiceNotesTable.fileAvailable,
       createdAt: voiceNotesTable.createdAt,
+      readBy: voiceNotesTable.readBy,
     })
     .from(voiceNotesTable)
     .leftJoin(usersTable, eq(voiceNotesTable.uploadedById, usersTable.id))

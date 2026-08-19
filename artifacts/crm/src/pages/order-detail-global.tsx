@@ -17,6 +17,7 @@ import { useVoiceNotes, type VoiceNoteData } from "@/lib/use-voice-notes";
 import { VoiceNotePlayer } from "@/components/voice-note-player";
 import { VoiceNoteUploader } from "@/components/voice-note-uploader";
 import { toast } from "@/hooks/use-toast";
+import { DoubleTick } from "@/components/double-tick";
 
 // ── Merged Voice Notes: combines notes from the production order + linked deal ──
 function MergedVoiceNotes({ productionOrderId, dealId }: { productionOrderId?: number; dealId?: number | null }) {
@@ -122,6 +123,20 @@ export default function OrderDetailGlobal() {
     onSuccess: () => { setMessageText(""); refetchMessages(); },
     onError: () => toast({ title: "Failed to send message", variant: "destructive" }),
   });
+
+  // Mark chat messages as read when conversation is open
+  const markMessagesRead = useMutation({
+    mutationFn: () => customFetch(`/production/orders/${productionOrderId}/messages/read`, {
+      method: "POST", body: JSON.stringify({}), headers: { "Content-Type": "application/json" },
+    }),
+    onSuccess: () => refetchMessages(),
+  });
+
+  useEffect(() => {
+    if (productionMessages && productionMessages.length > 0 && productionOrderId && !markMessagesRead.isPending && !markMessagesRead.isSuccess) {
+      markMessagesRead.mutate();
+    }
+  }, [productionMessages?.length, productionOrderId]);
 
   const handleSendMessage = () => {
     if (!messageText.trim() || sendMessage.isPending || !productionOrderId) return;
@@ -336,7 +351,7 @@ export default function OrderDetailGlobal() {
                           <div className={`max-w-[75%] px-3 py-2 text-[12.5px] leading-relaxed ${isMe ? "bg-violet-600 text-white rounded-2xl rounded-br-md shadow-sm" : "bg-white text-foreground border border-gray-200 rounded-2xl rounded-bl-md shadow-sm"}`}>
                             <p className="whitespace-pre-wrap break-words">{msg.message}</p>
                           </div>
-                          {isLastInGroup && <span className={`text-[9px] text-muted-foreground/60 mt-1 ${isMe ? "mr-1" : "ml-1"}`}>{timeStr}</span>}
+                          {isLastInGroup && <span className={`text-[9px] text-muted-foreground/60 mt-1 flex items-center gap-1 ${isMe ? "mr-1 flex-row-reverse" : "ml-1"}`}>{timeStr}{isMe && <DoubleTick isRead={Array.isArray(msg.readBy) && msg.readBy.length > 0} className="ml-0.5" />}</span>}
                         </div>
                       );
                     })}

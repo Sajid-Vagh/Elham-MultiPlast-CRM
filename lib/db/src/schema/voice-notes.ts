@@ -42,6 +42,7 @@ export const voiceNotesTable = pgTable("voice_notes", {
   deletedById: integer("deleted_by_id").references(() => usersTable.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  readBy: integer("read_by").array().notNull().default([]),
 });
 
 export const insertVoiceNoteSchema = createInsertSchema(voiceNotesTable).omit({

@@ -228,6 +228,7 @@ export const productionMessagesTable = pgTable("production_messages", {
   senderName: text("sender_name").notNull(),
   senderRole: text("sender_role").notNull(),
   message: text("message").notNull(),
+  readBy: integer("read_by").array().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
