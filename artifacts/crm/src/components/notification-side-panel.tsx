@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Loader2, Send, ExternalLink, MessageSquare, User, ArrowRight } from "lucide-react";
@@ -222,6 +222,7 @@ function ChatPanel({ notification, onClose }: { notification: any; onClose: () =
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const prevCountRef = useRef(0);
+  const initialScrollDoneRef = useRef(false);
 
   // The conversation lives on the production order. The notification link is
   // role-aware: production/support users get /production/orders/:productionOrderId,
@@ -271,6 +272,11 @@ function ChatPanel({ notification, onClose }: { notification: any; onClose: () =
 
   const messages = chatData?.messages;
 
+  const sortedMessages = useMemo(() => {
+    if (!messages) return [];
+    return [...messages].sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id - b.id);
+  }, [messages]);
+
   const sendMutation = useMutation({
     mutationFn: async (msg: string) => {
       const res = await fetch(`/api/production/orders/${productionOrderId}/messages`, {
@@ -303,23 +309,35 @@ function ChatPanel({ notification, onClose }: { notification: any; onClose: () =
   });
 
   useEffect(() => {
-    if (messages && messages.length > 0 && productionOrderId && !markReadMutation.isPending && !markReadMutation.isSuccess) {
+    if (sortedMessages && sortedMessages.length > 0 && productionOrderId && !markReadMutation.isPending) {
       markReadMutation.mutate();
     }
-  }, [messages?.length, productionOrderId]);
+  }, [sortedMessages?.length, productionOrderId]);
 
   useEffect(() => {
     const container = chatEndRef.current?.parentElement;
-    if (!container || !messages) return;
+    if (!container || !sortedMessages) return;
     const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
     if (isAtBottom) {
       container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
       setUnreadCount(0);
-    } else if (messages.length > prevCountRef.current) {
-      setUnreadCount((c) => c + (messages.length - prevCountRef.current));
+    } else if (sortedMessages.length > prevCountRef.current) {
+      setUnreadCount((c) => c + (sortedMessages.length - prevCountRef.current));
     }
-    prevCountRef.current = messages.length;
-  }, [messages]);
+    prevCountRef.current = sortedMessages.length;
+  }, [sortedMessages]);
+
+  // Scroll to bottom on initial load only
+  useEffect(() => {
+    if (!sortedMessages || sortedMessages.length === 0 || initialScrollDoneRef.current) return;
+    requestAnimationFrame(() => {
+      const container = chatEndRef.current?.parentElement;
+      if (container) {
+        container.scrollTo({ top: container.scrollHeight, behavior: "instant" });
+        initialScrollDoneRef.current = true;
+      }
+    });
+  }, [sortedMessages]);
 
   const handleSend = () => {
     if (!messageText.trim() || sendMutation.isPending || !productionOrderId) return;
@@ -353,17 +371,17 @@ function ChatPanel({ notification, onClose }: { notification: any; onClose: () =
         <div className="h-full overflow-y-auto px-4 py-4 space-y-3">
           {!messages ? (
             <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-          ) : messages.length === 0 ? (
+          ) : sortedMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center py-10">
               <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3"><MessageSquare className="h-5 w-5 text-muted-foreground/50" /></div>
               <p className="text-sm font-medium text-muted-foreground">No conversation yet. Say hello!</p>
             </div>
           ) : (
             <>
-              {messages.map((msg: any, idx: number) => {
+              {sortedMessages.map((msg: any, idx: number) => {
                 const isMe = user && msg.senderId === user.id;
-                const showAvatar = idx === 0 || messages[idx - 1].senderId !== msg.senderId;
-                const isLastInGroup = idx === messages.length - 1 || messages[idx + 1].senderId !== msg.senderId;
+                const showAvatar = idx === 0 || sortedMessages[idx - 1].senderId !== msg.senderId;
+                const isLastInGroup = idx === sortedMessages.length - 1 || sortedMessages[idx + 1].senderId !== msg.senderId;
                 return (
                   <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
                     {showAvatar && !isMe && (

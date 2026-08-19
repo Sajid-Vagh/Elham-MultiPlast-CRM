@@ -51,7 +51,7 @@ export function useVoiceNotes(entityType: VoiceNoteEntityType | null, entityId: 
     },
     enabled: !!entityType && !!entityId,
     staleTime: 5_000,
-    refetchInterval: 30_000,
+    refetchInterval: 10_000,
   });
 }
 

@@ -77,10 +77,12 @@ export default function OrderDetailGlobal() {
   // ── Order Conversation (Sales workspace) ──
   const [messageText, setMessageText] = useState("");
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const prevMsgCountRef = useRef(0);
+  const initialScrollDoneRef = useRef(false);
 
   const { data: order, isLoading } = useQuery<any>({
     queryKey: ["order", id],
@@ -115,6 +117,11 @@ export default function OrderDetailGlobal() {
   });
   const productionMessages = productionChat?.messages;
 
+  const sortedMessages = useMemo(() => {
+    if (!productionMessages) return [];
+    return [...productionMessages].sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id - b.id);
+  }, [productionMessages]);
+
   const sendMessage = useMutation({
     mutationFn: (msg: string) =>
       customFetch<any>(`/production/orders/${productionOrderId}/messages`, {
@@ -133,10 +140,10 @@ export default function OrderDetailGlobal() {
   });
 
   useEffect(() => {
-    if (productionMessages && productionMessages.length > 0 && productionOrderId && !markMessagesRead.isPending && !markMessagesRead.isSuccess) {
+    if (sortedMessages && sortedMessages.length > 0 && productionOrderId && !markMessagesRead.isPending) {
       markMessagesRead.mutate();
     }
-  }, [productionMessages?.length, productionOrderId]);
+  }, [sortedMessages?.length, productionOrderId]);
 
   const handleSendMessage = () => {
     if (!messageText.trim() || sendMessage.isPending || !productionOrderId) return;
@@ -144,20 +151,22 @@ export default function OrderDetailGlobal() {
   };
 
   useEffect(() => {
-    if (!productionMessages) return;
-    const container = chatContainerRef.current;
+    if (!sortedMessages) return;
+    const container = chatScrollRef.current;
     const isAtBottom = container ? container.scrollHeight - container.scrollTop - container.clientHeight < 80 : true;
     if (isAtBottom) { container?.scrollTo({ top: container.scrollHeight, behavior: "smooth" }); setUnreadCount(0); }
-    else if (productionMessages.length > prevMsgCountRef.current) { setUnreadCount(c => c + (productionMessages.length - prevMsgCountRef.current)); }
-    prevMsgCountRef.current = productionMessages.length;
-  }, [productionMessages]);
+    else if (sortedMessages.length > prevMsgCountRef.current) { setUnreadCount(c => c + (sortedMessages.length - prevMsgCountRef.current)); }
+    prevMsgCountRef.current = sortedMessages.length;
+  }, [sortedMessages]);
 
-  // Auto-scroll to the very bottom so the newest message is always visible on
-  // load and when new messages arrive.
+  // Scroll to bottom on initial load only — subsequent scrolls are handled by the smart effect above.
   useEffect(() => {
-    if (!productionMessages || productionMessages.length === 0) return;
-    bottomRef.current?.scrollIntoView({ behavior: "instant" });
-  }, [productionMessages]);
+    if (!sortedMessages || sortedMessages.length === 0 || initialScrollDoneRef.current) return;
+    requestAnimationFrame(() => {
+      chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior: "instant" });
+      initialScrollDoneRef.current = true;
+    });
+  }, [sortedMessages]);
 
   // While the chat is open, mark this order's chat notifications as read so the
   // green unread icons in the orders list and the unread dots in the bell
@@ -318,12 +327,12 @@ export default function OrderDetailGlobal() {
                 <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-1.5"><MessageSquare className="h-4 w-4" /> Order Conversation{productionChat?.companyName ? <span className="text-[11px] font-normal text-muted-foreground">· {productionChat.companyName}{productionChat.orderNumber ? ` (${productionChat.orderNumber})` : ""}</span> : null}</CardTitle>
                 <span className="inline-flex items-center gap-1 text-[10px] text-green-600 font-medium bg-green-50 border border-green-200 rounded-full px-2 py-0.5"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />Realtime</span>
               </div>
-              {productionMessages && productionMessages.length > 0 && <span className="text-[10px] text-muted-foreground">{productionMessages.length} message{productionMessages.length !== 1 ? "s" : ""}</span>}
+                {sortedMessages && sortedMessages.length > 0 && <span className="text-[10px] text-muted-foreground">{sortedMessages.length} message{sortedMessages.length !== 1 ? "s" : ""}</span>}
             </div>
           </CardHeader>
           <CardContent>
-            <div ref={chatContainerRef} className="relative rounded-xl border bg-[#fafafa] overflow-hidden" style={{ height: 300 }}>
-              <div className="h-full overflow-y-auto px-3 py-3 space-y-3">
+              <div ref={chatContainerRef} className="relative rounded-xl border bg-[#fafafa] overflow-hidden" style={{ height: 300 }}>
+              <div ref={chatScrollRef} className="h-full overflow-y-auto px-3 py-3 space-y-3">
                 {!productionOrderId ? (
                   <div className="flex items-center justify-center h-full text-center">
                     <div className="flex flex-col items-center gap-2">
@@ -331,17 +340,17 @@ export default function OrderDetailGlobal() {
                       <p className="text-sm text-muted-foreground max-w-xs">No production order yet — the conversation opens once this order reaches production.</p>
                     </div>
                   </div>
-                ) : !productionMessages || productionMessages.length === 0 ? (
+                ) : !sortedMessages || sortedMessages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-center">
                     <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3"><MessageSquare className="h-5 w-5 text-muted-foreground/50" /></div>
                     <p className="text-sm font-medium text-muted-foreground">No conversation yet.</p>
                   </div>
                 ) : (
                   <>
-                    {productionMessages.map((msg: any, idx: number) => {
+                    {sortedMessages.map((msg: any, idx: number) => {
                       const isMe = user && msg.senderId === user.id;
-                      const showAvatar = idx === 0 || productionMessages[idx - 1].senderId !== msg.senderId;
-                      const isLastInGroup = idx === productionMessages.length - 1 || productionMessages[idx + 1].senderId !== msg.senderId;
+                      const showAvatar = idx === 0 || sortedMessages[idx - 1].senderId !== msg.senderId;
+                      const isLastInGroup = idx === sortedMessages.length - 1 || sortedMessages[idx + 1].senderId !== msg.senderId;
                       const timeStr = new Date(msg.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) === new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" })
                         ? new Date(msg.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
                         : new Date(msg.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) + " · " + new Date(msg.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
