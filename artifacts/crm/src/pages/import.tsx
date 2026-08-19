@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { onContactChange } from "@/lib/query-invalidation";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
-import { CheckCircle, AlertCircle, Upload, FileSpreadsheet, X, Sparkles, ClipboardPaste, Download, User, MapPin, Tag, Clock, BarChart3, History } from "lucide-react";
+import { CheckCircle, AlertCircle, Upload, FileSpreadsheet, X, Sparkles, ClipboardPaste, Download, User, Users, MapPin, Tag, Clock, BarChart3, History } from "lucide-react";
 import { UserAvatar } from "@/components/user-avatar";
 import { Link } from "wouter";
 import { DuplicateWarningDialog, type DuplicateLeadInfo } from "@/components/duplicate-warning-dialog";
@@ -822,6 +822,34 @@ export default function ImportPage() {
   const [bulkCategory, setBulkCategory] = useState("Regular Follow up");
   const [bulkResult, setBulkResult] = useState<any>(null);
 
+  // ── My Client Import state ──
+  const myClientFileInputRef = useRef<HTMLInputElement>(null);
+  const [myClientFile, setMyClientFile] = useState<File | null>(null);
+  const [myClientParsedRows, setMyClientParsedRows] = useState<any[] | null>(null);
+  const [myClientParseError, setMyClientParseError] = useState<string | null>(null);
+  const [myClientResult, setMyClientResult] = useState<any>(null);
+
+  const MY_CLIENT_HEADER_MAP: Record<string, string> = {
+    "customer name": "name",
+    "customername": "name",
+    "name": "name",
+    "company name": "companyName",
+    "companyname": "companyName",
+    "company": "companyName",
+    "mobile number": "mobile",
+    "mobilenumber": "mobile",
+    "mobile": "mobile",
+    "phone": "mobile",
+    "email id": "email",
+    "emailid": "email",
+    "email": "email",
+    "city": "city",
+    "state": "state",
+    "customer since": "customerSince",
+    "customersince": "customerSince",
+    "since": "customerSince",
+  };
+
   // Allowed categories for bulk import (exclude My Client and Existing Client)
   const BULK_CATEGORY_OPTIONS = ["Regular Follow up", "Category A", "Category B", "Category C"] as const;
 
@@ -967,6 +995,130 @@ export default function ImportPage() {
     XLSX.writeFile(wb, "bulk-customer-import-template.xlsx");
   };
 
+  // ── My Client Import: parse uploaded Excel ──
+  const handleMyClientFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setMyClientFile(file);
+    setMyClientParsedRows(null);
+    setMyClientParseError(null);
+    setMyClientResult(null);
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = new Uint8Array(ev.target!.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: "array", cellDates: false });
+        const ws = wb.Sheets[wb.SheetNames[0]]!;
+        const raw: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+        if (!raw || raw.length < 2) {
+          setMyClientParseError("The sheet is empty or has no data rows.");
+          return;
+        }
+
+        const headers: string[] = (raw[0] as any[]).map(h => String(h ?? ""));
+        const normalizedHeaders = headers.map(h => h.trim().toLowerCase().replace(/\s+/g, " "));
+
+        const hasMobile = normalizedHeaders.some(h =>
+          h === "mobile number" || h === "mobilenumber" || h === "mobile" || h === "phone"
+        );
+        if (!hasMobile) {
+          setMyClientParseError('Missing required column: "Mobile Number"');
+          return;
+        }
+
+        const rows = raw.slice(1)
+          .filter(r => r.some((c: any) => c !== "" && c !== null && c !== undefined))
+          .map((r, idx) => {
+            const obj: Record<string, string | null> = {};
+            headers.forEach((h, i) => {
+              const key = MY_CLIENT_HEADER_MAP[h.trim().toLowerCase().replace(/\s+/g, " ")];
+              if (key) {
+                const val = (r[i] ?? "").toString().trim();
+                obj[key] = val || null;
+              }
+            });
+            return { ...obj, _rowNum: idx + 2 };
+          });
+
+        setMyClientParsedRows(rows);
+        toast({ title: `Parsed ${rows.length} rows from "${file.name}"` });
+      } catch {
+        setMyClientParseError("Could not read the file. Make sure it's a valid .xlsx or .xls file.");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  // ── My Client Import: validate rows ──
+  const validateMyClientRows = (rows: any[]) => {
+    return rows.map(row => {
+      const rawMobile = row.mobile?.trim();
+      if (!rawMobile) {
+        return { ...row, _status: "invalid" as const, _reason: "Mobile Number is missing" };
+      }
+      const digits = rawMobile.replace(/\D/g, "");
+      if (digits.length < 10) {
+        return { ...row, _status: "invalid" as const, _reason: "Invalid mobile number (too short)" };
+      }
+      return { ...row, _status: "ready" as const, _reason: null };
+    });
+  };
+
+  // ── My Client Import: submit ──
+  const [myClientUploading, setMyClientUploading] = useState(false);
+  const handleMyClientImport = async () => {
+    if (!myClientParsedRows?.length) return;
+    const validated = validateMyClientRows(myClientParsedRows);
+    const validRows = validated.filter(r => r._status === "ready");
+    if (validRows.length === 0) {
+      toast({ title: "No valid rows to import", variant: "destructive" });
+      return;
+    }
+
+    setMyClientUploading(true);
+    try {
+      const result = await customFetch<any>("/api/import/my-client", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rows: validRows.map(r => ({
+            name: r.name || null,
+            companyName: r.companyName || null,
+            mobile: r.mobile || null,
+            email: r.email || null,
+            city: r.city || null,
+            state: r.state || null,
+            customerSince: r.customerSince || null,
+          })),
+          defaultSalesOwnerId: me?.role === "admin" ? (excelOwner ? Number(excelOwner) : null) : (me?.id ?? null),
+        }),
+      });
+
+      setMyClientResult(result);
+      onContactChange(queryClient);
+      toast({ title: `Imported ${result.imported} customers into My Client` });
+      if (result.imported > 0) {
+        playNotificationSound();
+        showBrowserNotification("My Client Import", `${result.imported} customer${result.imported > 1 ? "s" : ""} imported as My Client`, "crm-import");
+      }
+    } catch {
+      toast({ title: "Import failed", variant: "destructive" });
+    } finally {
+      setMyClientUploading(false);
+    }
+  };
+
+  // ── My Client Import: download Excel template ──
+  const handleMyClientDownloadTemplate = () => {
+    const headers = ["Customer Name", "Company Name", "Mobile Number", "Email Id", "City", "State", "Customer Since"];
+    const exampleRow = ["Ravi Shah", "Elham Multiplast", "9876543210", "ravi@example.com", "Surat", "Gujarat", "2024-01-15"];
+    const ws = XLSX.utils.aoa_to_sheet([headers, exampleRow]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template");
+    XLSX.writeFile(wb, "my-client-import-template.xlsx");
+  };
+
   const exportDuplicateDetails = (details: any[]) => {
     if (!details?.length) return;
     const headers = ["Row", "Mobile", "Customer Name", "Existing Owner", "Unit", "Category", "Action"];
@@ -1097,6 +1249,7 @@ export default function ImportPage() {
       <Tabs defaultValue="indiamart">
         <TabsList>
           <TabsTrigger value="bulk-import">Bulk Import</TabsTrigger>
+          <TabsTrigger value="my-client"><Users className="h-3.5 w-3.5 mr-1" /> My Client</TabsTrigger>
           <TabsTrigger value="indiamart">IndiaMart</TabsTrigger>
           <TabsTrigger value="excel-upload">Excel Upload</TabsTrigger>
           <TabsTrigger value="paste">Paste / JSON</TabsTrigger>
@@ -1314,6 +1467,216 @@ export default function ImportPage() {
                         ))}
                         {bulkResult.errors.length > 5 && (
                           <p className="text-xs text-red-500 pl-2">+{bulkResult.errors.length - 5} more errors</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── MY CLIENT IMPORT ── */}
+        <TabsContent value="my-client">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-indigo-600" />
+                Import My Client
+              </CardTitle>
+              <CardDescription>
+                Upload an Excel sheet to import contacts directly as permanent "My Client" customers.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+
+              {/* Step 1: Upload Excel */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Step 1: Upload Excel</Label>
+                <div className="flex items-center gap-3">
+                  <div
+                    className="flex-1 border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center cursor-pointer hover:border-primary/40 hover:bg-muted/20 transition-colors"
+                    onClick={() => myClientFileInputRef.current?.click()}
+                  >
+                    <FileSpreadsheet className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                    <p className="font-medium text-sm">{myClientFile ? myClientFile.name : "Click to upload Excel"}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {myClientFile
+                        ? `${myClientParsedRows?.length ?? 0} rows parsed`
+                        : ".xlsx or .xls format"}
+                    </p>
+                  </div>
+                  <input ref={myClientFileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleMyClientFileChange} />
+                  <Button variant="outline" size="sm" onClick={handleMyClientDownloadTemplate} className="shrink-0">
+                    <Download className="h-3.5 w-3.5 mr-1" />
+                    Download Template
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Required column: <strong>Mobile Number</strong>. Optional: Customer Name, Company Name, Email Id, City, State, Customer Since.
+                </p>
+              </div>
+
+              {/* Parse error */}
+              {myClientParseError && (
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {myClientParseError}
+                </div>
+              )}
+
+              {/* Step 2: Preview */}
+              {myClientParsedRows && myClientParsedRows.length > 0 && (
+                <>
+                  {(() => {
+                    const validated = validateMyClientRows(myClientParsedRows);
+                    const validCount = validated.filter(r => r._status === "ready").length;
+                    const invalidCount = validated.filter(r => r._status === "invalid").length;
+                    return (
+                      <div className="space-y-3">
+                        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 space-y-1 text-sm">
+                          <p className="font-medium text-indigo-800">Step 2: Preview</p>
+                          <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-indigo-700">
+                            <span>Total Rows:</span><span className="font-semibold">{myClientParsedRows.length}</span>
+                            <span>Valid:</span><span className="font-semibold text-green-700">{validCount}</span>
+                            <span>Invalid:</span><span className="font-semibold text-red-700">{invalidCount}</span>
+                            <span>Category:</span><span className="font-semibold">My Client</span>
+                          </div>
+                        </div>
+
+                        {/* Preview table */}
+                        <div className="bg-muted/50 rounded-lg overflow-x-auto">
+                          <table className="text-xs w-full">
+                            <thead>
+                              <tr className="border-b">
+                                <th className="p-2 text-left font-medium text-muted-foreground">Row</th>
+                                <th className="p-2 text-left font-medium text-muted-foreground">Customer Name</th>
+                                <th className="p-2 text-left font-medium text-muted-foreground">Company Name</th>
+                                <th className="p-2 text-left font-medium text-muted-foreground">Mobile Number</th>
+                                <th className="p-2 text-left font-medium text-muted-foreground">Email Id</th>
+                                <th className="p-2 text-left font-medium text-muted-foreground">City</th>
+                                <th className="p-2 text-left font-medium text-muted-foreground">State</th>
+                                <th className="p-2 text-left font-medium text-muted-foreground">Customer Since</th>
+                                <th className="p-2 text-left font-medium text-muted-foreground">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {validated.slice(0, 10).map((row, i) => (
+                                <tr key={i} className="border-b last:border-0">
+                                  <td className="p-2 text-muted-foreground">{row._rowNum}</td>
+                                  <td className="p-2 truncate max-w-[120px]">{row.name || <span className="text-muted-foreground italic">blank</span>}</td>
+                                  <td className="p-2 truncate max-w-[120px]">{row.companyName || <span className="text-muted-foreground italic">blank</span>}</td>
+                                  <td className="p-2 font-mono truncate max-w-[140px]">{row.mobile}</td>
+                                  <td className="p-2 truncate max-w-[140px]">{row.email || <span className="text-muted-foreground italic">blank</span>}</td>
+                                  <td className="p-2 truncate max-w-[100px]">{row.city || <span className="text-muted-foreground italic">blank</span>}</td>
+                                  <td className="p-2 truncate max-w-[100px]">{row.state || <span className="text-muted-foreground italic">blank</span>}</td>
+                                  <td className="p-2 truncate max-w-[100px]">{row.customerSince || <span className="text-muted-foreground italic">today</span>}</td>
+                                  <td className="p-2">
+                                    {row._status === "ready" ? (
+                                      <span className="text-green-600 font-medium flex items-center gap-1">
+                                        <CheckCircle className="h-3 w-3" /> Ready
+                                      </span>
+                                    ) : (
+                                      <span className="text-red-600 font-medium flex items-center gap-1">
+                                        <AlertCircle className="h-3 w-3" /> {row._reason}
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {validated.length > 10 && (
+                            <p className="text-xs text-muted-foreground text-center py-1.5">
+                              … and {validated.length - 10} more rows
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Sales owner (admin only) */}
+                        {me?.role === "admin" && (
+                          <div className="max-w-xs">
+                            <Label className="text-xs text-muted-foreground mb-1 block">Default Sales Owner</Label>
+                            <Select value={excelOwner || "none"} onValueChange={v => setExcelOwner(v === "none" ? "" : v)}>
+                              <SelectTrigger><SelectValue placeholder="Select owner" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">Auto-assign to me</SelectItem>
+                                {users?.map(u => <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Step 3: Import button */}
+                  <Button
+                    onClick={handleMyClientImport}
+                    disabled={myClientUploading}
+                    className="w-full"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    {myClientUploading
+                      ? "Importing…"
+                      : `Import ${validateMyClientRows(myClientParsedRows).filter(r => r._status === "ready").length} Valid Records as My Client`}
+                  </Button>
+                </>
+              )}
+
+              {/* Result */}
+              {myClientResult && (
+                <div className={`p-3 rounded-lg space-y-1 text-sm ${(myClientResult.imported > 0) ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}>
+                  <p className={`font-medium flex items-center gap-2 ${(myClientResult.imported > 0) ? "text-green-800" : "text-amber-800"}`}>
+                    <CheckCircle className="h-4 w-4" />
+                    {myClientResult.imported > 0 ? "Import Completed" : "Import Finished"}
+                  </p>
+                  <p className={`${(myClientResult.imported > 0) ? "text-green-700" : "text-amber-700"}`}>
+                    {myClientResult.imported > 0 && <span>Imported: <strong>{myClientResult.imported}</strong></span>}
+                    {myClientResult.duplicates > 0 && <span> · Duplicates skipped: <strong className="text-amber-700">{myClientResult.duplicates}</strong></span>}
+                    {myClientResult.invalid > 0 && <span> · Invalid skipped: <strong className="text-red-700">{myClientResult.invalid}</strong></span>}
+                  </p>
+                  <p className="text-green-600 text-xs">Imported Into: {myClientResult.importedInto}</p>
+
+                  {/* Duplicate details */}
+                  {myClientResult.duplicateDetails?.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-amber-200">
+                      <p className="font-medium text-amber-800 text-sm mb-1">
+                        Duplicates ({myClientResult.duplicateDetails.length} rows)
+                      </p>
+                      <div className="space-y-1 max-h-40 overflow-y-auto">
+                        {myClientResult.duplicateDetails.slice(0, 5).map((d: any, i: number) => (
+                          <div key={i} className="flex items-center gap-2 text-xs bg-white/60 rounded-md px-2.5 py-1.5 border border-amber-200">
+                            <span className="font-mono text-amber-600 font-medium w-8 shrink-0">Row {d.rowNum}</span>
+                            <span className="font-mono truncate max-w-[120px]">{d.mobile}</span>
+                            <span className="text-muted-foreground">·</span>
+                            <span className="truncate">{d.existingContactName}</span>
+                            <span className="ml-auto text-amber-600 text-[10px]">{d.existingCategory}</span>
+                          </div>
+                        ))}
+                        {myClientResult.duplicateDetails.length > 5 && (
+                          <p className="text-xs text-amber-500 pl-2">+{myClientResult.duplicateDetails.length - 5} more</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Error details */}
+                  {myClientResult.errors?.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-red-200">
+                      <p className="font-medium text-red-800 text-sm mb-1">
+                        Errors ({myClientResult.errors.length} rows)
+                      </p>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {myClientResult.errors.slice(0, 5).map((e: any, i: number) => (
+                          <div key={i} className="text-xs text-red-700 bg-red-50 rounded-md px-2.5 py-1.5 border border-red-200">
+                            <span className="font-mono font-medium">Row {e.rowNum}:</span> {e.reason}
+                          </div>
+                        ))}
+                        {myClientResult.errors.length > 5 && (
+                          <p className="text-xs text-red-500 pl-2">+{myClientResult.errors.length - 5} more errors</p>
                         )}
                       </div>
                     </div>
