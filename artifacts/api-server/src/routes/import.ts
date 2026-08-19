@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable, usersTable, CATEGORIES, dealsTable, activitiesTable, categoryHistoryTable } from "@workspace/db";
-import { eq, or, and, desc } from "drizzle-orm";
+import { eq, or, and, desc, like } from "drizzle-orm";
 import { z } from "zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -539,6 +539,7 @@ router.post("/import/bulk-customers", async (req, res) => {
     let existingContact: any = null;
 
     for (const num of mobileParts) {
+      // Exact match: existing mobile == single part (contact has only this one number)
       const [exactMatch] = await db.select({
         id: contactsTable.id,
         name: contactsTable.name,
@@ -554,7 +555,26 @@ router.post("/import/bulk-customers", async (req, res) => {
         break;
       }
 
-      const [containsMatch] = await db.select({
+      // Substring match: existing mobile contains this number (e.g., "0987654321, 1234567890" contains "0987654321")
+      const [substringMatch] = await db.select({
+        id: contactsTable.id,
+        name: contactsTable.name,
+        mobile: contactsTable.mobile,
+        category: contactsTable.category,
+      }).from(contactsTable)
+        .where(like(contactsTable.mobile, `%${num}%`))
+        .limit(1);
+
+      if (substringMatch) {
+        isDuplicate = true;
+        existingContact = substringMatch;
+        break;
+      }
+    }
+
+    // Also check if the full normalized mobile matches any existing contact
+    if (!isDuplicate) {
+      const [fullMatch] = await db.select({
         id: contactsTable.id,
         name: contactsTable.name,
         mobile: contactsTable.mobile,
@@ -563,10 +583,9 @@ router.post("/import/bulk-customers", async (req, res) => {
         .where(eq(contactsTable.mobile, normalizedMobile))
         .limit(1);
 
-      if (containsMatch) {
+      if (fullMatch) {
         isDuplicate = true;
-        existingContact = containsMatch;
-        break;
+        existingContact = fullMatch;
       }
     }
 
@@ -752,6 +771,7 @@ router.post("/import/my-client", async (req, res) => {
     let existingContact: any = null;
 
     for (const num of mobileParts) {
+      // Exact match
       const [exactMatch] = await db.select({
         id: contactsTable.id,
         name: contactsTable.name,
@@ -765,6 +785,39 @@ router.post("/import/my-client", async (req, res) => {
         isDuplicate = true;
         existingContact = exactMatch;
         break;
+      }
+
+      // Substring match: existing mobile contains this number
+      const [substringMatch] = await db.select({
+        id: contactsTable.id,
+        name: contactsTable.name,
+        mobile: contactsTable.mobile,
+        category: contactsTable.category,
+      }).from(contactsTable)
+        .where(like(contactsTable.mobile, `%${num}%`))
+        .limit(1);
+
+      if (substringMatch) {
+        isDuplicate = true;
+        existingContact = substringMatch;
+        break;
+      }
+    }
+
+    // Also check if the full normalized mobile matches
+    if (!isDuplicate) {
+      const [fullMatch] = await db.select({
+        id: contactsTable.id,
+        name: contactsTable.name,
+        mobile: contactsTable.mobile,
+        category: contactsTable.category,
+      }).from(contactsTable)
+        .where(eq(contactsTable.mobile, normalizedMobile))
+        .limit(1);
+
+      if (fullMatch) {
+        isDuplicate = true;
+        existingContact = fullMatch;
       }
     }
 
