@@ -710,7 +710,6 @@ export default function ImportPage() {
       quantity:     parsed.quantity     || prev.quantity,
       companyName:  parsed.companyName  || prev.companyName,
     }));
-    setSmartPasteText("");
     const found = Object.values(parsed).filter(Boolean).length;
     toast({ title: `Extracted ${found} field${found !== 1 ? "s" : ""} — review and save` });
   };
