@@ -802,6 +802,45 @@ export interface ImportResult {
   errors?: string[];
 }
 
+export interface BulkCustomerRow {
+  /** @nullable */
+  name?: string | null;
+  /** @nullable */
+  companyName?: string | null;
+  /** @nullable */
+  mobile?: string | null;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  city?: string | null;
+  /** @nullable */
+  state?: string | null;
+}
+
+export interface BulkCustomerImportInput {
+  rows: BulkCustomerRow[];
+  category: string;
+  /** @nullable */
+  defaultSalesOwnerId?: number | null;
+}
+
+export interface BulkCustomerImportResult {
+  imported: number;
+  skipped: number;
+  invalid: number;
+  duplicates: number;
+  duplicateDetails: Array<{
+    rowNum: number;
+    mobile: string;
+    name: string;
+    existingContactId: number;
+    existingContactName: string;
+    existingCategory: string;
+  }>;
+  errors: Array<{ rowNum: number; reason: string }>;
+  importedInto: string;
+}
+
 export interface IndiaMartLeadInput {
   /** @nullable */
   companyName?: string | null;

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
-import { useImportIndiaMart, useImportExcel, useGetMe } from "@workspace/api-client-react";
+import { useImportIndiaMart, useImportExcel, useImportBulkCustomers, useGetMe } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { playNotificationSound, showBrowserNotification } from "@/lib/notification-sound";
@@ -22,6 +22,7 @@ import { DuplicateWarningDialog, type DuplicateLeadInfo } from "@/components/dup
 import { useActiveUnits } from "@/lib/use-active-units";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { INDUSTRIES } from "@/lib/constants";
+import { CATEGORIES } from "@/lib/categories";
 
 // ── IndiaMart multi-format parser ────────────────────────────────────────────
 interface ParsedLead {
@@ -812,6 +813,160 @@ export default function ImportPage() {
   const [duplicateDetailsOpen, setDuplicateDetailsOpen] = useState(false);
   const [activeDuplicateResult, setActiveDuplicateResult] = useState<any>(null);
 
+  // ── Bulk Import state ──
+  const importBulkCustomers = useImportBulkCustomers();
+  const bulkFileInputRef = useRef<HTMLInputElement>(null);
+  const [bulkFile, setBulkFile] = useState<File | null>(null);
+  const [bulkParsedRows, setBulkParsedRows] = useState<any[] | null>(null);
+  const [bulkParseError, setBulkParseError] = useState<string | null>(null);
+  const [bulkCategory, setBulkCategory] = useState("Regular Follow up");
+  const [bulkResult, setBulkResult] = useState<any>(null);
+
+  // Allowed categories for bulk import (exclude My Client and Existing Client)
+  const BULK_CATEGORY_OPTIONS = ["Regular Follow up", "Category A", "Category B", "Category C"] as const;
+
+  // Bulk Import: required column headers (case-insensitive matching)
+  const BULK_REQUIRED_HEADERS = ["Mobile Number"];
+  const BULK_HEADER_MAP: Record<string, string> = {
+    "customer name": "name",
+    "customername": "name",
+    "name": "name",
+    "company name": "companyName",
+    "companyname": "companyName",
+    "company": "companyName",
+    "mobile number": "mobile",
+    "mobilenumber": "mobile",
+    "mobile": "mobile",
+    "phone": "mobile",
+    "email id": "email",
+    "emailid": "email",
+    "email": "email",
+    "city": "city",
+    "state": "state",
+  };
+
+  const normalizeBulkHeader = (h: string) => h.trim().toLowerCase().replace(/\s+/g, " ");
+
+  // Bulk Import: parse uploaded Excel
+  const handleBulkFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBulkFile(file);
+    setBulkParsedRows(null);
+    setBulkParseError(null);
+    setBulkResult(null);
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = new Uint8Array(ev.target!.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: "array", cellDates: false });
+        const ws = wb.Sheets[wb.SheetNames[0]!]!;
+        const raw: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+        if (!raw || raw.length < 2) {
+          setBulkParseError("The sheet is empty or has no data rows.");
+          return;
+        }
+
+        const headers: string[] = (raw[0] as any[]).map(h => String(h ?? ""));
+        const normalizedHeaders = headers.map(normalizeBulkHeader);
+
+        // Validate required columns
+        const hasMobile = normalizedHeaders.some(h =>
+          h === "mobile number" || h === "mobilenumber" || h === "mobile" || h === "phone"
+        );
+        if (!hasMobile) {
+          setBulkParseError('Missing required column: "Mobile Number"');
+          return;
+        }
+
+        // Map rows
+        const rows = raw.slice(1)
+          .filter(r => r.some((c: any) => c !== "" && c !== null && c !== undefined))
+          .map((r, idx) => {
+            const obj: Record<string, string | null> = {};
+            headers.forEach((h, i) => {
+              const key = BULK_HEADER_MAP[normalizeBulkHeader(h)];
+              if (key) {
+                const val = (r[i] ?? "").toString().trim();
+                obj[key] = val || null;
+              }
+            });
+            return { ...obj, _rowNum: idx + 2 }; // +2 because header is row 1, data starts at row 2
+          });
+
+        setBulkParsedRows(rows);
+        toast({ title: `Parsed ${rows.length} rows from "${file.name}"` });
+      } catch {
+        setBulkParseError("Could not read the file. Make sure it's a valid .xlsx or .xls file.");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  // Bulk Import: client-side validation before submission
+  const validateBulkRows = (rows: any[]) => {
+    return rows.map(row => {
+      const rawMobile = row.mobile?.trim();
+      if (!rawMobile) {
+        return { ...row, _status: "invalid" as const, _reason: "Mobile Number is missing" };
+      }
+      // Basic mobile validation: at least 10 digits after stripping non-digits
+      const digits = rawMobile.replace(/\D/g, "");
+      if (digits.length < 10) {
+        return { ...row, _status: "invalid" as const, _reason: "Invalid mobile number (too short)" };
+      }
+      return { ...row, _status: "ready" as const, _reason: null };
+    });
+  };
+
+  // Bulk Import: submit
+  const handleBulkImport = () => {
+    if (!bulkParsedRows?.length) return;
+    const validated = validateBulkRows(bulkParsedRows);
+    const validRows = validated.filter(r => r._status === "ready");
+    if (validRows.length === 0) {
+      toast({ title: "No valid rows to import", variant: "destructive" });
+      return;
+    }
+
+    importBulkCustomers.mutate({
+      data: {
+        rows: validRows.map(r => ({
+          name: r.name || null,
+          companyName: r.companyName || null,
+          mobile: r.mobile || null,
+          email: r.email || null,
+          city: r.city || null,
+          state: r.state || null,
+        })),
+        category: bulkCategory,
+        defaultSalesOwnerId: me?.role === "admin" ? (excelOwner ? Number(excelOwner) : null) : (me?.id ?? null),
+      },
+    }, {
+      onSuccess: (result) => {
+        setBulkResult(result);
+        onContactChange(queryClient);
+        toast({ title: `Imported ${result.imported} customers into ${result.importedInto}` });
+        if (result.imported > 0) {
+          playNotificationSound();
+          showBrowserNotification("Customers Imported", `${result.imported} customer${result.imported > 1 ? "s" : ""} imported from Excel`, "crm-import");
+        }
+      },
+      onError: () => toast({ title: "Import failed", variant: "destructive" }),
+    });
+  };
+
+  // Bulk Import: download Excel template
+  const handleBulkDownloadTemplate = () => {
+    const headers = ["Customer Name", "Company Name", "Mobile Number", "Email Id", "City", "State"];
+    const exampleRow = ["Ravi Shah", "Elham Multiplast", "9876543210", "ravi@example.com", "Surat", "Gujarat"];
+    const ws = XLSX.utils.aoa_to_sheet([headers, exampleRow]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template");
+    XLSX.writeFile(wb, "bulk-customer-import-template.xlsx");
+  };
+
   const exportDuplicateDetails = (details: any[]) => {
     if (!details?.length) return;
     const headers = ["Row", "Mobile", "Customer Name", "Existing Owner", "Unit", "Category", "Action"];
@@ -941,6 +1096,7 @@ export default function ImportPage() {
 
       <Tabs defaultValue="indiamart">
         <TabsList>
+          <TabsTrigger value="bulk-import">Bulk Import</TabsTrigger>
           <TabsTrigger value="indiamart">IndiaMart</TabsTrigger>
           <TabsTrigger value="excel-upload">Excel Upload</TabsTrigger>
           <TabsTrigger value="paste">Paste / JSON</TabsTrigger>
@@ -948,6 +1104,226 @@ export default function ImportPage() {
             <Clock className="h-3.5 w-3.5 mr-1" /> History
           </TabsTrigger>
         </TabsList>
+
+        {/* ── BULK CUSTOMER IMPORT ── */}
+        <TabsContent value="bulk-import">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                Bulk Customer Import
+              </CardTitle>
+              <CardDescription>
+                Upload a simple Excel with Customer Name, Company Name, Mobile Number, Email Id, City, State.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+
+              {/* Step 1: Category Selector */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Step 1: Select Category <span className="text-destructive">*</span></Label>
+                <p className="text-xs text-muted-foreground">All imported records will be assigned to this category.</p>
+                <Select value={bulkCategory} onValueChange={setBulkCategory}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Select category" /></SelectTrigger>
+                  <SelectContent>
+                    {BULK_CATEGORY_OPTIONS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Step 2: Upload Excel */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Step 2: Upload Excel</Label>
+                <div className="flex items-center gap-3">
+                  <div
+                    className="flex-1 border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center cursor-pointer hover:border-primary/40 hover:bg-muted/20 transition-colors"
+                    onClick={() => bulkFileInputRef.current?.click()}
+                  >
+                    <FileSpreadsheet className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                    <p className="font-medium text-sm">{bulkFile ? bulkFile.name : "Click to upload Excel"}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {bulkFile
+                        ? `${bulkParsedRows?.length ?? 0} rows parsed`
+                        : ".xlsx or .xls format"}
+                    </p>
+                  </div>
+                  <input ref={bulkFileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleBulkFileChange} />
+                  <Button variant="outline" size="sm" onClick={handleBulkDownloadTemplate} className="shrink-0">
+                    <Download className="h-3.5 w-3.5 mr-1" />
+                    Download Template
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Required column: <strong>Mobile Number</strong>. Optional: Customer Name, Company Name, Email Id, City, State.
+                </p>
+              </div>
+
+              {/* Parse error */}
+              {bulkParseError && (
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {bulkParseError}
+                </div>
+              )}
+
+              {/* Step 3: Preview */}
+              {bulkParsedRows && bulkParsedRows.length > 0 && (
+                <>
+                  {(() => {
+                    const validated = validateBulkRows(bulkParsedRows);
+                    const validCount = validated.filter(r => r._status === "ready").length;
+                    const invalidCount = validated.filter(r => r._status === "invalid").length;
+                    return (
+                      <div className="space-y-3">
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-1 text-sm">
+                          <p className="font-medium text-blue-800">Step 3: Preview</p>
+                          <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-blue-700">
+                            <span>Total Rows:</span><span className="font-semibold">{bulkParsedRows.length}</span>
+                            <span>Valid:</span><span className="font-semibold text-green-700">{validCount}</span>
+                            <span>Invalid:</span><span className="font-semibold text-red-700">{invalidCount}</span>
+                            <span>Category:</span><span className="font-semibold">{bulkCategory}</span>
+                          </div>
+                        </div>
+
+                        {/* Preview table */}
+                        <div className="bg-muted/50 rounded-lg overflow-x-auto">
+                          <table className="text-xs w-full">
+                            <thead>
+                              <tr className="border-b">
+                                <th className="p-2 text-left font-medium text-muted-foreground">Row</th>
+                                <th className="p-2 text-left font-medium text-muted-foreground">Customer Name</th>
+                                <th className="p-2 text-left font-medium text-muted-foreground">Company Name</th>
+                                <th className="p-2 text-left font-medium text-muted-foreground">Mobile Number</th>
+                                <th className="p-2 text-left font-medium text-muted-foreground">Email Id</th>
+                                <th className="p-2 text-left font-medium text-muted-foreground">City</th>
+                                <th className="p-2 text-left font-medium text-muted-foreground">State</th>
+                                <th className="p-2 text-left font-medium text-muted-foreground">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {validated.slice(0, 10).map((row, i) => (
+                                <tr key={i} className="border-b last:border-0">
+                                  <td className="p-2 text-muted-foreground">{row._rowNum}</td>
+                                  <td className="p-2 truncate max-w-[120px]">{row.name || <span className="text-muted-foreground italic">blank</span>}</td>
+                                  <td className="p-2 truncate max-w-[120px]">{row.companyName || <span className="text-muted-foreground italic">blank</span>}</td>
+                                  <td className="p-2 font-mono truncate max-w-[140px]">{row.mobile}</td>
+                                  <td className="p-2 truncate max-w-[140px]">{row.email || <span className="text-muted-foreground italic">blank</span>}</td>
+                                  <td className="p-2 truncate max-w-[100px]">{row.city || <span className="text-muted-foreground italic">blank</span>}</td>
+                                  <td className="p-2 truncate max-w-[100px]">{row.state || <span className="text-muted-foreground italic">blank</span>}</td>
+                                  <td className="p-2">
+                                    {row._status === "ready" ? (
+                                      <span className="text-green-600 font-medium flex items-center gap-1">
+                                        <CheckCircle className="h-3 w-3" /> Ready
+                                      </span>
+                                    ) : (
+                                      <span className="text-red-600 font-medium flex items-center gap-1">
+                                        <AlertCircle className="h-3 w-3" /> {row._reason}
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {validated.length > 10 && (
+                            <p className="text-xs text-muted-foreground text-center py-1.5">
+                              … and {validated.length - 10} more rows
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Sales owner (admin only) */}
+                        {me?.role === "admin" && (
+                          <div className="max-w-xs">
+                            <Label className="text-xs text-muted-foreground mb-1 block">Default Sales Owner</Label>
+                            <Select value={excelOwner || "none"} onValueChange={v => setExcelOwner(v === "none" ? "" : v)}>
+                              <SelectTrigger><SelectValue placeholder="Select owner" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">Auto-assign to me</SelectItem>
+                                {users?.map(u => <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Step 4: Import button */}
+                  <Button
+                    onClick={handleBulkImport}
+                    disabled={importBulkCustomers.isPending}
+                    className="w-full"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    {importBulkCustomers.isPending
+                      ? "Importing…"
+                      : `Import ${validateBulkRows(bulkParsedRows).filter(r => r._status === "ready").length} Valid Records`}
+                  </Button>
+                </>
+              )}
+
+              {/* Result */}
+              {bulkResult && (
+                <div className={`p-3 rounded-lg space-y-1 text-sm ${(bulkResult.imported > 0) ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"}`}>
+                  <p className={`font-medium flex items-center gap-2 ${(bulkResult.imported > 0) ? "text-green-800" : "text-amber-800"}`}>
+                    <CheckCircle className="h-4 w-4" />
+                    {bulkResult.imported > 0 ? "Import Completed" : "Import Finished"}
+                  </p>
+                  <p className={`${(bulkResult.imported > 0) ? "text-green-700" : "text-amber-700"}`}>
+                    {bulkResult.imported > 0 && <span>Imported: <strong>{bulkResult.imported}</strong></span>}
+                    {bulkResult.duplicates > 0 && <span> · Duplicates skipped: <strong className="text-amber-700">{bulkResult.duplicates}</strong></span>}
+                    {bulkResult.invalid > 0 && <span> · Invalid skipped: <strong className="text-red-700">{bulkResult.invalid}</strong></span>}
+                  </p>
+                  <p className="text-green-600 text-xs">Imported Into: {bulkResult.importedInto}</p>
+
+                  {/* Duplicate details */}
+                  {bulkResult.duplicateDetails?.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-amber-200">
+                      <p className="font-medium text-amber-800 text-sm mb-1">
+                        Duplicates ({bulkResult.duplicateDetails.length} rows)
+                      </p>
+                      <div className="space-y-1 max-h-40 overflow-y-auto">
+                        {bulkResult.duplicateDetails.slice(0, 5).map((d: any, i: number) => (
+                          <div key={i} className="flex items-center gap-2 text-xs bg-white/60 rounded-md px-2.5 py-1.5 border border-amber-200">
+                            <span className="font-mono text-amber-600 font-medium w-8 shrink-0">Row {d.rowNum}</span>
+                            <span className="font-mono truncate max-w-[120px]">{d.mobile}</span>
+                            <span className="text-muted-foreground">·</span>
+                            <span className="truncate">{d.existingContactName}</span>
+                            <span className="ml-auto text-amber-600 text-[10px]">{d.existingCategory}</span>
+                          </div>
+                        ))}
+                        {bulkResult.duplicateDetails.length > 5 && (
+                          <p className="text-xs text-amber-500 pl-2">+{bulkResult.duplicateDetails.length - 5} more</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Error details */}
+                  {bulkResult.errors?.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-red-200">
+                      <p className="font-medium text-red-800 text-sm mb-1">
+                        Errors ({bulkResult.errors.length} rows)
+                      </p>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {bulkResult.errors.slice(0, 5).map((e: any, i: number) => (
+                          <div key={i} className="text-xs text-red-700 bg-red-50 rounded-md px-2.5 py-1.5 border border-red-200">
+                            <span className="font-mono font-medium">Row {e.rowNum}:</span> {e.reason}
+                          </div>
+                        ))}
+                        {bulkResult.errors.length > 5 && (
+                          <p className="text-xs text-red-500 pl-2">+{bulkResult.errors.length - 5} more errors</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* ── INDIAMART ── */}
         <TabsContent value="indiamart">

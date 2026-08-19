@@ -441,4 +441,235 @@ router.post("/import/indiamart", async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+// BULK CUSTOMER IMPORT — simplified 5-column Excel (Name, Company, Mobile, City, State)
+// ══════════════════════════════════════════════════════════════════════════════
+
+function normalizeBulkMobile(raw: string): string {
+  const parts = raw.split(",").map(p => p.trim()).filter(Boolean);
+  const normalized = parts.map(p => {
+    const digits = p.replace(/\D/g, "");
+    return digits.slice(-10);
+  }).filter(n => n.length >= 10);
+  const unique = [...new Set(normalized)];
+  return unique.join(", ");
+}
+
+function normalizeBulkEmails(raw: string): string {
+  const parts = raw.split(",").map(p => p.trim().toLowerCase()).filter(Boolean);
+  const valid = parts.filter(p => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p));
+  const unique = [...new Set(valid)];
+  return unique.join(", ");
+}
+
+const BulkCustomerRowSchema = z.object({
+  name: z.string().nullish(),
+  companyName: z.string().nullish(),
+  mobile: z.string().nullish(),
+  email: z.string().nullish(),
+  city: z.string().nullish(),
+  state: z.string().nullish(),
+});
+
+const BulkCustomerImportRequestSchema = z.object({
+  rows: z.array(BulkCustomerRowSchema),
+  category: z.enum(CATEGORY_VALUES),
+  defaultSalesOwnerId: z.number().nullish(),
+});
+
+router.post("/import/bulk-customers", async (req, res) => {
+  const currentUser = await getUserFromRequest(req);
+  if (!currentUser) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const parsed = BulkCustomerImportRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid input", details: parsed.error });
+    return;
+  }
+  let { rows, category, defaultSalesOwnerId } = parsed.data;
+
+  if (currentUser.role === "sales") {
+    defaultSalesOwnerId = currentUser.id;
+  }
+
+  req.log.info({ category, rowCount: rows.length }, "Bulk customer import request");
+
+  let imported = 0;
+  let skipped = 0;
+  let invalidCount = 0;
+  let duplicateCount = 0;
+  const duplicateDetails: Array<{
+    rowNum: number;
+    mobile: string;
+    name: string;
+    existingContactId: number;
+    existingContactName: string;
+    existingCategory: string;
+  }> = [];
+  const errors: Array<{ rowNum: number; reason: string }> = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]!;
+    const rowNum = i + 1;
+
+    // ── Validate mobile (mandatory) ──
+    const rawMobile = row.mobile?.trim();
+    if (!rawMobile) {
+      errors.push({ rowNum, reason: "Mobile Number is missing" });
+      invalidCount++;
+      continue;
+    }
+
+    // ── Normalize all mobile numbers in the cell ──
+    const normalizedMobile = normalizeBulkMobile(rawMobile);
+    if (!normalizedMobile) {
+      errors.push({ rowNum, reason: `Invalid mobile number: "${rawMobile}"` });
+      invalidCount++;
+      continue;
+    }
+
+    // ── Normalize emails (optional, comma-separated) ──
+    const normalizedEmail = row.email?.trim() ? normalizeBulkEmails(row.email.trim()) : null;
+
+    // ── Check for duplicates against existing contacts ──
+    // Split normalized mobile into individual numbers for checking
+    const mobileParts = normalizedMobile.split(",").map(m => m.trim()).filter(Boolean);
+    let isDuplicate = false;
+    let existingContact: any = null;
+
+    for (const num of mobileParts) {
+      const [exactMatch] = await db.select({
+        id: contactsTable.id,
+        name: contactsTable.name,
+        mobile: contactsTable.mobile,
+        category: contactsTable.category,
+      }).from(contactsTable)
+        .where(eq(contactsTable.mobile, num))
+        .limit(1);
+
+      if (exactMatch) {
+        isDuplicate = true;
+        existingContact = exactMatch;
+        break;
+      }
+
+      const [containsMatch] = await db.select({
+        id: contactsTable.id,
+        name: contactsTable.name,
+        mobile: contactsTable.mobile,
+        category: contactsTable.category,
+      }).from(contactsTable)
+        .where(eq(contactsTable.mobile, normalizedMobile))
+        .limit(1);
+
+      if (containsMatch) {
+        isDuplicate = true;
+        existingContact = containsMatch;
+        break;
+      }
+    }
+
+    // Also check duplicate by email (if provided)
+    if (!isDuplicate && normalizedEmail) {
+      const emailParts = normalizedEmail.split(",").map(e => e.trim()).filter(Boolean);
+      for (const emailAddr of emailParts) {
+        const [emailMatch] = await db.select({
+          id: contactsTable.id,
+          name: contactsTable.name,
+          mobile: contactsTable.mobile,
+          email: contactsTable.email,
+          category: contactsTable.category,
+        }).from(contactsTable)
+          .where(eq(contactsTable.email, emailAddr))
+          .limit(1);
+
+        if (emailMatch) {
+          isDuplicate = true;
+          existingContact = emailMatch;
+          break;
+        }
+      }
+    }
+
+    if (isDuplicate && existingContact) {
+      duplicateCount++;
+      duplicateDetails.push({
+        rowNum,
+        mobile: normalizedMobile,
+        name: existingContact.name,
+        existingContactId: existingContact.id,
+        existingContactName: existingContact.name,
+        existingCategory: existingContact.category,
+      });
+      skipped++;
+      continue;
+    }
+
+    // ── Resolve name (fallback to company > Lead-mobile) ──
+    let contactName: string;
+    const hasName = !!row.name?.trim();
+    const hasCompany = !!row.companyName?.trim();
+    if (hasName) {
+      contactName = row.name!.trim();
+    } else if (hasCompany) {
+      contactName = row.companyName!.trim();
+    } else {
+      contactName = `Lead-${mobileParts[0]}`;
+    }
+
+    // ── Resolve sales owner ──
+    const salesOwnerId = defaultSalesOwnerId ?? currentUser.id;
+
+    // ── Normalize city/state ──
+    const geo = normalizeStateCity({ city: row.city, state: row.state });
+
+    // ── Insert contact ──
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      await db.insert(contactsTable).values({
+        name: contactName,
+        mobile: normalizedMobile,
+        email: normalizedEmail || null,
+        companyName: row.companyName?.trim() || null,
+        city: geo.city,
+        state: geo.state,
+        salesOwnerId,
+        category,
+        inquiryDate: today,
+        leadSource: "Bulk Import",
+      });
+      imported++;
+    } catch (err: any) {
+      if (err?.code === "23505") {
+        // Unique constraint violation — duplicate mobile
+        duplicateCount++;
+        duplicateDetails.push({
+          rowNum,
+          mobile: normalizedMobile,
+          name: contactName,
+          existingContactId: 0,
+          existingContactName: "(detected by unique constraint)",
+          existingCategory: category,
+        });
+        skipped++;
+      } else {
+        errors.push({ rowNum, reason: `Import error: ${err?.message || "unknown"}` });
+        skipped++;
+      }
+    }
+  }
+
+  req.log.info({ imported, skipped, invalidCount, duplicateCount, category }, "Bulk customer import result");
+
+  res.json({
+    imported,
+    skipped,
+    invalid: invalidCount,
+    duplicates: duplicateCount,
+    duplicateDetails,
+    errors,
+    importedInto: category,
+  });
+});
+
 export default router;

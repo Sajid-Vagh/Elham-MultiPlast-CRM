@@ -24,6 +24,8 @@ import type {
   ActivityInput,
   ActivityUpdate,
   AuthResponse,
+  BulkCustomerImportInput,
+  BulkCustomerImportResult,
   BulkDeleteInput,
   BulkDeleteResult,
   CityStat,
@@ -3282,5 +3284,74 @@ export const useImportIndiaMart = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getImportIndiaMartMutationOptions(options));
+    }
+
+export const getImportBulkCustomersUrl = () => {
+
+
+
+  return `https://elham-multiplast-crm.onrender.com/api/import/bulk-customers`
+}
+
+/**
+ * @summary Bulk import customers from simplified 5-column Excel
+ */
+export const importBulkCustomers = async (bulkCustomerImportInput: BulkCustomerImportInput, options?: RequestInit): Promise<BulkCustomerImportResult> => {
+
+  return customFetch<BulkCustomerImportResult>(getImportBulkCustomersUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(bulkCustomerImportInput)
+  }
+);}
+
+
+
+
+export const getImportBulkCustomersMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importBulkCustomers>>, TError,{data: BodyType<BulkCustomerImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof importBulkCustomers>>, TError,{data: BodyType<BulkCustomerImportInput>}, TContext> => {
+
+const mutationKey = ['importBulkCustomers'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importBulkCustomers>>, {data: BodyType<BulkCustomerImportInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  importBulkCustomers(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ImportBulkCustomersMutationResult = NonNullable<Awaited<ReturnType<typeof importBulkCustomers>>>
+    export type ImportBulkCustomersMutationBody = BodyType<BulkCustomerImportInput>
+    export type ImportBulkCustomersMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Bulk import customers from simplified 5-column Excel
+ */
+export const useImportBulkCustomers = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importBulkCustomers>>, TError,{data: BodyType<BulkCustomerImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof importBulkCustomers>>,
+        TError,
+        {data: BodyType<BulkCustomerImportInput>},
+        TContext
+      > => {
+      return useMutation(getImportBulkCustomersMutationOptions(options));
     }
 
