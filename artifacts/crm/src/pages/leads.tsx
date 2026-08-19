@@ -322,19 +322,18 @@ export default function Leads() {
   };
 
   const markLeadAsRead = (id: number) => {
-    // Optimistically update all cached leads lists so the dot disappears immediately on return
-    queryClient.setQueriesData<any[]>(
-      { queryKey: ["leads-contacts"] },
-      (old) => old?.map((c) => (c.id === id ? { ...c, isRead: true, isRepeatEnquiry: false } : c)) ?? old
-    );
-    // Fire-and-forget background request to persist the read state
+    // Fire-and-forget background request to persist the read state.
+    // Optimistic cache replacement is avoided because role-based read state
+    // (isReadByAdmin vs isReadByAssignee) means setting isRead=true for ALL
+    // cached contacts is incorrect — e.g. an admin reading a salesperson's lead
+    // should not clear the salesperson's dot. The query will refetch on return.
     fetch(`/api/contacts/${id}/read`, {
       method: "POST",
       headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
     }).catch(() => {});
   };
 
-  // Manual read/unread toggle from the row actions menu. Optimistic so the dot flips instantly.
+  // Manual read/unread toggle from the row actions menu.
   const toggleReadMutation = useMutation({
     mutationFn: async ({ id, isRead }: { id: number; isRead: boolean }) => {
       const res = await fetch(`/api/contacts/${id}/read-status`, {
@@ -347,17 +346,6 @@ export default function Leads() {
       });
       if (!res.ok) throw new Error("Failed to update read status");
       return res.json();
-    },
-    onMutate: ({ id, isRead }) => {
-      queryClient.setQueriesData<any[]>(
-        { queryKey: ["leads-contacts"] },
-        (old) =>
-          old?.map((c) =>
-            c.id === id
-              ? { ...c, isRead, isRepeatEnquiry: isRead ? false : c.isRepeatEnquiry }
-              : c
-          ) ?? old
-      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
@@ -378,14 +366,9 @@ export default function Leads() {
       });
       if (!res.ok) throw new Error("Failed to mark all read");
       const result = await res.json().catch(() => ({}));
-      // Optimistically clear dots in every cached leads list so they vanish instantly
-      queryClient.setQueriesData<any[]>(
-        { queryKey: ["leads-contacts"] },
-        (old) => old?.map((c) => ({ ...c, isRead: true, isRepeatEnquiry: false })) ?? old
-      );
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
       queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
       toast({
         title: "All leads marked as read",
         description: result?.updated ? `${result.updated} lead${result.updated !== 1 ? "s" : ""} marked as read` : undefined,

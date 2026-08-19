@@ -41,6 +41,11 @@ export const contactsTable = pgTable("contacts", {
   // lead. The read/unread indicator is computed per-request from this array
   // (isRead = readBy includes the requesting user), replacing the global is_read flag.
   readBy: integer("read_by").array().notNull().default([]),
+  // Role-based read tracking (migration 082):
+  // Admin opens lead  → isReadByAdmin = true  (assignee still sees dot)
+  // Salesperson opens → isReadByAssignee = true AND isReadByAdmin = true
+  isReadByAdmin: boolean("is_read_by_admin").notNull().default(false),
+  isReadByAssignee: boolean("is_read_by_assignee").notNull().default(false),
   lostReason: text("lost_reason"),
   otherReason: text("other_reason"),
   lostNotes: text("lost_notes"),

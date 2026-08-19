@@ -33,7 +33,7 @@ async function requireContactAccess(req: any, res: any): Promise<{ user: any; co
   return { user, contact };
 }
 
-async function withOwner(contact: typeof contactsTable.$inferSelect, viewer?: { id?: number }) {
+async function withOwner(contact: typeof contactsTable.$inferSelect, viewer?: { id?: number; role?: string }) {
   const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, contact.salesOwnerId));
   const { passwordHash: _, ...safeOwner } = owner ?? {};
   let commentUser = null;
@@ -42,13 +42,16 @@ async function withOwner(contact: typeof contactsTable.$inferSelect, viewer?: { 
     if (u) { const { passwordHash: _, ...safe } = u; commentUser = safe; }
   }
   const normalizedOwner = owner ? { ...safeOwner, profilePhoto: normalizeProfilePhotoUrl(safeOwner.profilePhoto) } : null;
-  // Per-user read state: the unread dot reflects ONLY whether the requesting
-  // user has read this lead, never whether some other user (e.g. an admin) has.
+  // Role-based read state (migration 082):
+  //   Admin viewer    → dot shows if isReadByAdmin is false
+  //   Salesperson     → dot shows if isReadByAssignee is false
+  //   Other / no user → legacy fallback (isRead)
   // Legacy fallback: leads read under the pre-per-user build have is_read=true
-  // but an empty read_by; those count as read so acknowledged dots stay gone.
-  const readBy = contact.readBy ?? [];
+  // but empty is_read_by_admin + is_read_by_assignee; those count as read.
   const isRead = viewer?.id != null
-    ? readBy.includes(viewer.id) || (contact.isRead === true && readBy.length === 0)
+    ? viewer.role === "admin"
+      ? contact.isReadByAdmin || (contact.isRead === true && !contact.isReadByAdmin && !contact.isReadByAssignee)
+      : contact.isReadByAssignee || (contact.isRead === true && !contact.isReadByAdmin && !contact.isReadByAssignee)
     : !!contact.isRead;
   return {
     ...contact,
@@ -227,13 +230,11 @@ router.get("/contacts", async (req, res) => {
     const contactIdsWithDeals = new Set(dealsWithContacts.map(d => d.contactId));
 
     const enriched = contacts.map(c => {
-      // Per-user read state: the dot reflects ONLY whether the requesting user
-      // has read this lead. One user reading it must not clear it for others.
-      // Legacy fallback: leads marked read under the pre-per-user build have
-      // is_read=true but an empty read_by; treat those as read by everyone so
-      // the dot never resurrects for leads the user already acknowledged.
-      const readBy = c.readBy ?? [];
-      const isRead = readBy.includes(user.id) || (c.isRead === true && readBy.length === 0);
+      // Role-based read state (migration 082): admin sees dot from isReadByAdmin,
+      // salesperson from isReadByAssignee. Legacy fallback for pre-migration rows.
+      const isRead = user.role === "admin"
+        ? c.isReadByAdmin || (c.isRead === true && !c.isReadByAdmin && !c.isReadByAssignee)
+        : c.isReadByAssignee || (c.isRead === true && !c.isReadByAdmin && !c.isReadByAssignee);
       return {
         ...c,
         salesOwner: userMap.get(c.salesOwnerId) ?? null,
@@ -289,13 +290,15 @@ router.post("/contacts", async (req, res) => {
   }
   // A lead created for the caller is immediately "read" for them; only cross-owner
   // assignments stay unread so the assignee sees the blue "new lead" dot.
-  // readBy is the per-user equivalent of the legacy is_read flag.
   // customerCode is NOT generated here — it is generated only when the first Deal is Won.
+  const isSelfAssigned = values.salesOwnerId === user.id;
   const insertValues: typeof contactsTable.$inferInsert = {
     ...values,
-    isRead: values.salesOwnerId === user.id,
+    isRead: isSelfAssigned,
     isRepeatEnquiry: false,
-    readBy: values.salesOwnerId === user.id ? [user.id] : [],
+    readBy: isSelfAssigned ? [user.id] : [],
+    isReadByAdmin: isSelfAssigned && user.role === "admin",
+    isReadByAssignee: isSelfAssigned,
   };
   try {
     const [contact] = await db.insert(contactsTable).values(insertValues).returning();
@@ -497,15 +500,16 @@ router.post("/contacts/:id/repeat-enquiry", async (req, res) => {
       !!existingCustomer;
 
     // Bump updatedAt (NOW) so the lead jumps to the top of the Leads list, flag it as an
-    // unread repeat enquiry (yellow dot) by clearing the per-user read_by array — the owner
-    // sees the yellow dot until THEY read it (admins opening the lead won't clear it) — but
-    // DO NOT overwrite contact.salesOwnerId (Rule C — the parent contact always belongs to
-    // the original sales owner) and DO NOT downgrade the category of permanent clients.
+    // unread repeat enquiry (yellow dot) by clearing the role-based read flags — both admin
+    // and assignee see the dot until THEY read it — but DO NOT overwrite contact.salesOwnerId
+    // (Rule C) and DO NOT downgrade the category of permanent clients.
     const updatePayload: Record<string, any> = {
       updatedAt: new Date(),
       isRead: false,
       isRepeatEnquiry: true,
       readBy: [],
+      isReadByAdmin: false,
+      isReadByAssignee: false,
     };
     if (!isPermanentClient) {
       updatePayload.category = "Regular Follow up";
@@ -620,27 +624,40 @@ router.get("/contacts/:id", async (req, res) => {
   }
 });
 
-// POST /contacts/:id/read — Mark a lead as read (unread indicator) for the
-// REQUESTING USER ONLY. Appends the user's id to read_by instead of setting a
-// global boolean, so other users (e.g. the assigned sales owner) keep seeing
-// their own unread dot until they read it too.
+// POST /contacts/:id/read — Mark a lead as read for the REQUESTING USER.
+// Role-based logic (migration 082):
+//   Admin reads → isReadByAdmin = true (assignee's dot stays)
+//   Salesperson (owner) reads → isReadByAssignee = true AND isReadByAdmin = true
 router.post("/contacts/:id/read", async (req, res) => {
   try {
     const access = await requireContactAccess(req, res);
     if (!access) return;
     const { user, contact } = access;
-    const readBy = contact.readBy ?? [];
-    if (readBy.includes(user.id)) {
+
+    // Check if already read by this user's role
+    const alreadyRead = user.role === "admin" ? contact.isReadByAdmin : contact.isReadByAssignee;
+    if (alreadyRead) {
       res.json(await withOwner(contact, user));
       return;
     }
+
+    // Role-based update: salesperson reading also marks admin as read
+    const updateData: Record<string, any> = {
+      isRead: true,
+      isRepeatEnquiry: false,
+      readBy: appendReadBy(user.id),
+    };
+    if (user.role === "admin") {
+      updateData.isReadByAdmin = true;
+    } else {
+      // Salesperson (owner) reading → both flags true
+      updateData.isReadByAssignee = true;
+      updateData.isReadByAdmin = true;
+    }
+
     const [updated] = await db
       .update(contactsTable)
-      .set({
-        readBy: appendReadBy(user.id),
-        isRead: true,
-        isRepeatEnquiry: false,
-      })
+      .set(updateData)
       .where(eq(contactsTable.id, contact.id))
       .returning();
     res.json(await withOwner(updated!, user));
@@ -651,20 +668,32 @@ router.post("/contacts/:id/read", async (req, res) => {
 });
 
 // PATCH /contacts/:id/read-status — Manually set a lead's read/unread state (row actions menu).
-// Operates ONLY on the requesting user's read_by entry: marking read appends the
-// user's id (clearing their yellow/blue dot), marking unread removes it. Other
-// users' read state is never touched. No updatedAt bump, so the sort order is preserved.
+// Role-based: admin toggle only affects isReadByAdmin; salesperson toggle affects both flags.
 router.patch("/contacts/:id/read-status", async (req, res) => {
   try {
     const access = await requireContactAccess(req, res);
     if (!access) return;
     const { user, contact } = access;
     const isRead = req.body?.isRead === true;
+
+    const updateData: Record<string, any> = {
+      isRead,
+      readBy: isRead ? appendReadBy(user.id) : removeReadBy(user.id),
+    };
+
+    if (user.role === "admin") {
+      updateData.isReadByAdmin = isRead;
+    } else {
+      // Salesperson: toggle affects both flags
+      updateData.isReadByAssignee = isRead;
+      updateData.isReadByAdmin = isRead;
+    }
+
+    if (isRead) updateData.isRepeatEnquiry = false;
+
     const [updated] = await db
       .update(contactsTable)
-      .set(isRead
-        ? { readBy: appendReadBy(user.id), isRead: true, isRepeatEnquiry: false }
-        : { readBy: removeReadBy(user.id), isRead: false })
+      .set(updateData)
       .where(eq(contactsTable.id, contact.id))
       .returning();
     res.json(await withOwner(updated!, user));
@@ -675,15 +704,19 @@ router.patch("/contacts/:id/read-status", async (req, res) => {
 });
 
 // POST /contacts/mark-all-read — Bulk mark all leads as read FOR THE REQUESTING
-// USER ONLY. Appends the user's id to read_by across their scoped leads (sales
-// users: their own; admins/support: all in accessible units). Other users keep
-// their own unread dots. Does NOT bump updatedAt so the sort order is preserved.
+// USER. Role-based (migration 082): admin sets isReadByAdmin, salesperson sets
+// isReadByAssignee (and isReadByAdmin) across their scoped leads.
 router.post("/contacts/mark-all-read", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const conditions: SQL[] = [sql`NOT (${user.id} = ANY(${contactsTable.readBy}))`];
+    const isAdmin = user.role === "admin";
+    const notAlreadyRead = isAdmin
+      ? sql`NOT ${contactsTable.isReadByAdmin}`
+      : sql`NOT ${contactsTable.isReadByAssignee}`;
+
+    const conditions: SQL[] = [notAlreadyRead];
 
     if (user.role === "sales") {
       conditions.push(eq(contactsTable.salesOwnerId, user.id));
@@ -692,13 +725,21 @@ router.post("/contacts/mark-all-read", async (req, res) => {
       if (units) conditions.push(inArray(contactsTable.unit, units));
     }
 
+    const updateData: Record<string, any> = {
+      isRead: true,
+      isRepeatEnquiry: false,
+      readBy: appendReadBy(user.id),
+    };
+    if (isAdmin) {
+      updateData.isReadByAdmin = true;
+    } else {
+      updateData.isReadByAssignee = true;
+      updateData.isReadByAdmin = true;
+    }
+
     const result = await db
       .update(contactsTable)
-      .set({
-        readBy: appendReadBy(user.id),
-        isRead: true,
-        isRepeatEnquiry: false,
-      })
+      .set(updateData)
       .where(and(...conditions));
 
     res.json({ success: true, message: "All leads marked as read", updated: result.rowCount || 0 });
@@ -801,12 +842,13 @@ router.patch("/contacts/:id", async (req, res) => {
     }
 
     // Reset the unread state whenever the lead is reassigned to a different owner.
-    // The per-user read_by array is cleared so the NEW owner sees the blue "new
-    // lead" dot until they read it (the old owner's read state is irrelevant now).
+    // Both role-based flags are cleared so the NEW owner sees the blue "new lead" dot.
     if (parsed.data.salesOwnerId !== undefined && parsed.data.salesOwnerId !== oldContact.salesOwnerId) {
       updatePayload.isRead = false;
       updatePayload.isRepeatEnquiry = false;
       updatePayload.readBy = [];
+      updatePayload.isReadByAdmin = false;
+      updatePayload.isReadByAssignee = false;
     }
 
     const [contact] = await db.update(contactsTable).set(updatePayload).where(eq(contactsTable.id, params.data.id)).returning();
