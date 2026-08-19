@@ -80,7 +80,7 @@ export function VoiceNotePlayer({
   const { data: currentUser } = useGetMe();
   const queryClient = useQueryClient();
 
-  // Mark voice note as read when the component mounts (user views it)
+  // Mark voice note as read — only when the RECIPIENT plays or downloads it
   const markReadMutation = useMutation({
     mutationFn: async () => {
       const token = localStorage.getItem("crm_token");
@@ -97,11 +97,14 @@ export function VoiceNotePlayer({
     },
   });
 
-  useEffect(() => {
-    if (currentUser?.id && Array.isArray(note.readBy) && !note.readBy.includes(currentUser.id) && !markReadMutation.isPending && !markReadMutation.isSuccess) {
+  const isRecipient = currentUser?.id != null && note.uploadedById !== currentUser.id;
+  const hasAlreadyRead = Array.isArray(note.readBy) && note.readBy.includes(currentUser?.id ?? -1);
+
+  const markAsReadIfRecipient = () => {
+    if (isRecipient && !hasAlreadyRead && !markReadMutation.isPending && !markReadMutation.isSuccess) {
       markReadMutation.mutate();
     }
-  }, [currentUser?.id, note.id]);
+  };
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -136,6 +139,7 @@ export function VoiceNotePlayer({
         setIsPlaying(false);
       });
       setIsPlaying(true);
+      markAsReadIfRecipient();
     }
   };
 
@@ -230,8 +234,8 @@ export function VoiceNotePlayer({
           <span>{formatFileSize(note.fileSize)}</span>
           <span>·</span>
           <span>{new Date(note.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
-          {currentUser?.id && note.uploadedById !== currentUser.id && (
-            <DoubleTick isRead={Array.isArray(note.readBy) && note.readBy.includes(currentUser.id)} className="ml-0.5" />
+          {currentUser?.id && note.uploadedById === currentUser.id && (
+            <DoubleTick isRead={Array.isArray(note.readBy) && note.readBy.some((id) => id !== currentUser.id)} className="ml-0.5" />
           )}
         </div>
 
@@ -239,7 +243,7 @@ export function VoiceNotePlayer({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => downloadVoiceNote(note.id, note.originalName)}
+            onClick={() => { markAsReadIfRecipient(); downloadVoiceNote(note.id, note.originalName); }}
             className="h-7 px-2 text-xs gap-1"
             title="Download"
           >
