@@ -117,6 +117,7 @@ export default function Leads() {
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>(urlCategory);
   const [unitFilter, setUnitFilter] = useUnitFilter();
   const [dateFilter, setDateFilter] = useDateFilter();
+  const [hasDealFilter, setHasDealFilter] = useState<"all" | "yes" | "no">("all");
 
   const updateCategoryFilter = (next: string | undefined) => {
     setCategoryFilter(next);
@@ -237,7 +238,14 @@ export default function Leads() {
 
   const unreadCount = contacts?.filter((c: any) => !c.isRead).length ?? 0;
 
-  const allIds = contacts?.map(c => c.id) ?? [];
+  // Frontend filter: Has Deal
+  const filteredContacts = useMemo(() => {
+    if (!contacts) return contacts;
+    if (hasDealFilter === "all") return contacts;
+    return contacts.filter((c: any) => hasDealFilter === "yes" ? c.hasDeals : !c.hasDeals);
+  }, [contacts, hasDealFilter]);
+
+  const allIds = filteredContacts?.map(c => c.id) ?? [];
   const allSelected = allIds.length > 0 && allIds.every(id => selectedIds.has(id));
   const someSelected = selectedIds.size > 0;
 
@@ -458,7 +466,17 @@ export default function Leads() {
             {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>
         </Select>
-        <ClearFiltersButton onClear={() => setSearch("")} />
+        <Select value={hasDealFilter} onValueChange={(v) => setHasDealFilter(v as "all" | "yes" | "no")}>
+          <SelectTrigger className="w-[130px]">
+            <SelectValue placeholder="Has Deal" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Leads</SelectItem>
+            <SelectItem value="yes">Has Deal</SelectItem>
+            <SelectItem value="no">No Deal</SelectItem>
+          </SelectContent>
+        </Select>
+        <ClearFiltersButton onClear={() => { setSearch(""); setHasDealFilter("all"); }} />
       </div>
 
       {/* Category filter tabs with counts */}
@@ -548,6 +566,7 @@ export default function Leads() {
               <TableHead>State</TableHead>
               <TableHead>Owner</TableHead>
               <TableHead>Industry</TableHead>
+              <TableHead>Deals</TableHead>
               <TableHead>Category</TableHead>
               <TableHead>Unit</TableHead>
               <TableHead>Comments</TableHead>
@@ -556,11 +575,11 @@ export default function Leads() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={13} className="text-center py-8">Loading...</TableCell></TableRow>
-            ) : contacts?.length === 0 ? (
-              <TableRow><TableCell colSpan={13} className="text-center py-8 text-muted-foreground">No leads found.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={14} className="text-center py-8">Loading...</TableCell></TableRow>
+            ) : filteredContacts?.length === 0 ? (
+              <TableRow><TableCell colSpan={14} className="text-center py-8 text-muted-foreground">No leads found.</TableCell></TableRow>
             ) : (
-              contacts?.map((contact) => {
+              filteredContacts?.map((contact) => {
                 const isSelected = selectedIds.has(contact.id);
                 const commentsText = parseNotesText(contact.customerComments);
                 return (
@@ -613,6 +632,13 @@ export default function Leads() {
                       {contact.industry ? (
                         <Badge variant="outline">{contact.industry}</Badge>
                       ) : "-"}
+                    </TableCell>
+                    <TableCell>
+                      {(contact as any).hasDeals ? (
+                        <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded">Yes</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1 flex-wrap">

@@ -218,6 +218,14 @@ router.get("/contacts", async (req, res) => {
       return [u.id, { ...safe, profilePhoto: normalizeProfilePhotoUrl(safe.profilePhoto) }];
     }));
 
+    // Build a set of contact IDs that have at least one deal
+    const contactIds = contacts.map(c => c.id);
+    const dealsWithContacts = contactIds.length > 0
+      ? await db.select({ contactId: dealsTable.contactId }).from(dealsTable)
+          .where(inArray(dealsTable.contactId, contactIds))
+      : [];
+    const contactIdsWithDeals = new Set(dealsWithContacts.map(d => d.contactId));
+
     const enriched = contacts.map(c => {
       // Per-user read state: the dot reflects ONLY whether the requesting user
       // has read this lead. One user reading it must not clear it for others.
@@ -231,6 +239,7 @@ router.get("/contacts", async (req, res) => {
         salesOwner: userMap.get(c.salesOwnerId) ?? null,
         isRead,
         isRepeatEnquiry: c.isRepeatEnquiry === true && !isRead,
+        hasDeals: contactIdsWithDeals.has(c.id),
       };
     });
     // Debug: log unit values for every contact returned
