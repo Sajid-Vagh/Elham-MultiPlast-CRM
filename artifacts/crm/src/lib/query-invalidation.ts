@@ -23,6 +23,7 @@ export function onContactChange(queryClient: QueryClient, contactId?: number) {
   queryClient.invalidateQueries({ queryKey: ["dashboard-recent-activities"] });
   queryClient.invalidateQueries({ queryKey: ["all-contacts-counts"] });
   queryClient.invalidateQueries({ queryKey: ["users-list"] });
+  queryClient.invalidateQueries({ queryKey: ["unread-lead-count"] });
   if (contactId) {
     queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
     queryClient.invalidateQueries({ queryKey: ["timeline", contactId] });

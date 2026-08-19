@@ -73,6 +73,8 @@ export default function LeadDetail() {
     fetch(`/api/contacts/${contact.id}/read`, {
       method: "POST",
       headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
+    }).then(() => {
+      queryClient.invalidateQueries({ queryKey: ["unread-lead-count"] });
     }).catch(() => {});
   }, [contact?.id]);
 

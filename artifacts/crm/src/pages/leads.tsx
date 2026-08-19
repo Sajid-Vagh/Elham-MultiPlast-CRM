@@ -330,6 +330,9 @@ export default function Leads() {
     fetch(`/api/contacts/${id}/read`, {
       method: "POST",
       headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
+    }).then(() => {
+      // Refresh the sidebar badge count after marking a lead as read.
+      queryClient.invalidateQueries({ queryKey: ["unread-lead-count"] });
     }).catch(() => {});
   };
 
@@ -350,6 +353,7 @@ export default function Leads() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["unread-lead-count"] });
     },
     onError: (err: any) => {
       queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
@@ -369,6 +373,7 @@ export default function Leads() {
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["unread-lead-count"] });
       toast({
         title: "All leads marked as read",
         description: result?.updated ? `${result.updated} lead${result.updated !== 1 ? "s" : ""} marked as read` : undefined,

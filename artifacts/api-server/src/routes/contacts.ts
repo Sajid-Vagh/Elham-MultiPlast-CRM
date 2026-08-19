@@ -120,6 +120,47 @@ function removeReadBy(userId: number) {
   return sql`ARRAY(SELECT x FROM unnest(COALESCE(${contactsTable.readBy}, '{}'::int[])) AS u(x) WHERE x <> ${userId})`;
 }
 
+// GET /contacts/unread-count — Returns the unread lead count for the current user
+// using the SAME role-based logic as the table (isReadByAdmin/isReadByAssignee).
+// Admin: count where isReadByAdmin = false (legacy fallback for pre-migration rows)
+// Sales: count where salesOwnerId = user.id AND isReadByAssignee = false
+router.get("/contacts/unread-count", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const isAdmin = user.role === "admin";
+
+    // Role-based unread condition — mirrors the isRead computation in GET /contacts:
+    //   Admin viewer  → unread when isReadByAdmin = false
+    //   Salesperson   → unread when isReadByAssignee = false AND owner = user.id
+    // Legacy fallback: isRead = true with empty isReadByAdmin + isReadByAssignee
+    //   → counted as read (pre-migration globally-read rows).
+    const legacyReadFallback = sql`(${contactsTable.isRead} = TRUE AND ${contactsTable.isReadByAdmin} = FALSE AND ${contactsTable.isReadByAssignee} = FALSE)`;
+
+    const unreadCondition = isAdmin
+      ? sql`NOT ${contactsTable.isReadByAdmin} AND NOT ${legacyReadFallback}`
+      : sql`NOT ${contactsTable.isReadByAssignee} AND ${contactsTable.salesOwnerId} = ${user.id} AND NOT ${legacyReadFallback}`;
+
+    const conditions: SQL[] = [unreadCondition];
+
+    const accessibleUnits = getAccessibleUnits(user);
+    if (accessibleUnits && accessibleUnits.length > 0) {
+      conditions.push(inArray(contactsTable.unit, accessibleUnits));
+    }
+
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(contactsTable)
+      .where(and(...conditions));
+
+    res.json({ unreadCount: Number(count) });
+  } catch (err) {
+    req.log.error({ err }, "Unread contacts count error");
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 router.get("/contacts", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
