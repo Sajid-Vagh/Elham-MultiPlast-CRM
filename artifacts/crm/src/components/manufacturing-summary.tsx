@@ -263,14 +263,7 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                                 </Badge>
                               </div>
 
-                              {isPET ? (
-                                <div className="mt-1.5 flex items-center gap-1.5 text-xs text-amber-600 font-medium">
-                                  <Truck className="h-3 w-3" />
-                                  Outsourced Production
-                                </div>
-                              ) : (
-                                <>
-                                  <p className="text-xs text-muted-foreground mt-0.5">
+                              <p className="text-xs text-muted-foreground mt-0.5">
                                     Weight: <span className="font-semibold text-foreground">{formatWeight(g.weight)}</span>
                                   </p>
                                   <div className="flex items-center gap-1.5 mt-0.5 text-xs text-muted-foreground">
@@ -281,8 +274,12 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                                     />
                                     <span className="font-semibold text-foreground">{g.colour}</span>
                                   </div>
-                                </>
-                              )}
+                                  {isPET && (
+                                    <div className="flex items-center gap-1.5 mt-1 text-xs text-amber-600 font-medium">
+                                      <Truck className="h-3 w-3" />
+                                      Outsourced Production
+                                    </div>
+                                  )}
 
                               <div className="border-t mt-3 pt-2.5 flex items-center justify-between">
                                 <div>
@@ -321,20 +318,17 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                       {drawerGroup.materialType}
                     </Badge>
                   </div>
-                  {drawerGroup.materialType === "PET" ? (
+                  <p className="text-sm text-muted-foreground mt-0.5">Bottle Weight: <span className="font-semibold text-foreground">{formatWeight(drawerGroup.weight)}</span></p>
+                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-0.5">
+                    Bottle Color:
+                    <span
+                      className="w-2.5 h-2.5 rounded-full border shrink-0"
+                      style={{ backgroundColor: colourBg(drawerGroup.colour, drawerGroup.colourCode), borderColor: drawerGroup.colour === "White" ? "#d1d5db" : undefined }}
+                    />
+                    <span className="font-semibold text-foreground">{drawerGroup.colour}</span>
+                  </div>
+                  {drawerGroup.materialType === "PET" && (
                     <p className="text-sm text-amber-600 font-medium mt-0.5">Outsourced Production</p>
-                  ) : (
-                    <>
-                      <p className="text-sm text-muted-foreground mt-0.5">Bottle Weight: <span className="font-semibold text-foreground">{formatWeight(drawerGroup.weight)}</span></p>
-                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-0.5">
-                        Bottle Color:
-                        <span
-                          className="w-2.5 h-2.5 rounded-full border shrink-0"
-                          style={{ backgroundColor: colourBg(drawerGroup.colour, drawerGroup.colourCode), borderColor: drawerGroup.colour === "White" ? "#d1d5db" : undefined }}
-                        />
-                        <span className="font-semibold text-foreground">{drawerGroup.colour}</span>
-                      </div>
-                    </>
                   )}
                   <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
                     <span className="font-semibold text-foreground">Total Pending : {drawerGroup.totalQuantity.toLocaleString()} PCS</span>
