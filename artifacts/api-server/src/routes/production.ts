@@ -1115,12 +1115,17 @@ router.post("/production/orders/:id/read", async (req, res) => {
   }
 });
 
-// ── GET /production/unread-count — Returns the TOTAL unread item count for the
-// current production user across ALL four indicator types:
-//   a) Unread chat messages / voice notes (notifications table)
-//   b) Unread newly assigned orders (readBy does not contain user.id)
-//   c) Unread general updates (isUpdated && updatedReadBy does not contain user.id)
-//   d) Unacknowledged cancellations (status = Cancelled, cancellationAcknowledged = false)
+// ── GET /production/unread-count — Returns the total number of production orders
+// with at least one unread indicator for the current user. Each order is counted
+// AT MOST ONCE regardless of how many indicator types it matches, so the badge
+// count always matches the number of visible dots/icons in the table.
+//
+// Indicators counted (matching the table's priority: red > amber > blue + chat icon):
+//   1) Dot indicators — Cancelled+unacked (red), isUpdated (amber), Pending+unread (blue)
+//   2) Unread chat messages / voice notes (green MessageCircle icon)
+//
+// Filters match the default table view: hideDelivered (dispatchStatus != 'Delivered')
+// and hideAcknowledgedCancellations (status != Cancelled OR !cancellationAcknowledged).
 router.get("/production/unread-count", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
@@ -1131,45 +1136,58 @@ router.get("/production/unread-count", async (req, res) => {
       ? sql`AND (${productionOrdersTable.productionUnit} = ${(user as any).unit} OR ${productionOrdersTable.productionUnit} IS NULL)`
       : sql``;
 
-    // b) New orders — user not in readBy (blue dot)
-    const newOrdersResult = await db.execute(sql`
+    // Count DISTINCT orders that have at least one unread indicator visible in the
+    // default table view.  A single SQL query with OR conditions counts each order
+    // exactly once (SQL OR is per-row), eliminating the old double-counting bug.
+    const dotResult = await db.execute(sql`
       SELECT COUNT(*)::int AS count FROM production_orders
-      WHERE status = 'Pending' AND NOT (${sql`${user.id}`}::int = ANY(COALESCE(read_by, '{}')))
-      ${sql`AND (${productionOrdersTable.status} <> 'Cancelled' OR ${productionOrdersTable.cancellationAcknowledged} = false)`}
-      ${unitCondition}
+      WHERE
+        -- Default table visibility: hideDelivered
+        (dispatch_status IS NULL OR dispatch_status <> 'Delivered')
+        -- Default table visibility: hideAcknowledgedCancellations
+        AND (status <> 'Cancelled' OR cancellation_acknowledged = false)
+        ${unitCondition}
+        -- At least one unread dot indicator (table shows ONE per order, priority: red > amber > blue)
+        AND (
+          (status = 'Cancelled' AND cancellation_acknowledged = false)
+          OR (is_updated = true AND NOT (${sql`${user.id}`}::int = ANY(COALESCE(updated_read_by, '{}'))))
+          OR (status = 'Pending' AND NOT (${sql`${user.id}`}::int = ANY(COALESCE(read_by, '{}'))))
+        )
     `);
-    const newOrdersCount = (newOrdersResult.rows?.[0] as any)?.count ?? 0;
+    const dotCount = (dotResult.rows?.[0] as any)?.count ?? 0;
 
-    // c) Updated orders — isUpdated=true and user not in updatedReadBy (amber dot)
-    const updatedOrdersResult = await db.execute(sql`
-      SELECT COUNT(*)::int AS count FROM production_orders
-      WHERE is_updated = true AND NOT (${sql`${user.id}`}::int = ANY(COALESCE(updated_read_by, '{}')))
-      AND (${productionOrdersTable.status} <> 'Cancelled' OR ${productionOrdersTable.cancellationAcknowledged} = false)
-      ${unitCondition}
-    `);
-    const updatedOrdersCount = (updatedOrdersResult.rows?.[0] as any)?.count ?? 0;
-
-    // d) Unacknowledged cancellations
-    const cancelledResult = await db.execute(sql`
-      SELECT COUNT(*)::int AS count FROM production_orders
-      WHERE status = 'Cancelled' AND cancellation_acknowledged = false
-      ${unitCondition}
-    `);
-    const cancelledCount = (cancelledResult.rows?.[0] as any)?.count ?? 0;
-
-    // a) Unread chat messages / voice notes for the current user
+    // Count DISTINCT orders with unread chat messages (not individual notifications).
+    // Orders that already have a dot indicator are NOT double-counted because we
+    // only add orders that are NOT already in the dot set.
     let chatCount = 0;
     try {
       const chatResult = await db.execute(sql`
-        SELECT COUNT(*)::int AS count FROM notifications
-        WHERE user_id = ${user.id} AND read_at IS NULL
-        AND type IN ('production_message', 'voice_note')
-        AND link LIKE '/production/orders/%'
+        SELECT COUNT(*)::int AS count FROM (
+          SELECT DISTINCT CAST(
+            regexp_replace(link, '.*/production/orders/([0-9]+).*', '\1') AS int
+          ) AS order_id
+          FROM notifications
+          WHERE user_id = ${user.id} AND read_at IS NULL
+          AND type IN ('production_message', 'voice_note')
+          AND link ~ '/production/orders/[0-9]+'
+        ) chat_orders
+        WHERE chat_orders.order_id NOT IN (
+          SELECT id FROM production_orders
+          WHERE
+            (dispatch_status IS NULL OR dispatch_status <> 'Delivered')
+            AND (status <> 'Cancelled' OR cancellation_acknowledged = false)
+            ${unitCondition}
+            AND (
+              (status = 'Cancelled' AND cancellation_acknowledged = false)
+              OR (is_updated = true AND NOT (${sql`${user.id}`}::int = ANY(COALESCE(updated_read_by, '{}'))))
+              OR (status = 'Pending' AND NOT (${sql`${user.id}`}::int = ANY(COALESCE(read_by, '{}'))))
+            )
+        )
       `);
       chatCount = (chatResult.rows?.[0] as any)?.count ?? 0;
     } catch { /* notifications table unavailable */ }
 
-    res.json({ unreadCount: newOrdersCount + updatedOrdersCount + cancelledCount + chatCount });
+    res.json({ unreadCount: dotCount + chatCount });
   } catch (err) {
     req.log.error({ err }, "Production unread count error:");
     res.status(500).json({ success: false, error: "Internal Server Error" });
