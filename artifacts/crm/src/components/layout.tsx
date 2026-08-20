@@ -224,8 +224,8 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: MapPin, label: "Freight Lookup", href: "/transport-logistics/lookup", color: "#14b8a6" },
     { icon: BarChart, label: "Reports", href: "/reports", color: "#f472b6" },
     { icon: Package, label: "Inventory", href: "/inventory", color: "#0ea5e9" },
-    { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
     { icon: ClipboardCheck, label: "Daily Tasks", href: "/daily-tasks", color: "#8b5cf6" },
+    { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
   ];
 
   const supportNavItems = [
@@ -236,8 +236,8 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: ShoppingCart, label: "Orders", href: "/orders", color: "#0ea5e9", badgeKey: "orders" },
     { icon: Package, label: "Products", href: "/products", color: "#fb923c" },
     { icon: FileText, label: "Proforma Invoices", href: "/proforma-invoices", color: "#06b6d4" },
-    { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
     { icon: ClipboardCheck, label: "Daily Tasks", href: "/daily-tasks", color: "#8b5cf6" },
+    { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
   ];
 
   const productionNavItems = [
@@ -248,14 +248,14 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
     { icon: Truck, label: "Dispatch", href: "/dispatch", color: "#f43f5e" },
     { icon: Users, label: "Customers", href: "/existing-customers", color: "#6366f1" },
     { icon: BarChart, label: "Machine Report", href: "/production/machine-report", color: "#7c3aed" },
-    { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
     { icon: ClipboardCheck, label: "Daily Tasks", href: "/daily-tasks", color: "#8b5cf6" },
+    { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
   ];
 
   const inventoryNavItems = [
     { icon: Package, label: "Inventory", href: "/inventory", color: "#0ea5e9" },
-    { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
     { icon: ClipboardCheck, label: "Daily Tasks", href: "/daily-tasks", color: "#8b5cf6" },
+    { icon: Settings, label: "Settings", href: "/settings", color: "#94a3b8" },
   ];
 
   let navItems: typeof salesNavItems;
