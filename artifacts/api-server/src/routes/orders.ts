@@ -1037,4 +1037,29 @@ router.get("/orders/by-product/:productName", async (req, res) => {
   }
 });
 
+// POST /orders/mark-all-read — Bulk mark all order-related chat notifications
+// (production_message + voice_note) as read for the requesting user.
+// This clears the green "unread messages" indicator on every order row and
+// decrements the sidebar Orders badge.
+router.post("/orders/mark-all-read", async (req: Request, res: Response) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const result = await db
+      .update(notificationsTable)
+      .set({ readAt: new Date() })
+      .where(and(
+        eq(notificationsTable.userId, user.id),
+        isNull(notificationsTable.readAt),
+        inArray(notificationsTable.type, ["production_message", "voice_note"])
+      ));
+
+    res.json({ success: true, updated: (result as any).rowCount || 0 });
+  } catch (err) {
+    console.error("Orders mark-all-read error:", err);
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
+
 export default router;

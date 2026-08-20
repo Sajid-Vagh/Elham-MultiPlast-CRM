@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Package, Search, Calendar, ChevronDown, ChevronRight, Filter, X, RefreshCw, Users, MessageCircle } from "lucide-react";
+import { Package, Search, Calendar, ChevronDown, ChevronRight, Filter, X, RefreshCw, Users, MessageCircle, CheckCheck } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useAllUsers } from "@/lib/use-all-users";
@@ -17,6 +17,7 @@ import { useUnitFilter } from "@/lib/use-unit-filter";
 import { useDateFilter } from "@/lib/use-date-filter";
 import { useOwnerFilter, useStatusFilter, useGlobalFilters } from "@/lib/global-filters";
 import { CancelOrderModal } from "@/components/cancel-order-modal";
+import { useToast } from "@/hooks/use-toast";
 
 const PROD_STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-600",
@@ -110,6 +111,8 @@ export default function OrdersList() {
   const [, setLocation] = useLocation();
   const { data: user } = useGetMe();
   const { units: activeUnits } = useActiveUnits();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useDateFilter();
@@ -120,6 +123,7 @@ export default function OrdersList() {
   const [page, setPage] = useState(1);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [cancelOrder, setCancelOrder] = useState<OrderRow | null>(null);
+  const [markAllReadSubmitting, setMarkAllReadSubmitting] = useState(false);
 
   const showUnitFilter = user?.role === "admin" || user?.role === "production_and_support" || user?.unit === "All";
   const { data: users } = useAllUsers(true);
@@ -168,6 +172,31 @@ export default function OrdersList() {
   });
   const pagination = data?.pagination;
 
+  const hasUnreadOrders = rawOrders.some(o => o.hasUnreadMessages);
+
+  const handleMarkAllRead = useCallback(async () => {
+    setMarkAllReadSubmitting(true);
+    try {
+      const token = localStorage.getItem("crm_token");
+      const res = await fetch("/api/orders/mark-all-read", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to mark all read");
+      const result = await res.json().catch(() => ({}));
+      queryClient.invalidateQueries({ queryKey: ["orders-global"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      toast({
+        title: "All orders marked as read",
+        description: result?.updated ? `${result.updated} notification${result.updated !== 1 ? "s" : ""} cleared` : undefined,
+      });
+    } catch (err: any) {
+      toast({ title: "Failed to mark all read", description: err?.message || "Please try again", variant: "destructive" });
+    } finally {
+      setMarkAllReadSubmitting(false);
+    }
+  }, [queryClient, toast]);
+
   const toggleExpand = useCallback((id: number) => {
     setExpandedRow(prev => prev === id ? null : id);
   }, []);
@@ -179,10 +208,18 @@ export default function OrdersList() {
           <h1 className="text-2xl font-bold tracking-tight">Orders</h1>
           <p className="text-sm text-muted-foreground">Track and manage all orders across the organization</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isRefetching}>
-          <RefreshCw className={`h-4 w-4 mr-1.5 ${isRefetching ? "animate-spin" : ""}`} />
-          {isRefetching ? "Refreshing..." : "Refresh"}
-        </Button>
+        <div className="flex items-center gap-2">
+          {hasUnreadOrders && (
+            <Button variant="outline" size="sm" onClick={handleMarkAllRead} disabled={markAllReadSubmitting}>
+              <CheckCheck className="h-4 w-4 mr-1.5" />
+              {markAllReadSubmitting ? "Marking..." : "Mark All Read"}
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isRefetching}>
+            <RefreshCw className={`h-4 w-4 mr-1.5 ${isRefetching ? "animate-spin" : ""}`} />
+            {isRefetching ? "Refreshing..." : "Refresh"}
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
