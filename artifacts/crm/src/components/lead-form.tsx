@@ -61,6 +61,23 @@ export default function LeadForm({
   const canAssign = me?.role === "admin";
   const { units: activeUnits } = useActiveUnits();
 
+  const [stateInputValue, setStateInputValue] = useState("");
+  const [stateDropdownOpen, setStateDropdownOpen] = useState(false);
+  const stateInputRef = useRef<HTMLInputElement>(null);
+  const stateDropdownRef = useRef<HTMLDivElement>(null);
+
+  const filteredStates = INDIAN_STATES.filter(s =>
+    s.toLowerCase().includes((stateInputValue || "").toLowerCase())
+  );
+
+  useEffect(() => {
+    if (initialData?.state) {
+      setStateInputValue(initialData.state);
+    } else {
+      setStateInputValue("");
+    }
+  }, [initialData]);
+
   const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [duplicateData, setDuplicateData] = useState<DuplicateLeadInfo | null>(null);
   const [duplicateFound, setDuplicateFound] = useState(false);
@@ -194,6 +211,21 @@ export default function LeadForm({
     return () => {
       if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
     };
+  }, []);
+
+  useEffect(() => {
+    function handleStateOutsideClick(e: MouseEvent) {
+      if (
+        stateDropdownRef.current &&
+        !stateDropdownRef.current.contains(e.target as Node) &&
+        stateInputRef.current &&
+        !stateInputRef.current.contains(e.target as Node)
+      ) {
+        setStateDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleStateOutsideClick);
+    return () => document.removeEventListener("mousedown", handleStateOutsideClick);
   }, []);
 
   const handleSubmit = (data: LeadFormData) => {
@@ -356,16 +388,51 @@ export default function LeadForm({
                 </FormItem>
               )} />
               <FormField control={form.control} name="state" render={({ field }) => (
-                <FormItem>
+                <FormItem className="relative">
                   <FormLabel>State</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select state" /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      {INDIAN_STATES.map(s => (
-                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                  <FormControl>
+                    <input
+                      ref={stateInputRef}
+                      type="text"
+                      placeholder="Type or select a state..."
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      value={stateInputValue}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setStateInputValue(val);
+                        field.onChange(val);
+                        setStateDropdownOpen(true);
+                      }}
+                      onFocus={() => setStateDropdownOpen(true)}
+                      onBlur={() => {
+                        const val = stateInputRef.current?.value?.trim() || "";
+                        setStateInputValue(val);
+                        field.onChange(val);
+                        setTimeout(() => setStateDropdownOpen(false), 150);
+                      }}
+                    />
+                  </FormControl>
+                  {stateDropdownOpen && filteredStates.length > 0 && (
+                    <div
+                      ref={stateDropdownRef}
+                      className="absolute top-full left-0 mt-1 w-full max-h-48 overflow-y-auto bg-white border border-gray-300 rounded-md shadow-lg z-[9999]"
+                    >
+                      {filteredStates.map(s => (
+                        <li
+                          key={s}
+                          className="px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 list-none"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setStateInputValue(s);
+                            field.onChange(s);
+                            setStateDropdownOpen(false);
+                          }}
+                        >
+                          {s}
+                        </li>
                       ))}
-                    </SelectContent>
-                  </Select>
+                    </div>
+                  )}
                   <FormMessage />
                 </FormItem>
               )} />
