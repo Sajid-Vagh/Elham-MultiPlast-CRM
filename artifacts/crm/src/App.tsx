@@ -38,6 +38,7 @@ import MastersPage from "@/pages/masters";
 import Inventory from "@/pages/inventory";
 import OrdersList from "@/pages/orders-list";
 import OrderDetailGlobal from "@/pages/order-detail-global";
+import DailyTasks from "@/pages/daily-tasks";
 import { readWorkspace, getHomeRoute } from "@/lib/use-workspace";
 import { GlobalFilterProvider } from "@/lib/global-filters";
 import { ProductionFilterProvider } from "@/lib/production-filters";
@@ -219,6 +220,13 @@ function Router() {
           window.location.href = `/leads/${params.id}`;
           return <ProtectedLayout><div className="p-8 text-center text-muted-foreground">Redirecting...</div></ProtectedLayout>;
         }}
+      </Route>
+
+      {/* Daily Tasks — accessible to all roles */}
+      <Route path="/daily-tasks">
+        <ProtectedLayout>
+          <DailyTasks />
+        </ProtectedLayout>
       </Route>
 
       {/* Existing Customers (Support + Admin) */}
