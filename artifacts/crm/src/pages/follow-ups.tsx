@@ -246,11 +246,6 @@ export default function FollowUps() {
         onSuccess: () => {
           toast({ title: `Call marked as ${newStatus}` });
           refetch();
-          queryClient.invalidateQueries({ queryKey: ["activities"] });
-          queryClient.invalidateQueries({ queryKey: ["follow-ups"] });
-          queryClient.invalidateQueries({ queryKey: ["follow-up-activities"] });
-          queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-          queryClient.invalidateQueries({ queryKey: ["contacts"] });
           onActivityChange(queryClient);
         },
         onError: () => {
@@ -269,11 +264,6 @@ export default function FollowUps() {
         onSuccess: () => {
           toast({ title: "Call marked as Completed" });
           refetch();
-          queryClient.invalidateQueries({ queryKey: ["activities"] });
-          queryClient.invalidateQueries({ queryKey: ["follow-ups"] });
-          queryClient.invalidateQueries({ queryKey: ["follow-up-activities"] });
-          queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-          queryClient.invalidateQueries({ queryKey: ["contacts"] });
           onActivityChange(queryClient);
           setCallConfirmActivity(null);
           setCallConfirmSaving(false);
@@ -295,11 +285,6 @@ export default function FollowUps() {
         onSuccess: () => {
           toast({ title: "Call marked as Completed" });
           refetch();
-          queryClient.invalidateQueries({ queryKey: ["activities"] });
-          queryClient.invalidateQueries({ queryKey: ["follow-ups"] });
-          queryClient.invalidateQueries({ queryKey: ["follow-up-activities"] });
-          queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-          queryClient.invalidateQueries({ queryKey: ["contacts"] });
           onActivityChange(queryClient);
           const activity = callConfirmActivity;
           setCallConfirmActivity(null);

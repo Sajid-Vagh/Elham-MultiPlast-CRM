@@ -171,6 +171,8 @@ export default function ExistingCustomerDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["existing-customer-communications", id] });
+      queryClient.invalidateQueries({ queryKey: ["existing-customer-timeline", id] });
+      queryClient.invalidateQueries({ queryKey: ["existing-customer", id] });
       setCommDialog(false);
       setCommForm({ type: "Call", direction: "Outbound", notes: "", nextAction: "", nextActionDate: "" });
       toast({ title: "Communication logged" });
@@ -190,6 +192,7 @@ export default function ExistingCustomerDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["existing-customer-notes", id] });
+      queryClient.invalidateQueries({ queryKey: ["existing-customer-timeline", id] });
       setNoteDialog(false);
       setNoteForm({ note: "", isPinned: false });
       toast({ title: "Note added" });
@@ -209,6 +212,8 @@ export default function ExistingCustomerDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["existing-customer", id] });
+      queryClient.invalidateQueries({ queryKey: ["existing-customer-timeline", id] });
+      queryClient.invalidateQueries({ queryKey: ["existing-customers"] });
       setEditDialog(false);
       toast({ title: "Customer updated" });
     },
@@ -227,6 +232,8 @@ export default function ExistingCustomerDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["existing-customer-timeline", id] });
+      queryClient.invalidateQueries({ queryKey: ["existing-customer", id] });
+      queryClient.invalidateQueries({ queryKey: ["existing-customer-orders", id] });
       setFollowUpDialog(false);
       setFollowUpForm({ type: "FollowUp", notes: "", followUpDate: "", followUpTime: "", followUpType: "General Customer Follow-up", priority: "Medium", assignedTo: "" });
       toast({ title: "Follow-up created" });

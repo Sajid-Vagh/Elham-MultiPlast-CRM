@@ -107,6 +107,10 @@ export default function DispatchPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dispatch-orders"] });
       queryClient.invalidateQueries({ queryKey: ["dispatch-dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["production-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["production-dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["orders-global"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-kpi"] });
       toast({ title: "Vehicle loaded successfully" });
       setLoadDialog(null);
       setLoadForm({ transportName: "", lrNumber: "", dispatchRemarks: "" });
@@ -128,6 +132,10 @@ export default function DispatchPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dispatch-orders"] });
       queryClient.invalidateQueries({ queryKey: ["dispatch-dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["production-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["production-dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["orders-global"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-kpi"] });
       toast({ title: "Order marked as delivered" });
       setDeliverDialog(null);
     },

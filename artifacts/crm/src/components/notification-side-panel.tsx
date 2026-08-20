@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Loader2, Send, ExternalLink, MessageSquare, User, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import { parseNotesText } from "@/lib/parse-notes";
 import { useGetMe } from "@workspace/api-client-react";
 import { toast } from "@/hooks/use-toast";
 import { DoubleTick } from "@/components/double-tick";
+import { onContactChange } from "@/lib/query-invalidation";
 
 function authHeaders(): Record<string, string> {
   const t = localStorage.getItem("crm_token");
@@ -46,6 +47,7 @@ function EnquiryPanel({ notification, onClose }: { notification: any; onClose: (
   const { markAsRead } = useNotifications();
   const contactId = notification.relatedId;
   const { units } = useActiveUnits();
+  const queryClient = useQueryClient();
 
   const { data: contact, isLoading, isError } = useQuery({
     queryKey: ["notification-contact", contactId],
@@ -91,7 +93,10 @@ function EnquiryPanel({ notification, onClose }: { notification: any; onClose: (
       }
       return res.json();
     },
-    onSuccess: () => toast({ title: "Enquiry updated" }),
+    onSuccess: () => {
+      onContactChange(queryClient, contactId);
+      toast({ title: "Enquiry updated" });
+    },
     onError: (err: any) => toast({ title: err?.message || "Failed to save", variant: "destructive" }),
   });
 
