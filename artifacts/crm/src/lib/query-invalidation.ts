@@ -115,6 +115,7 @@ export function syncMe(queryClient: QueryClient, data: unknown) {
 export function onProductionChange(queryClient: QueryClient, orderId?: string, dealId?: number, contactId?: number) {
   queryClient.invalidateQueries({ queryKey: ["production-dashboard"] });
   queryClient.invalidateQueries({ queryKey: ["production-orders"] });
+  queryClient.invalidateQueries({ queryKey: ["unread-production-count"] });
   queryClient.invalidateQueries({ queryKey: ["production-pending-summary"] });
   queryClient.invalidateQueries({ queryKey: ["machine-report"] });
   queryClient.invalidateQueries({ queryKey: ["production-progress-by-deal"] });
@@ -155,6 +156,7 @@ export function onPIChange(queryClient: QueryClient, dealId?: number, contactId?
   // the production dashboard reflect the synced items immediately.
   queryClient.invalidateQueries({ queryKey: ["production-order"] });
   queryClient.invalidateQueries({ queryKey: ["production-orders"] });
+  queryClient.invalidateQueries({ queryKey: ["unread-production-count"] });
   queryClient.invalidateQueries({ queryKey: ["production-dashboard"] });
   queryClient.invalidateQueries({ queryKey: ["production-pending-summary"] });
   queryClient.invalidateQueries({ queryKey: ["production-progress-by-deal"] });

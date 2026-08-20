@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useNotifications } from "@/lib/notification-context";
 import { useUnreadLeadCount } from "@/lib/use-unread-lead-count";
+import { useUnreadProductionCount } from "@/lib/use-unread-production-count";
 
 // Derives per-module badge counts for the sidebar nav items.
 //
@@ -8,17 +9,26 @@ import { useUnreadLeadCount } from "@/lib/use-unread-lead-count";
 // the SAME role-based logic (isReadByAdmin / isReadByAssignee) as the leads
 // table — so the sidebar count always matches the visible unread dots.
 //
-// Orders / Production-Orders badges: still derived from unread notifications
-// (production_message, voice_note types) since those are notification-driven.
+// Orders badge: still derived from unread notifications (production_message,
+// voice_note types) since those are notification-driven.
+//
+// Production-Orders badge: uses the dedicated /production/unread-count endpoint
+// which aggregates ALL four indicator types: unread chat messages, new orders
+// (blue dot), updated orders (amber dot), and unacknowledged cancellations.
 
 export type ModuleBadgeKey = "leads" | "orders" | "production-orders";
 
 export function useModuleBadgeCounts(): Record<ModuleBadgeKey, number> {
   const { visibleNotifications } = useNotifications();
   const unreadLeadCount = useUnreadLeadCount();
+  const unreadProductionCount = useUnreadProductionCount();
 
   return useMemo(() => {
-    const counts: Record<ModuleBadgeKey, number> = { leads: unreadLeadCount, orders: 0, "production-orders": 0 };
+    const counts: Record<ModuleBadgeKey, number> = {
+      leads: unreadLeadCount,
+      orders: 0,
+      "production-orders": unreadProductionCount,
+    };
 
     for (const n of visibleNotifications) {
       if (n.readAt) continue; // only unread
@@ -33,16 +43,10 @@ export function useModuleBadgeCounts(): Record<ModuleBadgeKey, number> {
           // notifications carry `/production/orders/…` links) never see a
           // badge on the "Orders" nav item.
           counts.orders++;
-          // Also increment the "production-orders" badge when the link points
-          // to a production order (shown on the Production workspace sidebar).
-          const link = n.link || "";
-          if (link.startsWith("/production/orders")) {
-            counts["production-orders"]++;
-          }
           break;
         }
       }
     }
     return counts;
-  }, [visibleNotifications, unreadLeadCount]);
+  }, [visibleNotifications, unreadLeadCount, unreadProductionCount]);
 }

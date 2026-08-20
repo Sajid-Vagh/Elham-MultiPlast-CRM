@@ -178,6 +178,7 @@ export function NotificationProvider({ userId, children }: { userId: number | un
     if (n.type !== "production_message" && n.type !== "voice_note") return;
     queryClient.invalidateQueries({ queryKey: ["orders-global"] });
     queryClient.invalidateQueries({ queryKey: ["production-orders"] });
+    queryClient.invalidateQueries({ queryKey: ["unread-production-count"] });
   }, [queryClient]);
 
   // Keep a ref in sync so the SSE handler + polling callbacks (both stable)

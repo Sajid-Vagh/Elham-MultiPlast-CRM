@@ -7,7 +7,7 @@ import {
   contactsTable, usersTable, productsTable,
   productionOrderItemsTable,
 } from "@workspace/db";
-import { eq, and, or, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, or, desc, sql, inArray, isNull } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { storage } from "../lib/storage";
@@ -1111,6 +1111,67 @@ router.post("/production/orders/:id/read", async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Mark production order read error:");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
+
+// ── GET /production/unread-count — Returns the TOTAL unread item count for the
+// current production user across ALL four indicator types:
+//   a) Unread chat messages / voice notes (notifications table)
+//   b) Unread newly assigned orders (readBy does not contain user.id)
+//   c) Unread general updates (isUpdated && updatedReadBy does not contain user.id)
+//   d) Unacknowledged cancellations (status = Cancelled, cancellationAcknowledged = false)
+router.get("/production/unread-count", async (req, res) => {
+  try {
+    const user = await requireProductionUser(req, res);
+    if (!user) return;
+
+    // Unit filter: non-admin users only see orders in their unit (mirrors buildOrderConditions)
+    const unitCondition = (user.role !== "admin" && (user as any).unit && (user as any).unit !== "All")
+      ? sql`AND (${productionOrdersTable.productionUnit} = ${(user as any).unit} OR ${productionOrdersTable.productionUnit} IS NULL)`
+      : sql``;
+
+    // b) New orders — user not in readBy (blue dot)
+    const newOrdersResult = await db.execute(sql`
+      SELECT COUNT(*)::int AS count FROM production_orders
+      WHERE status = 'Pending' AND NOT (${sql`${user.id}`}::int = ANY(COALESCE(read_by, '{}')))
+      ${sql`AND (${productionOrdersTable.status} <> 'Cancelled' OR ${productionOrdersTable.cancellationAcknowledged} = false)`}
+      ${unitCondition}
+    `);
+    const newOrdersCount = (newOrdersResult.rows?.[0] as any)?.count ?? 0;
+
+    // c) Updated orders — isUpdated=true and user not in updatedReadBy (amber dot)
+    const updatedOrdersResult = await db.execute(sql`
+      SELECT COUNT(*)::int AS count FROM production_orders
+      WHERE is_updated = true AND NOT (${sql`${user.id}`}::int = ANY(COALESCE(updated_read_by, '{}')))
+      AND (${productionOrdersTable.status} <> 'Cancelled' OR ${productionOrdersTable.cancellationAcknowledged} = false)
+      ${unitCondition}
+    `);
+    const updatedOrdersCount = (updatedOrdersResult.rows?.[0] as any)?.count ?? 0;
+
+    // d) Unacknowledged cancellations
+    const cancelledResult = await db.execute(sql`
+      SELECT COUNT(*)::int AS count FROM production_orders
+      WHERE status = 'Cancelled' AND cancellation_acknowledged = false
+      ${unitCondition}
+    `);
+    const cancelledCount = (cancelledResult.rows?.[0] as any)?.count ?? 0;
+
+    // a) Unread chat messages / voice notes for the current user
+    let chatCount = 0;
+    try {
+      const chatResult = await db.execute(sql`
+        SELECT COUNT(*)::int AS count FROM notifications
+        WHERE user_id = ${user.id} AND read_at IS NULL
+        AND type IN ('production_message', 'voice_note')
+        AND link LIKE '/production/orders/%'
+      `);
+      chatCount = (chatResult.rows?.[0] as any)?.count ?? 0;
+    } catch { /* notifications table unavailable */ }
+
+    res.json({ unreadCount: newOrdersCount + updatedOrdersCount + cancelledCount + chatCount });
+  } catch (err) {
+    req.log.error({ err }, "Production unread count error:");
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });

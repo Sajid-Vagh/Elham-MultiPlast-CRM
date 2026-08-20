@@ -143,6 +143,7 @@ export default function ProductionOrderDetail() {
       .then(() => {
         queryClient.invalidateQueries({ queryKey: ["production-orders"] });
         queryClient.invalidateQueries({ queryKey: ["production-order", id] });
+        queryClient.invalidateQueries({ queryKey: ["unread-production-count"] });
       })
       .catch(() => {});
   }, [id, order, isProductionUser, queryClient]);
