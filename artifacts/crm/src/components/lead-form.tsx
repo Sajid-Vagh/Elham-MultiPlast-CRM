@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { UserAvatar } from "@/components/user-avatar";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
-import { INDUSTRIES, INDIAN_STATES } from "@/lib/constants";
+import { INDUSTRIES, INDIAN_STATES, CITIES_BY_STATE } from "@/lib/constants";
 import { DuplicateWarningDialog, type DuplicateLeadInfo } from "@/components/duplicate-warning-dialog";
 import { AlertTriangle, ExternalLink } from "lucide-react";
 
@@ -70,11 +70,24 @@ export default function LeadForm({
     s.toLowerCase().includes((stateInputValue || "").toLowerCase())
   );
 
+  const [cityInputValue, setCityInputValue] = useState("");
+  const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
+  const cityInputRef = useRef<HTMLInputElement>(null);
+  const cityDropdownRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (initialData?.state) {
       setStateInputValue(initialData.state);
     } else {
       setStateInputValue("");
+    }
+  }, [initialData]);
+
+  useEffect(() => {
+    if (initialData?.city) {
+      setCityInputValue(initialData.city);
+    } else {
+      setCityInputValue("");
     }
   }, [initialData]);
 
@@ -161,6 +174,14 @@ export default function LeadForm({
     },
   });
 
+  const watchedState = form.watch("state");
+  const citiesForState = watchedState ? (CITIES_BY_STATE[watchedState] || []) : [];
+  const allCities = [...new Set(Object.values(CITIES_BY_STATE).flat())];
+  const cityPool = watchedState ? citiesForState : allCities;
+  const filteredCities = cityPool.filter(c =>
+    c.toLowerCase().includes((cityInputValue || "").toLowerCase())
+  );
+
   useEffect(() => {
     if (initialData) {
       form.reset({
@@ -226,6 +247,21 @@ export default function LeadForm({
     }
     document.addEventListener("mousedown", handleStateOutsideClick);
     return () => document.removeEventListener("mousedown", handleStateOutsideClick);
+  }, []);
+
+  useEffect(() => {
+    function handleCityOutsideClick(e: MouseEvent) {
+      if (
+        cityDropdownRef.current &&
+        !cityDropdownRef.current.contains(e.target as Node) &&
+        cityInputRef.current &&
+        !cityInputRef.current.contains(e.target as Node)
+      ) {
+        setCityDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleCityOutsideClick);
+    return () => document.removeEventListener("mousedown", handleCityOutsideClick);
   }, []);
 
   const handleSubmit = (data: LeadFormData) => {
@@ -381,9 +417,51 @@ export default function LeadForm({
             <CardHeader><CardTitle className="text-base">Location & Classification</CardTitle></CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField control={form.control} name="city" render={({ field }) => (
-                <FormItem>
+                <FormItem className="relative">
                   <FormLabel>City</FormLabel>
-                  <FormControl><Input placeholder="City" {...field} /></FormControl>
+                  <FormControl>
+                    <input
+                      ref={cityInputRef}
+                      type="text"
+                      placeholder="Type or select a city..."
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      value={cityInputValue}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCityInputValue(val);
+                        field.onChange(val);
+                        setCityDropdownOpen(true);
+                      }}
+                      onFocus={() => setCityDropdownOpen(true)}
+                      onBlur={() => {
+                        const val = cityInputRef.current?.value?.trim() || "";
+                        setCityInputValue(val);
+                        field.onChange(val);
+                        setTimeout(() => setCityDropdownOpen(false), 150);
+                      }}
+                    />
+                  </FormControl>
+                  {cityDropdownOpen && filteredCities.length > 0 && (
+                    <div
+                      ref={cityDropdownRef}
+                      className="absolute top-full left-0 mt-1 w-full max-h-48 overflow-y-auto bg-white border border-gray-300 rounded-md shadow-lg z-[9999]"
+                    >
+                      {filteredCities.map(c => (
+                        <li
+                          key={c}
+                          className="px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 list-none"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setCityInputValue(c);
+                            field.onChange(c);
+                            setCityDropdownOpen(false);
+                          }}
+                        >
+                          {c}
+                        </li>
+                      ))}
+                    </div>
+                  )}
                   <FormMessage />
                 </FormItem>
               )} />
