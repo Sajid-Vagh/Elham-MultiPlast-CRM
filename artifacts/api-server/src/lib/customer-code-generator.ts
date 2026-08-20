@@ -12,7 +12,7 @@ export async function generateCustomerCode(): Promise<string> {
 
   if (!counter) {
     await db.insert(idCountersTable).values({ prefix, counter: 1 });
-    return "EML_001";
+    return "EML_1";
   }
 
   const nextCounter = counter.counter + 1;
@@ -21,5 +21,5 @@ export async function generateCustomerCode(): Promise<string> {
     .set({ counter: nextCounter, updatedAt: new Date() })
     .where(eq(idCountersTable.prefix, prefix));
 
-  return `EML_${String(nextCounter).padStart(3, "0")}`;
+  return `EML_${nextCounter}`;
 }
