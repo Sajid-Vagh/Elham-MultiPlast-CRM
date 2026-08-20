@@ -42,9 +42,19 @@ const COMPANY_DEFAULTS = {
 // paths won't resolve — a data URI is the only reliable option.
 let LOGO_DATA_URI = "";
 try {
-  const logoPath = path.resolve(process.cwd(), "artifacts", "crm", "public", "proforma-logo.png");
-  const logoBuf = fs.readFileSync(logoPath);
-  LOGO_DATA_URI = `data:image/png;base64,${logoBuf.toString("base64")}`;
+  // Server runs from artifacts/api-server, logo is in artifacts/crm/public
+  const logoCandidates = [
+    path.resolve(process.cwd(), "..", "crm", "public", "proforma-logo.png"),
+    path.resolve(process.cwd(), "artifacts", "crm", "public", "proforma-logo.png"),
+    path.resolve(process.cwd(), "proforma-logo.png"),
+  ];
+  for (const candidate of logoCandidates) {
+    if (fs.existsSync(candidate)) {
+      const logoBuf = fs.readFileSync(candidate);
+      LOGO_DATA_URI = `data:image/png;base64,${logoBuf.toString("base64")}`;
+      break;
+    }
+  }
 } catch { /* logo file not found — header renders without logo */ }
 
 // Material types that are redundant on the invoice — stripped from the item
@@ -236,20 +246,16 @@ function renderInvoiceHtml(invoice: any, items: any[]): string {
 
   function headerHtml(): string {
     const logoTag = LOGO_DATA_URI
-      ? `<div class="header-logo"><img src="${LOGO_DATA_URI}" alt="Elham Multiplast" style="height:70pt;max-width:120pt;object-fit:contain;" /></div>`
+      ? `<div class="header-logo"><img src="${LOGO_DATA_URI}" alt="Elham Multiplast" style="height:70pt;object-fit:contain;" /></div>`
       : "";
     return `
     <div class="header">
-      <div class="header-inner">
-        ${logoTag}
-        <div class="header-center">
-          <div class="gstin-top"><strong>GSTIN :</strong> ${COMPANY_DEFAULTS.gstin}</div>
-          <div class="invoice-title">PROFORMA INVOICE</div>
-          <div class="company-name">${COMPANY_DEFAULTS.name}</div>
-          <div class="header-address">${COMPANY_DEFAULTS.address.replace(/\n/g, "<br>")}</div>
-          <div class="header-email">${COMPANY_DEFAULTS.email}</div>
-        </div>
-      </div>
+      ${logoTag}
+      <div class="gstin-top"><strong>GSTIN :</strong> ${COMPANY_DEFAULTS.gstin}</div>
+      <div class="invoice-title">PROFORMA INVOICE</div>
+      <div class="company-name">${COMPANY_DEFAULTS.name}</div>
+      <div class="header-address">${COMPANY_DEFAULTS.address.replace(/\n/g, "<br>")}</div>
+      <div class="header-email">${COMPANY_DEFAULTS.email}</div>
     </div>
     <div class="party-section">
       <div class="party-left">
@@ -435,11 +441,9 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;}
 .page-spacer{flex:1;}
 
 /* ── Header (full, on every page) ── */
-.header{border-bottom:1.5px solid #000;padding:6pt 8pt 5pt 8pt;}
-.header-inner{display:flex;align-items:flex-start;}
-.header-logo{flex:0 0 auto;margin-right:10pt;}
-.header-center{flex:1;text-align:center;}
-.gstin-top{text-align:center;font-size:7.5pt;margin-bottom:3pt;}
+.header{position:relative;text-align:center;border-bottom:1.5px solid #000;padding:6pt 8pt 5pt 8pt;}
+.header-logo{position:absolute;left:0;top:5pt;}
+.gstin-top{font-size:7.5pt;margin-bottom:3pt;}
 .invoice-title{font-size:13pt;font-weight:bold;margin:2pt 0 3pt 0;text-decoration:underline;}
 .company-name{font-size:16pt;font-weight:bold;letter-spacing:0.3pt;margin:0 0 2pt 0;}
 .header-address{font-size:7.5pt;line-height:1.4;color:#000;margin-bottom:1pt;}
