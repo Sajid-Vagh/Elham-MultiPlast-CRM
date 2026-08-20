@@ -23,6 +23,7 @@ function deriveModule(type: string): string {
   if (type === "retention_alert") return "Lead";
   if (type.startsWith("production_")) return "Production";
   if (type.startsWith("invoice_")) return "Invoice";
+  if (type === "order_cancelled") return "Orders";
   if (type.startsWith("user_")) return "User";
   if (type.startsWith("product_")) return "Product";
   return "General";

@@ -42,6 +42,7 @@ const TYPE_ICONS: Record<string, string> = {
   production_message: "💬",
   lead_transfer_requested: "🔁",
   retention_alert: "⚠️",
+  order_cancelled: "🚫",
 };
 
 function isToday(d: Date) {

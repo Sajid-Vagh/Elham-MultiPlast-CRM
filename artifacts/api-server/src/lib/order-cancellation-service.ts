@@ -299,15 +299,17 @@ export async function cancelOrder(
     createdBy: user.id,
   });
 
-  // 11. Notifications
+  // 11. Notifications — notify order owners + all admins + all production role users
   const notifyUsers = new Set<number>();
   if (order.salesOwnerId && order.salesOwnerId !== user.id) notifyUsers.add(order.salesOwnerId);
   if (order.supportOwnerId && order.supportOwnerId !== user.id) notifyUsers.add(order.supportOwnerId);
   if (order.productionOwnerId && order.productionOwnerId !== user.id) notifyUsers.add(order.productionOwnerId);
 
-  const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
-  for (const admin of admins) {
-    if (admin.id !== user.id) notifyUsers.add(admin.id);
+  const adminsAndProduction = await db.select({ id: usersTable.id }).from(usersTable).where(
+    sql`${usersTable.role} IN ('admin', 'production_manager', 'production_and_support')`
+  );
+  for (const u of adminsAndProduction) {
+    if (u.id !== user.id) notifyUsers.add(u.id);
   }
 
   for (const uid of notifyUsers) {
