@@ -18,6 +18,7 @@ import { useDateFilter } from "@/lib/use-date-filter";
 import { useOwnerFilter, useStatusFilter, useGlobalFilters } from "@/lib/global-filters";
 import { CancelOrderModal } from "@/components/cancel-order-modal";
 import { useToast } from "@/hooks/use-toast";
+import { useNotifications } from "@/lib/notification-context";
 
 const PROD_STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-600",
@@ -113,6 +114,7 @@ export default function OrdersList() {
   const { units: activeUnits } = useActiveUnits();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { markAllAsRead: markAllNotificationsRead } = useNotifications();
 
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useDateFilter();
@@ -184,6 +186,10 @@ export default function OrdersList() {
       });
       if (!res.ok) throw new Error("Failed to mark all read");
       const result = await res.json().catch(() => ({}));
+      // Sync the notification context state so the sidebar Orders badge
+      // resets to 0 immediately (the context uses local useState, not
+      // React Query, so invalidateQueries alone doesn't update it).
+      markAllNotificationsRead();
       queryClient.invalidateQueries({ queryKey: ["orders-global"] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       toast({
@@ -195,7 +201,7 @@ export default function OrdersList() {
     } finally {
       setMarkAllReadSubmitting(false);
     }
-  }, [queryClient, toast]);
+  }, [queryClient, toast, markAllNotificationsRead]);
 
   const toggleExpand = useCallback((id: number) => {
     setExpandedRow(prev => prev === id ? null : id);

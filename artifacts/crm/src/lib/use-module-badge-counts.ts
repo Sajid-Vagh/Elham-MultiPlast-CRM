@@ -25,15 +25,19 @@ export function useModuleBadgeCounts(): Record<ModuleBadgeKey, number> {
       switch (n.type) {
         case "production_message":
         case "voice_note": {
-          // Workspace-aware: sales users get /orders/:id, production/support get /production/orders/:id
+          // Every order-related chat / voice notification counts toward the
+          // "Orders" sidebar badge.  The server-side `hasUnreadMessages` flag
+          // on each order row checks BOTH `/orders/:id` AND
+          // `/production/orders/:id` link patterns, so the sidebar badge must
+          // count them the same way — otherwise admin/support users (whose
+          // notifications carry `/production/orders/…` links) never see a
+          // badge on the "Orders" nav item.
+          counts.orders++;
+          // Also increment the "production-orders" badge when the link points
+          // to a production order (shown on the Production workspace sidebar).
           const link = n.link || "";
           if (link.startsWith("/production/orders")) {
             counts["production-orders"]++;
-          } else if (link.startsWith("/orders")) {
-            counts.orders++;
-          } else {
-            // No link or unknown pattern — count as orders (fallback)
-            counts.orders++;
           }
           break;
         }
