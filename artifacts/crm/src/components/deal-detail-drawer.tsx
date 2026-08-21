@@ -1,8 +1,8 @@
-import { useState, useRef } from "react";
-import type { Deal, DealStage } from "@workspace/api-client-react";
+import { useState } from "react";
+import type { Deal } from "@workspace/api-client-react";
 import {
-  useGetDeal, useListActivities, useCreateActivity, useUpdateDeal, useListDealProducts,
-  getGetDealQueryKey, getListActivitiesQueryKey, getListDealProductsQueryKey, getListDealsQueryKey,
+  useGetDeal, useListActivities, useUpdateDeal, useListDealProducts,
+  getGetDealQueryKey, getListActivitiesQueryKey, getListDealProductsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -10,20 +10,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { DEAL_STAGES, STAGE_PROBS, STAGE_BADGE_COLORS } from "@/lib/deal-stages";
-import { onDealChange, onActivityChange } from "@/lib/query-invalidation";
-import { Pencil, Phone, Calendar, ExternalLink, Clock, CheckCircle2, X, MessageSquare } from "lucide-react";
-import { MarkLostDialog } from "@/components/mark-lost-dialog";
-import { PiSentDialog } from "@/components/pi-sent-dialog";
+import { STAGE_PROBS, STAGE_BADGE_COLORS } from "@/lib/deal-stages";
+import { onDealChange } from "@/lib/query-invalidation";
+import { Pencil, ExternalLink, X } from "lucide-react";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
-import { FlexibleTimeInput } from "@/components/flexible-time-input";
 import { parseNotesText } from "@/lib/parse-notes";
 import { Link } from "wouter";
-import { customFetch } from "@workspace/api-client-react/custom-fetch";
 
 const PI_STATUS_COLORS: Record<string, string> = {
   "No PI": "bg-gray-100 text-gray-500",
@@ -62,7 +57,6 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
   const { data: dealProducts } = useListDealProducts(dealId!, { query: { enabled, queryKey: getListDealProductsQueryKey(dealId!) } });
 
   const updateDeal = useUpdateDeal();
-  const createActivity = useCreateActivity();
 
   // Sub-dialogs
   const [editOpen, setEditOpen] = useState(false);
@@ -70,32 +64,7 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
   const [editValue, setEditValue] = useState("");
   const [editNotes, setEditNotes] = useState("");
 
-  const [activityOpen, setActivityOpen] = useState(false);
-  const [actType, setActType] = useState("Call");
-  const [actNotes, setActNotes] = useState("");
-  const [actFollowUp, setActFollowUp] = useState("");
-  const [actFollowUpTime, setActFollowUpTime] = useState("");
-
-  const [stageOpen, setStageOpen] = useState(false);
-  const [selectedStage, setSelectedStage] = useState("");
-
-  const [wonConfirmOpen, setWonConfirmOpen] = useState(false);
-  const [wonOpen, setWonOpen] = useState(false);
-  const [wonAmount, setWonAmount] = useState("");
-  const [wonSubmitting, setWonSubmitting] = useState(false);
-
-  const [lostOpen, setLostOpen] = useState(false);
-  const [lostSubmitting, setLostSubmitting] = useState(false);
-  const [piSentDialogOpen, setPiSentDialogOpen] = useState(false);
-
-  const [followUpOpen, setFollowUpOpen] = useState(false);
-  const [fuNotes, setFuNotes] = useState("");
-  const [fuDate, setFuDate] = useState("");
-  const [fuTime, setFuTime] = useState("");
-  const [fuType, setFuType] = useState("Call");
-
   const invalidateAllDeal = () => onDealChange(queryClient, dealId!, deal?.contact?.id);
-  const invalidateAllActivity = () => onActivityChange(queryClient, dealId!, deal?.contact?.id);
 
   const openEdit = () => {
     setEditTitle(deal?.title || "");
@@ -108,77 +77,6 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
     updateDeal.mutate(
       { id: dealId!, data: { title: editTitle || null, totalValue: editValue ? Number(editValue) : null, notes: editNotes || null } },
       { onSuccess: () => { toast({ title: "Deal updated" }); setEditOpen(false); invalidateAllDeal(); }, onError: () => toast({ title: "Error updating deal", variant: "destructive" }) },
-    );
-  };
-
-  const handleLogActivity = () => {
-    if (!actFollowUp) {
-      toast({ title: "Validation Error", description: "Follow-up date is required", variant: "destructive" });
-      return;
-    }
-    createActivity.mutate(
-      { data: { dealId: dealId!, type: actType as any, notes: actNotes || null, followUpDate: actFollowUp, followUpTime: actFollowUpTime || null } },
-      { onSuccess: () => { toast({ title: "Activity logged" }); setActivityOpen(false); setActNotes(""); setActFollowUp(""); setActFollowUpTime(""); invalidateAllActivity(); }, onError: () => toast({ title: "Error logging activity", variant: "destructive" }) },
-    );
-  };
-
-  const handleStageChange = () => {
-    if (!selectedStage || selectedStage === deal?.stage) { setStageOpen(false); return; }
-    if (selectedStage === "Won") {
-      setStageOpen(false);
-      const activePI = (deal as any).activeProformaInvoice;
-      const piSubtotal = activePI?.taxableAmount ?? activePI?.subtotal;
-      setWonAmount(piSubtotal ? String(piSubtotal) : deal?.totalValue ? String(deal.totalValue) : "");
-      setWonOpen(true);
-      return;
-    }
-    if (selectedStage === "Lost") { setStageOpen(false); setLostOpen(true); return; }
-    if (selectedStage === "PI Sent") {
-      setStageOpen(false);
-      const hasActivePI = !!(deal as any).activeProformaInvoice;
-      if (!hasActivePI) {
-        setPiSentDialogOpen(true);
-        return;
-      }
-      updateDeal.mutate(
-        { id: dealId!, data: { stage: selectedStage as DealStage } },
-        { onSuccess: () => { toast({ title: `Deal moved to ${selectedStage}` }); invalidateAllDeal(); }, onError: () => toast({ title: "Error changing stage", variant: "destructive" }) },
-      );
-      return;
-    }
-    updateDeal.mutate(
-      { id: dealId!, data: { stage: selectedStage as DealStage } },
-      { onSuccess: () => { toast({ title: `Deal moved to ${selectedStage}` }); setStageOpen(false); invalidateAllDeal(); }, onError: () => toast({ title: "Error changing stage", variant: "destructive" }) },
-    );
-  };
-
-  const handleWonSave = () => {
-    const amount = Number(wonAmount);
-    if (!wonAmount || isNaN(amount) || amount <= 0) {
-      toast({ title: "Validation Error", description: "Amount must be greater than 0", variant: "destructive" });
-      return;
-    }
-    setWonSubmitting(true);
-    updateDeal.mutate(
-      { id: dealId!, data: { stage: "Won" as DealStage, wonAmount: amount } },
-      { onSuccess: () => { setWonSubmitting(false); setWonOpen(false); toast({ title: "Deal marked as Won" }); invalidateAllDeal(); }, onError: (err: any) => { setWonSubmitting(false); toast({ title: "Error", description: err?.data?.error || err?.message || "Failed", variant: "destructive" }); } },
-    );
-  };
-
-  const handleLostSave = (data: { lostReason: string; otherReason: string; lostNotes: string; lostCategory?: string }) => {
-    setLostSubmitting(true);
-    updateDeal.mutate(
-      { id: dealId!, data: { stage: "Lost" as DealStage, lostReason: data.lostReason, otherReason: data.otherReason, lostNotes: data.lostNotes, ...(data.lostCategory ? { lostCategory: data.lostCategory } : {}) } as any },
-      { onSuccess: () => { setLostSubmitting(false); setLostOpen(false); toast({ title: "Deal marked as Lost" }); invalidateAllDeal(); }, onError: (err: any) => { setLostSubmitting(false); toast({ title: "Error", description: err?.data?.error || err?.message || "Failed", variant: "destructive" }); } },
-    );
-  };
-
-  const handleFollowUpSave = () => {
-    if (!fuNotes.trim()) { toast({ title: "Validation Error", description: "Follow-up notes are required", variant: "destructive" }); return; }
-    if (!fuDate) { toast({ title: "Validation Error", description: "Follow-up date is required", variant: "destructive" }); return; }
-    createActivity.mutate(
-      { data: { dealId: dealId!, type: "FollowUp" as any, notes: fuNotes.trim(), followUpDate: fuDate, followUpTime: fuTime || null, followUpType: fuType } },
-      { onSuccess: () => { toast({ title: "Follow-up scheduled" }); setFollowUpOpen(false); setFuNotes(""); setFuDate(""); setFuTime(""); setFuType("Call"); invalidateAllActivity(); }, onError: () => toast({ title: "Error scheduling follow-up", variant: "destructive" }) },
     );
   };
 
@@ -223,12 +121,6 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
                 {/* Quick Actions */}
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={openEdit}><Pencil className="h-3.5 w-3.5 mr-1" /> Edit Deal</Button>
-                  <Button size="sm" variant="outline" onClick={() => { setActType("Call"); setActivityOpen(true); }}><Phone className="h-3.5 w-3.5 mr-1" /> Log Activity</Button>
-                  <Button size="sm" variant="outline" onClick={() => { setActType("FollowUp"); setActivityOpen(true); }}><Calendar className="h-3.5 w-3.5 mr-1" /> Schedule</Button>
-                  <Button size="sm" variant="outline" onClick={() => { setSelectedStage(deal.stage); setStageOpen(true); }}><Clock className="h-3.5 w-3.5 mr-1" /> Stage</Button>
-                  {deal.stage !== "Won" && <Button size="sm" variant="outline" className="text-green-700 border-green-300 hover:bg-green-50" onClick={() => { setWonAmount(""); setWonConfirmOpen(true); }}><CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Won</Button>}
-                  {deal.stage !== "Lost" && <Button size="sm" variant="outline" className="text-red-700 border-red-300 hover:bg-red-50" onClick={() => setLostOpen(true)}><X className="h-3.5 w-3.5 mr-1" /> Lost</Button>}
-                  <Button size="sm" variant="outline" onClick={() => { setFuNotes(""); setFuDate(""); setFuTime(""); setFuType("Call"); setFollowUpOpen(true); }}><Calendar className="h-3.5 w-3.5 mr-1" /> Follow-up</Button>
                   {contact && <Link href={`/leads/${contact.id}`}><Button size="sm" variant="default" className="bg-primary text-white hover:bg-primary/90"><ExternalLink className="h-3.5 w-3.5 mr-1" /> View Full Lead</Button></Link>}
                 </div>
 
@@ -347,128 +239,6 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Log Activity Dialog */}
-      <Dialog open={activityOpen} onOpenChange={setActivityOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Log Activity</DialogTitle>
-            <DialogDescription>Record a new activity for this deal.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div><Label>Type</Label>
-              <Select value={actType} onValueChange={setActType}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{["Call","WhatsApp","Email","Note","FollowUp","Meeting"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div><Label>Notes</Label><Textarea value={actNotes} onChange={e => setActNotes(e.target.value)} placeholder="Notes from this interaction..." /></div>
-            <div><Label>Follow-up Date</Label><Input type="date" value={actFollowUp} onChange={e => setActFollowUp(e.target.value)} /></div>
-            {actFollowUp && <div><Label>Follow-up Time</Label><FlexibleTimeInput value={actFollowUpTime} onChange={setActFollowUpTime} /></div>}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setActivityOpen(false)}>Cancel</Button>
-            <Button onClick={handleLogActivity} disabled={createActivity.isPending || !actFollowUp}>Log</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Change Stage Dialog */}
-      <Dialog open={stageOpen} onOpenChange={setStageOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Change Stage</DialogTitle>
-            <DialogDescription>Select a new stage for this deal.</DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <Label>New Stage</Label>
-            <Select value={selectedStage} onValueChange={setSelectedStage}>
-              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent>{DEAL_STAGES.map(s => <SelectItem key={s} value={s}>{s} ({STAGE_PROBS[s]}%)</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setStageOpen(false)}>Cancel</Button>
-            <Button onClick={handleStageChange} disabled={!selectedStage || selectedStage === deal?.stage}>Change</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Confirm Won Dialog */}
-      <Dialog open={wonConfirmOpen} onOpenChange={setWonConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirm Deal Won</DialogTitle>
-            <DialogDescription>Are you sure you want to convert this deal into a client?</DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setWonConfirmOpen(false)}>No</Button>
-            <Button onClick={() => { setWonConfirmOpen(false); setWonOpen(true); }}>Yes</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Mark Won Dialog */}
-      <Dialog open={wonOpen} onOpenChange={setWonOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Mark as Won</DialogTitle><DialogDescription>Enter the won amount to proceed.</DialogDescription></DialogHeader>
-          <div className="py-4">
-            <Label>Won Amount (₹) *</Label>
-            <Input type="number" min="0" step="0.01" value={wonAmount} onChange={e => setWonAmount(e.target.value)} placeholder="Enter amount" className="mt-1" autoFocus />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setWonOpen(false)} disabled={wonSubmitting}>Cancel</Button>
-            <Button onClick={handleWonSave} disabled={wonSubmitting || !wonAmount || Number(wonAmount) <= 0}>{wonSubmitting ? "Saving..." : "Confirm Won"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <MarkLostDialog
-        open={lostOpen}
-        onOpenChange={setLostOpen}
-        onSave={handleLostSave}
-        saving={lostSubmitting}
-        hideCategory={deal?.contact?.category === "My Client"}
-      />
-
-      {/* Regular Follow-up Dialog */}
-      <Dialog open={followUpOpen} onOpenChange={setFollowUpOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Regular Follow-up</DialogTitle><DialogDescription>Schedule a follow-up for this deal.</DialogDescription></DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <Label>Follow-up Notes <span className="text-destructive">*</span></Label>
-              <Textarea className="mt-1" placeholder="e.g. Waiting for client reply, Client asked to call next week..." value={fuNotes} onChange={e => setFuNotes(e.target.value)} />
-            </div>
-            <div>
-              <Label>Next Follow-up Date <span className="text-destructive">*</span></Label>
-              <Input type="date" className="mt-1" value={fuDate} onChange={e => setFuDate(e.target.value)} />
-            </div>
-            <div>
-              <Label>Follow-up Time</Label>
-              <FlexibleTimeInput className="mt-1" value={fuTime} onChange={setFuTime} />
-            </div>
-            <div>
-              <Label>Type</Label>
-              <Select value={fuType} onValueChange={setFuType}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>{["Call", "WhatsApp", "Email"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setFollowUpOpen(false)} disabled={createActivity.isPending}>Cancel</Button>
-            <Button onClick={handleFollowUpSave} disabled={createActivity.isPending || !fuNotes.trim() || !fuDate}>Schedule</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <PiSentDialog
-        open={piSentDialogOpen}
-        onOpenChange={setPiSentDialogOpen}
-        contactId={deal?.contactId}
-        dealId={deal?.id}
-      />
     </>
   );
 }
