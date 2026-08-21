@@ -399,6 +399,10 @@ export default function ProductionOrderDetail() {
         pliId: p.id,
         piItemId: p.piItemId,
       };
+    }).sort((a: any, b: any) => {
+      if (a.productionStatus === "Ready" && b.productionStatus !== "Ready") return -1;
+      if (a.productionStatus !== "Ready" && b.productionStatus === "Ready") return 1;
+      return 0;
     });
   }, [order?.productLineItems, order?.items]);
 
