@@ -1,4 +1,4 @@
-﻿import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import {
   useGetContact, useListDeals, useListActivities, useCreateDeal,
@@ -34,6 +34,7 @@ import { INDUSTRIES } from "@/lib/constants";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { onContactChange, onDealChange, onActivityChange } from "@/lib/query-invalidation";
 import { parseNotesText, parseNotesDisplay, dedupeById } from "@/lib/parse-notes";
+import { formatCurrency } from "@/lib/currency";
 
 function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -304,7 +305,7 @@ export default function LeadDetail() {
         events.push({
           key: `won-${deal.id}`, date: deal.completedAt, kind: "won",
           label: "Deal Won",
-          meta: deal.totalValue ? `₹${Number(deal.totalValue).toLocaleString()}` : null,
+          meta: deal.totalValue ? formatCurrency(deal.totalValue) : null,
         });
       } else if (deal.stage === "Lost" && deal.completedAt) {
         events.push({
@@ -664,7 +665,7 @@ export default function LeadDetail() {
                   {deal.totalValue != null && (
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground text-xs">Expected Value</span>
-                      <span className="font-medium">â‚¹{Number(deal.totalValue).toLocaleString()}</span>
+                      <span className="font-medium">{formatCurrency(deal.totalValue)}</span>
                     </div>
                   )}
                   <div className="flex items-center justify-between">
@@ -861,7 +862,7 @@ export default function LeadDetail() {
                                   <span className="text-sm font-semibold truncate block">Deal {gi + 1} {group.deal.title ? `(${group.deal.title})` : ""}</span>
                                   <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                                     <span>{formatDate(group.deal.createdAt)}</span>
-                                    {group.deal.totalValue && <span className="font-medium text-foreground">₹{Number(group.deal.totalValue).toLocaleString()}</span>}
+                                    {group.deal.totalValue && <span className="font-medium text-foreground">{formatCurrency(group.deal.totalValue)}</span>}
                                     <span className={`px-1.5 py-0 rounded-full font-medium ${STAGE_BADGE_COLORS[group.deal.stage] || "bg-gray-100"}`}>{group.deal.stage}</span>
                                   </div>
                                 </div>
@@ -1011,7 +1012,7 @@ export default function LeadDetail() {
                       <p className="text-xs text-muted-foreground">{new Date(d.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      {d.totalValue && <span className="text-sm font-medium">â‚¹{Number(d.totalValue).toLocaleString()}</span>}
+                      {d.totalValue && <span className="text-sm font-medium">{formatCurrency(d.totalValue)}</span>}
                       <span className={`text-xs px-2 py-1 rounded-full font-medium ${STAGE_BADGE_COLORS[d.stage] || "bg-gray-100"}`}>{d.stage}</span>
                       <button
                         type="button"
@@ -1249,7 +1250,7 @@ function ProformaInvoiceList({ contactId }: { contactId: number }) {
               </Badge>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-muted-foreground font-medium">â‚¹{Number(p.grandTotal || 0).toLocaleString("en-IN")}</span>
+              <span className="text-muted-foreground font-medium">{formatCurrency(p.grandTotal || 0)}</span>
               <span className="text-muted-foreground text-[10px]">{p.createdAt ? new Date(p.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : ""}</span>
             </div>
           </div>
