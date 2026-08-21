@@ -18,7 +18,6 @@ import { AlertTriangle, ExternalLink } from "lucide-react";
 const schema = z.object({
   name: z.string().optional(),
   mobile: z.string().min(10, "Enter valid mobile"),
-  otherPhone: z.string().optional(),
   email: z.string().email().optional().or(z.literal("")),
   companyName: z.string().optional(),
   salesOwnerId: z.string().min(1, "Required"),
@@ -27,7 +26,6 @@ const schema = z.object({
   state: z.string().optional(),
   unit: z.string().optional(),
   industry: z.string().optional(),
-  tags: z.string().optional(),
   address: z.string().optional(),
 });
 
@@ -168,8 +166,8 @@ export default function LeadForm({
   const form = useForm<LeadFormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      name: "", mobile: "", otherPhone: "", email: "", companyName: "", salesOwnerId: "",
-      leadSource: "", city: "", state: "", unit: PENDING_UNIT_ASSIGNMENT, industry: "", tags: "", address: "",
+      name: "", mobile: "", email: "", companyName: "", salesOwnerId: "",
+      leadSource: "", city: "", state: "", unit: PENDING_UNIT_ASSIGNMENT, industry: "", address: "",
       ...initialData,
     },
   });
@@ -185,8 +183,8 @@ export default function LeadForm({
   useEffect(() => {
     if (initialData) {
       form.reset({
-        name: "", mobile: "", otherPhone: "", email: "", companyName: "", salesOwnerId: "",
-        leadSource: "", city: "", state: "", unit: PENDING_UNIT_ASSIGNMENT, industry: "", tags: "", address: "",
+        name: "", mobile: "", email: "", companyName: "", salesOwnerId: "",
+        leadSource: "", city: "", state: "", unit: PENDING_UNIT_ASSIGNMENT, industry: "", address: "",
         ...initialData,
       });
     }
@@ -333,13 +331,6 @@ export default function LeadForm({
                       </div>
                     </div>
                   )}
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="otherPhone" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Alternate Mobile</FormLabel>
-                  <FormControl><Input placeholder="Alternate mobile (optional)" {...field} data-no-cap="1" /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -539,18 +530,6 @@ export default function LeadForm({
                       {INDUSTRIES.map(i => (
                         <SelectItem key={i} value={i}>{i}</SelectItem>
                       ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="tags" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Tag</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select tag" /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      {["Interested","Category B","Category C"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   <FormMessage />

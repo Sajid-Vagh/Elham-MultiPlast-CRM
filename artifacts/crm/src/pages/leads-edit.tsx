@@ -41,7 +41,6 @@ export default function LeadsEdit() {
         address: data.address || null,
         unit: data.unit || null,
         industry: data.industry || null,
-        tags: data.tags || null,
       },
     }, {
       onSuccess: () => {
@@ -79,7 +78,6 @@ export default function LeadsEdit() {
           state: contact.state || "",
           unit: contact.unit || PENDING_UNIT_ASSIGNMENT,
           industry: contact.industry || "",
-          tags: contact.tags || "",
           address: contact.address || "",
         }}
         isSubmitting={updateContact.isPending}
