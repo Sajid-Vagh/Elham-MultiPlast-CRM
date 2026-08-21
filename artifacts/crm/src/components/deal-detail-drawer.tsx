@@ -110,6 +110,7 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
               <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
                 {/* Stage Badge + Probability */}
                 <div className="flex items-center gap-3 flex-wrap">
+                  <Badge variant="outline" className="font-mono text-xs">Deal #{deal.id}</Badge>
                   <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${stageColor}`}>{deal.stage}</span>
                   <span className="text-xs text-muted-foreground">Probability: {STAGE_PROBS[deal.stage] ?? deal.probability}%</span>
                   <Badge variant="outline" className={`text-xs ${PI_STATUS_COLORS[(deal as any).activeProformaInvoice?.status || "No PI"] || PI_STATUS_COLORS["No PI"]}`}>

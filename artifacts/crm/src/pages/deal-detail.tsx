@@ -481,6 +481,7 @@ export default function DealDetail() {
               </div>
             )}
             <h1 className="text-2xl font-bold">{deal.title || `Deal #${deal.id}`}</h1>
+            <Badge variant="outline" className="font-mono text-xs shrink-0">Deal #{deal.id}</Badge>
             <CategoryBadge category={contact?.category} />
             <span className={`text-sm px-2.5 py-1 rounded-full font-medium ${STAGE_BADGE_COLORS[deal.stage] || "bg-gray-100"}`}>{deal.stage}</span>
             <span className={`text-xs px-2 py-1 rounded-full font-medium ${PI_STATUS_COLORS[(deal as any).activeProformaInvoice?.status || "No PI"] || PI_STATUS_COLORS["No PI"]}`}>

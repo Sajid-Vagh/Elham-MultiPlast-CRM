@@ -532,8 +532,9 @@ export default function Deals() {
                           className="bg-card p-3 rounded shadow-sm border cursor-pointer hover:border-primary transition-colors"
                           onClick={() => setDrawerDealId(deal.id)}
                         >
-                          <div className="font-semibold text-sm line-clamp-1 mb-1" title={dealTitle}>
-                            {dealTitle}
+                          <div className="font-semibold text-sm line-clamp-1 mb-1 flex items-center gap-1.5" title={dealTitle}>
+                            <span className="font-mono text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded shrink-0">#{deal.id}</span>
+                            <span className="line-clamp-1">{dealTitle}</span>
                           </div>
                           <div className="text-xs text-muted-foreground line-clamp-1 mb-0.5" title={customerLabel(deal.contact?.name, deal.contact?.customerCode) || 'Unknown Customer'}>
                             {customerLabel(deal.contact?.name, deal.contact?.customerCode) || 'Unknown Customer'}
@@ -570,8 +571,9 @@ export default function Deals() {
               const adTitle = getDealTitle(ad, ad.dealProducts);
               return (
               <div className="bg-card p-3 rounded shadow-sm border opacity-80 rotate-[2deg] shadow-xl">
-                <div className="font-semibold text-sm line-clamp-1 mb-1" title={adTitle}>
-                  {adTitle}
+                <div className="font-semibold text-sm line-clamp-1 mb-1 flex items-center gap-1.5" title={adTitle}>
+                  <span className="font-mono text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded shrink-0">#{ad.id}</span>
+                  <span className="line-clamp-1">{adTitle}</span>
                 </div>
                 <div className="text-xs text-muted-foreground line-clamp-1 mb-0.5" title={customerLabel(ad.contact?.name, ad.contact?.customerCode) || 'Unknown Customer'}>
                   {customerLabel(ad.contact?.name, ad.contact?.customerCode) || 'Unknown Customer'}
