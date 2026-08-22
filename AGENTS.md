@@ -1,4 +1,28 @@
 
+## Sales Performance Table ↔ KPI Parity Fix
+
+### Goal
+- The dashboard's top KPI cards (Total Leads, Won Value, etc.) must exactly equal the sum of the "Sales Performance" table columns. Previously users with Production/Support roles who own leads/deals were missing from the table and ownerless rows were dropped entirely.
+
+### Done
+- **Backend `dashboard.ts` GET /dashboard/sales-performance rewritten (owner-partition model):**
+  - Base queries + filters are now BYTE-IDENTICAL to GET /dashboard/kpi (`allContacts`/`allDeals` incl. owner filter + date conds, then ONE global `filterContactsByUnit` / `filterDealsByUnit(allDeals, unit, allContacts)` pass) instead of per-user filtering inside a role-restricted user loop.
+  - Rows are built by partitioning `filteredContacts`/`filteredDeals` into buckets keyed by resolved `salesOwnerId` → every lead/deal lands in EXACTLY one row, so column sums equal the KPI cards by construction.
+  - Role no longer gates inclusion: admin/sales users are seeded first (zero-data roster rows preserved), then ANY other user owning data in range (production/support/etc., e.g. "Shabbir") gets a real row.
+  - Deals with `salesOwnerId = null` (schema-nullable on deals) or an owner id that no longer exists in `users` collapse into one aggregate row `userName: "Unassigned"` (`userId: 0`, blank unit/photo), pinned LAST after the won-value sort.
+  - Per-row stat math unchanged (wonAmount-based Won Value, My Client conversion %, followUpRate from contact-linked FollowUp activities).
+- **Frontend:** no changes needed — table renders rows generically; UserAvatar initials-fallback covers the Unassigned row.
+- **Build verified:** API server typecheck output byte-identical to baseline (32 pre-existing errors, none in dashboard.ts).
+
+### Key Decisions
+- Partition-after-global-filter chosen over SQL GROUP BY: reuses the exact same JS filter helpers as the KPI endpoint, making divergence structurally impossible.
+- Zero-data sales/admin roster rows intentionally kept (previous behavior) — they contribute zeros, so parity holds.
+- Unassigned pinned to the bottom of the leaderboard so an anonymous bucket never tops the ranking.
+- Note: neither `contacts` nor `deals` has soft-delete columns, so there is no isDeleted condition to keep in sync between the two endpoints (orders/PIs are unrelated to these KPIs).
+
+
+---
+
 ## Sales Dashboard Simplification
 
 ### Goal

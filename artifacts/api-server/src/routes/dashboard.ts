@@ -293,7 +293,9 @@ router.get("/dashboard/sales-performance", async (req, res) => {
     if (startDate) { contactDateConds.push(gte(contactsTable.createdAt, new Date(startDate))); dealDateConds.push(gte(dealsTable.createdAt, new Date(startDate))); activityDateConds.push(gte(activitiesTable.createdAt, new Date(startDate))); }
     if (endDate) { const end = new Date(endDate); end.setHours(23, 59, 59, 999); contactDateConds.push(lte(contactsTable.createdAt, end)); dealDateConds.push(lte(dealsTable.createdAt, end)); activityDateConds.push(lte(activitiesTable.createdAt, end)); }
 
-    const allUsers = await db.select().from(usersTable);
+    // Byte-for-byte the SAME base queries as GET /dashboard/kpi (owner filter,
+    // date conditions, no role/ownership pre-filtering) so both endpoints see
+    // identical row populations.
     const allContacts = effectiveOwnerId
       ? await db.select().from(contactsTable).where(and(eq(contactsTable.salesOwnerId, effectiveOwnerId), ...contactDateConds))
       : contactDateConds.length > 0
@@ -308,12 +310,50 @@ router.get("/dashboard/sales-performance", async (req, res) => {
       ? await db.select().from(activitiesTable).where(and(...activityDateConds))
       : await db.select().from(activitiesTable);
 
-    // Only include sales users
-    const salesUsers = allUsers.filter(u => u.role === "admin" || u.role === "sales");
+    const allUsers = await db.select().from(usersTable);
+    const usersById = new Map(allUsers.map(u => [u.id, u]));
 
-    const result = salesUsers.map(u => {
-      const userContacts = filterContactsByUnit(allContacts.filter(c => c.salesOwnerId === u.id), unitFilter);
-      const userDeals = filterDealsByUnit(allDeals.filter(d => d.salesOwnerId === u.id), unitFilter, allContacts);
+    // Identical base datasets + filters as GET /dashboard/kpi above (same date
+    // conditions, same filterContactsByUnit / filterDealsByUnit calls, same
+    // wonAmount-based Won Value). Partitioning these arrays by owner guarantees
+    // the table column sums EXACTLY equal the top KPI cards: every lead/deal
+    // lands in exactly one row.
+    const filteredContacts = filterContactsByUnit(allContacts, unitFilter);
+    const filteredDeals = filterDealsByUnit(allDeals, unitFilter, allContacts);
+
+    type PerfBucket = {
+      user?: typeof usersTable.$inferSelect;
+      contacts: (typeof contactsTable.$inferSelect)[];
+      deals: (typeof dealsTable.$inferSelect)[];
+    };
+    const buckets = new Map<string, PerfBucket>();
+    const bucketForOwner = (ownerId: number | null | undefined): PerfBucket => {
+      const owner = ownerId != null ? usersById.get(ownerId) : undefined;
+      // Leads/deals with no owner OR an owner that no longer exists collapse
+      // into one shared "Unassigned" bucket so nothing is dropped.
+      const key = owner ? `user-${owner.id}` : "unassigned";
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = { user: owner, contacts: [], deals: [] };
+        buckets.set(key, bucket);
+      }
+      return bucket;
+    };
+
+    // Seed admin/sales users first so the roster keeps showing team members
+    // even when they own nothing in the selected range (zero rows).
+    const salesUsers = allUsers.filter(u => u.role === "admin" || u.role === "sales");
+    for (const u of salesUsers) bucketForOwner(u.id);
+
+    // Any other user who owns data in range (production/support/etc.) gets a
+    // real row too — ownership drives inclusion, not role.
+    for (const c of filteredContacts) bucketForOwner(c.salesOwnerId).contacts.push(c);
+    for (const d of filteredDeals) bucketForOwner(d.salesOwnerId).deals.push(d);
+
+    const result = [...buckets.values()].map(b => {
+      const u = b.user;
+      const userContacts = b.contacts;
+      const userDeals = b.deals;
       const contactIds = new Set(userContacts.map(c => c.id));
       const userActivities = allActivities.filter(a => a.contactId && contactIds.has(a.contactId));
 
@@ -331,12 +371,12 @@ router.get("/dashboard/sales-performance", async (req, res) => {
       const followUpRate = totalFollowUps > 0 ? Math.round((completedFollowUps / totalFollowUps) * 100) : 0;
 
       return {
-        userId: u.id,
-        userName: u.name,
-        username: u.username,
-        colorCode: u.colorCode,
-        profilePhoto: normalizeProfilePhotoUrl(u.profilePhoto),
-        unit: u.unit,
+        userId: u?.id ?? 0,
+        userName: u?.name ?? "Unassigned",
+        username: u?.username,
+        colorCode: u?.colorCode ?? "",
+        profilePhoto: u ? normalizeProfilePhotoUrl(u.profilePhoto) : null,
+        unit: u?.unit ?? "",
         totalContacts,
         totalDeals,
         wonDeals,
@@ -350,6 +390,9 @@ router.get("/dashboard/sales-performance", async (req, res) => {
     });
 
     result.sort((a, b) => b.totalWonValue - a.totalWonValue);
+    // Pin the aggregate Unassigned row at the bottom of the leaderboard.
+    const unassignedIdx = result.findIndex(r => r.userId === 0 && r.userName === "Unassigned");
+    if (unassignedIdx >= 0) result.push(...result.splice(unassignedIdx, 1));
     res.json(result);
   } catch (err) {
     req.log.error({ err }, "Sales performance error");
