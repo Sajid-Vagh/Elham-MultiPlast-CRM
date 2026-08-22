@@ -606,7 +606,7 @@ router.get("/deals", async (req, res) => {
     const dealHeaders = [
       "Deal #", "Title", "Customer", "Company", "Phone", "Email", "City", "State",
       "Stage", "Probability %", "Deal Value", "Won Amount",
-      "Lost Reason", "Lost Notes", "Owner", "Unit", "Category",
+      "Lost Reason", "Lost Notes", "Owner", "Unit",
       "Created", "Completed", "Updated", "Notes",
     ];
     const dealRows = filtered.map(d => {
@@ -629,7 +629,6 @@ router.get("/deals", async (req, res) => {
         safeStr(d.lostNotes),
         safeStr(owner?.name),
         safeStr(d.productionUnit),
-        safeStr(d.category),
         safeDate(d.createdAt),
         safeDate(d.completedAt),
         safeDate(d.updatedAt),
