@@ -165,15 +165,19 @@ export default function Leads() {
   const canSeeExistingClient = me?.role === "admin" || me?.role === "production" || me?.role === "production_and_support";
   const { units: activeUnits } = useActiveUnits();
 
-  // Fetch category counts (using same filters as the list for consistency)
+  // Fetch category counts (using same filters as the list for consistency).
+  // The Sales Person filter MUST be included, otherwise the tab counts stay
+  // static at database-wide totals while the table shows only that owner's
+  // leads. The endpoint applies ?ownerId= for admins (same role gate as here).
   const { data: categoryCounts } = useQuery({
-    queryKey: ["category-counts", unitFilter, dateFilter.startDate, dateFilter.endDate],
+    queryKey: ["category-counts", unitFilter, dateFilter.startDate, dateFilter.endDate, isAdmin ? salesOwnerId : undefined],
     queryFn: async () => {
       const token = localStorage.getItem("crm_token");
       const countParams = new URLSearchParams();
       if (unitFilter !== "All") countParams.set("unit", unitFilter);
       if (dateFilter.startDate) countParams.set("startDate", dateFilter.startDate);
       if (dateFilter.endDate) countParams.set("endDate", dateFilter.endDate);
+      if (isAdmin && salesOwnerId) countParams.set("ownerId", String(salesOwnerId));
       const qs = countParams.toString();
       const res = await fetch(`/api/categories/counts${qs ? `?${qs}` : ""}`, {
         headers: { Authorization: `Bearer ${token}` },
