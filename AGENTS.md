@@ -1,4 +1,26 @@
 
+## Sales Dashboard Simplification
+
+### Goal
+- Declutter the Sales Dashboard: strip subtitles from "Active Deals"/"Win Rate", drop the "Completed" mini-card, and turn "Today's Calls" into an all-time "Calls" total.
+
+### Done
+- **Frontend `dashboard.tsx`:**
+  - "Active Deals" card: removed "X won / Y deals lost / Z leads lost" subtitle.
+  - "Win Rate" card: removed "% conversion to client" subtitle.
+  - "Completed" mini-card removed; mini-grid rebalanced `lg:grid-cols-6` → `lg:grid-cols-5`; unused `CheckCircle2` import dropped.
+  - "Today's Calls" → "Calls" showing new `kpi.totalCalls` (all-time), link simplified to plain `/follow-ups`.
+- **Backend `dashboard.ts` GET /dashboard/kpi:**
+  - Activities query no longer applies the date-preset conditions (`getScopedActivities(..., [])`) — today/completed/pending/overdue were ALREADY derived from `followUpDate` in JS, so their values are unchanged; the same rows now also yield `totalCalls` = count of scoped activities with `type === 'Call'` across ALL time (owner/unit scoping preserved).
+  - Response adds `totalCalls`; legacy `todayTotal`/`todayCompleted` fields retained for backward compat.
+- **Build verified:** CRM typecheck 0 errors; API server 32 errors (pre-existing baseline, 0 new, none in dashboard.ts).
+
+### Key Decisions
+- All-time Calls keeps owner/unit scoping so the number stays consistent with the /follow-ups page it links to (a sales user sees only their own calls).
+- Single un-date-scoped activities query instead of two queries — one fetch serves both the all-time Calls KPI and the date-derived cards.
+
+---
+
 ## Static Deal Numbering + Hide Deal From Activity Timeline
 
 ### Goal

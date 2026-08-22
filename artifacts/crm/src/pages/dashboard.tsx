@@ -3,7 +3,7 @@ import { useGetMe } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {   Briefcase, Users, DollarSign, TrendingUp, AlertCircle, PhoneCall, X, Clock, Phone, CheckCircle2, FolderTree, UserCheck, BarChart3, ChevronRight, UserPlus, Eye, EyeOff } from "lucide-react";
+import {   Briefcase, Users, DollarSign, TrendingUp, AlertCircle, PhoneCall, X, Clock, Phone, FolderTree, UserCheck, BarChart3, ChevronRight, UserPlus, Eye, EyeOff } from "lucide-react";
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -78,7 +78,7 @@ export default function Dashboard() {
       return res.json() as Promise<{
         totalContacts: number; totalDeals: number; wonDeals: number; lostDeals: number; lostLeads: number;
         activeDeals: number; totalWonValue: number;         categoryCounts: { category: string; count: number }[];
-        unitStats: Record<string, number>; todayTotal: number; todayCompleted: number; todayPending: number;
+        unitStats: Record<string, number>; totalCalls: number; todayTotal: number; todayCompleted: number; todayPending: number;
         overdueCount: number; newLeadsThisMonth: number; myClientsCount: number; conversionRate: number;
         newOrders: number; newOrderRevenue: number; repeatOrders: number; repeatOrderRevenue: number; totalOrderRevenue: number;
       }>;
@@ -250,7 +250,6 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{kpi?.activeDeals ?? 0}</div>
-              <p className="text-xs text-muted-foreground">{kpi?.wonDeals} won / {kpi?.lostDeals} deals lost / {kpi?.lostLeads || 0} leads lost</p>
             </CardContent>
           </Card>
         </Link>
@@ -274,33 +273,21 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{kpi?.totalDeals ? Math.round((kpi.wonDeals / kpi.totalDeals) * 100) : 0}%</div>
-              <p className="text-xs text-muted-foreground">{kpi?.conversionRate ?? 0}% conversion to client</p>
             </CardContent>
           </Card>
         </Link>
       </div>
 
-      {/* Today's Calls + Additional KPI mini-cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        <Link href="/follow-ups?status=Today" className="block">
+      {/* Calls + Additional KPI mini-cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+        <Link href="/follow-ups" className="block">
           <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out border-blue-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-medium">Today's Calls</CardTitle>
+              <CardTitle className="text-xs font-medium">Calls</CardTitle>
               <Phone className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-xl font-bold text-blue-600">{kpi?.todayTotal ?? 0}</div>
-            </CardContent>
-          </Card>
-        </Link>
-        <Link href="/follow-ups" className="block">
-          <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out border-green-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-medium">Completed</CardTitle>
-              <CheckCircle2 className="h-4 w-4 text-green-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold text-green-600">{kpi?.todayCompleted ?? 0}</div>
+              <div className="text-xl font-bold text-blue-600">{kpi?.totalCalls ?? 0}</div>
             </CardContent>
           </Card>
         </Link>

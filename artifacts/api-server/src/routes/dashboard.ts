@@ -196,20 +196,19 @@ router.get("/dashboard/kpi", async (req, res) => {
     }
 
     // Activities: scope to owner and apply unit filter via contacts.
-    // The date-range filter matches the Activity page (activities.ts): it applies
-    // to followUpDate, NOT record createdAt, so the cards reflect exactly what the
-    // table shows for the same selected date range.
-    const activityDateCondsLocal: any[] = [];
-    if (startDate) activityDateCondsLocal.push(gte(activitiesTable.followUpDate, startDate));
-    if (endDate) activityDateCondsLocal.push(lte(activitiesTable.followUpDate, endDate));
-    const scopedActivities = await getScopedActivities(
+    // NO date condition here on purpose: today/completed/pending/overdue are
+    // derived below from followUpDate in JS (identical results either way),
+    // and the all-time result powers the "Calls" KPI = TOTAL type==="Call"
+    // activities regardless of the selected date preset.
+    const allActivities = await getScopedActivities(
       user,
       isAdmin ? effectiveOwnerId : undefined,
       unitFilter,
-      activityDateCondsLocal
+      []
     );
 
-    const todayActivities = scopedActivities.filter(a => a.followUpDate === today);
+    const totalCalls = allActivities.filter(a => a.type === "Call").length;
+    const todayActivities = allActivities.filter(a => a.followUpDate === today);
     const todayTotal = todayActivities.length;
     const todayCompleted = todayActivities.filter(a => a.callStatus === "Completed").length;
     const todayPending = todayActivities.filter(a => a.callStatus === "Pending").length;
@@ -218,7 +217,7 @@ router.get("/dashboard/kpi", async (req, res) => {
     // (follow-ups.tsx): followUpDate < today && callStatus === "Pending".
     // followUpDate is a yyyy-MM-dd string, so a plain string comparison is both
     // timezone-safe and identical to the frontend's date-only comparison.
-    const overdueCount = scopedActivities.filter(a =>
+    const overdueCount = allActivities.filter(a =>
       !!a.followUpDate && a.followUpDate < today && a.callStatus === "Pending"
     ).length;
 
@@ -256,6 +255,7 @@ router.get("/dashboard/kpi", async (req, res) => {
       activeDeals,
       totalWonValue,
       unitStats,
+      totalCalls,
       todayTotal,
       todayCompleted,
       todayPending,
