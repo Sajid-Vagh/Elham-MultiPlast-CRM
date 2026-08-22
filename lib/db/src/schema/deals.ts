@@ -24,6 +24,7 @@ export const dealsTable = pgTable("deals", {
   wonAt: timestamp("won_at", { withTimezone: true }),
   lostAt: timestamp("lost_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
+  isHiddenFromTimeline: boolean("is_hidden_from_timeline").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

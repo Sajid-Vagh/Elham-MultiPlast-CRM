@@ -31,6 +31,7 @@ export interface Deal {
   wonAmount?: number | null;
   /** @nullable */
   completedAt?: string | null;
+  isHiddenFromTimeline?: boolean;
   createdAt: string;
   updatedAt?: string;
 }

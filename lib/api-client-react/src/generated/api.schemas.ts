@@ -485,6 +485,8 @@ export interface Deal {
   productionUnit?: string | null;
   /** @nullable */
   completedAt?: string | null;
+  /** Hidden only from the lead-detail Activity Timeline UI; still in DB/reports */
+  isHiddenFromTimeline?: boolean;
   createdAt: string;
   updatedAt?: string;
   /** Active proforma invoice for this deal (if any) */
@@ -565,6 +567,7 @@ export interface DealUpdate {
   wonAmount?: number | null;
   /** @nullable */
   productionUnit?: string | null;
+  isHiddenFromTimeline?: boolean;
 }
 
 export interface DealProduct {

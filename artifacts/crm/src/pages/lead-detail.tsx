@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText, Search, Tag } from "lucide-react";
+import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText, Search, Tag, EyeOff, Eye } from "lucide-react";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -84,6 +84,26 @@ export default function LeadDetail() {
   const updateContact = useUpdateContact();
   const updateDeal = useUpdateDeal();
 
+  // Hide/unhide a deal card from this lead's Activity Timeline only — the deal
+  // itself (pipeline, reports, orders) is untouched.
+  const setDealTimelineVisibility = useMutation({
+    mutationFn: async ({ dealId, hidden }: { dealId: number; hidden: boolean }) => {
+      const res = await fetch(`/api/deals/${dealId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
+        body: JSON.stringify({ isHiddenFromTimeline: hidden }),
+      });
+      if (!res.ok) throw new Error(await res.text().catch(() => "Failed to update deal"));
+      return res.json();
+    },
+    onSuccess: (_data, vars) => {
+      onDealChange(queryClient);
+      queryClient.invalidateQueries({ queryKey: getGetContactQueryKey(contactId) });
+      toast({ title: vars.hidden ? "Deal hidden from timeline" : "Deal visible in timeline again" });
+    },
+    onError: () => toast({ title: "Could not update deal visibility", variant: "destructive" }),
+  });
+
   const [newDealStage, setNewDealStage] = useState("New");
   const [newDealTitle, setNewDealTitle] = useState("");
   const [newDealProductionUnit, setNewDealProductionUnit] = useState("");
@@ -106,6 +126,8 @@ export default function LeadDetail() {
 
   const [expandedDeals, setExpandedDeals] = useState<string[]>([]);
   const [timelineSearch, setTimelineSearch] = useState("");
+  // "Show hidden deals" reveal toggle for the Activity Timeline (Issue: cluttered timeline)
+  const [showHiddenDeals, setShowHiddenDeals] = useState(false);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteActId, setDeleteActId] = useState<number | null>(null);
@@ -239,14 +261,23 @@ export default function LeadDetail() {
       (e.detail || "").toLowerCase().includes(searchLower) ||
       (e.meta || "").toLowerCase().includes(searchLower);
 
-    const groups: Array<{ deal: (typeof deals extends (infer D)[] | undefined ? D : never) | null; events: FlatEvent[]; lastActivity: string | null }> = [];
+    const groups: Array<{ deal: (typeof deals extends (infer D)[] | undefined ? D : never) | null; num: number; events: FlatEvent[]; lastActivity: string | null }> = [];
 
     const existing = [...(deals || [])].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+    // Static chronological numbers over ALL deals (hidden ones included): the
+    // oldest deal is always Deal 1, the second oldest Deal 2, ... Numbers never
+    // shift when a new deal is created or when deals are hidden/unhidden.
+    const dealNumbers = new Map<number, number>();
+    existing.forEach((d, idx) => dealNumbers.set(d.id, idx + 1));
+
+    // Hidden-from-timeline deals are skipped unless the user opted to reveal them.
+    const visibleDeals = showHiddenDeals ? existing : existing.filter(d => !d.isHiddenFromTimeline);
 
     // Always open with a lead-created marker so the lead's origin is visible
     const leadDate = contact?.createdAt;
 
-    for (const deal of existing) {
+    for (const deal of visibleDeals) {
       const events: FlatEvent[] = [];
 
       if (leadDate && dateOk(leadDate)) {
@@ -319,6 +350,7 @@ export default function LeadDetail() {
 
       groups.push({
         deal,
+        num: dealNumbers.get(deal.id) ?? 0,
         events: filtered,
         lastActivity: filtered.length > 0 ? filtered[filtered.length - 1].date : null,
       });
@@ -328,7 +360,9 @@ export default function LeadDetail() {
     const withEvents = groups.filter(g => g.events.length > 0);
     withEvents.sort((a, b) => new Date(b.lastActivity || 0).getTime() - new Date(a.lastActivity || 0).getTime());
     return withEvents;
-  }, [contact, deals, activities, contactProformas, actFromDate, actToDate, timelineSearch]);
+  }, [contact, deals, activities, contactProformas, actFromDate, actToDate, timelineSearch, showHiddenDeals]);
+
+  const hiddenDealsCount = (deals || []).filter(d => d.isHiddenFromTimeline).length;
 
   if (isLoading) return <div className="p-8">Loading...</div>;
   if (!contact) return <div className="p-8">Contact not found.</div>;
@@ -832,11 +866,15 @@ export default function LeadDetail() {
               {/* Deal-centric Accordion Timeline */}
               {dealTimeline.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-6 border rounded-lg bg-card">
-                  {actQuick !== "all" || timelineSearch ? "No events match your filters." : "No deals yet. Create a deal to see its timeline."}
+                  {(actQuick !== "all" || timelineSearch) && !(deals || []).some(d => d.isHiddenFromTimeline)
+                    ? "No events match your filters."
+                    : showHiddenDeals && hiddenDealsCount === (deals || []).length && hiddenDealsCount > 0
+                      ? "All deals are hidden from this timeline."
+                      : "No deals yet. Create a deal to see its timeline."}
                 </p>
               ) : (
                 <Accordion type="multiple" value={expandedDeals} onValueChange={setExpandedDeals} className="space-y-2">
-                  {dealTimeline.map((group, gi) => {
+                  {dealTimeline.map((group) => {
                     const accordionVal = `deal-${group.deal?.id}`;
                     const formatDate = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
@@ -850,14 +888,23 @@ export default function LeadDetail() {
                     };
 
                     return (
-                      <AccordionItem key={accordionVal} value={accordionVal} className="border rounded-lg overflow-hidden">
-                        <AccordionTrigger className="px-3 py-2.5 hover:no-underline hover:bg-muted/30 [&[data-state=open]]:bg-muted/20">
+                      <AccordionItem key={accordionVal} value={accordionVal} className="border rounded-lg overflow-hidden relative group/deal">
+                        {/* Hide/unhide this deal card from the timeline (deal itself is untouched) */}
+                        <button
+                          onClick={() => group.deal && setDealTimelineVisibility.mutate({ dealId: group.deal.id, hidden: !group.deal.isHiddenFromTimeline })}
+                          disabled={setDealTimelineVisibility.isPending}
+                          className="absolute right-2 top-1.5 z-10 h-6 w-6 rounded bg-background/90 border flex items-center justify-center text-muted-foreground hover:text-red-600 hover:bg-red-50 opacity-0 group-hover/deal:opacity-100 focus:opacity-100 transition-opacity disabled:opacity-40"
+                          title={group.deal?.isHiddenFromTimeline ? "Show this deal in timeline" : "Hide this deal from timeline"}
+                        >
+                          {group.deal?.isHiddenFromTimeline ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                        </button>
+                        <AccordionTrigger className="px-3 py-2.5 pr-9 hover:no-underline hover:bg-muted/30 [&[data-state=open]]:bg-muted/20">
                           <div className="flex-1 flex items-center justify-between mr-2">
                             <div className="flex items-center gap-2 min-w-0">
                               <FolderTree className="h-4 w-4 text-amber-600 shrink-0" />
                               {group.deal && (
                                 <div className="min-w-0">
-                                  <span className="text-sm font-semibold truncate block">Deal {gi + 1} {group.deal.title ? `(${group.deal.title})` : ""}</span>
+                                  <span className="text-sm font-semibold truncate block">Deal {group.num} {group.deal.title ? `(${group.deal.title})` : ""}</span>
                                   <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                                     <span>{formatDate(group.deal.createdAt)}</span>
                                     {group.deal.totalValue && <span className="font-medium text-foreground">{formatCurrency(group.deal.totalValue)}</span>}
@@ -911,6 +958,16 @@ export default function LeadDetail() {
                     );
                   })}
                 </Accordion>
+              )}
+              {hiddenDealsCount > 0 && (
+                <button
+                  onClick={() => setShowHiddenDeals(v => !v)}
+                  className="mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-muted-foreground hover:text-foreground border border-dashed rounded-lg hover:bg-muted/30 transition-colors"
+                  title={showHiddenDeals ? "Hide the hidden deal cards again" : "Reveal deals hidden from this timeline"}
+                >
+                  <EyeOff className="h-3 w-3" />
+                  {showHiddenDeals ? `Hide ${hiddenDealsCount} hidden deal${hiddenDealsCount === 1 ? "" : "s"} again` : `${hiddenDealsCount} hidden deal${hiddenDealsCount === 1 ? "" : "s"} — show`}
+                </button>
               )}
             </CardContent>
           </Card>

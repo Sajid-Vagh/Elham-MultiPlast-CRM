@@ -1,4 +1,28 @@
 
+## Static Deal Numbering + Hide Deal From Activity Timeline
+
+### Goal
+- Deal numbers on the lead-detail Activity Timeline were index-based over a newest-first list, so creating a new deal renumbered every existing deal card ("Deal 1" became "Deal 2"). Numbering must be chronological and static.
+- Users need to declutter the timeline by hiding deal cards from THIS UI only — without deleting deals or affecting pipeline/reports.
+
+### Done
+- **Static numbering:** `lead-detail.tsx` dealTimeline memo now builds `dealNumbers` Map from the chronologically-sorted (oldest-first) full deal list BEFORE any hiding filter; group carries its static `num`; label renders `Deal {group.num}` instead of `Deal {gi + 1}`. Hidden deals keep their numbers so unhide never reshuffles.
+- **DB:** `deals.is_hidden_from_timeline` BOOLEAN NOT NULL DEFAULT FALSE — schema `lib/db/src/schema/deals.ts` + migration `lib/db/migrations/084_add_deal_hidden_from_timeline.sql` (**must be applied against Supabase before deploy**).
+- **Backend PATCH /deals/:id:** reads `isHiddenFromTimeline` straight off `req.body` (generated zod UpdateDealBody strips unknown keys) — same pattern as otherReason/lostNotes. GET /deals list spreads full rows and GET /deals/:id uses enrichDeal spread → flag flows to frontend automatically.
+- **Generated types:** `isHiddenFromTimeline?: boolean` added to Deal interface in `lib/api-zod/src/generated/types/deal.ts` AND `lib/api-client-react/src/generated/api.schemas.ts` (Deal + DealUpdate); api-client-react dist rebuilt via `tsc --build` (project references resolve stale dist declarations).
+- **Frontend hide/unhide (`lead-detail.tsx`):**
+  - EyeOff button absolutely positioned top-right of each deal AccordionItem (hover-reveal, OUTSIDE AccordionTrigger DOM so clicks don't toggle expand) → raw-fetch PATCH `{ isHiddenFromTimeline: true }` → `onDealChange` invalidation + toast.
+  - Memo filters hidden deals unless `showHiddenDeals` reveal-toggle is on; revealed groups show an Eye icon to unhide.
+  - Dashed footer row "N hidden deals — show" toggles reveal; rendered OUTSIDE the empty-state ternary so hiding ALL deals still leaves an escape hatch (empty state message adapts: "All deals are hidden from this timeline.").
+- **Build verified:** CRM typecheck 0 errors; API server = 32 errors total / 12 in deals.ts — IDENTICAL counts with changes stashed (git stash A/B test), 0 new.
+
+### Key Decisions
+- Flag read from req.body instead of extending generated zod schemas — minimal generated-file churn, precedented by lostReason/otherReason.
+- Numbering map computed over ALL deals including hidden ones — hiding/unhiding never changes any deal's number.
+- Hide is purely presentational: no reports/pipeline/export queries filter on it.
+
+---
+
 ## Timeline Raw-JSON Fix + Sequential Deal Note Numbering
 
 ### Goal

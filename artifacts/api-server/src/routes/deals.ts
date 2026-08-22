@@ -560,6 +560,13 @@ router.patch("/deals/:id", async (req, res) => {
   if (parsed.data.stage && !parsed.data.probability) {
     updateData.probability = STAGE_PROBS[parsed.data.stage] ?? 10;
   }
+  // Timeline visibility flag is intentionally NOT in the generated UpdateDealBody
+  // schema (zod strips unknown keys) — read it straight off req.body like
+  // otherReason/lostNotes below. Purely presentational; never touches reports.
+  const rawDealBody = req.body as Record<string, any>;
+  if (typeof rawDealBody.isHiddenFromTimeline === "boolean") {
+    updateData.isHiddenFromTimeline = rawDealBody.isHiddenFromTimeline;
+  }
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
