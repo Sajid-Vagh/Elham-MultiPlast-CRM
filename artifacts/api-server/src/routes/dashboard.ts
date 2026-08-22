@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable, dealsTable, usersTable, activitiesTable, ordersTable, productionOrdersTable, CATEGORIES, DEAL_STAGES } from "@workspace/db";
-import { eq, inArray, and, desc, gte, lte, or, sql } from "drizzle-orm";
+import { eq, inArray, and, desc, gte, lte, or } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 import { getAccessibleUnits } from "../lib/unit-filter";
@@ -22,27 +22,31 @@ function filterDealsByUnit(deals: (typeof dealsTable.$inferSelect)[], unit: stri
   return deals.filter(d => contactIds.has(d.contactId));
 }
 
-// ── Active-deal stage predicate (STRICT) ─────────────────────────────────
-// Active pipeline = ONLY the canonical open stages. Terminal Won/Lost (and any
-// stray/legacy value) can never count as active.
-const ACTIVE_DEAL_STAGES_LIST: readonly string[] = DEAL_STAGES.filter(s => s !== "Won" && s !== "Lost");
-const ACTIVE_DEAL_STAGES = new Set<string>(ACTIVE_DEAL_STAGES_LIST.map(s => s.toLowerCase()));
+// ── Active-deal stage predicate (STRICT INCLUSIVE whitelist) ─────────────
+// Active Deals = deals currently sitting in EXACTLY these six open pipeline
+// stages — the canonical values stored in deals.stage (see DEAL_STAGES in
+// lib/db/src/schema/deals.ts; column default is 'New'). Terminal Won/Lost —
+// and any stray/legacy value — can never count as active.
+const ACTIVE_DEAL_STAGES = [
+  "New",
+  "CL Sent",
+  "Price Given",
+  "Samples Sent",
+  "Samples Received",
+  "PI Sent",
+] as const;
 
-// JS-side check — case/whitespace-insensitive so DB variants like 'WON' or
-// ' Won ' are excluded exactly like the SQL clause below.
+// JS-side check used by the virtual My-Client contact set, the
+// sales-performance rows, and the charts endpoint — identical exact-value
+// membership as the SQL IN clause below so every surface agrees.
 function isActiveDealStage(stage: string | null | undefined): boolean {
-  return !!stage && ACTIVE_DEAL_STAGES.has(stage.trim().toLowerCase());
+  return !!stage && (ACTIVE_DEAL_STAGES as readonly string[]).includes(stage);
 }
 
-// SQL-side WHERE clause used by the Active Deals count query:
-//   WHERE lower(btrim(stage)) IN ('new','cl sent','price given',
-//                                 'samples sent','samples received','pi sent')
-// Equivalent to `stage NOT IN ('Won', 'Lost')` but additionally immune to
-// case/whitespace variants and legacy stray values.
-const ACTIVE_DEAL_STAGE_SQL = sql`lower(btrim(${dealsTable.stage})) IN (${sql.join(
-  ACTIVE_DEAL_STAGES_LIST.map(s => sql`${s}`),
-  sql`, `,
-)})`;
+// SQL-side inclusive WHERE clause for the Active Deals count query:
+//   WHERE stage IN ('New','CL Sent','Price Given','Samples Sent',
+//                   'Samples Received','PI Sent')
+const ACTIVE_DEAL_STAGE_COND = inArray(dealsTable.stage, [...ACTIVE_DEAL_STAGES]);
 
 // Local yyyy-MM-dd date string in the SERVER's timezone. The frontend passes its
 // own local `today` when available so follow-up dates are never compared against
@@ -197,12 +201,11 @@ router.get("/dashboard/kpi", async (req, res) => {
     const lostDeals = filteredDeals.filter(d => d.stage === "Lost").length;
     const lostLeads = filteredContacts.filter(c => c.lostReason != null).length;
 
-    // ── Active Deals: STRICT SQL count query ──
+    // ── Active Deals: STRICT INCLUSIVE SQL count query ──
     // Same owner + date-range + unit scope as every other deal KPI, plus the
-    // hard stage clause: WHERE lower(btrim(stage)) IN (open stages only) —
-    // i.e. `stage NOT IN ('Won', 'Lost')`, normalized against case/whitespace
-    // variants. Won/Lost deals can never reach this count.
-    const activeDealConds: any[] = [...dealDateConds, ACTIVE_DEAL_STAGE_SQL];
+    // hard stage clause: WHERE stage IN (the six open pipeline stages).
+    // Won/Lost deals can never reach this count.
+    const activeDealConds: any[] = [...dealDateConds, ACTIVE_DEAL_STAGE_COND];
     if (effectiveOwnerId) activeDealConds.push(eq(dealsTable.salesOwnerId, effectiveOwnerId));
     const allActiveDealRows = await db.select().from(dealsTable).where(and(...activeDealConds));
     const activeDeals = filterDealsByUnit(allActiveDealRows, unitFilter, allContacts)
