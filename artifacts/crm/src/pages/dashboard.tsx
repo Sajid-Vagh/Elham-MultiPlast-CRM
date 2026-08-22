@@ -3,7 +3,7 @@ import { useGetMe } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {   Briefcase, Users, DollarSign, TrendingUp, AlertCircle, PhoneCall, X, Clock, Phone, FolderTree, UserCheck, BarChart3, ChevronRight, UserPlus, Eye, EyeOff } from "lucide-react";
+import {   Briefcase, Users, DollarSign, TrendingUp, AlertCircle, PhoneCall, X, Clock, Phone, FolderTree, UserCheck, BarChart3, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -79,7 +79,7 @@ export default function Dashboard() {
         totalContacts: number; totalDeals: number; wonDeals: number; lostDeals: number; lostLeads: number;
         activeDeals: number; totalWonValue: number;         categoryCounts: { category: string; count: number }[];
         unitStats: Record<string, number>; totalCalls: number; todayTotal: number; todayCompleted: number; todayPending: number;
-        overdueCount: number; newLeadsThisMonth: number; myClientsCount: number; conversionRate: number;
+        overdueCount: number; newLeadsThisMonth: number; myClientsCount: number;
         newOrders: number; newOrderRevenue: number; repeatOrders: number; repeatOrderRevenue: number; totalOrderRevenue: number;
       }>;
     },
@@ -279,7 +279,7 @@ export default function Dashboard() {
       </div>
 
       {/* Calls + Additional KPI mini-cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Link href="/follow-ups" className="block">
           <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out border-blue-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -321,17 +321,6 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-xl font-bold text-purple-600">{kpi?.myClientsCount ?? 0}</div>
-            </CardContent>
-          </Card>
-        </Link>
-        <Link href="/reports" className="block">
-          <Card className="border-amber-200 hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-medium">Conversion</CardTitle>
-              <UserPlus className="h-4 w-4 text-amber-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold text-amber-600">{kpi?.conversionRate ?? 0}%</div>
             </CardContent>
           </Card>
         </Link>

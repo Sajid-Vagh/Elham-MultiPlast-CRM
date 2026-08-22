@@ -2,13 +2,13 @@
 ## Sales Dashboard Simplification
 
 ### Goal
-- Declutter the Sales Dashboard: strip subtitles from "Active Deals"/"Win Rate", drop the "Completed" mini-card, and turn "Today's Calls" into an all-time "Calls" total.
+- Declutter the Sales Dashboard: strip subtitles from "Active Deals"/"Win Rate", drop the "Completed" and "Conversion" mini-cards, and turn "Today's Calls" into an all-time "Calls" total.
 
 ### Done
 - **Frontend `dashboard.tsx`:**
   - "Active Deals" card: removed "X won / Y deals lost / Z leads lost" subtitle.
   - "Win Rate" card: removed "% conversion to client" subtitle.
-  - "Completed" mini-card removed; mini-grid rebalanced `lg:grid-cols-6` → `lg:grid-cols-5`; unused `CheckCircle2` import dropped.
+  - "Completed" AND "Conversion" mini-cards removed; mini-grid rebalanced to `grid-cols-2 sm:grid-cols-4` (remaining: Calls, Pending, Overdue, My Clients — no empty gaps at any breakpoint); unused `CheckCircle2` + `UserPlus` imports dropped; `conversionRate` removed from the kpi response type (backend still returns it).
   - "Today's Calls" → "Calls" showing new `kpi.totalCalls` (all-time), link simplified to plain `/follow-ups`.
 - **Backend `dashboard.ts` GET /dashboard/kpi:**
   - Activities query no longer applies the date-preset conditions (`getScopedActivities(..., [])`) — today/completed/pending/overdue were ALREADY derived from `followUpDate` in JS, so their values are unchanged; the same rows now also yield `totalCalls` = count of scoped activities with `type === 'Call'` across ALL time (owner/unit scoping preserved).
