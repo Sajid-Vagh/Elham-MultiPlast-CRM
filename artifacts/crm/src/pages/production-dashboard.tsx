@@ -8,7 +8,7 @@ import { useUnitFilter } from "@/lib/use-unit-filter";
 import { useDateFilter } from "@/lib/use-date-filter";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { ClearFiltersButton } from "@/components/clear-filters-button";
-import { Clock, AlertTriangle, Truck, BarChart3 } from "lucide-react";
+import { Clock, Truck, BarChart3 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { ManufacturingSummary } from "@/components/manufacturing-summary";
@@ -24,7 +24,6 @@ const MATERIAL_OPTIONS = ["All", "HDPE", "PP", "PET"];
 const QUICK_ACTIONS = [
   { label: "Pending Orders", status: "Pending", icon: Clock },
   { label: "Ready to Dispatch", status: "Ready To Dispatch", icon: Truck },
-  { label: "Delayed Orders", status: "delayed", icon: AlertTriangle },
 ];
 
 export default function ProductionDashboard() {
@@ -129,11 +128,10 @@ export default function ProductionDashboard() {
         <Card className="lg:col-span-3">
           <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Summary</CardTitle></CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div><p className="text-xs text-muted-foreground">Total Orders</p><p className="text-xl font-bold">{dashboard?.totalOrders ?? 0}</p></div>
               <div><p className="text-xs text-muted-foreground">Active (Manufacturing)</p><p className="text-xl font-bold">{dashboard?.activeManufacturing ?? 0}</p></div>
               <div><p className="text-xs text-muted-foreground">Completed Today</p><p className="text-xl font-bold">{dashboard?.completedToday ?? 0}</p></div>
-              <div><p className="text-xs text-muted-foreground">Delayed</p><p className="text-xl font-bold text-red-600">{dashboard?.delayedOrders ?? 0}</p></div>
             </div>
             {dashboard?.productLineStats && (
               <div className="mt-3 pt-3 border-t">
