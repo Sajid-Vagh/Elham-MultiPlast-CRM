@@ -1,4 +1,10 @@
-export const CHAT_NOTIFICATION_SOUND_URL = "/assets/chat-notification.wav";
+// SINGLE canonical sound for ALL chat-message and voice-note notifications,
+// for EVERY user role (Admin, Sales, Production, Support). Do NOT add
+// role-specific or alternate chat sounds — the backend delivers the same
+// notification types (production_message, voice_note) to all roles.
+// The ?v= query busts browser caches so a replaced .wav reaches everyone
+// on the next deploy instead of serving a stale cached tone per user.
+export const CHAT_NOTIFICATION_SOUND_URL = "/assets/chat-notification.wav?v=2";
 
 export function playNotificationSoundForType(type: string) {
   if (isNotificationSoundMuted()) return;
@@ -29,8 +35,8 @@ export function playNotificationSoundForType(type: string) {
     user_created: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
   product_added: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
   // Order conversation chat (Production + Sales order messages & voice notes)
-  // uses a dedicated professional sound — kept distinct from all system alerts
-  // (leads, enquiries, follow-ups, deals, etc.) above.
+  // uses the SAME unified sound for every role — identical to what Sales/Admin
+  // hear. Never differentiate chat/voice-note sounds by role or workspace.
   production_message: CHAT_NOTIFICATION_SOUND_URL,
   voice_note: CHAT_NOTIFICATION_SOUND_URL,
   repeat_enquiry: "https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3",
