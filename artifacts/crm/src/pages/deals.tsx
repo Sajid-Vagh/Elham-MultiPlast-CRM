@@ -10,6 +10,7 @@ import { useSearch, useLocation } from "wouter";
 interface DealWithExtras extends Deal {
   dealProducts?: { dealId: number; productId: number; quantity: string; productName: string }[];
   piSummary?: { dealId: number; count: number; maxVersion: number; latestStatus: string } | null;
+  linkedOrder?: { id: number; orderNumber: string | null; status: string } | null;
 }
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +26,7 @@ import { DEAL_STAGES, STAGE_PROBS } from "@/lib/deal-stages";
 import { customerLabel } from "@/lib/customer-label";
 import DealDetailDrawer from "@/components/deal-detail-drawer";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
+import { CancelOrderModal } from "@/components/cancel-order-modal";
 import { DealWonCelebration } from "@/components/deal-won-celebration";
 import { onDealChange, onProductionChange } from "@/lib/query-invalidation";
 import { ExportButton } from "@/components/export-button";
@@ -41,16 +43,23 @@ import { useOwnerFilter, useStatusFilter, useGlobalFilters } from "@/lib/global-
 import { DateRangeFilter } from "@/components/date-range-filter";
 
 function DraggableCard({ deal, children }: { deal: Deal; children: ReactNode }) {
+  // "Lost" is a permanently locked terminal state — its cards can never be dragged
+  // out of the Lost column. Reopening is only possible via the Order Cancellation
+  // flow's reverse path, not from the pipeline.
+  const locked = deal.stage === "Lost";
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `deal-${deal.id}`,
     data: { deal },
+    disabled: locked,
   });
   const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
   return (
     <div ref={setNodeRef} style={style} className={`relative ${isDragging ? 'opacity-50' : ''}`}>
-      <div {...listeners} {...attributes} className="absolute top-1 right-1 z-10 p-1 rounded cursor-grab active:cursor-grabbing hover:bg-muted transition-colors">
-        <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
-      </div>
+      {!locked && (
+        <div {...listeners} {...attributes} className="absolute top-1 right-1 z-10 p-1 rounded cursor-grab active:cursor-grabbing hover:bg-muted transition-colors">
+          <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
+        </div>
+      )}
       {children}
     </div>
   );
@@ -160,6 +169,17 @@ export default function Deals() {
   // Lost reason flow
   const [lostDeal, setLostDeal] = useState<Deal | null>(null);
   const [lostSubmitting, setLostSubmitting] = useState(false);
+
+  // Cancel Order flow (Won → Lost drop) — cancelling the confirmed Sales Order is
+  // the only correct way to move a Won deal to Lost; the backend cancellation
+  // service cascades the deal to Lost + cancels any production order.
+  const [cancelOrderTarget, setCancelOrderTarget] = useState<{
+    orderId: number;
+    orderNumber?: string | null;
+    customerName?: string | null;
+    contactId?: number | null;
+    dealId?: number | null;
+  } | null>(null);
 
   // PI Sent flow
   const [piSentDeal, setPiSentDeal] = useState<Deal | null>(null);
@@ -382,8 +402,34 @@ export default function Deals() {
       return;
     }
 
-    // Intercept LOST drops — show reason dialog first
+    // Intercept LOST drops.
+    // Won → Lost means the confirmed Order is being cancelled → open the
+    // CancelOrderModal (NOT the standard Lost-reason dialog). The cancellation
+    // service cascades the deal to "Lost" and cancels any production order.
     if (newStage === "Lost") {
+      if (oldStage === "Won") {
+        const linkedOrder = (deal as DealWithExtras).linkedOrder;
+        if (linkedOrder?.id) {
+          setOptimisticStages(prev => ({ ...prev, [dealId]: "Lost" }));
+          setCancelOrderTarget({
+            orderId: linkedOrder.id,
+            orderNumber: linkedOrder.orderNumber,
+            customerName: deal.contact?.name ?? null,
+            contactId: deal.contactId ?? deal.contact?.id ?? null,
+            dealId: deal.id,
+          });
+        } else {
+          // Defensive fallback: no linked order on the payload (stale cache).
+          // Never mark a Won deal Lost without cancelling its order — refetch instead.
+          onDealChange(queryClient, dealId, deal.contactId);
+          toast({
+            title: "Linked order not found",
+            description: "This Won deal has no linked Sales Order in the pipeline data. The list was refreshed — please try again or cancel the order from the Sales Orders page.",
+            variant: "destructive",
+          });
+        }
+        return;
+      }
       setOptimisticStages(prev => ({ ...prev, [dealId]: "Lost" }));
       setLostDeal(deal);
       return;
@@ -778,6 +824,25 @@ export default function Deals() {
         onSave={handleLostSave}
         saving={lostSubmitting}
         hideCategory={lostDeal?.contact?.category === "My Client" || !!lostDeal?.contact?.customerSince || !!lostDeal?.contact?.isMyClient}
+      />
+
+      {/* Cancel Order flow — opened when a Won deal is dropped into Lost.
+          Closing without cancelling restores the deal to Won via the optimistic map. */}
+      <CancelOrderModal
+        open={!!cancelOrderTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCancelOrderTarget(null);
+            if (cancelOrderTarget?.dealId) {
+              setOptimisticStages(prev => { const n = { ...prev }; delete n[cancelOrderTarget.dealId!]; return n; });
+            }
+          }
+        }}
+        orderId={cancelOrderTarget?.orderId ?? 0}
+        orderNumber={cancelOrderTarget?.orderNumber}
+        customerName={cancelOrderTarget?.customerName}
+        contactId={cancelOrderTarget?.contactId}
+        dealId={cancelOrderTarget?.dealId}
       />
       <DealDetailDrawer
         dealId={drawerDealId}

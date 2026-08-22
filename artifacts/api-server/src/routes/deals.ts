@@ -183,7 +183,8 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
 
 // ── Deal Stage Transition Rules ──
 // Each key maps to the set of stages it can transition TO.
-// Won and Lost are terminal — they can only transition to specific stages if reopened.
+// Won can transition to Lost (via the Order Cancellation flow) or back to New.
+// Lost is a PERMANENTLY LOCKED terminal state — no outgoing transitions.
 const VALID_STAGE_TRANSITIONS: Record<string, string[]> = {
   "New":              ["CL Sent", "Price Given", "Samples Sent", "Samples Received", "PI Sent", "Won", "Lost"],
   "CL Sent":          ["Price Given", "Samples Sent", "Samples Received", "PI Sent", "Won", "Lost"],
@@ -192,7 +193,7 @@ const VALID_STAGE_TRANSITIONS: Record<string, string[]> = {
   "Samples Received": ["PI Sent", "Won", "Lost"],
   "PI Sent":          ["New", "CL Sent", "Price Given", "Samples Sent", "Samples Received", "Won", "Lost"],
   "Won":              ["Lost", "New"],
-  "Lost":             ["New", "CL Sent", "Price Given", "Samples Sent", "Samples Received", "PI Sent", "Won"],
+  "Lost":             [],
 };
 
 function isValidStageTransition(from: string, to: string): boolean {
@@ -344,12 +345,40 @@ router.get("/deals", async (req, res) => {
     }
     const piCountMap = new Map(piCounts.filter(p => p.dealId != null).map(p => [p.dealId!, p]));
 
+    // Linked Sales Order per deal — lets the Pipeline route Won → Lost drops straight
+    // into the Order Cancellation flow (CancelOrderModal) with zero extra API calls.
+    // Repeat orders are created with dealId = null so they never collide here;
+    // when several rows exist, a non-Cancelled order wins over a Cancelled one.
+    let linkedOrderRows: { id: number; dealId: number | null; orderNumber: string | null; formattedOrderId: string | null; status: string }[] = [];
+    if (dealIds.length > 0) {
+      linkedOrderRows = await db
+        .select({
+          id: ordersTable.id,
+          dealId: ordersTable.dealId,
+          orderNumber: ordersTable.orderNumber,
+          formattedOrderId: ordersTable.formattedOrderId,
+          status: ordersTable.status,
+        })
+        .from(ordersTable)
+        .where(and(inArray(ordersTable.dealId, dealIds), eq(ordersTable.isDeleted, false)));
+    }
+    const linkedOrderByDeal = new Map<number, { id: number; orderNumber: string | null; status: string }>();
+    for (const row of linkedOrderRows) {
+      if (row.dealId == null) continue;
+      const mapped = { id: row.id, orderNumber: row.orderNumber ?? row.formattedOrderId ?? null, status: row.status };
+      const existingEntry = linkedOrderByDeal.get(row.dealId);
+      if (!existingEntry || (existingEntry.status === "Cancelled" && mapped.status !== "Cancelled")) {
+        linkedOrderByDeal.set(row.dealId, mapped);
+      }
+    }
+
     res.json(resultDeals.map(d => ({
       ...d,
       contact: contactMap.get(d.contactId) ?? null,
       salesOwner: d.salesOwnerId ? userMap.get(d.salesOwnerId) ?? null : null,
       dealProducts: dealProductsMap.get(d.id) || [],
       piSummary: piCountMap.get(d.id) || null,
+      linkedOrder: linkedOrderByDeal.get(d.id) ?? null,
     })));
   } catch (err) {
     req.log.error({ err }, "List deals error");
@@ -549,6 +578,16 @@ router.patch("/deals/:id", async (req, res) => {
     }
 
     console.log("[DEAL-PATCH-DEBUG] updateData after cleanup:", JSON.stringify(updateData));
+
+    // Terminal state rule: Lost deals are permanently locked. Any attempt to
+    // move/reopen a deal whose persisted stage is "Lost" is rejected outright —
+    // the Order Cancellation flow (POST /orders/:id/cancel) is the ONLY path that
+    // transitions a deal to Lost after it has been Won.
+    if (oldDeal.stage === "Lost" && updateData.stage && updateData.stage !== "Lost") {
+      console.log("[DEAL-PATCH-DEBUG] FAIL: TerminalStageLocked (Lost deal cannot be moved)");
+      res.status(400).json({ failedAt: "TerminalStageLocked", error: "A Lost deal cannot be reopened or moved." });
+      return;
+    }
 
     // Validate stage transition
     if (updateData.stage && updateData.stage !== oldDeal.stage) {
