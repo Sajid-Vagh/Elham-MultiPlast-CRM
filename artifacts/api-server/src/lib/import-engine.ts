@@ -7,6 +7,7 @@
 
 import { db, contactsTable, productsTable, importSessionsTable, importCorrectionsTable, usersTable } from "@workspace/db";
 import { eq, or, and, ilike, sql, desc } from "drizzle-orm";
+import { contactMobileListMatches } from "./mobile-list";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -840,11 +841,18 @@ export async function detectDuplicate(data: Partial<ParsedLead>): Promise<Duplic
     { field: "email", value: data.email || null, matchType: "email" },
   ];
 
-  // Priority 1-3: Direct field matches
+  // Priority 1-3: Direct field matches.
+  // Mobile is list-aware: contacts.mobile may hold MULTIPLE comma-separated
+  // numbers ("1234567890, 0987654321"), so a single parsed number must still
+  // match any stored entry (digit-normalized, last 10 digits).
   for (const check of checks) {
     if (!check.value) continue;
+    const column = (contactsTable as any)[check.field === "gst" ? "gstNumber" : check.field];
+    const where = check.field === "mobile"
+      ? contactMobileListMatches(check.value)
+      : eq(column, check.value);
     const existing = await db.select().from(contactsTable)
-      .where(eq((contactsTable as any)[check.field === "gst" ? "gstNumber" : check.field], check.value))
+      .where(where)
       .limit(1);
     if (existing.length > 0) {
       return buildDuplicateInfo(existing[0]!, check.matchType);

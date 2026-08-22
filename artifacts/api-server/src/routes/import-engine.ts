@@ -18,6 +18,7 @@ import { z } from "zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { normalizeStateCity } from "../utils/geoMapping";
+import { contactMobileListMatches } from "../lib/mobile-list";
 import {
   parseEnquiry,
   storeImportSession,
@@ -121,8 +122,9 @@ router.post("/import/confirm", async (req, res) => {
       contactMobile = `no-mobile-${Date.now()}`;
     }
 
-    // Check duplicate
-    const existing = await db.select().from(contactsTable).where(eq(contactsTable.mobile, contactMobile));
+    // Check duplicate (list-aware: stored mobile may hold multiple comma-separated
+    // numbers; the "no-mobile-…" placeholder falls back to exact equality)
+    const existing = await db.select().from(contactsTable).where(contactMobileListMatches(contactMobile));
 
     if (existing.length > 0 && fields.duplicateAction === "skip") {
       res.status(409).json({

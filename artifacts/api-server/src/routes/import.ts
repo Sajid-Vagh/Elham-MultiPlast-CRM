@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable, usersTable, CATEGORIES, dealsTable, activitiesTable, categoryHistoryTable } from "@workspace/db";
-import { eq, or, and, desc, like } from "drizzle-orm";
+import { eq, or, desc } from "drizzle-orm";
 import { z } from "zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { normalizeProfilePhotoUrl } from "../lib/storage";
+import { contactMobileListMatches } from "../lib/mobile-list";
 import { normalizeStateCity } from "../utils/geoMapping";
 import { generateCustomerCode } from "../lib/customer-code-generator";
 
@@ -167,7 +168,10 @@ router.post("/import/excel", async (req, res) => {
       }
     }
 
-    const conditions = [eq(contactsTable.mobile, contactMobile)];
+    // List-aware duplicate check — stored mobile may hold MULTIPLE comma-separated
+    // numbers ("1234567890, 0987654321"), so a single number from the Excel cell
+    // must still match. Placeholders ("no-mobile-…") fall back to exact equality.
+    const conditions = [contactMobileListMatches(contactMobile)];
     if (row.otherPhone?.trim()) {
       conditions.push(eq(contactsTable.otherPhone, row.otherPhone.trim()));
     }
@@ -290,10 +294,10 @@ router.post("/import/excel", async (req, res) => {
       if (err?.code === "23505") {
         duplicates.push(contactMobile);
         skipped++;
-        // Try to find existing for duplicate details
+        // Try to find existing for duplicate details (list-aware mobile match)
         try {
           const [conflict] = await db.select().from(contactsTable)
-            .where(eq(contactsTable.mobile, contactMobile)).limit(1);
+            .where(contactMobileListMatches(contactMobile)).limit(1);
           if (conflict) {
             const [conflictOwner] = await db.select({ id: usersTable.id, name: usersTable.name })
               .from(usersTable).where(eq(usersTable.id, conflict.salesOwnerId)).limit(1);
@@ -364,7 +368,9 @@ router.post("/import/indiamart", async (req, res) => {
   const contactName = fields.clientName?.trim() || "Unknown Lead";
   const contactMobile = fields.clientMobile?.trim() || "No Contact Number";
 
-  const existing = await db.select().from(contactsTable).where(eq(contactsTable.mobile, contactMobile));
+  // List-aware duplicate check — stored mobile may hold MULTIPLE comma-separated
+  // numbers; "No Contact Number" falls back to exact equality inside the helper.
+  const existing = await db.select().from(contactsTable).where(contactMobileListMatches(contactMobile));
   if (existing.length > 0) {
     const meta = await getDuplicateMetadata(existing[0]!.id);
     res.status(409).json(meta || { error: "Contact with this mobile already exists", duplicate: true });
@@ -426,9 +432,9 @@ router.post("/import/indiamart", async (req, res) => {
     res.status(201).json({ ...contact, notes });
   } catch (err: any) {
     if (err?.code === "23505") {
-      // Try to find existing for rich metadata
+      // Try to find existing for rich metadata (list-aware mobile match)
       const [conflict] = await db.select().from(contactsTable)
-        .where(eq(contactsTable.mobile, contactMobile)).limit(1);
+        .where(contactMobileListMatches(contactMobile)).limit(1);
       if (conflict) {
         const meta = await getDuplicateMetadata(conflict.id);
         res.status(409).json(meta || { error: "Contact with this mobile or email already exists", duplicate: true });
@@ -538,55 +544,21 @@ router.post("/import/bulk-customers", async (req, res) => {
     let isDuplicate = false;
     let existingContact: any = null;
 
-    for (const num of mobileParts) {
-      // Exact match: existing mobile == single part (contact has only this one number)
-      const [exactMatch] = await db.select({
-        id: contactsTable.id,
-        name: contactsTable.name,
-        mobile: contactsTable.mobile,
-        category: contactsTable.category,
-      }).from(contactsTable)
-        .where(eq(contactsTable.mobile, num))
-        .limit(1);
+    // List-aware check: ANY number from the row matches ANY comma-separated
+    // entry of a stored mobile (digit-normalized on both sides, last 10 digits).
+    // Covers the full-string case as well, since every stored entry is checked.
+    const [mobileMatch] = await db.select({
+      id: contactsTable.id,
+      name: contactsTable.name,
+      mobile: contactsTable.mobile,
+      category: contactsTable.category,
+    }).from(contactsTable)
+      .where(or(...mobileParts.map(p => contactMobileListMatches(p))))
+      .limit(1);
 
-      if (exactMatch) {
-        isDuplicate = true;
-        existingContact = exactMatch;
-        break;
-      }
-
-      // Substring match: existing mobile contains this number (e.g., "0987654321, 1234567890" contains "0987654321")
-      const [substringMatch] = await db.select({
-        id: contactsTable.id,
-        name: contactsTable.name,
-        mobile: contactsTable.mobile,
-        category: contactsTable.category,
-      }).from(contactsTable)
-        .where(like(contactsTable.mobile, `%${num}%`))
-        .limit(1);
-
-      if (substringMatch) {
-        isDuplicate = true;
-        existingContact = substringMatch;
-        break;
-      }
-    }
-
-    // Also check if the full normalized mobile matches any existing contact
-    if (!isDuplicate) {
-      const [fullMatch] = await db.select({
-        id: contactsTable.id,
-        name: contactsTable.name,
-        mobile: contactsTable.mobile,
-        category: contactsTable.category,
-      }).from(contactsTable)
-        .where(eq(contactsTable.mobile, normalizedMobile))
-        .limit(1);
-
-      if (fullMatch) {
-        isDuplicate = true;
-        existingContact = fullMatch;
-      }
+    if (mobileMatch) {
+      isDuplicate = true;
+      existingContact = mobileMatch;
     }
 
     // Also check duplicate by email (if provided)
@@ -770,55 +742,21 @@ router.post("/import/my-client", async (req, res) => {
     let isDuplicate = false;
     let existingContact: any = null;
 
-    for (const num of mobileParts) {
-      // Exact match
-      const [exactMatch] = await db.select({
-        id: contactsTable.id,
-        name: contactsTable.name,
-        mobile: contactsTable.mobile,
-        category: contactsTable.category,
-      }).from(contactsTable)
-        .where(eq(contactsTable.mobile, num))
-        .limit(1);
+    // List-aware check: ANY number from the row matches ANY comma-separated
+    // entry of a stored mobile (digit-normalized on both sides, last 10 digits).
+    // Covers the full-string case as well, since every stored entry is checked.
+    const [mobileMatch] = await db.select({
+      id: contactsTable.id,
+      name: contactsTable.name,
+      mobile: contactsTable.mobile,
+      category: contactsTable.category,
+    }).from(contactsTable)
+      .where(or(...mobileParts.map(p => contactMobileListMatches(p))))
+      .limit(1);
 
-      if (exactMatch) {
-        isDuplicate = true;
-        existingContact = exactMatch;
-        break;
-      }
-
-      // Substring match: existing mobile contains this number
-      const [substringMatch] = await db.select({
-        id: contactsTable.id,
-        name: contactsTable.name,
-        mobile: contactsTable.mobile,
-        category: contactsTable.category,
-      }).from(contactsTable)
-        .where(like(contactsTable.mobile, `%${num}%`))
-        .limit(1);
-
-      if (substringMatch) {
-        isDuplicate = true;
-        existingContact = substringMatch;
-        break;
-      }
-    }
-
-    // Also check if the full normalized mobile matches
-    if (!isDuplicate) {
-      const [fullMatch] = await db.select({
-        id: contactsTable.id,
-        name: contactsTable.name,
-        mobile: contactsTable.mobile,
-        category: contactsTable.category,
-      }).from(contactsTable)
-        .where(eq(contactsTable.mobile, normalizedMobile))
-        .limit(1);
-
-      if (fullMatch) {
-        isDuplicate = true;
-        existingContact = fullMatch;
-      }
+    if (mobileMatch) {
+      isDuplicate = true;
+      existingContact = mobileMatch;
     }
 
     // Check duplicate by email

@@ -9,6 +9,7 @@ import { getAccessibleUnits } from "../lib/unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 import { parseEndDate } from "../lib/parse-end-date";
 import { normalizeProfilePhotoUrl } from "../lib/storage";
+import { contactMobileListMatches } from "../lib/mobile-list";
 import { normalizeStateCity } from "../utils/geoMapping";
 
 const router: IRouter = Router();
@@ -97,13 +98,16 @@ async function buildDuplicatePayload(existing: typeof contactsTable.$inferSelect
   };
 }
 
-// Find an existing contact matching mobile OR email (used for the duplicate pre-check)
+// Find an existing contact matching mobile OR email (used for the duplicate pre-check).
+// The mobile column can hold MULTIPLE comma-separated numbers ("1234567890, 0987654321"),
+// so the mobile comparison is list-aware: it matches when ANY entered number equals ANY
+// stored entry (digit-normalized), instead of requiring a full-string equality.
 async function findExistingContact(mobile: string, email?: string | null) {
   return db
     .select()
     .from(contactsTable)
     .where(or(
-      eq(contactsTable.mobile, mobile),
+      contactMobileListMatches(mobile),
       ...(email ? [eq(contactsTable.email, email)] : []),
     ))
     .limit(1);
@@ -390,7 +394,8 @@ router.post("/contacts/check-duplicate", async (req, res) => {
 
     const conditions: SQL[] = [];
     if (mobile?.trim()) {
-      conditions.push(eq(contactsTable.mobile, mobile.trim()));
+      // List-aware match — stored mobile may be "1234567890, 0987654321"
+      conditions.push(contactMobileListMatches(mobile));
     }
     if (email?.trim()) {
       conditions.push(eq(contactsTable.email, email.trim()));
