@@ -17,7 +17,8 @@ import { STAGE_PROBS, STAGE_BADGE_COLORS } from "@/lib/deal-stages";
 import { onDealChange } from "@/lib/query-invalidation";
 import { Pencil, ExternalLink, X } from "lucide-react";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
-import { parseNotesText, formatDealNotes } from "@/lib/parse-notes";
+import { parseNotesText } from "@/lib/parse-notes";
+import { NoteList } from "@/components/note-list";
 import { Link } from "wouter";
 
 const PI_STATUS_COLORS: Record<string, string> = {
@@ -186,7 +187,7 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
                                 {isCompleted && <span className="text-xs text-green-700">✓ Completed</span>}
                                 <span className="text-xs text-muted-foreground ml-auto">{new Date(act.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
                               </div>
-                              {act.notes && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 whitespace-pre-wrap">{formatDealNotes(act.notes)}</p>}
+                              {act.notes && <NoteList notes={act.notes} className="text-xs mt-0.5" />}
                               {act.followUpDate && <p className="text-xs text-primary mt-0.5">Follow-up: {act.followUpDate}{act.followUpTime ? ` ${act.followUpTime}` : ""}</p>}
                             </div>
                           </div>
@@ -206,7 +207,7 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
                           <div className={`w-2 h-2 rounded-full shrink-0 ${act.callStatus === "Completed" ? "bg-green-500" : "bg-amber-500"}`} />
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-medium">{act.followUpDate}{act.followUpTime ? ` ${act.followUpTime}` : ""} via {act.followUpType || act.type}</p>
-                            {act.notes && <p className="text-xs text-muted-foreground truncate">{formatDealNotes(act.notes)}</p>}
+                            {act.notes && <NoteList notes={act.notes} className="text-xs" />}
                           </div>
                           <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${act.callStatus === "Completed" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
                             {act.callStatus || "Pending"}

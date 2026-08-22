@@ -9,7 +9,8 @@ import {
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { onDealChange, onActivityChange, onProductionChange } from "@/lib/query-invalidation";
-import { dedupeById, parseNotesText, formatDealNotes } from "@/lib/parse-notes";
+import { dedupeById, parseNotesText } from "@/lib/parse-notes";
+import { NoteList } from "@/components/note-list";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -775,7 +776,7 @@ export default function DealDetail() {
                           )}
                         </div>
                       </div>
-                      {act.notes && <p className="text-muted-foreground mt-1.5 whitespace-pre-wrap">{formatDealNotes(act.notes)}</p>}
+                      {act.notes && <NoteList notes={act.notes} className="text-sm mt-1.5" />}
                       {act.followUpDate && (
                         <div className="flex items-center gap-2 mt-1">
                           <p className="text-xs text-primary">Follow-up: {act.followUpDate}{act.followUpTime ? ` ${act.followUpTime}` : ""} via {act.followUpType}</p>

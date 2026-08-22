@@ -8,6 +8,7 @@ import { User, Phone, Building, MapPin, Calendar, MessageSquare, ListOrdered, Ro
 import { CategoryBadge } from "@/components/category-badge";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { parseNotesText } from "@/lib/parse-notes";
+import { NoteList } from "@/components/note-list";
 
 interface CustomerProfileDrawerProps {
   contactId: number | null;
@@ -236,7 +237,7 @@ export default function CustomerProfileDrawer({ contactId, open, onOpenChange }:
                             </span>
                           </div>
                           {ev.notes && (
-                            <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{parseNotesText(ev.notes)}</p>
+                            <NoteList notes={ev.notes} className="text-[10px] mt-0.5" />
                           )}
                           {ev.user?.name && (
                             <p className="text-[10px] text-muted-foreground">by {ev.user.name}</p>
