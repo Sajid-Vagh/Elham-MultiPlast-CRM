@@ -278,7 +278,7 @@ export default function LeadForm({
               <FormField control={form.control} name="name" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Name</FormLabel>
-                  <FormControl><Input placeholder="Client name (optional)" {...field} /></FormControl>
+                  <FormControl><Input placeholder="Client name (optional)" {...field} autoComplete="crm-no-autofill" /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -292,6 +292,7 @@ export default function LeadForm({
                     <Input
                       placeholder="10-digit mobile number"
                       {...field}
+                      autoComplete="crm-no-autofill"
                       data-no-cap="1"
                       className={enableDuplicateDetection ? "border-primary/40 focus-visible:ring-primary" : ""}
                       onChange={(e) => {
@@ -341,6 +342,7 @@ export default function LeadForm({
                     <Input
                       placeholder="Email address"
                       {...field}
+                      autoComplete="crm-no-autofill"
                       data-no-cap="1"
                       onBlur={(e) => {
                         field.onBlur();
@@ -354,7 +356,7 @@ export default function LeadForm({
               <FormField control={form.control} name="companyName" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Company Name</FormLabel>
-                  <FormControl><Input placeholder="Company" {...field} /></FormControl>
+                  <FormControl><Input placeholder="Company" {...field} autoComplete="crm-no-autofill" /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />

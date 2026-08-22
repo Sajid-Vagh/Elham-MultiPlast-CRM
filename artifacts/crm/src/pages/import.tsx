@@ -1755,19 +1755,19 @@ export default function ImportPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Client Name</Label>
-                  <Input value={im.clientName} onChange={imF("clientName")} placeholder="Full name" />
+                  <Input value={im.clientName} onChange={imF("clientName")} placeholder="Full name" autoComplete="crm-no-autofill" />
                 </div>
                 <div>
                   <Label>Mobile <span className="text-destructive">*</span></Label>
-                  <Input value={im.clientMobile} onChange={imF("clientMobile")} placeholder="10-digit mobile" data-no-cap="1" />
+                  <Input value={im.clientMobile} onChange={imF("clientMobile")} placeholder="10-digit mobile" autoComplete="crm-no-autofill" data-no-cap="1" />
                 </div>
                 <div>
                   <Label>Company Name</Label>
-                  <Input value={im.companyName} onChange={imF("companyName")} placeholder="Optional" />
+                  <Input value={im.companyName} onChange={imF("companyName")} placeholder="Optional" autoComplete="crm-no-autofill" />
                 </div>
                 <div>
                   <Label>Email</Label>
-                  <Input value={im.email} onChange={imF("email")} placeholder="Optional" data-no-cap="1" />
+                  <Input value={im.email} onChange={imF("email")} placeholder="Optional" autoComplete="crm-no-autofill" data-no-cap="1" />
                 </div>
                 <div>
                   <Label>City</Label>
