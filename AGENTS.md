@@ -1,4 +1,20 @@
 
+## Dispatch Sidebar Badge for Support/Admin
+
+### Goal
+- Support/Admin users need a red count badge on the "Dispatch" sidebar item showing orders waiting in the dispatch queue, so newly "Ready To Dispatch" production orders are immediately visible.
+
+### Done
+- New hook `artifacts/crm/src/lib/use-pending-dispatch-count.ts`: queries `GET /dashboard/support-kpi` and returns its `pendingDispatch` value (status = "Ready To Dispatch" AND dispatchStatus = "Pending Dispatch"/null — identical filter to the Support Dashboard KPI card).
+- Hook shares the `"support-dashboard-kpi"` query-key prefix → auto-refreshes whenever `onProductionChange()` invalidates it after Ready For Dispatch / Load Vehicle / Mark Delivered actions; badge decrements/disappears automatically. 60s polling fallback; no duplicate fetch while the Support Dashboard is open.
+- `layout.tsx`: hook enabled only for `admin` / `production_and_support`; red badge (`bg-red-500`, 99+ cap) rendered on the `/dispatch` nav item in both supportNavItems and the admin production-workspace nav, following the existing `/follow-ups` activity-badge pattern. Placed AFTER the role flags declaration (TDZ-safe).
+
+### Key Decisions
+- Reused the existing support-kpi endpoint instead of adding a new one (explicitly sanctioned by the request); no backend change, no DB migration.
+
+---
+
+
 ## Proforma Invoices List — Full History via Server-Side Pagination
 
 ### Goal

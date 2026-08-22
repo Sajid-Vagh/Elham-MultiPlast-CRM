@@ -8,6 +8,7 @@ import { dedupeById, parseNotesText } from "@/lib/parse-notes";
 import { showBrowserNotification } from "@/lib/notification-sound";
 import { useActivityBadgeCount } from "@/lib/use-activity-badge-count";
 import { useModuleBadgeCounts } from "@/lib/use-module-badge-counts";
+import { usePendingDispatchCount } from "@/lib/use-pending-dispatch-count";
 import { useActivityReminders } from "@/lib/use-activity-reminder";
 import { NotificationPopup } from "./notification-popup";
 import { NotificationSidePanel } from "./notification-side-panel";
@@ -128,8 +129,8 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   // Computed by `useActivityBadgeCount` from one stable React Query key on every
   // page, so the number is identical on the Dashboard and the Activity page and
   // never flickers between them.
-  const activityBadgeCount = useActivityBadgeCount();
-  const moduleBadges = useModuleBadgeCounts();
+const activityBadgeCount = useActivityBadgeCount();
+const moduleBadges = useModuleBadgeCounts();
 
   const d = new Date();
   const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -208,6 +209,9 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   const isSupport = user.role === "production_and_support";
   const isAdmin = user.role === "admin";
   const isInventory = user.role === "inventory";
+
+  // Red "Dispatch" badge (Support/Admin): orders waiting in the dispatch queue
+  const pendingDispatchCount = usePendingDispatchCount(isAdmin || isSupport);
 
   const [workspace, setWorkspace, availableWorkspaces] = useWorkspace(user.role);
 
@@ -359,6 +363,11 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
                   {item.href === "/follow-ups" && activityBadgeCount > 0 && (
                     <Badge className="text-[10px] h-5 min-w-5 px-1.5 flex items-center justify-center bg-orange-500 text-white border-0">
                       {activityBadgeCount}
+                    </Badge>
+                  )}
+                  {item.href === "/dispatch" && pendingDispatchCount > 0 && (
+                    <Badge className="text-[10px] h-5 min-w-5 px-1.5 flex items-center justify-center bg-red-500 text-white border-0">
+                      {pendingDispatchCount > 99 ? "99+" : pendingDispatchCount}
                     </Badge>
                   )}
                 </div>
