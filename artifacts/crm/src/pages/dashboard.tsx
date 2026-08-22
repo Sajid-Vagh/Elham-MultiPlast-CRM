@@ -76,7 +76,7 @@ export default function Dashboard() {
       const res = await fetch(`/api/dashboard/kpi?${params.toString()}`, { headers: authHeaders });
       if (!res.ok) return null;
       return res.json() as Promise<{
-        totalContacts: number; totalDeals: number; wonDeals: number; lostDeals: number; lostLeads: number;
+        totalContacts: number; totalDeals: number; wonDeals: number; lostDeals: number; winRate: number; lostLeads: number;
         activeDeals: number; totalWonValue: number;         categoryCounts: { category: string; count: number }[];
         unitStats: Record<string, number>; totalCalls: number; todayTotal: number; todayCompleted: number; todayPending: number;
         overdueCount: number; newLeadsThisMonth: number; myClientsCount: number;
@@ -272,7 +272,7 @@ export default function Dashboard() {
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{kpi?.totalDeals ? Math.round((kpi.wonDeals / kpi.totalDeals) * 100) : 0}%</div>
+              <div className="text-2xl font-bold">{kpi?.winRate ?? 0}%</div>
             </CardContent>
           </Card>
         </Link>

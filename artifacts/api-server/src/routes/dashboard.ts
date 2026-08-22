@@ -22,6 +22,13 @@ function filterDealsByUnit(deals: (typeof dealsTable.$inferSelect)[], unit: stri
   return deals.filter(d => contactIds.has(d.contactId));
 }
 
+// Active pipeline = every canonical deal stage except terminal Won/Lost.
+// Explicit whitelist (derived from DEAL_STAGES) so stray/legacy stage values in
+// the DB can never inflate the "Active Deals" KPI.
+const ACTIVE_DEAL_STAGES: ReadonlySet<string> = new Set(
+  DEAL_STAGES.filter(s => s !== "Won" && s !== "Lost")
+);
+
 // Local yyyy-MM-dd date string in the SERVER's timezone. The frontend passes its
 // own local `today` when available so follow-up dates are never compared against
 // a UTC-derived date (which is off-by-one during morning hours for +05:30 / +05:45).
@@ -174,11 +181,15 @@ router.get("/dashboard/kpi", async (req, res) => {
     const wonDeals = filteredDeals.filter(d => d.stage === "Won").length;
     const lostDeals = filteredDeals.filter(d => d.stage === "Lost").length;
     const lostLeads = filteredContacts.filter(c => c.lostReason != null).length;
-    const activeDeals = filteredDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").length;
+    // Active Deals counts ONLY open pipeline stages — Won/Lost (and any
+    // non-canonical stage) are strictly excluded.
+    const activeDeals = filteredDeals.filter(d => ACTIVE_DEAL_STAGES.has(d.stage)).length;
+    // Standard Win Rate formula, computed server-side: (Won / Total) * 100.
+    const winRate = totalDeals > 0 ? Math.round((wonDeals / totalDeals) * 100) : 0;
     const totalWonValue = filteredDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? 0), 0);
 
     const activeDealContactIds = new Set(
-      filteredDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").map(d => d.contactId)
+      filteredDeals.filter(d => ACTIVE_DEAL_STAGES.has(d.stage)).map(d => d.contactId)
     );
     const categoryCounts = CATEGORIES.map(category => {
       if (category === "Regular Follow up") {
@@ -207,7 +218,16 @@ router.get("/dashboard/kpi", async (req, res) => {
       []
     );
 
-    const totalCalls = allActivities.filter(a => a.type === "Call").length;
+    // "Calls" mirrors the Activity page's population EXACTLY: the scoped set
+    // already applies owner/unit via contacts (same rules as /activities), and
+    // /activities date-filters on followUpDate with yyyy-MM-dd string
+    // comparison (activities.ts) — so the KPI applies the identical predicate.
+    // With no date preset this counts every scoped type==="Call" activity.
+    const totalCalls = allActivities.filter(a =>
+      a.type === "Call" &&
+      (!startDate || (!!a.followUpDate && a.followUpDate >= startDate)) &&
+      (!endDate || (!!a.followUpDate && a.followUpDate <= endDate))
+    ).length;
     const todayActivities = allActivities.filter(a => a.followUpDate === today);
     const todayTotal = todayActivities.length;
     const todayCompleted = todayActivities.filter(a => a.callStatus === "Completed").length;
@@ -251,6 +271,7 @@ router.get("/dashboard/kpi", async (req, res) => {
       totalDeals,
       wonDeals,
       lostDeals,
+      winRate,
       lostLeads,
       activeDeals,
       totalWonValue,
@@ -361,7 +382,7 @@ router.get("/dashboard/sales-performance", async (req, res) => {
       const totalDeals = userDeals.length;
       const wonDeals = userDeals.filter(d => d.stage === "Won").length;
       const lostDeals = userDeals.filter(d => d.stage === "Lost").length;
-      const activeDeals = userDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").length;
+      const activeDeals = userDeals.filter(d => ACTIVE_DEAL_STAGES.has(d.stage)).length;
       const totalWonValue = userDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? 0), 0);
       const myClients = userContacts.filter(c => c.category === "My Client").length;
       const conversionRate = totalContacts > 0 ? Math.round((myClients / totalContacts) * 100) : 0;
@@ -427,7 +448,7 @@ router.get("/dashboard/charts", async (req, res) => {
     const filteredDeals = filterDealsByUnit(allDeals, unitFilter, allContacts);
 
     const activeDealContactIdsCharts = new Set(
-      filteredDeals.filter(d => d.stage !== "Won" && d.stage !== "Lost").map(d => d.contactId)
+      filteredDeals.filter(d => ACTIVE_DEAL_STAGES.has(d.stage)).map(d => d.contactId)
     );
     const categoryDistribution = CATEGORIES.map(category => {
       if (category === "Regular Follow up") {

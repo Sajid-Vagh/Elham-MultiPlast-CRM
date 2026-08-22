@@ -1,4 +1,23 @@
 
+## Dashboard KPI Fixes — Active Deals Whitelist, Filtered Calls, Backend Win Rate
+
+### Goal
+- "Active Deals" must count ONLY open pipeline stages; the "Calls" card must match the Activity section's count under the same global filters; Win Rate must be computed server-side with the standard formula.
+
+### Done
+- **Active Deals (`dashboard.ts`):** new module-level `ACTIVE_DEAL_STAGES` = `DEAL_STAGES` minus Won/Lost (explicit whitelist — stray/legacy stage strings can no longer inflate the count). Applied consistently to the KPI endpoint's `activeDeals` + virtual My-Client contact set, the sales-performance row math (parity preserved), and the charts endpoint.
+- **Calls (`dashboard.ts` KPI):** `totalCalls` now applies the selected date range using the SAME predicate as `/activities` (activities.ts date-filters on `followUpDate`, yyyy-MM-dd string comparison — NOT createdAt): `type === "Call" && followUpDate >= startDate && <= endDate`. Owner/unit scoping unchanged via `getScopedActivities`. With no preset → all-time count (previous behavior). today/pending/overdue derivations untouched (still un-date-scoped `allActivities`).
+- **Win Rate:** backend computes `winRate = totalDeals > 0 ? Math.round(wonDeals / totalDeals * 100) : 0` and returns it in the KPI payload; frontend Win Rate card displays `kpi.winRate ?? 0` (client-side math removed from `dashboard.tsx`; `winRate` added to the kpi response type).
+- **Build verified:** CRM 0 errors; API server 32 pre-existing errors, none in dashboard.ts.
+
+### Key Decisions
+- Calls filters on `followUpDate` (not createdAt) because that is what the Activity page filters on — matching the number the user compares against is the requirement.
+- Date scope applied ONLY to totalCalls in JS over the already-fetched scoped set: zero extra queries, and Pending/Overdue cards keep their due-date semantics regardless of window.
+- Whitelist derived from DEAL_STAGES so a future canonical stage automatically counts as active pipeline.
+
+
+---
+
 ## Sales Performance Table ↔ KPI Parity Fix
 
 ### Goal
