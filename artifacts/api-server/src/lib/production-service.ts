@@ -2845,6 +2845,7 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
   let delayedOrders = 0;
   let activeOrders = 0;
   let dispatchPendingCount = 0;
+  let activeManufacturing = 0;
   const seenOrders = new Set<number>();
   for (const row of allRows) {
     // Exclude orders linked to soft-deleted proforma invoices
@@ -2854,6 +2855,10 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
     activeOrders++;
     if (row.orderIsDelayed) delayedOrders++;
     if (row.orderStatus === "Ready To Dispatch" || row.orderStatus === "Ready For Dispatch") dispatchPendingCount++;
+    // "Active Manufacturing" = physical production running RIGHT NOW only
+    // (strictly "In Production" / "Production On Going" — never Pending,
+    // Accepted, Planning, Packing/Packaging, Ready/Transport statuses)
+    if (row.orderStatus === "In Production" || row.orderStatus === "Production On Going") activeManufacturing++;
   }
 
   // ── Piece KPIs (Total Bottles / Pending PCS / In Production PCS) ──
@@ -2906,6 +2911,7 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
     completedToday: completedTodayCount || 0,
     delayedOrders,
     activeOrders,
+    activeManufacturing,
     totalOrders: activeOrders,
     dispatchPendingCount,
     productLineStats: {

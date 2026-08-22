@@ -131,7 +131,7 @@ export default function ProductionDashboard() {
           <CardContent>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div><p className="text-xs text-muted-foreground">Total Orders</p><p className="text-xl font-bold">{dashboard?.totalOrders ?? 0}</p></div>
-              <div><p className="text-xs text-muted-foreground">Active (Manufacturing)</p><p className="text-xl font-bold">{dashboard?.activeOrders ?? 0}</p></div>
+              <div><p className="text-xs text-muted-foreground">Active (Manufacturing)</p><p className="text-xl font-bold">{dashboard?.activeManufacturing ?? 0}</p></div>
               <div><p className="text-xs text-muted-foreground">Completed Today</p><p className="text-xl font-bold">{dashboard?.completedToday ?? 0}</p></div>
               <div><p className="text-xs text-muted-foreground">Delayed</p><p className="text-xl font-bold text-red-600">{dashboard?.delayedOrders ?? 0}</p></div>
             </div>

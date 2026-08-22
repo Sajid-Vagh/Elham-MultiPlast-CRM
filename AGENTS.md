@@ -1,4 +1,21 @@
 
+## Production Dashboard "Active (Manufacturing)" KPI Fix
+
+### Goal
+- The "Active (Manufacturing)" stat on the Production Dashboard must STRICTLY count orders where physical production is running right now — status exactly `In Production` / `Production On Going` — never Pending, Accepted, Planning, Packaging/Packing, Ready To/For Dispatch, or In Transport.
+
+### Done
+- Backend `getDashboard` in `production-service.ts` now computes a new `activeManufacturing` field: distinct order count where `status IN ("In Production", "Production On Going")`, reusing the same query rows/filters (unit, origin, date, soft-deleted-PI exclusion) as the existing KPIs. `activeOrders` (all non-terminal statuses) is kept unchanged for backward compat.
+- Frontend `production-dashboard.tsx` Summary card switched from `dashboard?.activeOrders` to `dashboard?.activeManufacturing`.
+- Build verified: CRM typecheck 0 errors; API server errors all in pre-existing baseline files (none in production-service.ts).
+
+### Key Decisions
+- Both `"In Production"` and `"Production On Going"` count because migration 048 renamed old statuses but both strings exist in the DB (`PRODUCTION_STATUSES` has "Production On Going"; v2 workflow uses "In Production").
+- No DB migration needed.
+
+---
+
+
 ## Goal
 - Transform Lead Details page into Customer 360° Profile with all customer data available from one screen.
 - Separate permanent Customer Comments from Follow-up Notes with version history, display across all CRM modules, Customer Profile view, search integration, and import support.
