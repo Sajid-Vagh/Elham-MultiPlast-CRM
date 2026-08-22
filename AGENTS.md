@@ -1,4 +1,21 @@
 
+## Production Dashboard "Product Line Summary" Partial-Ready Fix
+
+### Goal
+- "Ready PCS" on the Production Dashboard Product Line Summary must count partial-ready pieces immediately (e.g., 600 of 1000 marked ready → Ready PCS = 600, In Production PCS = 400), instead of only counting lines whose status is fully "Ready".
+
+### Done
+- Backend `getDashboard` piece-KPI loop in `production-service.ts`: `readyPieces` now sums `readyQuantity` across ALL product-line rows unconditionally (partial-ready lines included); `inProductionPieces` / `pendingPieces` count `quantity - readyQuantity` remaining per bucket as before.
+- Removed the old `else if (row.productionStatus === "Ready")` branch — fully-ready lines are still covered because their `readyQuantity == orderedQuantity`.
+- Build verified: zero TS errors in production-service.ts (baseline unchanged).
+
+### Key Decisions
+- No frontend change needed (`productLineStats` renders API values directly).
+- Machine Report page summary intentionally untouched (separate KPIs).
+
+---
+
+
 ## Production Dashboard "Active (Manufacturing)" KPI Fix
 
 ### Goal

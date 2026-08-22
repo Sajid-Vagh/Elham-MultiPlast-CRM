@@ -2877,14 +2877,16 @@ export async function getDashboard(user: PermissionUser, unitFilter?: string, or
   let inProductionPieces = 0;
   let readyPieces = 0;
   for (const row of rows) {
+    // Ready PCS = every produced piece so far, from ALL lines — including
+    // partial-ready lines whose status is still "In Production"/"Pending".
+    if (row.readyQuantity > 0) readyPieces += row.readyQuantity;
+    // Remaining un-ready pieces drive Pending / In Production
     const remaining = row.quantity - row.readyQuantity;
     const bucket = statusBucket(row);
     if (bucket === "pending") {
       if (remaining > 0) pendingPieces += remaining;
     } else if (bucket === "inProduction") {
       if (remaining > 0) inProductionPieces += remaining;
-    } else if (row.productionStatus === "Ready") {
-      if (row.readyQuantity > 0) readyPieces += row.readyQuantity;
     }
   }
 
