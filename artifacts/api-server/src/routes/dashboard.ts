@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable, dealsTable, usersTable, activitiesTable, ordersTable, productionOrdersTable, CATEGORIES, DEAL_STAGES } from "@workspace/db";
-import { eq, inArray, and, desc, gte, lte, or } from "drizzle-orm";
+import { eq, inArray, and, desc, gte, lte, or, isNull, sql } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 import { getAccessibleUnits } from "../lib/unit-filter";
@@ -212,14 +212,48 @@ router.get("/dashboard/kpi", async (req, res) => {
       .filter(d => isActiveDealStage(d.stage))
       .length;
 
-    // ── Win Rate: (Total Won Deals / Total Created Deals) * 100 ──
-    // Query 1 — Total Created Deals: ALL deals created in the filtered period
-    //           (filteredDeals = createdAt within range + sales person + unit).
-    // Query 2 — Total Won Deals: those with stage = 'Won' in the same period.
+    // ── Win Rate: TWO dedicated aggregate COUNT queries ──
+    // Business rule: Win Rate = (Total Won Deals / Total Created Deals) * 100,
+    // computed on DEALS only. BOTH counts MUST see byte-identical global
+    // filters — selected date range (deals.created_at), Sales-Person owner and
+    // Unit scope — so the numerator is always a subset of the denominator.
+    // Both WHERE clauses are built from ONE shared condition list; the Won
+    // query simply appends stage = 'Won' (canonical DB value, DEAL_STAGES).
+    const buildWinRateDealConds = (): any[] => {
+      const conds: any[] = [...dealDateConds];
+      if (effectiveOwnerId) conds.push(eq(dealsTable.salesOwnerId, effectiveOwnerId));
+      if (unitFilter) {
+        // Unit scoping mirrors filterDealsByUnit()/filterContactsByUnit():
+        // a deal inherits its contact's unit ("Pending Unit" = contacts with
+        // NO unit). The contact whitelist is built from the SAME owner+date-
+        // scoped contacts set those helpers consume, so this count can never
+        // disagree with the totalDeals / totalWonValue cards.
+        conds.push(inArray(
+          dealsTable.contactId,
+          db.select({ id: contactsTable.id }).from(contactsTable).where(and(
+            effectiveOwnerId ? eq(contactsTable.salesOwnerId, effectiveOwnerId) : undefined,
+            ...contactDateConds,
+            unitFilter === PENDING_UNIT_ASSIGNMENT ? isNull(contactsTable.unit) : eq(contactsTable.unit, unitFilter),
+          )),
+        ));
+      }
+      return conds;
+    };
+
+    // Query 1 — totalDealsCount: ALL deals matching the global filters.
+    const [{ count: totalDealsCount }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(dealsTable)
+      .where(and(...buildWinRateDealConds()));
+
+    // Query 2 — wonDealsCount: stage = 'Won' + the EXACT same global filters.
+    const [{ count: wonDealsCount }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(dealsTable)
+      .where(and(...buildWinRateDealConds(), eq(dealsTable.stage, "Won")));
+
     // Integer percentage; division by zero guarded.
-    const totalCreatedDeals = filteredDeals.length;
-    const totalWonDealsInPeriod = wonDeals;
-    const winRate = totalCreatedDeals > 0 ? Math.round((totalWonDealsInPeriod / totalCreatedDeals) * 100) : 0;
+    const winRate = totalDealsCount > 0 ? Math.round((wonDealsCount / totalDealsCount) * 100) : 0;
 
     const totalWonValue = filteredDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? 0), 0);
 
