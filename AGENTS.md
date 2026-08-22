@@ -59,6 +59,7 @@
 - Wired `formatDealNotes` into deal-scoped surfaces: `lead-detail.tsx` (deal Activity Timeline follow-up events; removed now-unused local `parseNote`), `deal-detail.tsx` (Activities list, + `whitespace-pre-wrap`), `deal-detail-drawer.tsx` (Activity Timeline + Follow-up History rows).
 - Already-safe surfaces verified (use parseNotesText): customer-profile-drawer, customer-profile page timeline tab, follow-ups edit dialog.
 - Verified helpers via node strip-types against the exact reported payload: single entry → clean text/"Note 1:", double-encoded → unwrapped, multi-entry → Note 1..N, plain text → untouched.
+- **Per-note visual formatting in the lead-detail Activity Timeline:** follow-up events carry a new `noteEntries?: string[]` field (populated from `parseNotesEntries` ONLY when raw notes look like JSON); the renderer shows each entry as its own row — `Note {i+1}:` label in `font-semibold text-orange-700`, note text in `font-medium text-foreground`, on a subtle `bg-orange-50` chip with an orange left border (`border-l-2 border-orange-300 rounded-r-md`, `whitespace-pre-wrap`, stacked with `space-y-1`). Plain-text notes and non-note details keep the legacy muted paragraph. `detail` is still populated for timeline search matching.
 - Build verified: CRM typecheck = 0 errors.
 
 ### Key Decisions

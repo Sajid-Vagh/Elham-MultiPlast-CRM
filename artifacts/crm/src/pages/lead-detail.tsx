@@ -33,7 +33,7 @@ import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { INDUSTRIES } from "@/lib/constants";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { onContactChange, onDealChange, onActivityChange } from "@/lib/query-invalidation";
-import { parseNotesText, parseNotesDisplay, formatDealNotes, dedupeById } from "@/lib/parse-notes";
+import { parseNotesText, parseNotesDisplay, parseNotesEntries, formatDealNotes, dedupeById } from "@/lib/parse-notes";
 import { formatCurrency } from "@/lib/currency";
 
 function localDateStr(d: Date): string {
@@ -245,7 +245,7 @@ export default function LeadDetail() {
   const dealTimeline = useMemo(() => {
     type FlatEvent = {
       key: string; date: string; kind: "lead" | "deal" | "followup" | "pi" | "won" | "lost";
-      label: string; detail?: string | null; meta?: string | null; activityId?: number; dateInLabel?: boolean;
+      label: string; detail?: string | null; noteEntries?: string[]; meta?: string | null; activityId?: number; dateInLabel?: boolean;
     };
     const formatDay = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
     const dateOk = (d: string) => {
@@ -308,10 +308,17 @@ export default function LeadDetail() {
       for (const act of dealActs) {
         if (!dateOk(act.createdAt)) continue;
         followUpNum++;
+        // Structured notes: JSON-array history entries render as individually
+        // styled "Note N" rows (bold, tinted); plain-text notes keep the
+        // legacy unprefixed paragraph rendering via `detail`.
+        const trimmedNotes = (act.notes || "").trim();
+        const looksLikeJson = trimmedNotes.startsWith("[") || trimmedNotes.startsWith("{") || trimmedNotes.startsWith("\"");
+        const noteEntries = looksLikeJson ? parseNotesEntries(act.notes) : [];
         events.push({
           key: `act-${act.id}`, date: act.createdAt, kind: "followup",
           label: `Follow-up ${followUpNum}`,
           detail: formatDealNotes(act.notes) || parseNotesText((act as any).notesDisplay) || null,
+          noteEntries: noteEntries.length > 0 ? noteEntries : undefined,
           meta: act.callStatus || null,
           activityId: act.id,
         });
@@ -938,7 +945,20 @@ export default function LeadDetail() {
                                         </Badge>
                                       )}
                                     </div>
-                                    {ev.detail && <p className="text-[11px] text-muted-foreground whitespace-pre-wrap mt-0.5">{ev.detail}</p>}
+                                    {ev.noteEntries && ev.noteEntries.length > 0 ? (
+                                      <div className="mt-1 space-y-1">
+                                        {ev.noteEntries.map((entry, i) => (
+                                          <div
+                                            key={i}
+                                            className="text-[11px] font-medium text-foreground whitespace-pre-wrap bg-orange-50 border-l-2 border-orange-300 rounded-r-md pl-2 pr-1.5 py-1"
+                                          >
+                                            <span className="text-orange-700 font-semibold">Note {i + 1}:</span> {entry}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : ev.detail ? (
+                                      <p className="text-[11px] text-muted-foreground whitespace-pre-wrap mt-0.5">{ev.detail}</p>
+                                    ) : null}
                                   </div>
                                   {ev.activityId && (
                                     <button
