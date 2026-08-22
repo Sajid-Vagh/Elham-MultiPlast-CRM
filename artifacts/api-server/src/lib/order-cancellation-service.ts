@@ -299,27 +299,35 @@ export async function cancelOrder(
     createdBy: user.id,
   });
 
-  // 11. Notifications — notify order owners + all admins + all production role users
+  // 11. Notifications — notify order owners + all admins + all production/support role users
+  //     so the team can immediately stop physical production on the cancelled order.
   const notifyUsers = new Set<number>();
   if (order.salesOwnerId && order.salesOwnerId !== user.id) notifyUsers.add(order.salesOwnerId);
   if (order.supportOwnerId && order.supportOwnerId !== user.id) notifyUsers.add(order.supportOwnerId);
   if (order.productionOwnerId && order.productionOwnerId !== user.id) notifyUsers.add(order.productionOwnerId);
 
   const adminsAndProduction = await db.select({ id: usersTable.id }).from(usersTable).where(
-    sql`${usersTable.role} IN ('admin', 'production_manager', 'production_and_support')`
+    sql`${usersTable.role} IN ('admin', 'production', 'production_manager', 'support', 'production_and_support')`
   );
   for (const u of adminsAndProduction) {
     if (u.id !== user.id) notifyUsers.add(u.id);
   }
+
+  // Deep-link Production/Support straight to the cancelled production order
+  // when one is linked; otherwise fall back to the sales order page.
+  const productionOrderId = transactionResult.productionOrder?.id ?? null;
+  const notificationLink = productionOrderId
+    ? `/production/orders/${productionOrderId}`
+    : `/orders/${orderId}`;
 
   for (const uid of notifyUsers) {
     await createNotification({
       createdById: user.id,
       userId: uid,
       type: "order_cancelled",
-      title: "Order Cancelled",
-      message: `Order ${order.orderNumber} has been cancelled.\nReason: ${reason}${reason === "Other" ? ` (${otherReason})` : ""}\nCustomer: ${order.customerName}\nCancelled by: ${user.name}`,
-      link: `/orders/${orderId}`,
+      title: `Order Cancelled: ${order.orderNumber}`,
+      message: `Order ${order.orderNumber} for ${order.customerName} has been cancelled.\nReason: ${reason}${reason === "Other" ? ` (${otherReason})` : ""}\nCancelled by: ${user.name}`,
+      link: notificationLink,
       relatedId: orderId,
       relatedType: "order",
     });

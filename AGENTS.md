@@ -1,4 +1,23 @@
 
+## Real-Time "Order Cancelled" Notification for Production/Support
+
+### Goal
+- When a Sales Order is cancelled, Production/Support users must receive an immediate real-time notification so they can stop physical production.
+
+### Done
+- `cancelOrder` in `order-cancellation-service.ts` notification block updated:
+  - Role query widened to `admin, production, production_manager, support, production_and_support` (previously missed `production` + `support`).
+  - `title` → `Order Cancelled: ${order.orderNumber}`; `message` → `Order ${order.orderNumber} for ${customerName} has been cancelled.` + reason/cancelled-by lines.
+  - `link` → `/production/orders/:id` when a production order is linked to the deal (transaction already returns it), else `/orders/:id`.
+  - `type: "order_cancelled"`, `relatedId/relatedType: order` unchanged; `createNotification()` emits over SSE in real time (dedup per user/type/order prevents duplicates).
+
+### Key Decisions
+- Reused the existing `createNotification` SSE pipeline — no frontend changes needed.
+- No DB migration needed.
+
+---
+
+
 ## Owner Filter Dropdowns Include All Contact Owners
 
 ### Goal
