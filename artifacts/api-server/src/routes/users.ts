@@ -3,7 +3,7 @@ import type { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import multer from "multer";
 import { db, usersTable } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, or, sql } from "drizzle-orm";
 import { CreateUserBody, UpdateUserBody, GetUserParams, UpdateUserParams, DeleteUserParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
@@ -101,6 +101,28 @@ router.post("/users", async (req, res) => {
       return;
     }
     req.log.error({ err }, "Create user error");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
+
+router.get("/users/contact-owners", async (req, res) => {
+  try {
+    const me = await getUserFromRequest(req);
+    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
+    // Customer-facing roles PLUS any user who currently owns at least one
+    // contact/lead — regardless of their primary role. This keeps Production /
+    // Support users that own leads selectable in the "All Owners" filters.
+    const owners = await db
+      .select()
+      .from(usersTable)
+      .where(or(
+        inArray(usersTable.role, ["admin", "sales", "production_and_support"]),
+        sql`EXISTS (SELECT 1 FROM contacts c WHERE c.sales_owner_id = ${usersTable.id})`
+      ))
+      .orderBy(usersTable.name);
+    res.json(owners.map(safeUser));
+  } catch (err) {
+    req.log.error({ err }, "List contact owners error");
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });

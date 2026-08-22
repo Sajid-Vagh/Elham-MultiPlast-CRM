@@ -1,13 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 
-/**
- * Customer-facing roles that own and manage customers, deals, and revenue.
- * Used by all owner filter dropdowns across the CRM.
- */
-export const CUSTOMER_FACING_ROLES = ["admin", "sales", "production_and_support"];
-
-const ROLES_PARAM = CUSTOMER_FACING_ROLES.join(",");
-
 type UserRecord = { id: number; name: string; role: string; unit: string; colorCode: string; profilePhoto?: string | null };
 
 function authHeaders() {
@@ -15,15 +7,17 @@ function authHeaders() {
 }
 
 /**
- * Fetches only customer-facing users (admin, sales, production_and_support).
+ * Fetches users eligible for the owner filter dropdowns: all customer-facing
+ * roles (admin, sales, production_and_support) PLUS any user who currently
+ * owns at least one lead/contact — regardless of their primary role — so
+ * Production / Support owners always appear and filter correctly.
  * Used by owner filter dropdowns in Dashboard, Reports, Follow-ups, Deals, Leads, Import.
- * Excludes production, inventory, and other internal operational roles.
  */
 export function useCustomerFacingUsers() {
   const { data, isLoading } = useQuery<UserRecord[]>({
     queryKey: ["users-customer-facing"],
     queryFn: async () => {
-      const res = await fetch(`/api/users?roles=${ROLES_PARAM}`, { headers: authHeaders() });
+      const res = await fetch("/api/users/contact-owners", { headers: authHeaders() });
       if (!res.ok) throw new Error("Failed to fetch users");
       return res.json();
     },

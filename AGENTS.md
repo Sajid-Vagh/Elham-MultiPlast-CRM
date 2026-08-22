@@ -1,4 +1,22 @@
 
+## Owner Filter Dropdowns Include All Contact Owners
+
+### Goal
+- Users with roles like Production / Support who create or own leads must appear in the "All Owners" / "Sales Person" dropdown filters (Leads page + related tables). Previously only admin/sales/production_and_support were listed, so filtering by a Production owner's id showed blank results.
+
+### Done
+- New backend endpoint `GET /users/contact-owners` in `routes/users.ts`: returns users where `role IN ("admin","sales","production_and_support") OR EXISTS(SELECT 1 FROM contacts c WHERE c.sales_owner_id = users.id)`. Registered BEFORE `/users/:id`.
+- Frontend hook `use-customer-facing-users.ts` now fetches `/api/users/contact-owners`; removed the roles-param filter and unused `CUSTOMER_FACING_ROLES`/`ROLES_PARAM` constants.
+- All consumers fixed automatically: leads.tsx, follow-ups.tsx, deals.tsx, reports.tsx, import.tsx, leads-new/leads-edit (LeadForm assigned-to prop), schedule-follow-up-dialog.tsx.
+- Build verified: CRM typecheck 0 errors; no TS errors in users.ts (baseline unchanged).
+
+### Key Decisions
+- Union approach (role-based + contact-ownership-based) keeps customer-facing roles always present while guaranteeing any contact owner appears even with an unusual role.
+- No DB migration needed.
+
+---
+
+
 ## Production Dashboard "Product Line Summary" Partial-Ready Fix
 
 ### Goal
