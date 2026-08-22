@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable, dealsTable, usersTable, activitiesTable, ordersTable, productionOrdersTable, CATEGORIES, DEAL_STAGES } from "@workspace/db";
-import { eq, inArray, and, desc, gte, lte, or, isNull, sql } from "drizzle-orm";
+import { eq, inArray, and, desc, gte, lte, or, isNull, sql, ne } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 import { getAccessibleUnits } from "../lib/unit-filter";
@@ -285,13 +285,19 @@ router.get("/dashboard/kpi", async (req, res) => {
     );
 
     // ── "Calls" KPI: STRICT count query ──
-    // Counts ONLY rows from the activities table where type = 'Call', scoped by
-    // the selected Sales Person + Unit (via getScopedActivities, identical
-    // rules to /activities) and the global Date Range applied to createdAt —
-    // the SAME timestamp the lead-detail Activity Timeline uses to place
-    // follow-up events. followUpDate is intentionally NOT used: that is the
-    // *scheduled* date of future/pending slots and inflated the count.
-    const callActivityConds: any[] = [eq(activitiesTable.type, "Call")];
+    // Counts ONLY upcoming/active calls: type = 'Call' AND the call has NOT
+    // been completed (call_status <> 'Completed' — exact schema value).
+    // Completed calls are excluded so the card reflects open work, not done
+    // work. Scoped by the selected Sales Person + Unit (via
+    // getScopedActivities, identical rules to /activities) and the global
+    // Date Range applied to createdAt — the SAME timestamp the lead-detail
+    // Activity Timeline uses to place follow-up events. followUpDate is
+    // intentionally NOT used: that is the *scheduled* date of future/pending
+    // slots and inflated the count.
+    const callActivityConds: any[] = [
+      eq(activitiesTable.type, "Call"),
+      ne(activitiesTable.callStatus, "Completed"),
+    ];
     if (startDate) callActivityConds.push(gte(activitiesTable.createdAt, new Date(startDate)));
     if (endDate) { const end = new Date(endDate); end.setHours(23, 59, 59, 999); callActivityConds.push(lte(activitiesTable.createdAt, end)); }
 
@@ -301,8 +307,9 @@ router.get("/dashboard/kpi", async (req, res) => {
       unitFilter,
       callActivityConds
     );
-    // Belt & braces: the SQL clause above already enforces type='Call'.
-    const totalCalls = callActivities.filter(a => a.type === "Call").length;
+    // Belt & braces: the SQL clauses above already enforce type='Call'
+    // AND callStatus <> 'Completed'.
+    const totalCalls = callActivities.filter(a => a.type === "Call" && a.callStatus !== "Completed").length;
 
     const todayActivities = allActivities.filter(a => a.followUpDate === today);
     const todayTotal = todayActivities.length;
