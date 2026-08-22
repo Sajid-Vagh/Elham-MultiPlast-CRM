@@ -33,7 +33,7 @@ import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { INDUSTRIES } from "@/lib/constants";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { onContactChange, onDealChange, onActivityChange } from "@/lib/query-invalidation";
-import { parseNotesText, parseNotesDisplay, dedupeById } from "@/lib/parse-notes";
+import { parseNotesText, parseNotesDisplay, formatDealNotes, dedupeById } from "@/lib/parse-notes";
 import { formatCurrency } from "@/lib/currency";
 
 function localDateStr(d: Date): string {
@@ -219,8 +219,6 @@ export default function LeadDetail() {
     else { setActFromDate(""); setActToDate(""); }
   };
 
-  const parseNote = (notes: string | null | undefined): string | null => parseNotesText(notes);
-
   // Deal-centric timeline: flat chronological list per deal (no General group, no nested drawers)
   const dealTimeline = useMemo(() => {
     type FlatEvent = {
@@ -282,7 +280,7 @@ export default function LeadDetail() {
         events.push({
           key: `act-${act.id}`, date: act.createdAt, kind: "followup",
           label: `Follow-up ${followUpNum}`,
-          detail: parseNote(act.notes) || parseNote((act as any).notesDisplay) || null,
+          detail: formatDealNotes(act.notes) || parseNotesText((act as any).notesDisplay) || null,
           meta: act.callStatus || null,
           activityId: act.id,
         });

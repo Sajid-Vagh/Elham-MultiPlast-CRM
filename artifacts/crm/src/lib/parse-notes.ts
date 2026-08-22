@@ -8,11 +8,15 @@
 export function parseNotesText(notes: string | null | undefined): string | null {
   if (!notes) return null;
   const trimmed = notes.trim();
-  if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) {
+  if (!trimmed.startsWith("[") && !trimmed.startsWith("{") && !trimmed.startsWith("\"")) {
     return notes;
   }
   try {
     const parsed = JSON.parse(trimmed);
+    // Double-stringified JSON ('"[{\"text\":...}]"') parses to a string — recurse once more.
+    if (typeof parsed === "string") {
+      return parseNotesText(parsed);
+    }
     if (Array.isArray(parsed)) {
       const texts = parsed
         .map((item: any) => {
@@ -42,6 +46,61 @@ export const formatActivityNotes = parseNotesText;
 // are absent.
 export function parseNotesDisplay(notes: string | null | undefined, notesDisplay: string | null | undefined): string | null {
   return parseNotesText(notes) ?? parseNotesText(notesDisplay) ?? null;
+}
+
+// Extract ONLY the clean text entries from a notes field. Plain text returns as
+// a single-entry array; stringified JSON arrays of { text, date, time, userName,
+// userId } entries are parsed (handles double-encoded JSON too) and each
+// history entry's `text` is returned in stored order.
+export function parseNotesEntries(notes: string | null | undefined): string[] {
+  if (!notes) return [];
+  let value: unknown = notes;
+  for (let pass = 0; pass < 2 && typeof value === "string"; pass++) {
+    const t = value.trim();
+    if (!t.startsWith("[") && !t.startsWith("{") && !t.startsWith("\"")) break;
+    try {
+      value = JSON.parse(t);
+    } catch {
+      break;
+    }
+  }
+  const out: string[] = [];
+  const collect = (v: unknown) => {
+    if (v == null) return;
+    if (typeof v === "string") {
+      const s = v.trim();
+      if (s) out.push(s);
+      return;
+    }
+    if (Array.isArray(v)) {
+      v.forEach(collect);
+      return;
+    }
+    if (typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      collect(o.text ?? o.note ?? o.content ?? null);
+    }
+  };
+  collect(value);
+  return out;
+}
+
+// Deal/follow-up note rendering with sequential numbering: every entry parsed
+// from a JSON-array notes field is prefixed with its position ("Note 1: ...",
+// "Note 2: ..."), so a deal's progression reads in order and a brand-new deal's
+// first note starts from 1. Plain-text notes are returned unchanged.
+export function formatDealNotes(notes: string | null | undefined): string | null {
+  if (!notes) return null;
+  const trimmed = notes.trim();
+  const looksLikeJson = trimmed.startsWith("[") || trimmed.startsWith("{") || trimmed.startsWith("\"");
+  if (!looksLikeJson) {
+    return parseNotesText(notes);
+  }
+  const entries = parseNotesEntries(notes);
+  if (entries.length === 0) {
+    return parseNotesText(notes);
+  }
+  return entries.map((text, index) => `Note ${index + 1}: ${text}`).join("\n");
 }
 
 // Strict ID-based uniqueness filter — guarantees each item is rendered exactly

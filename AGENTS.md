@@ -1,4 +1,26 @@
 
+## Timeline Raw-JSON Fix + Sequential Deal Note Numbering
+
+### Goal
+- Timeline / Recent Activity surfaces must never render stringified JSON (`[{"text":...,"userName":...}]`) for "Follow-up Scheduled"/"Note Logged" events — only clean note text.
+- Follow-up notes on a deal render sequentially numbered ("Note 1: ...", "Note 2: ..."); a brand-new deal's first note starts from 1.
+
+### Done
+- `artifacts/crm/src/lib/parse-notes.ts`:
+  - `parseNotesText` hardened for double-stringified JSON (guard extended to leading `"`, recursion when JSON.parse yields a string).
+  - New `parseNotesEntries()` — unwraps up to 2 layers of encoded JSON, returns clean `text` entries in stored order.
+  - New `formatDealNotes()` — entries parsed from JSON arrays are prefixed `Note ${index + 1}:` and joined with newlines; plain-text notes pass through unchanged.
+- Wired `formatDealNotes` into deal-scoped surfaces: `lead-detail.tsx` (deal Activity Timeline follow-up events; removed now-unused local `parseNote`), `deal-detail.tsx` (Activities list, + `whitespace-pre-wrap`), `deal-detail-drawer.tsx` (Activity Timeline + Follow-up History rows).
+- Already-safe surfaces verified (use parseNotesText): customer-profile-drawer, customer-profile page timeline tab, follow-ups edit dialog.
+- Verified helpers via node strip-types against the exact reported payload: single entry → clean text/"Note 1:", double-encoded → unwrapped, multi-entry → Note 1..N, plain text → untouched.
+- Build verified: CRM typecheck = 0 errors.
+
+### Key Decisions
+- Numbering is index-based per notes array, so it naturally restarts at 1 for every new deal/activity — no DB counter needed.
+- Plain-text notes intentionally get NO prefix (legacy data stays visually unchanged); only JSON-array history gets numbered.
+
+---
+
 ## Dispatch Sidebar Badge for Support/Admin
 
 ### Goal
