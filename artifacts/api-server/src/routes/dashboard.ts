@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable, dealsTable, usersTable, activitiesTable, ordersTable, productionOrdersTable, CATEGORIES, DEAL_STAGES } from "@workspace/db";
-import { eq, inArray, and, desc, gte, lte, or } from "drizzle-orm";
+import { eq, inArray, and, desc, gte, lte, or, sql } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 import { getAccessibleUnits } from "../lib/unit-filter";
@@ -22,12 +22,27 @@ function filterDealsByUnit(deals: (typeof dealsTable.$inferSelect)[], unit: stri
   return deals.filter(d => contactIds.has(d.contactId));
 }
 
-// Active pipeline = every canonical deal stage except terminal Won/Lost.
-// Explicit whitelist (derived from DEAL_STAGES) so stray/legacy stage values in
-// the DB can never inflate the "Active Deals" KPI.
-const ACTIVE_DEAL_STAGES: ReadonlySet<string> = new Set(
-  DEAL_STAGES.filter(s => s !== "Won" && s !== "Lost")
-);
+// ── Active-deal stage predicate (STRICT) ─────────────────────────────────
+// Active pipeline = ONLY the canonical open stages. Terminal Won/Lost (and any
+// stray/legacy value) can never count as active.
+const ACTIVE_DEAL_STAGES_LIST: readonly string[] = DEAL_STAGES.filter(s => s !== "Won" && s !== "Lost");
+const ACTIVE_DEAL_STAGES = new Set<string>(ACTIVE_DEAL_STAGES_LIST.map(s => s.toLowerCase()));
+
+// JS-side check — case/whitespace-insensitive so DB variants like 'WON' or
+// ' Won ' are excluded exactly like the SQL clause below.
+function isActiveDealStage(stage: string | null | undefined): boolean {
+  return !!stage && ACTIVE_DEAL_STAGES.has(stage.trim().toLowerCase());
+}
+
+// SQL-side WHERE clause used by the Active Deals count query:
+//   WHERE lower(btrim(stage)) IN ('new','cl sent','price given',
+//                                 'samples sent','samples received','pi sent')
+// Equivalent to `stage NOT IN ('Won', 'Lost')` but additionally immune to
+// case/whitespace variants and legacy stray values.
+const ACTIVE_DEAL_STAGE_SQL = sql`lower(btrim(${dealsTable.stage})) IN (${sql.join(
+  ACTIVE_DEAL_STAGES_LIST.map(s => sql`${s}`),
+  sql`, `,
+)})`;
 
 // Local yyyy-MM-dd date string in the SERVER's timezone. The frontend passes its
 // own local `today` when available so follow-up dates are never compared against
@@ -181,15 +196,32 @@ router.get("/dashboard/kpi", async (req, res) => {
     const wonDeals = filteredDeals.filter(d => d.stage === "Won").length;
     const lostDeals = filteredDeals.filter(d => d.stage === "Lost").length;
     const lostLeads = filteredContacts.filter(c => c.lostReason != null).length;
-    // Active Deals counts ONLY open pipeline stages — Won/Lost (and any
-    // non-canonical stage) are strictly excluded.
-    const activeDeals = filteredDeals.filter(d => ACTIVE_DEAL_STAGES.has(d.stage)).length;
-    // Standard Win Rate formula, computed server-side: (Won / Total) * 100.
-    const winRate = totalDeals > 0 ? Math.round((wonDeals / totalDeals) * 100) : 0;
+
+    // ── Active Deals: STRICT SQL count query ──
+    // Same owner + date-range + unit scope as every other deal KPI, plus the
+    // hard stage clause: WHERE lower(btrim(stage)) IN (open stages only) —
+    // i.e. `stage NOT IN ('Won', 'Lost')`, normalized against case/whitespace
+    // variants. Won/Lost deals can never reach this count.
+    const activeDealConds: any[] = [...dealDateConds, ACTIVE_DEAL_STAGE_SQL];
+    if (effectiveOwnerId) activeDealConds.push(eq(dealsTable.salesOwnerId, effectiveOwnerId));
+    const allActiveDealRows = await db.select().from(dealsTable).where(and(...activeDealConds));
+    const activeDeals = filterDealsByUnit(allActiveDealRows, unitFilter, allContacts)
+      .filter(d => isActiveDealStage(d.stage))
+      .length;
+
+    // ── Win Rate: (Total Won Deals / Total Created Deals) * 100 ──
+    // Query 1 — Total Created Deals: ALL deals created in the filtered period
+    //           (filteredDeals = createdAt within range + sales person + unit).
+    // Query 2 — Total Won Deals: those with stage = 'Won' in the same period.
+    // Integer percentage; division by zero guarded.
+    const totalCreatedDeals = filteredDeals.length;
+    const totalWonDealsInPeriod = wonDeals;
+    const winRate = totalCreatedDeals > 0 ? Math.round((totalWonDealsInPeriod / totalCreatedDeals) * 100) : 0;
+
     const totalWonValue = filteredDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? 0), 0);
 
     const activeDealContactIds = new Set(
-      filteredDeals.filter(d => ACTIVE_DEAL_STAGES.has(d.stage)).map(d => d.contactId)
+      filteredDeals.filter(d => isActiveDealStage(d.stage)).map(d => d.contactId)
     );
     const categoryCounts = CATEGORIES.map(category => {
       if (category === "Regular Follow up") {
@@ -206,11 +238,8 @@ router.get("/dashboard/kpi", async (req, res) => {
       unitStats[u] = (unitStats[u] || 0) + 1;
     }
 
-    // Activities: scope to owner and apply unit filter via contacts.
-    // NO date condition here on purpose: today/completed/pending/overdue are
-    // derived below from followUpDate in JS (identical results either way),
-    // and the all-time result powers the "Calls" KPI = TOTAL type==="Call"
-    // activities regardless of the selected date preset.
+    // Activities for the today/pending/overdue mini-cards (followUpDate-based,
+    // un-date-scoped by design). The "Calls" KPI uses its own strict query below.
     const allActivities = await getScopedActivities(
       user,
       isAdmin ? effectiveOwnerId : undefined,
@@ -218,16 +247,26 @@ router.get("/dashboard/kpi", async (req, res) => {
       []
     );
 
-    // "Calls" mirrors the Activity page's population EXACTLY: the scoped set
-    // already applies owner/unit via contacts (same rules as /activities), and
-    // /activities date-filters on followUpDate with yyyy-MM-dd string
-    // comparison (activities.ts) — so the KPI applies the identical predicate.
-    // With no date preset this counts every scoped type==="Call" activity.
-    const totalCalls = allActivities.filter(a =>
-      a.type === "Call" &&
-      (!startDate || (!!a.followUpDate && a.followUpDate >= startDate)) &&
-      (!endDate || (!!a.followUpDate && a.followUpDate <= endDate))
-    ).length;
+    // ── "Calls" KPI: STRICT count query ──
+    // Counts ONLY rows from the activities table where type = 'Call', scoped by
+    // the selected Sales Person + Unit (via getScopedActivities, identical
+    // rules to /activities) and the global Date Range applied to createdAt —
+    // the SAME timestamp the lead-detail Activity Timeline uses to place
+    // follow-up events. followUpDate is intentionally NOT used: that is the
+    // *scheduled* date of future/pending slots and inflated the count.
+    const callActivityConds: any[] = [eq(activitiesTable.type, "Call")];
+    if (startDate) callActivityConds.push(gte(activitiesTable.createdAt, new Date(startDate)));
+    if (endDate) { const end = new Date(endDate); end.setHours(23, 59, 59, 999); callActivityConds.push(lte(activitiesTable.createdAt, end)); }
+
+    const callActivities = await getScopedActivities(
+      user,
+      isAdmin ? effectiveOwnerId : undefined,
+      unitFilter,
+      callActivityConds
+    );
+    // Belt & braces: the SQL clause above already enforces type='Call'.
+    const totalCalls = callActivities.filter(a => a.type === "Call").length;
+
     const todayActivities = allActivities.filter(a => a.followUpDate === today);
     const todayTotal = todayActivities.length;
     const todayCompleted = todayActivities.filter(a => a.callStatus === "Completed").length;
@@ -382,7 +421,7 @@ router.get("/dashboard/sales-performance", async (req, res) => {
       const totalDeals = userDeals.length;
       const wonDeals = userDeals.filter(d => d.stage === "Won").length;
       const lostDeals = userDeals.filter(d => d.stage === "Lost").length;
-      const activeDeals = userDeals.filter(d => ACTIVE_DEAL_STAGES.has(d.stage)).length;
+      const activeDeals = userDeals.filter(d => isActiveDealStage(d.stage)).length;
       const totalWonValue = userDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? 0), 0);
       const myClients = userContacts.filter(c => c.category === "My Client").length;
       const conversionRate = totalContacts > 0 ? Math.round((myClients / totalContacts) * 100) : 0;
@@ -448,7 +487,7 @@ router.get("/dashboard/charts", async (req, res) => {
     const filteredDeals = filterDealsByUnit(allDeals, unitFilter, allContacts);
 
     const activeDealContactIdsCharts = new Set(
-      filteredDeals.filter(d => ACTIVE_DEAL_STAGES.has(d.stage)).map(d => d.contactId)
+      filteredDeals.filter(d => isActiveDealStage(d.stage)).map(d => d.contactId)
     );
     const categoryDistribution = CATEGORIES.map(category => {
       if (category === "Regular Follow up") {
