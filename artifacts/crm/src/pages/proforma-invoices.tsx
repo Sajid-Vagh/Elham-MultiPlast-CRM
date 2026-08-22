@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
@@ -207,7 +207,9 @@ export default function ProformaInvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [totalInvoices, setTotalInvoices] = useState(0);
   const perPage = 15;
 
   const [mode, setMode] = useState<"list" | "create" | "detail">(isNewPath ? "create" : "list");
@@ -287,8 +289,9 @@ export default function ProformaInvoicesPage() {
 
   const [globalStatus, setGlobalStatus] = useStatusFilter();
   const statusFilter = globalStatus === "All" ? "all" : (INVOICE_STATUSES as string[]).includes(globalStatus) ? globalStatus : "all";
-  const setStatusFilter = (v: string) => setGlobalStatus(v === "all" ? "All" : v);
-  const [orderTypeFilter, setOrderTypeFilter] = useState<string | null>(urlOrderType);
+  const setStatusFilter = (v: string) => { setGlobalStatus(v === "all" ? "All" : v); setPage(1); };
+  const [orderTypeFilter, setOrderTypeFilterRaw] = useState<string | null>(urlOrderType);
+  const setOrderTypeFilter = (v: string | null) => { setOrderTypeFilterRaw(v); setPage(1); };
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
   const [pendingWonAdjustment, setPendingWonAdjustment] = useState<{ status: string; originalTaxableAmount: number; newTaxableAmount: number } | null>(null);
 
@@ -311,8 +314,12 @@ export default function ProformaInvoicesPage() {
       const params = new URLSearchParams();
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (orderTypeFilter) params.set("orderType", orderTypeFilter);
-      const qs = params.toString();
-      const url = qs ? `/api/proforma-invoices?${qs}` : "/api/proforma-invoices";
+      // Server-side pagination + search so the ENTIRE invoice history stays
+      // reachable (backend caps page size at 100; default was 15).
+      params.set("page", String(page));
+      params.set("limit", String(perPage));
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      const url = `/api/proforma-invoices?${params.toString()}`;
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -328,6 +335,7 @@ export default function ProformaInvoicesPage() {
         return;
       }
       const json = await res.json();
+      setTotalInvoices(Number(json?.total ?? 0));
       setInvoices(ensureArray(json));
       setFetchError("");
     } catch (err) {
@@ -340,30 +348,19 @@ export default function ProformaInvoicesPage() {
     }
   };
 
+  // Debounce the search box — each settled keystroke queries the server
+  useEffect(() => {
+    const t = setTimeout(() => { setDebouncedSearch(search.trim()); setPage(1); }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
   useEffect(() => {
     if (mode === "list") fetchInvoices();
-  }, [mode, statusFilter, orderTypeFilter]);
+  }, [mode, statusFilter, orderTypeFilter, debouncedSearch, page]);
 
-  const filteredInvoices = useMemo(() => {
-    const list = Array.isArray(invoices) ? invoices : [];
-    if (!search) return list;
-    const s = search.toLowerCase();
-    return list.filter(
-      (inv) =>
-        inv.customerName?.toLowerCase().includes(s) ||
-        inv.invoiceNumber?.toLowerCase().includes(s) ||
-        inv.companyName?.toLowerCase().includes(s) ||
-        inv.mobile?.includes(s) ||
-        inv.orderNo?.toLowerCase().includes(s) ||
-        inv.contact?.name?.toLowerCase().includes(s) ||
-        inv.contact?.customerCode?.toLowerCase().includes(s)
-    );
-  }, [invoices, search]);
-
-  const totalPages = Math.max(1, Math.ceil((filteredInvoices?.length || 0) / perPage));
-  const paginatedInvoices = Array.isArray(filteredInvoices)
-    ? filteredInvoices.slice((page - 1) * perPage, page * perPage)
-    : [];
+  // Server-side filtering + pagination: `invoices` holds exactly one page
+  const totalPages = Math.max(1, Math.ceil(totalInvoices / perPage));
+  const paginatedInvoices: any[] = Array.isArray(invoices) ? invoices : [];
 
   const calcAmount = (item: InvoiceItem) => {
     return item.quantity * item.rate;
@@ -3389,7 +3386,7 @@ ${pagesHtml}
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Page {page} of {totalPages}</span>
+          <span className="text-sm text-muted-foreground">Page {page} of {totalPages} · {totalInvoices.toLocaleString()} invoices</span>
           <div className="flex gap-1">
             <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
               <ChevronLeft className="h-4 w-4" />

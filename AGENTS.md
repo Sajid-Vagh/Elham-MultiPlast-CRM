@@ -1,4 +1,23 @@
 
+## Proforma Invoices List — Full History via Server-Side Pagination
+
+### Goal
+- The Proforma Invoices list page showed only the newest 15 invoices (backend default page size); older invoices vanished as new ones were created and were unsearchable. All history must remain viewable/searchable.
+
+### Done
+- Frontend `proforma-invoices.tsx` list mode switched to true server-side pagination: fetch sends `page`, `limit=15`, and debounced `search`; response `{ data, total }` drives the table + `totalPages` + "Page X of Y · N invoices" footer.
+- Removed the client-side `filteredInvoices` memo / slice pagination (it was paginating the same 15 server rows) and the now-unused `useMemo` import.
+- Search box debounced 300ms; status/orderType/search changes reset to page 1; post-mutation refetches unchanged.
+- Backend `GET /proforma-invoices`: search extended with an `EXISTS` on contacts matching contact `name`/`customer_code` (parity with the removed client-side filter fields). Pagination (`page`/`limit`, cap 100) already existed.
+- Build verified: CRM typecheck 0 errors; no TS errors in proforma-invoices.ts.
+
+### Key Decisions
+- Server-side search/pagination chosen over raising the limit so 500+ invoice datasets stay fast; backend cap of 100/page respected.
+- `/proforma-invoices/all` endpoint untouched (used by selection modals, not the list page).
+
+---
+
+
 ## Real-Time "Order Cancelled" Notification for Production/Support
 
 ### Goal

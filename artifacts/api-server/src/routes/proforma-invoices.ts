@@ -902,6 +902,11 @@ router.get("/proforma-invoices", async (req, res) => {
           WHERE ${ordersTable.dealId} = ${proformaInvoicesTable.dealId}
             AND ${ordersTable.isDeleted} = false
             AND (${ordersTable.formattedOrderId} ILIKE ${`%${search}%`} OR ${ordersTable.orderNumber} ILIKE ${`%${search}%`})
+        ) OR
+        EXISTS (
+          SELECT 1 FROM ${contactsTable}
+          WHERE ${contactsTable.id} = ${proformaInvoicesTable.contactId}
+            AND (${contactsTable.name} ILIKE ${`%${search}%`} OR ${contactsTable.customerCode} ILIKE ${`%${search}%`})
         )
       )`);
     }
