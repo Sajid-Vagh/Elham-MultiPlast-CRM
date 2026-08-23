@@ -284,22 +284,45 @@ router.get("/dashboard/kpi", async (req, res) => {
       []
     );
 
-    // ── "Calls" KPI: STRICT count query ──
-    // Counts ONLY upcoming/active calls: type = 'Call' AND the call has NOT
-    // been completed (call_status <> 'Completed' — exact schema value).
-    // Completed calls are excluded so the card reflects open work, not done
-    // work. Scoped by the selected Sales Person + Unit (via
-    // getScopedActivities, identical rules to /activities) and the global
-    // Date Range applied to createdAt — the SAME timestamp the lead-detail
-    // Activity Timeline uses to place follow-up events. followUpDate is
-    // intentionally NOT used: that is the *scheduled* date of future/pending
-    // slots and inflated the count.
+    // ── "Calls" KPI: STRICT count query, byte-parity with the Activity page ──
+    // Mirrors EXACTLY what /follow-ups shows as an active "Phone Call" so the
+    // two numbers can never disagree (goal: user sees N active calls on the
+    // Activity page ⇒ this card shows N).
+    //
+    // 1. What counts as a "call": (type = 'Call' OR follow_up_type = 'Call').
+    //    Both columns are free text; the ONLY values present are exact-case
+    //    'Call'. follow-ups.tsx's Phone Call filter matches EITHER column
+    //    (TYPE_VALUE_ALIASES + filteredActivities), because a scheduled call
+    //    lives as type='FollowUp' with follow_up_type='Call' — verified
+    //    against production: every legacy type='Call' row is already
+    //    'Completed', so counting type='Call' alone returns 0 forever while
+    //    the page shows the 7 pending follow_up_type='Call' rows.
+    // 2. Active = NOT completed: (call_status IS NULL OR call_status <>
+    //    'Completed'). SQL three-valued logic makes a bare ne() silently drop
+    //    NULL rows; the schema default is 'Pending' but legacy rows can be
+    //    NULL and the Activity page treats them as Pending
+    //    ((a.callStatus || "Pending") === "Pending"). Terminal 'Completed'
+    //    rows can never reach the count.
+    // 3. Global Date Range uses follow_up_date with yyyy-MM-dd STRING
+    //    comparison — the IDENTICAL predicate as GET /activities (which is
+    //    what the page fetches). created_at is the insert timestamp, NOT the
+    //    scheduled date: filtering on it zeroed the card whenever the selected
+    //    range didn't contain the moment the record was inserted.
+    // 4. Sales Person + Unit scoping comes from getScopedActivities — role
+    //    scoping identical to /activities, admin owner filter resolved via
+    //    the activity's effective contact (contactId ?? deal.contactId)
+    //    sales_owner_id, unit via the effective contact's unit. No direct
+    //    owner column exists on activities, so the join-through-contact
+    //    resolution below is what keeps ?ownerId= accurate.
     const callActivityConds: any[] = [
-      eq(activitiesTable.type, "Call"),
-      ne(activitiesTable.callStatus, "Completed"),
+      or(
+        eq(activitiesTable.type, "Call"),
+        eq(activitiesTable.followUpType, "Call"),
+      ),
+      or(isNull(activitiesTable.callStatus), ne(activitiesTable.callStatus, "Completed")),
     ];
-    if (startDate) callActivityConds.push(gte(activitiesTable.createdAt, new Date(startDate)));
-    if (endDate) { const end = new Date(endDate); end.setHours(23, 59, 59, 999); callActivityConds.push(lte(activitiesTable.createdAt, end)); }
+    if (startDate) callActivityConds.push(gte(activitiesTable.followUpDate, startDate));
+    if (endDate) callActivityConds.push(lte(activitiesTable.followUpDate, endDate));
 
     const callActivities = await getScopedActivities(
       user,
@@ -307,9 +330,12 @@ router.get("/dashboard/kpi", async (req, res) => {
       unitFilter,
       callActivityConds
     );
-    // Belt & braces: the SQL clauses above already enforce type='Call'
-    // AND callStatus <> 'Completed'.
-    const totalCalls = callActivities.filter(a => a.type === "Call" && a.callStatus !== "Completed").length;
+    // Belt & braces: mirror the two SQL clauses in JS over the scoped set —
+    // same membership test the Activity page applies client-side.
+    const totalCalls = callActivities.filter(a =>
+      (a.type === "Call" || a.followUpType === "Call") &&
+      (a.callStatus == null || a.callStatus !== "Completed")
+    ).length;
 
     const todayActivities = allActivities.filter(a => a.followUpDate === today);
     const todayTotal = todayActivities.length;

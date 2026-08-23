@@ -1,4 +1,30 @@
 
+## Calls KPI Zero-Count Fix — Call Identity = type OR follow_up_type, NULL-Safe Completion Exclusion
+
+### Goal
+- The Sales Dashboard "Calls" card returned **0** even while users saw active calls on the Activity page. The count must be byte-parity with what /follow-ups shows as active "Phone Call" rows under the same global filters.
+
+### Root Cause (verified against the LIVE Supabase DB, not assumed)
+- Every one of the 11 legacy `type='Call'` rows has `call_status='Completed'`. Any `type='Call' AND call_status <> 'Completed'` count is therefore **0 forever** on this dataset.
+- The "active calls" users actually see are scheduled follow-ups: `type='FollowUp'` with `follow_up_type='Call'`, `call_status='Pending'` (7 such rows). follow-ups.tsx's Phone Call filter matches EITHER column (`TYPE_VALUE_ALIASES` + `filteredActivities`: `a.type === 'Call' || a.followUpType === 'Call'`) — the dashboard counted only one column.
+- Secondary bug in the interim code: date range was applied to `created_at` (insert timestamp) instead of `follow_up_date`; and a bare SQL `ne(call_status,'Completed')` silently drops NULL `call_status` rows (three-valued logic) that the Activity page treats as Pending (`(callStatus || "Pending") === "Pending"`).
+
+### Done
+- **Schema values verified** (`lib/db/src/schema/activities.ts`): `type` free text (values present: Note/FollowUp/Call/WhatsApp; exact-case `'Call'`), `call_status` nullable text default `'Pending'` (values: Pending/Completed), `follow_up_type` nullable text (`null` or `'Call'`). No enums anywhere.
+- **`dashboard.ts` GET /dashboard/kpi totalCalls rewritten:**
+  - Call identity: `(type = 'Call' OR follow_up_type = 'Call')` — mirrors the Activity page's dual-column match.
+  - Active filter: `(call_status IS NULL OR call_status <> 'Completed')` — excludes Completed strictly AND keeps NULL rows (which render as Pending on the page). JS belt-and-braces mirror updated identically.
+  - Date range back on `followUpDate` yyyy-MM-dd STRING comparison — byte-identical predicate to GET `/activities` lines (`gte/lte(followUpDate, startDate/endDate)`); no preset → all-time.
+  - Sales-Person/Unit scoping unchanged via `getScopedActivities` (role scoping + effective-contact `contactId ?? deal.contactId` → `sales_owner_id` / unit resolution, same as `/activities`).
+- **Live verification:** old query → 0; new query → 7 all-time and 7 within Aug-2026 range; per-owner split owner34=3, owner47=3, owner48=1 — matching the Activity page exactly.
+- **Build verified:** API server 32 errors = pre-existing baseline, 0 in dashboard.ts.
+
+### Key Decisions
+- Dual-column call identity is REQUIRED: strict single-column `type='Call'` can never satisfy the parity goal on this data (all such rows are terminal).
+- Exclusive `<> 'Completed'` + explicit IS NULL guard chosen over `IN ('Pending')`: identical result set for current data, but future non-terminal statuses (e.g. rescheduled) keep counting while Completed stays excluded.
+- today/pending/overdue mini-cards untouched (un-date-scoped `allActivities`, by-design semantics).
+
+
 ## Dashboard KPI Fixes — Active Deals Whitelist, Filtered Calls, Backend Win Rate
 
 ### Goal
