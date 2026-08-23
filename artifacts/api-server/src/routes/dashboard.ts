@@ -55,6 +55,59 @@ function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+// Local HH:MM 24h wall-clock string in the SERVER's timezone.
+function localTimeStr(d: Date): string {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+// Parse a stored follow-up time ("HH:MM" canonical from FlexibleTimeInput;
+// "6:31 PM" legacy strings also accepted) into minutes since midnight.
+// Returns null when absent/unparseable.
+function parseTimeToMinutes(time?: string | null): number | null {
+  if (!time) return null;
+  let s = String(time).trim().toLowerCase();
+  if (!s) return null;
+  let isPm: boolean | null = null;
+  const mer = s.match(/(am|pm)\.?$/);
+  if (mer) {
+    isPm = mer[0].startsWith("p");
+    s = s.slice(0, -mer[0].length).trim();
+  }
+  let hours: number;
+  let minutes: number;
+  const colon = s.match(/^(\d{1,2}):(\d{1,2})$/);
+  const compact = s.match(/^(\d{1,2})(\d{2})$/);
+  if (colon) {
+    hours = parseInt(colon[1], 10);
+    minutes = parseInt(colon[2], 10);
+  } else if (compact) {
+    hours = parseInt(compact[1], 10);
+    minutes = parseInt(compact[2], 10);
+  } else {
+    return null;
+  }
+  if (isNaN(hours) || isNaN(minutes) || minutes < 0 || minutes > 59) return null;
+  if (isPm !== null) {
+    if (hours < 1 || hours > 12) return null;
+    if (isPm && hours < 12) hours += 12;
+    if (!isPm && hours === 12) hours = 0;
+  } else if (hours < 0 || hours > 23) {
+    return null;
+  }
+  return hours * 60 + minutes;
+}
+
+// True when the scheduled follow-up time has already passed relative to the
+// reference wall-clock time ("HH:MM"). Missing/unparseable times count as
+// NOT passed (legacy date-only behavior).
+function isFollowUpTimePassed(followUpTime: string | null | undefined, nowTime: string): boolean {
+  const sched = parseTimeToMinutes(followUpTime);
+  if (sched === null) return false;
+  const cur = parseTimeToMinutes(nowTime);
+  if (cur === null) return false;
+  return sched <= cur;
+}
+
 // Scopes activities to the current user + optional unit/owner filters, resolving
 // each activity's effective contact via its deal when it has no direct contactId.
 // The scoping mirrors the Activity page EXACTLY (activities.ts + follow-ups.tsx):
@@ -194,6 +247,12 @@ router.get("/dashboard/kpi", async (req, res) => {
     // +05:30/+05:45 regions between midnight and ~05:30 local.
     const rawToday = req.query.today as string | undefined;
     const today = rawToday && /^\d{4}-\d{2}-\d{2}$/.test(rawToday) ? rawToday : localDateStr(now);
+
+    // Client-local wall-clock time (HH:MM 24h) matching `today`, so "time has
+    // passed" is decided in the SAME timezone as the user's table (the server
+    // may run UTC while users are +05:30). Falls back to server-local time.
+    const rawNowTime = req.query.nowTime as string | undefined;
+    const nowTime = rawNowTime && /^([01]\d|2[0-3]):[0-5]\d$/.test(rawNowTime) ? rawNowTime : localTimeStr(now);
 
     const totalContacts = filteredContacts.length;
     const totalDeals = filteredDeals.length;
@@ -340,7 +399,13 @@ router.get("/dashboard/kpi", async (req, res) => {
     const todayActivities = allActivities.filter(a => a.followUpDate === today);
     const todayTotal = todayActivities.length;
     const todayCompleted = todayActivities.filter(a => a.callStatus === "Completed").length;
-    const todayPending = todayActivities.filter(a => a.callStatus === "Pending").length;
+    // Time-aware "Pending": scheduled TODAY whose time has already passed —
+    // mirrors the Activity page's Pending filter exactly (a task due at
+    // 6:30 PM shows as Today until 6:30, then moves to Pending). Missing or
+    // unparseable times keep counting here (legacy date-only behavior).
+    const todayPending = todayActivities.filter(a =>
+      a.callStatus === "Pending" && isFollowUpTimePassed(a.followUpTime, nowTime)
+    ).length;
 
     // Overdue mirrors the Activity page's "Overdue" status filter exactly
     // (follow-ups.tsx): followUpDate < today && callStatus === "Pending".

@@ -73,6 +73,11 @@ export default function Dashboard() {
       if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
       if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
       params.set("today", todayStr());
+      // Client-local HH:MM so the backend's "Pending" split of today's tasks
+      // (time already passed) is decided in the user's timezone, not the
+      // server's — same reason the `today` param exists.
+      const now = new Date();
+      params.set("nowTime", `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`);
       const res = await fetch(`/api/dashboard/kpi?${params.toString()}`, { headers: authHeaders });
       if (!res.ok) return null;
       return res.json() as Promise<{

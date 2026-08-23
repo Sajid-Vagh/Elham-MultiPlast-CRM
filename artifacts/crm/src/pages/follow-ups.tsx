@@ -30,6 +30,7 @@ import { ClearFiltersButton } from "@/components/clear-filters-button";
 import ActivityDetailDrawer from "@/components/activity-detail-drawer";
 import CustomerProfileDrawer from "@/components/customer-profile-drawer";
 import { FlexibleTimeInput } from "@/components/flexible-time-input";
+import { deriveFollowUpStatus } from "@/lib/follow-up-status";
 
 const PAGE_SIZE = 15;
 
@@ -51,15 +52,16 @@ function formatTime(time: string | null | undefined): string {
   }
 }
 
-function getStatusBadge(status: string | null | undefined, followUpDate?: string | null): { label: string; className: string } {
+function getStatusBadge(status: string | null | undefined, followUpDate?: string | null, followUpTime?: string | null): { label: string; className: string } {
   if (status === "Completed") return { label: "Completed", className: "bg-green-100 text-green-700 border-green-200" };
   if (status === "Cancelled") return { label: "Cancelled", className: "bg-red-100 text-red-700 border-red-200" };
   if (status === "No Response") return { label: "No Response", className: "bg-gray-100 text-gray-600 border-gray-200" };
-  if (followUpDate) {
-    const today = todayStr();
-    if (followUpDate < today) return { label: "Overdue", className: "bg-red-100 text-red-700 border-red-200" };
-    if (followUpDate === today) return { label: "Today", className: "bg-orange-100 text-orange-700 border-orange-200" };
-  }
+  // Date+time aware: Overdue = past date; Pending = today with time passed;
+  // Today = today with time still ahead; Upcoming = future/no date.
+  const derived = deriveFollowUpStatus(status, followUpDate, followUpTime);
+  if (derived === "Overdue") return { label: "Overdue", className: "bg-red-100 text-red-700 border-red-200" };
+  if (derived === "Pending") return { label: "Pending", className: "bg-yellow-100 text-yellow-700 border-yellow-200" };
+  if (derived === "Today") return { label: "Today", className: "bg-orange-100 text-orange-700 border-orange-200" };
   return { label: "Upcoming", className: "bg-blue-100 text-blue-700 border-blue-200" };
 }
 
@@ -338,21 +340,14 @@ export default function FollowUps() {
       });
     }
 
-    // Status filter — default: only show active pending activities
+    // Status filter — default: only show active pending activities.
+    // Date-based buckets are time-aware via deriveFollowUpStatus:
+    // Overdue = past date; Pending = today + time passed; Today = today +
+    // time still ahead; Upcoming = future date (or no date).
     if (statusFilter === "all") {
       list = list.filter(a => (a.callStatus || "Pending") === "Pending");
-    } else if (statusFilter === "Upcoming") {
-      list = list.filter(a => {
-        if (a.callStatus !== "Pending") return false;
-        const today = todayStr();
-        return a.followUpDate ? a.followUpDate > today : true;
-      });
-    } else if (statusFilter === "Today") {
-      const today = todayStr();
-      list = list.filter(a => a.followUpDate === today && a.callStatus === "Pending");
-    } else if (statusFilter === "Overdue") {
-      const today = todayStr();
-      list = list.filter(a => a.followUpDate && a.followUpDate < today && a.callStatus === "Pending");
+    } else if (statusFilter === "Upcoming" || statusFilter === "Today" || statusFilter === "Overdue" || statusFilter === "Pending") {
+      list = list.filter(a => deriveFollowUpStatus(a.callStatus, a.followUpDate, a.followUpTime) === statusFilter);
     } else {
       list = list.filter(a => (a.callStatus || "Pending") === statusFilter);
     }
@@ -372,19 +367,9 @@ export default function FollowUps() {
           return (b.followUpDate || "").localeCompare(a.followUpDate || "");
         case "status": {
           const order = { "Overdue": 0, "Today": 1, "Upcoming": 2, "Pending": 3, "No Response": 4, "Completed": 5, "Cancelled": 6 };
-          const getOrder = (s: string | null | undefined, d?: string | null) => {
-            if (s === "Completed") return 5;
-            if (s === "Cancelled") return 6;
-            if (s === "No Response") return 4;
-            if (d) {
-              const t = todayStr();
-              if (d < t) return 0;
-              if (d === t) return 1;
-            }
-            if (s === "Pending") return 3;
-            return 2;
-          };
-          return getOrder(a.callStatus, a.followUpDate) - getOrder(b.callStatus, b.followUpDate);
+          const getOrder = (s: string | null | undefined, d?: string | null, t?: string | null) =>
+            order[deriveFollowUpStatus(s, d, t)] ?? 2;
+          return getOrder(a.callStatus, a.followUpDate, a.followUpTime) - getOrder(b.callStatus, b.followUpDate, b.followUpTime);
         }
         case "name": {
           const nameA = (a.contact?.name || a.deal?.contact?.name || "").toLowerCase();
@@ -566,7 +551,7 @@ export default function FollowUps() {
                     const companyName = activity.contact?.companyName || activity.deal?.contact?.companyName || "-";
                     const salesPerson = activity.user?.name || (activity.contact?.salesOwner?.name) || "-";
                     const isTerminal = activity.callStatus === "Completed" || activity.callStatus === "Cancelled";
-                    const statusBadge = getStatusBadge(activity.callStatus, activity.followUpDate);
+                    const statusBadge = getStatusBadge(activity.callStatus, activity.followUpDate, activity.followUpTime);
                     const contactId = activity.contact?.id || activity.deal?.contact?.id;
                     const leadUrl = contactId ? `/leads/${contactId}` : null;
 

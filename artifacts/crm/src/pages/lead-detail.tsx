@@ -35,6 +35,7 @@ import { useActiveUnits } from "@/lib/use-active-units";
 import { onContactChange, onDealChange, onActivityChange } from "@/lib/query-invalidation";
 import { parseNotesText, parseNotesDisplay, parseNotesEntries, formatDealNotes, dedupeById } from "@/lib/parse-notes";
 import { formatCurrency } from "@/lib/currency";
+import { deriveFollowUpStatus } from "@/lib/follow-up-status";
 
 function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -629,13 +630,15 @@ export default function LeadDetail() {
                     {upcomingFollowUp.followUpTime && <span className="text-muted-foreground">at {upcomingFollowUp.followUpTime}</span>}
                   </div>
                   {(() => {
-                    const today2 = new Date();
-                    const todayStr = `${today2.getFullYear()}-${String(today2.getMonth() + 1).padStart(2, "0")}-${String(today2.getDate()).padStart(2, "0")}`;
-                    const isOverdue = upcomingFollowUp.followUpDate < todayStr;
-                    const isToday = upcomingFollowUp.followUpDate === todayStr;
-                    const statusBadge = isOverdue
+                    // Date+time aware: a today follow-up whose time has
+                    // already passed shows "Pending" (yellow) instead of
+                    // staying "Today" all day.
+                    const derived = deriveFollowUpStatus(upcomingFollowUp.callStatus, upcomingFollowUp.followUpDate, upcomingFollowUp.followUpTime);
+                    const statusBadge = derived === "Overdue"
                       ? <Badge className="bg-red-100 text-red-700 hover:bg-red-100 border-red-200 text-[10px]">Overdue</Badge>
-                      : isToday
+                      : derived === "Pending"
+                      ? <Badge className="bg-yellow-100 text-yellow-700 hover:bg-yellow-100 border-yellow-200 text-[10px]">Pending</Badge>
+                      : derived === "Today"
                       ? <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200 text-[10px]">Today</Badge>
                       : <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-blue-200 text-[10px]">Upcoming</Badge>;
                     return statusBadge;
