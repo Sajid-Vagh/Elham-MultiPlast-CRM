@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, Fragment } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef, Fragment } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -154,7 +154,17 @@ export default function Reports() {
   const [detailData, setDetailData] = useState<{ data?: any[]; records?: any[]; total: number } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
+
+  // Deep-link support: the Dashboard's "Won Value" card navigates here with
+  // `?view=won_deals`. On mount, this auto-opens the Won Deals drill-down
+  // table (same view as clicking the "Won" stage row in Pipeline by Stage).
+  const viewParam = useMemo(() => {
+    const qs = location.split("?")[1];
+    if (!qs) return null;
+    return new URLSearchParams(qs).get("view");
+  }, [location]);
+  const openedViewRef = useRef<string | null>(null);
 
   // ── Drill-down (By City / State / Owner / Product) ──────────────────────
   type DrillKind = "city" | "state" | "owner" | "product";
@@ -469,6 +479,18 @@ export default function Reports() {
       setDetailLoading(false);
     }
   }, [dateFilter.startDate, dateFilter.endDate, unit, ownerId]);
+
+  // Deep-link: /reports?view=won_deals opens the Won Deals drill-down table
+  // automatically (ref-guarded so it fires once per navigation, not on every
+  // date/unit/owner filter change that re-creates fetchStageDetail).
+  useEffect(() => {
+    if (!viewParam || openedViewRef.current === viewParam) return;
+    openedViewRef.current = viewParam;
+    if (viewParam === "won_deals") {
+      setActiveTab("pipeline");
+      fetchStageDetail("Won");
+    }
+  }, [viewParam, fetchStageDetail]);
 
   return (
     <div className="p-8 space-y-6">
