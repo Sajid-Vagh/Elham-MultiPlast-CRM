@@ -283,7 +283,7 @@ export default function Dashboard() {
         <Link href="/follow-ups" className="block">
           <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out border-blue-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-medium">Calls</CardTitle>
+              <CardTitle className="text-xs font-medium">All Activities</CardTitle>
               <Phone className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
@@ -294,7 +294,7 @@ export default function Dashboard() {
         <Link href="/follow-ups?status=Pending" className="block">
           <Card className="hover:translate-y-[-3px] hover:shadow-lg cursor-pointer transition-all duration-200 ease-out border-orange-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-medium">Pending</CardTitle>
+              <CardTitle className="text-xs font-medium">Today&apos;s Pending</CardTitle>
               <Clock className="h-4 w-4 text-orange-500" />
             </CardHeader>
             <CardContent>
