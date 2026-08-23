@@ -26,6 +26,7 @@ interface MarkLostDialogProps {
   onSave: (data: LostDialogData) => void;
   saving?: boolean;
   hideCategory?: boolean;
+  hasOtherActiveDeals?: boolean;
 }
 
 export function MarkLostDialog({
@@ -34,6 +35,7 @@ export function MarkLostDialog({
   onSave,
   saving,
   hideCategory,
+  hasOtherActiveDeals,
 }: MarkLostDialogProps) {
   const { toast } = useToast();
   const [lostReason, setLostReason] = useState("");
@@ -63,7 +65,7 @@ export function MarkLostDialog({
       toast({ title: "Validation Error", description: "Please specify the other reason", variant: "destructive" });
       return;
     }
-    if (!hideCategory && !lostCategory) {
+    if (!hideCategory && !hasOtherActiveDeals && !lostCategory) {
       toast({ title: "Validation Error", description: "Please select a category to move to", variant: "destructive" });
       return;
     }
@@ -100,13 +102,18 @@ export function MarkLostDialog({
               <Textarea className="mt-1 text-xs sm:text-sm" placeholder="Please specify the reason..." value={otherReason} onChange={e => setOtherReason(e.target.value)} rows={3} />
             </div>
           )}
-          {!hideCategory && (
+          {!hideCategory && !hasOtherActiveDeals && (
             <div>
               <Label className="text-xs sm:text-sm">Move To Category <span className="text-destructive">*</span></Label>
               <Select value={lostCategory} onValueChange={setLostCategory}>
                 <SelectTrigger className="mt-1 text-xs sm:text-sm"><SelectValue placeholder="Select category" /></SelectTrigger>
                 <SelectContent className="max-h-48">{CATEGORY_OPTIONS.map(c => <SelectItem key={c.value} value={c.value} className="text-xs sm:text-sm">{c.label}</SelectItem>)}</SelectContent>
               </Select>
+            </div>
+          )}
+          {!hideCategory && hasOtherActiveDeals && (
+            <div className="bg-blue-50 border border-blue-200 rounded-md px-3 py-2 text-xs sm:text-sm text-blue-700">
+              Contact will keep their current category — they have other active deals in the pipeline.
             </div>
           )}
           <div>
@@ -116,7 +123,7 @@ export function MarkLostDialog({
         </div>
         <DialogFooter className="gap-2 flex-col-reverse sm:flex-row">
           <Button variant="outline" onClick={handleCancel} disabled={saving} className="w-full sm:w-auto text-xs sm:text-sm">Cancel</Button>
-          <Button onClick={handleSave} disabled={saving || !lostReason || (!hideCategory && !lostCategory) || (lostReason === "Other" && !otherReason.trim())} className="w-full sm:w-auto text-xs sm:text-sm">
+          <Button onClick={handleSave} disabled={saving || !lostReason || (!hideCategory && !hasOtherActiveDeals && !lostCategory) || (lostReason === "Other" && !otherReason.trim())} className="w-full sm:w-auto text-xs sm:text-sm">
             {saving ? "Saving..." : "Save"}
           </Button>
         </DialogFooter>

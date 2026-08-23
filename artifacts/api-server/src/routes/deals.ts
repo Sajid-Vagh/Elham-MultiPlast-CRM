@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, categoryHistoryTable, unitHistoryTable, activitiesTable, DEAL_STAGES, STAGE_PROBS, ordersTable, orderItemsTable, proformaInvoicesTable, proformaInvoiceItemsTable, proformaInvoiceHistoryTable, productionOrdersTable, productionTimelineTable, existingCustomersTable, PRIORITY_LEVELS } from "@workspace/db";
-import { eq, and, or, inArray, SQL, SQLWrapper, sql, desc, gte, lte, between, isNull, isNotNull } from "drizzle-orm";
+import { eq, and, or, ne, inArray, SQL, SQLWrapper, sql, desc, gte, lte, between, isNull, isNotNull } from "drizzle-orm";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import { parseEndDate } from "../lib/parse-end-date";
 import {
@@ -724,15 +724,31 @@ router.patch("/deals/:id", async (req, res) => {
       };
       const newCategory = categoryMap[manualCategory] || manualCategory;
       if (contact.category !== newCategory) {
-        const prevCategory = contact.category;
-        await db.update(contactsTable).set({ category: newCategory }).where(eq(contactsTable.id, contact.id));
-        await db.insert(categoryHistoryTable).values({
-          contactId: contact.id,
-          previousCategory: prevCategory,
-          newCategory,
-          changedBy: user.id,
-          reason: `Deal ${deal.stage} - Categorized as ${newCategory}`,
-        });
+        // Check if the contact has other active (non-Lost, non-Won) deals.
+        // If so, changing the category would hide those deals from the Pipeline
+        // view (which only shows contacts in "Regular Follow up" or "My Client").
+        // Skip the category change to preserve sibling deal visibility.
+        const otherActiveDeals = await db
+          .select({ id: dealsTable.id })
+          .from(dealsTable)
+          .where(and(
+            eq(dealsTable.contactId, contact.id),
+            ne(dealsTable.id, deal.id),
+            sql`${dealsTable.stage} NOT IN ('Won', 'Lost')`,
+          ));
+        if (otherActiveDeals.length === 0) {
+          const prevCategory = contact.category;
+          await db.update(contactsTable).set({ category: newCategory }).where(eq(contactsTable.id, contact.id));
+          await db.insert(categoryHistoryTable).values({
+            contactId: contact.id,
+            previousCategory: prevCategory,
+            newCategory,
+            changedBy: user.id,
+            reason: `Deal ${deal.stage} - Categorized as ${newCategory}`,
+          });
+        }
+        // If other active deals exist, the category stays unchanged so those
+        // deals remain visible in the Pipeline.
       }
     }
 

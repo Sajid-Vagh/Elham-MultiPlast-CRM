@@ -169,6 +169,7 @@ export default function Deals() {
   // Lost reason flow
   const [lostDeal, setLostDeal] = useState<Deal | null>(null);
   const [lostSubmitting, setLostSubmitting] = useState(false);
+  const [lostDealHasOtherActive, setLostDealHasOtherActive] = useState(false);
 
   // Cancel Order flow (Won → Lost drop) — cancelling the confirmed Sales Order is
   // the only correct way to move a Won deal to Lost; the backend cancellation
@@ -431,6 +432,11 @@ export default function Deals() {
         return;
       }
       setOptimisticStages(prev => ({ ...prev, [dealId]: "Lost" }));
+      // Check if the contact has other active deals — if so, category won't change
+      const hasOtherActive = (deals || []).some(
+        d => d.contactId === deal.contactId && d.id !== deal.id && d.stage !== "Lost" && d.stage !== "Won"
+      );
+      setLostDealHasOtherActive(hasOtherActive);
       setLostDeal(deal);
       return;
     }
@@ -824,6 +830,7 @@ export default function Deals() {
         onSave={handleLostSave}
         saving={lostSubmitting}
         hideCategory={lostDeal?.contact?.category === "My Client" || !!lostDeal?.contact?.customerSince || !!lostDeal?.contact?.isMyClient}
+        hasOtherActiveDeals={lostDealHasOtherActive}
       />
 
       {/* Cancel Order flow — opened when a Won deal is dropped into Lost.
