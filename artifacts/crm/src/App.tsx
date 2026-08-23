@@ -39,6 +39,7 @@ import Inventory from "@/pages/inventory";
 import OrdersList from "@/pages/orders-list";
 import OrderDetailGlobal from "@/pages/order-detail-global";
 import DailyTasks from "@/pages/daily-tasks";
+import WonDeals from "@/pages/won-deals";
 import { readWorkspace, getHomeRoute } from "@/lib/use-workspace";
 import { GlobalFilterProvider } from "@/lib/global-filters";
 import { ProductionFilterProvider } from "@/lib/production-filters";
@@ -154,6 +155,12 @@ function Router() {
       <Route path="/reports">
         <ProtectedLayout>
           <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><Reports /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
+      {/* Won Deals — full-page drill-down linked from the Dashboard's "Won Value" card */}
+      <Route path="/won-deals">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={SALES_ADMIN_ROLES}><WonDeals /></RoleGuard>
         </ProtectedLayout>
       </Route>
       <Route path="/import">
