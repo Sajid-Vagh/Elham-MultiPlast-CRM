@@ -601,7 +601,7 @@ export default function Leads() {
                         onClick={() => { saveLeadsScrollPosition(); markLeadAsRead(contact.id); }}
                         className="hover:underline text-primary"
                       >
-                        {contact.name}
+                        {contact.name?.trim() || "Unknown"}
                       </Link>
                       {contact.customerCode && <span className="ml-1.5 text-[10px] text-muted-foreground font-mono">({contact.customerCode})</span>}
                     </TableCell>

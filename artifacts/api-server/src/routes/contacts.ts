@@ -11,6 +11,7 @@ import { parseEndDate } from "../lib/parse-end-date";
 import { normalizeProfilePhotoUrl } from "../lib/storage";
 import { contactMobileListMatches } from "../lib/mobile-list";
 import { normalizeStateCity } from "../utils/geoMapping";
+import { generateUnknownName } from "../lib/auto-name";
 
 const router: IRouter = Router();
 
@@ -325,6 +326,10 @@ router.post("/contacts", async (req, res) => {
     if (ownerUser && ownerUser.unit && ownerUser.unit !== "All") {
       values.unit = ownerUser.unit;
     }
+  }
+  // Auto-name unnamed leads ("Unknown N") so the Leads table always has a clickable identity
+  if (!values.name?.trim()) {
+    values.name = await generateUnknownName();
   }
   // Duplicate pre-check: return the rich 409 payload deterministically (before any DB write)
   // so the frontend always opens the "Customer Already Exists" dialog instead of a generic toast.

@@ -8,6 +8,7 @@ import { normalizeProfilePhotoUrl } from "../lib/storage";
 import { contactMobileListMatches } from "../lib/mobile-list";
 import { normalizeStateCity } from "../utils/geoMapping";
 import { generateCustomerCode } from "../lib/customer-code-generator";
+import { generateUnknownName } from "../lib/auto-name";
 
 const router: IRouter = Router();
 
@@ -147,7 +148,7 @@ router.post("/import/excel", async (req, res) => {
       contactName = row.email.trim().split("@")[0]!;
       autoNamed++;
     } else {
-      contactName = "Unknown Lead";
+      contactName = await generateUnknownName();
       autoNamed++;
     }
 
@@ -365,7 +366,7 @@ router.post("/import/indiamart", async (req, res) => {
     fields.salesOwnerId = currentUser.id;
   }
 
-  const contactName = fields.clientName?.trim() || "Unknown Lead";
+  const contactName = fields.clientName?.trim() || (await generateUnknownName());
   const contactMobile = fields.clientMobile?.trim() || "No Contact Number";
 
   // List-aware duplicate check — stored mobile may hold MULTIPLE comma-separated

@@ -19,6 +19,7 @@ import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { normalizeStateCity } from "../utils/geoMapping";
 import { contactMobileListMatches } from "../lib/mobile-list";
+import { generateUnknownName } from "../lib/auto-name";
 import {
   parseEnquiry,
   storeImportSession,
@@ -111,7 +112,7 @@ router.post("/import/confirm", async (req, res) => {
     }
 
     const fields = parsed.data;
-    const contactName = fields.finalData.clientName?.trim() || "Unknown Lead";
+    const contactName = fields.finalData.clientName?.trim() || (await generateUnknownName());
     let contactMobile = fields.finalData.clientMobile?.trim() || "";
 
     // Sales users auto-assign
