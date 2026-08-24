@@ -29,8 +29,8 @@ export function NotificationPopup({ id, title, message, link, type, position = "
   };
 
   return (
-    <div className={`${positionClass} z-[100] animate-in slide-in-from-right-5 fade-in duration-300`}>
-      <div className={`border rounded-lg shadow-lg w-80 overflow-hidden ${accent}`}>
+    <div className={`${positionClass} z-[100] animate-in slide-in-from-right-5 fade-in duration-300 max-w-[calc(100vw-1rem)]`}>
+      <div className={`border rounded-lg shadow-lg w-80 max-w-full overflow-hidden ${accent}`}>
         <div className="flex items-start justify-between p-3 pb-2">
           <button
             className="flex-1 text-left cursor-pointer"

@@ -1239,7 +1239,7 @@ export default function ImportPage() {
   };
 
   return (
-    <div className="p-8 max-w-3xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Import Data</h1>
         <p className="text-muted-foreground mt-1">Add IndiaMart leads or upload Excel data</p>
@@ -1329,7 +1329,7 @@ export default function ImportPage() {
                       <div className="space-y-3">
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-1 text-sm">
                           <p className="font-medium text-blue-800">Step 3: Preview</p>
-                          <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-blue-700">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-blue-700">
                             <span>Total Rows:</span><span className="font-semibold">{bulkParsedRows.length}</span>
                             <span>Valid:</span><span className="font-semibold text-green-700">{validCount}</span>
                             <span>Invalid:</span><span className="font-semibold text-red-700">{invalidCount}</span>
@@ -1537,7 +1537,7 @@ export default function ImportPage() {
                       <div className="space-y-3">
                         <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 space-y-1 text-sm">
                           <p className="font-medium text-indigo-800">Step 2: Preview</p>
-                          <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-indigo-700">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-indigo-700">
                             <span>Total Rows:</span><span className="font-semibold">{myClientParsedRows.length}</span>
                             <span>Valid:</span><span className="font-semibold text-green-700">{validCount}</span>
                             <span>Invalid:</span><span className="font-semibold text-red-700">{invalidCount}</span>
@@ -2162,7 +2162,7 @@ export default function ImportPage() {
                 rows={8}
                 className="font-mono text-sm"
               />
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {me?.role === "admin" ? (
                   <Select value={pasteOwner || "none"} onValueChange={v => setPasteOwner(v === "none" ? "" : v)}>
                     <SelectTrigger><SelectValue placeholder="Sales Owner" /></SelectTrigger>
@@ -2277,7 +2277,7 @@ export default function ImportPage() {
             <CardContent className="space-y-4">
               {/* Analytics Summary */}
               {analyticsData && (
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {[
                     { label: "Total Imports", value: analyticsData.totalImports, color: "text-blue-700" },
                     { label: "Successful", value: analyticsData.successfulImports, color: "text-green-700" },

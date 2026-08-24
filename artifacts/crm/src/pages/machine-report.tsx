@@ -99,7 +99,7 @@ export default function MachineReport() {
   };
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Machine-wise Production Report</h1>
         <p className="text-muted-foreground mt-1">Production analytics by machine type</p>

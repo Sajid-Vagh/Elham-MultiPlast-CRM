@@ -425,19 +425,19 @@ export default function ProductionOrderDetail() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={() => setLocation("/production/orders")}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <Button variant="ghost" onClick={() => setLocation("/production/orders")} className="shrink-0">
             <ArrowLeft className="h-4 w-4 mr-2" /> Back
           </Button>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Production Order {order.displayOrderId}</h1>
-            <p className="text-sm text-muted-foreground">Invoice: {order.invoice?.invoiceNumber || "N/A"}</p>
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-2xl font-bold tracking-tight truncate">Production Order {order.displayOrderId}</h1>
+            <p className="text-sm text-muted-foreground truncate">Invoice: {order.invoice?.invoiceNumber || "N/A"}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {order.createdByRole && (
             <Badge variant="outline" className={`text-xs ${order.createdByRole === "production_and_support" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-blue-50 text-blue-700 border-blue-200"}`}>
               {order.createdByRole === "production_and_support" ? "SUPPORT" : "SALES"}

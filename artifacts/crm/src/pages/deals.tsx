@@ -79,7 +79,7 @@ function DroppableColumn({ stage, children }: { stage: string; children: ReactNo
   return (
     <div
       ref={setNodeRef}
-      className={`w-80 flex flex-col bg-muted/50 rounded-lg p-3 transition-all duration-200 ${
+      className={`w-72 sm:w-80 flex flex-col bg-muted/50 rounded-lg p-3 transition-all duration-200 ${
         isOver ? 'ring-2 ring-primary/40 bg-primary/5' : ''
       }`}
     >
@@ -491,8 +491,8 @@ export default function Deals() {
   const dealName = markWonDeal?.deal.contact?.name || markWonDeal?.deal.title || "";
 
   return (
-    <div className="p-8 h-full flex flex-col space-y-4">
-      <div className="flex justify-between items-center shrink-0">
+    <div className="p-4 sm:p-6 lg:p-8 h-full flex flex-col space-y-4">
+      <div className="flex flex-wrap justify-between items-center gap-3 shrink-0">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Pipeline</h1>
           <p className="text-muted-foreground mt-1">Manage deals across stages.</p>
@@ -510,7 +510,7 @@ export default function Deals() {
         />
       </div>
 
-      <div className="flex items-center gap-3 shrink-0">
+      <div className="flex flex-wrap items-center gap-3 shrink-0">
         <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
         {isAdmin && (
           <Select value={ownerFilter || "all"} onValueChange={(v) => {

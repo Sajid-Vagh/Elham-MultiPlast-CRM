@@ -85,7 +85,7 @@ export default function DailyTasks() {
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-4xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
         <div className="p-2 rounded-lg bg-violet-100">
           <ClipboardCheck className="h-5 w-5 text-violet-600" />

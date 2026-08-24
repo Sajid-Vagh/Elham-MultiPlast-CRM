@@ -318,10 +318,10 @@ export default function CategoriesPage() {
   const countMap = new Map(counts.map((c) => [c.category, c.count]));
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">Categories</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {activeCategory && (
             <>
               <Button variant="outline" size="sm" onClick={exportCsv}>
@@ -339,9 +339,9 @@ export default function CategoriesPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Select value={unitFilter} onValueChange={setUnitFilter}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-[140px] sm:w-[180px]">
             <SelectValue placeholder="All Units" />
           </SelectTrigger>
           <SelectContent>
@@ -352,7 +352,7 @@ export default function CategoriesPage() {
         </Select>
         {isAdmin && (
           <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-[140px] sm:w-[180px]">
               <SelectValue placeholder="All Owners" />
             </SelectTrigger>
             <SelectContent>
@@ -379,7 +379,7 @@ export default function CategoriesPage() {
       {activeCategory && (
         <Card>
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle className="text-lg flex items-center gap-2">
                 <span>{activeCategory === "My Client" ? "⭐" : activeCategory === "Regular Follow up" ? "📋" : "📁"}</span>
                 {activeCategory}

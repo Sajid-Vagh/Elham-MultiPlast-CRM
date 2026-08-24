@@ -192,13 +192,13 @@ export default function DispatchPage() {
   const summary = data?.summary || dashboard || {};
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Dispatch</h1>
           <p className="text-sm text-muted-foreground mt-1">Manage dispatch workflow for Ready To Dispatch orders</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ExportButton
             exportUrl="/api/exports/dispatch"
             filename="Dispatch"

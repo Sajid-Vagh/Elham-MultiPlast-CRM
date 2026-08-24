@@ -262,7 +262,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
   return (
     <div className="flex flex-col h-full">
       {/* ── Sticky Header ── */}
-      <div className="shrink-0 border-b bg-background px-6 py-4 flex items-center justify-between">
+      <div className="shrink-0 border-b bg-background px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onCancel}>
             <ArrowLeft className="h-4 w-4" />
@@ -272,7 +272,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
             <p className="text-xs text-muted-foreground">{isEdit ? "Update user information and permissions" : "Create a new team member and configure permissions"}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={onCancel}>Cancel</Button>
           <Button disabled={loading || !form.name || !form.username || (!isEdit && !form.password)}
             onClick={() => onSave({ ...form, password: form.password || undefined })}>
@@ -682,7 +682,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="p-8 space-y-8 max-w-4xl">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-8 max-w-4xl">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
         <p className="text-muted-foreground mt-1">Manage your preferences{isAdmin ? " and team members" : ""}</p>

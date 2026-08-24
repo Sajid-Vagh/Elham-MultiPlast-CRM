@@ -15,7 +15,7 @@ import { NotificationSidePanel } from "./notification-side-panel";
 import {
   LayoutDashboard, Users, Briefcase,
   Package, BarChart, Download, Settings, LogOut, Bell, X, Clock, Phone, FolderTree, FileText, CheckCheck,
-  Factory, ClipboardList, Truck, AlertTriangle, Layers, MapPin, ShoppingCart, ClipboardCheck
+  Factory, ClipboardList, Truck, AlertTriangle, Layers, MapPin, ShoppingCart, ClipboardCheck, Menu
 } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -58,6 +58,7 @@ function LayoutMain({ user, children }: { user: any; children: React.ReactNode }
   const queryClient = useQueryClient();
   const logout = useLogout();
   const [bellOpen, setBellOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [dismissedToday, setDismissedToday] = useState<Set<number>>(new Set());
   const [showLoginPopup, setShowLoginPopup] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -215,6 +216,11 @@ const moduleBadges = useModuleBadgeCounts();
 
   const [workspace, setWorkspace, availableWorkspaces] = useWorkspace(user.role);
 
+  // Close the mobile drawer whenever the route changes (nav click, popup link…)
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location]);
+
   const salesNavItems = [
     { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", color: "#a78bfa" },
     { icon: Download, label: "Import", href: "/import", color: "#fbbf24" },
@@ -281,9 +287,14 @@ const moduleBadges = useModuleBadgeCounts();
     navItems = salesNavItems;
   }
 
-  return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <aside className="crm-sidebar w-64 flex flex-col">
+  // Shared sidebar body used by BOTH the desktop aside (lg+) and the mobile
+  // drawer (<lg). `onNavigate` closes the mobile drawer after a nav click;
+  // `showBell` is false in the drawer because the bell lives in the mobile
+  // top bar instead.
+  const renderSidebarContent = (opts?: { onNavigate?: () => void; showBell?: boolean }) => {
+    const { onNavigate, showBell = true } = opts ?? {};
+    return (
+      <>
         <div className="px-5 py-4 border-b border-[hsl(250_22%_88%)]">
           <div className="flex items-center justify-between">
             <div className="flex-1 flex justify-center">
@@ -294,22 +305,24 @@ const moduleBadges = useModuleBadgeCounts();
                 style={{ objectFit: 'contain', imageRendering: '-webkit-optimize-contrast' }}
               />
             </div>
-            <div className="relative flex-shrink-0">
-              <Button
-                ref={bellRef}
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 relative"
-                onClick={() => setBellOpen(prev => !prev)}
-              >
-                <Bell className="h-3.5 w-3.5" />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-red-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
-                    {unreadCount > 9 ? "9+" : unreadCount}
-                  </span>
-                )}
-              </Button>
-            </div>
+            {showBell && (
+              <div className="relative flex-shrink-0">
+                <Button
+                  ref={bellRef}
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 relative"
+                  onClick={() => setBellOpen(prev => !prev)}
+                >
+                  <Bell className="h-3.5 w-3.5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-red-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                  )}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -328,6 +341,7 @@ const moduleBadges = useModuleBadgeCounts();
                   onClick={() => {
                     setWorkspace(w);
                     setLocation(getHomeRoute(w));
+                    onNavigate?.();
                   }}
                 >
                   {getWorkspaceLabel(w)}
@@ -346,7 +360,7 @@ const moduleBadges = useModuleBadgeCounts();
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
               <Link key={item.href} href={item.href}>
-                <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all cursor-pointer ${
+                <div onClick={onNavigate} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all cursor-pointer ${
                   isActive
                     ? "text-white shadow-sm"
                     : "text-[hsl(245_30%_35%)] hover:bg-white/60"
@@ -394,11 +408,70 @@ const moduleBadges = useModuleBadgeCounts();
             Logout
           </Button>
         </div>
+      </>
+    );
+  };
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-background">
+      {/* Desktop sidebar — hidden on mobile, replaced by hamburger drawer */}
+      <aside className="crm-sidebar hidden lg:flex w-64 flex-col shrink-0">
+        {renderSidebarContent()}
       </aside>
 
-      <main className="flex-1 min-w-0 h-full overflow-y-auto" data-scroll-region>
-        {children}
-      </main>
+      {/* Mobile drawer + scrim */}
+      {mobileNavOpen && (
+        <div className="fixed inset-0 z-[60] lg:hidden">
+          <div
+            className="absolute inset-0 bg-black/50 animate-in fade-in duration-200"
+            onClick={() => setMobileNavOpen(false)}
+          />
+          <aside className="crm-sidebar absolute left-0 top-0 bottom-0 w-[280px] max-w-[85vw] flex flex-col shadow-2xl animate-in slide-in-from-left duration-200">
+            {renderSidebarContent({ onNavigate: () => setMobileNavOpen(false), showBell: false })}
+          </aside>
+        </div>
+      )}
+
+      <div className="flex-1 min-w-0 flex flex-col h-full">
+        {/* Mobile top bar */}
+        <header className="lg:hidden sticky top-0 z-40 flex items-center gap-1.5 px-2 py-2 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-10 w-10 shrink-0"
+            aria-label="Open navigation menu"
+            onClick={() => setMobileNavOpen(true)}
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+          <img
+            src="/images/logo1.png"
+            alt="Elham MultiPlast LLP"
+            className="h-8 w-auto max-w-[140px] ml-1"
+            style={{ objectFit: 'contain' }}
+          />
+          <div className="ml-auto relative flex-shrink-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 relative"
+              aria-label="Notifications"
+              onClick={() => setBellOpen(prev => !prev)}
+            >
+              <Bell className="h-5 w-5" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 min-w-[16px] h-4 px-0.5 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
+            </Button>
+          </div>
+        </header>
+
+        <main className="flex-1 min-w-0 overflow-y-auto" data-scroll-region>
+          {children}
+        </main>
+      </div>
 
       <Dialog open={showLoginPopup} onOpenChange={setShowLoginPopup}>
         <DialogContent className="max-w-md">

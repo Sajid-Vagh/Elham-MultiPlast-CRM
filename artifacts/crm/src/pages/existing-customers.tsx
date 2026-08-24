@@ -73,8 +73,8 @@ export default function ExistingCustomers() {
   });
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Existing Customers</h1>
           <p className="text-sm text-muted-foreground mt-1">Manage and view all existing customers</p>
@@ -219,7 +219,7 @@ export default function ExistingCustomers() {
 
       {/* Pagination */}
       {data?.pagination && data.pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm text-muted-foreground">
             Page {data.pagination.page} of {data.pagination.totalPages} ({data.pagination.total} customers)
           </p>

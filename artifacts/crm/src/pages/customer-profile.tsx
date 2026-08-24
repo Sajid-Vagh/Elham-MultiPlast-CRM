@@ -69,8 +69,8 @@ export default function CustomerProfile() {
   if (!contact) return <div className="p-6 text-center">Customer not found</div>;
 
   return (
-    <div className="p-6 space-y-4 max-w-6xl">
-      <div className="flex items-center gap-3">
+    <div className="p-4 sm:p-6 space-y-4 max-w-6xl">
+      <div className="flex flex-wrap items-center gap-3">
         <Button variant="ghost" size="icon" onClick={() => window.history.back()}><ArrowLeft className="h-4 w-4" /></Button>
         <div>
           <h1 className="text-2xl font-bold">{contact.name}</h1>
@@ -80,7 +80,7 @@ export default function CustomerProfile() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
         <Card className="p-3">
           <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1"><Phone className="h-3 w-3" />Mobile</div>
           <p className="font-medium">{contact.mobile}</p>
@@ -104,7 +104,7 @@ export default function CustomerProfile() {
       </div>
 
       {/* Business Stats */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="p-3 text-center">
           <p className="text-2xl font-bold">{contact.totalOrders || 0}</p>
           <p className="text-xs text-muted-foreground">Total Orders</p>
@@ -126,7 +126,7 @@ export default function CustomerProfile() {
       {/* Ownership */}
       <Card>
         <CardHeader><CardTitle className="text-base">Assigned Team</CardTitle></CardHeader>
-        <CardContent className="grid grid-cols-3 gap-4 text-sm">
+        <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
           <div><span className="text-muted-foreground">Sales Owner:</span> <span className="font-medium">{contact.salesOwner?.name || "-"}</span></div>
           <div><span className="text-muted-foreground">Support Owner:</span> <span className="font-medium">{contact.supportOwner?.name || "-"}</span></div>
           <div><span className="text-muted-foreground">Production Manager:</span> <span className="font-medium">{contact.productionManager?.name || "-"}</span></div>

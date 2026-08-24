@@ -458,8 +458,8 @@ export default function DealDetail() {
   ];
 
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center gap-4">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-4">
         <Link href="/deals"><Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-1" /> Back</Button></Link>
         {contact && contact.category !== "My Client" && !contact.isMyClient && (
           <Button variant="outline" size="sm" onClick={() => setShowMoveCategory(true)}>
@@ -473,8 +473,8 @@ export default function DealDetail() {
         >
           <Trash2 className="h-4 w-4 mr-1" /> Delete
         </Button>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
+        <div className="flex-1 min-w-[240px]">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {owner && (
               <div className="flex items-center gap-2" title={owner.name}>
                 <UserAvatar profilePhoto={owner.profilePhoto} name={owner.name} className="w-6 h-6 shadow-sm" />

@@ -369,7 +369,7 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                           </Badge>
                         </div>
                       </div>
-                      <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
                         <div>
                           <p className="text-muted-foreground">Sales</p>
                           <p className="font-medium">{item.salesPerson}</p>

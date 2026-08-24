@@ -408,7 +408,7 @@ export function ImportPreviewDialog({
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <FieldInput label="Quantity" value={form.quantity || ""} onChange={v => updateField("quantity", v)} confidence={conf.quantity || 0} />
             <FieldInput label="Material" value={form.material || ""} onChange={v => updateField("material", v)} confidence={0} />
             <FieldInput label="Capacity" value={form.capacity || ""} onChange={v => updateField("capacity", v)} confidence={0} />
@@ -427,7 +427,7 @@ export function ImportPreviewDialog({
           </div>
 
           {/* Assignment */}
-          <div className="grid grid-cols-3 gap-3 border-t pt-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 border-t pt-3">
             <div>
               <Label className="text-xs">Sales Owner</Label>
               {currentUserRole === "admin" ? (

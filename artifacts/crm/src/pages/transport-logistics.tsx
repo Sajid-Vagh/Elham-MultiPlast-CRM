@@ -98,9 +98,9 @@ function BundleMasterTab() {
         </Button>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Select value={unitFilter} onValueChange={v => { setUnitFilter(v); setPage(1); }}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-[140px] sm:w-[180px]">
             <SelectValue placeholder="All Units" />
           </SelectTrigger>
           <SelectContent>
@@ -321,16 +321,16 @@ function DestinationMasterTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">Manage transport destinations and charges</p>
         <Button size="sm" onClick={() => { setCreateForm(EMPTY_DEST_FORM); setCreateOpen(true); }}>
           <Plus className="h-4 w-4 mr-1" /> Add Destination
         </Button>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Select value={unitFilter} onValueChange={v => { setUnitFilter(v); setPage(1); }}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-[140px] sm:w-[180px]">
             <SelectValue placeholder="All Units" />
           </SelectTrigger>
           <SelectContent>
@@ -437,7 +437,7 @@ export default function TransportLogistics() {
   const isAdminOrSupport = user?.role === "admin" || user?.role === "production_and_support";
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Transport Logistics</h1>
         <p className="text-sm text-muted-foreground mt-1">Manage product bundles, transport destinations, and costs</p>

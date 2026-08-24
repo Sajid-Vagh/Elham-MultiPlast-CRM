@@ -47,7 +47,7 @@ export default function GlobalSearch() {
   );
 
   return (
-    <div className="p-6 space-y-4 max-w-4xl">
+    <div className="p-4 sm:p-6 space-y-4 max-w-4xl">
       <h1 className="text-2xl font-bold">Global Search</h1>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />

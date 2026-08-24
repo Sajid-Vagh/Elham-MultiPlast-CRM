@@ -493,7 +493,7 @@ export default function TransportLogisticsLookup() {
   );
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Freight & Packing Lookup</h1>
         <p className="text-sm text-muted-foreground mt-1">Search transport rates by PIN code or destination, and view packing quantities</p>

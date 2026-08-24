@@ -208,13 +208,13 @@ export default function OrdersList() {
   }, []);
 
   return (
-    <div className="p-6 space-y-4 max-w-7xl">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-4 max-w-7xl">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Orders</h1>
           <p className="text-sm text-muted-foreground">Track and manage all orders across the organization</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {hasUnreadOrders && (
             <Button variant="outline" size="sm" onClick={handleMarkAllRead} disabled={markAllReadSubmitting}>
               <CheckCheck className="h-4 w-4 mr-1.5" />
@@ -447,7 +447,7 @@ export default function OrdersList() {
 
       {/* Pagination */}
       {pagination && pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm text-muted-foreground">
             Showing {((pagination.page - 1) * pagination.limit) + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} orders
           </p>

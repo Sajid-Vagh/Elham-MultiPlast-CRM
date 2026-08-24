@@ -162,13 +162,13 @@ export default function ProductionOrders() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Production Orders</h1>
           <p className="text-sm text-muted-foreground mt-1">Manage and track all production orders</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ExportButton
             exportUrl="/api/exports/production"
             filename="Production_Orders"
@@ -393,7 +393,7 @@ export default function ProductionOrders() {
 
       {/* Pagination */}
       {data && data.totalPages > 1 && (
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm text-muted-foreground">
             Page {data.page} of {data.totalPages}
           </p>

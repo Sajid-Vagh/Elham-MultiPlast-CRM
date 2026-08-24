@@ -146,7 +146,7 @@ export default function NotificationsPage() {
   return (
     <div className="p-4 max-w-4xl mx-auto space-y-4">
       {/* Header */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Link href="/dashboard">
           <Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-1" /> Back</Button>
         </Link>

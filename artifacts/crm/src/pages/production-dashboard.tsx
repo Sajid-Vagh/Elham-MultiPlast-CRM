@@ -52,9 +52,9 @@ export default function ProductionDashboard() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-6">
         <Skeleton className="h-8 w-48" />
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-24" />)}
         </div>
       </div>
@@ -62,13 +62,13 @@ export default function ProductionDashboard() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Production Dashboard</h1>
           <p className="text-sm text-muted-foreground mt-1">Monitor production orders — manufacturing only</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
           <select className="text-sm border rounded-md px-3 py-1.5 bg-background" value={materialFilter} onChange={(e) => setMaterialFilter(e.target.value)}>
             {MATERIAL_OPTIONS.map(m => (
@@ -136,7 +136,7 @@ export default function ProductionDashboard() {
             {dashboard?.productLineStats && (
               <div className="mt-3 pt-3 border-t">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Product Line Summary</p>
-                <div className="grid grid-cols-3 gap-4 text-sm">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
                   <div><p className="text-xs text-muted-foreground">Pending</p><p className="font-bold text-gray-700">{dashboard.productLineStats.pendingPieces.toLocaleString()} PCS</p></div>
                   <div><p className="text-xs text-muted-foreground">In Production</p><p className="font-bold text-orange-700">{dashboard.productLineStats.inProductionPieces.toLocaleString()} PCS</p></div>
                   <div><p className="text-xs text-muted-foreground">Ready</p><p className="font-bold text-green-700">{dashboard.productLineStats.readyPieces.toLocaleString()} PCS</p></div>

@@ -257,7 +257,7 @@ function TransportMasterTab({ canManage }: { canManage: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">Factory → Destination → Transport Company → Rate</p>
         {canManage && (
           <Button size="sm" onClick={() => { setCreateForm(EMPTY_TRANSPORT_FORM); setCreateOpen(true); }}>
@@ -517,7 +517,7 @@ function PackingMasterTab({ canManage }: { canManage: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">Packing quantities per product (Liner / Bora)</p>
         {canManage && (
           <Button size="sm" onClick={() => { setCreateForm(EMPTY_BUNDLE_FORM); setCreateOpen(true); }}>
@@ -986,7 +986,7 @@ export default function MastersPage() {
   const canUndo = user?.role === "admin";
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Masters</h1>
         <p className="text-sm text-muted-foreground mt-1">Transport rates, packing quantities, and data import</p>
