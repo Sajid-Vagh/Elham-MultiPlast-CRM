@@ -70,7 +70,11 @@ const PUBLIC_AUTH_ROUTES = new Set([
 
 // Global auth middleware — protects all /api/* routes except public ones
 app.use("/api", async (req, res, next) => {
-  const routeKey = `${req.method}:${req.path}`;
+  // NOTE: inside app.use("/api", ...) req.path/url are RELATIVE to the mount
+  // point (prefix stripped by Express), so the allowlist keys must be matched
+  // against req.originalUrl (which always retains the full path).
+  const fullPath = (req.originalUrl || req.url || "").split("?")[0];
+  const routeKey = `${req.method}:${fullPath}`;
 
   // Allow public routes
   if (PUBLIC_AUTH_ROUTES.has(routeKey)) {
@@ -78,7 +82,7 @@ app.use("/api", async (req, res, next) => {
   }
 
   // Allow health check
-  if (req.path === "/health" || req.path === "/api/health") {
+  if (req.path === "/health" || fullPath === "/api/health") {
     return next();
   }
 

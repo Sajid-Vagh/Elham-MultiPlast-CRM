@@ -24,8 +24,18 @@ export default function AdminSetup() {
   const [loading, setLoading] = useState(false);
   const [adminExists, setAdminExists] = useState<boolean | null>(null);
 
+  // Send the current session token (if any) so an authenticated user of any
+  // role can bootstrap the first Admin when no Admin exists yet.
+  const authHeaders = (): Record<string, string> => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("crm_token") : null;
+    return {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  };
+
   useEffect(() => {
-    fetch(resolveApiUrl("/api/auth/setup-status"))
+    fetch(resolveApiUrl("/api/auth/setup-status"), { headers: authHeaders() })
       .then(r => r.json())
       .then((data: { adminExists: boolean }) => {
         setAdminExists(data.adminExists);
@@ -65,7 +75,7 @@ export default function AdminSetup() {
     try {
       const res = await fetch(resolveApiUrl("/api/auth/admin/setup"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(),
         body: JSON.stringify({ name, email, password, confirmPassword }),
       });
 

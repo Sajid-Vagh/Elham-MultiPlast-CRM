@@ -1,5 +1,41 @@
 ﻿
-## Calls KPI Zero-Count Fix â€” Call Identity = type OR follow_up_type, NULL-Safe Completion Exclusion
+## First-Admin Setup 401 Fix â€” Express Mount-Prefix Whitelist Mismatch + Conditional Bootstrap Auth
+
+### Goal
+- POST to the first-admin setup endpoint returned `401 {"error":"Unauthorized"}` even for an authenticated Sales user, so the `/admin-setup` bootstrap flow was dead on the production deployment (users exist, zero admins).
+
+### Root Cause (proven empirically, not assumed)
+- The global auth middleware is mounted via `app.use("/api", ...)`. Inside a mounted middleware, Express strips the mount prefix from `req.path`/`req.url` â verified at runtime: a request to `POST /api/auth/admin/setup` sees `req.path === "/auth/admin/setup"`.
+- `PUBLIC_AUTH_ROUTES` keys include the prefix (`"POST:/api/auth/admin/setup"`), so `routeKey = ${req.method}:${req.path}` could NEVER match any entry. Every "public" route silently required a Bearer session; unauthenticated calls got exactly `401 {"error":"Unauthorized"}` from app.ts.
+- Blast radius: not just setup â `POST /api/auth/login`, forgot/reset password, verify-email, invitations/accept, google oauth were ALL broken for fresh/unauthenticated callers. Only users holding pre-existing sessions (localStorage token) kept working, which matches the reported "already authenticated Sales user" scenario.
+- The `/admin-setup` page appeared to "work" because its `setup-status` fetch swallows non-OK responses (`data.adminExists` â undefined â falsy â renders form anyway); and it sent no Authorization header, so the middleware rejected the submit before the handler ran. The setup handler itself never had an admin-role gate.
+
+### Done
+- **app.ts:** route key now computed from `req.originalUrl` (query-stripped), which retains the full path inside mounted middleware; health check uses `fullPath === "/api/health"` (the old relative-path OR-branch never worked for the absolute form). This RESTORES the designed allowlist â nothing weakened: all non-whitelisted routes still require auth exactly as before; login/forgot/reset become functional again as intended by commit cf25bcc.
+- **auth.ts `POST /auth/admin/setup` explicit secure bootstrap condition** (kept in PUBLIC_AUTH_ROUTES; enforcement lives in the handler):
+  - Per-IP rate limit first (`rateLimit`, same 10/15min budget as login) â reachable-without-session endpoints need abuse resistance.
+  - Admin exists â 403 (unchanged).
+  - Users exist but no admin (production situation): require an AUTHENTICATED ACTIVE user via `getUserFromRequest` â ANY role incl. Sales; anonymous/invalid/inactive â generic `401 {"error":"Unauthorized"}`. Arbitrary internet users cannot claim first-admin on populated installs.
+  - Zero users (virgin install): anonymous setup allowed â the only possible bootstrap path when nobody can authenticate yet.
+  - Insert unique-violation (23505: legacy user already owns username "admin", or concurrent-setup race) â 409 instead of 500.
+- **admin-setup.tsx:** both fetches (setup-status + submit) now attach `Authorization: Bearer <crm_token>` when present (same localStorage pattern as custom-fetch.ts) so an authenticated Sales session passes the new conditional gate.
+- **E2E verification (real Express app + in-memory db via module loader redirect):** 23/23 assertions passed â whitelist restored (setup-status 200 unauthenticated; /api/contacts still guarded 401); CASE 1 sales-token â 201 with bcrypt-hashed admin row + minted session + byte-identical untouched Sales user; CASE 2 post-admin anonymous AND authenticated retries rejected (status flips to adminExists:true); CASE 3 no-token/bogus-token/inactive-user all 401; login wrong-pw returns the LOGIN handler's generic error (not the middleware's) and correct creds return 200+session; setup rate limit trips 429 on attempt 11.
+- **Build hygiene:** api-server typecheck errors were inflated (~169 lines) by a STALE `lib/db/dist` predating cf25bcc's schema columns â fixed by `npx tsc --build lib/db` (project references resolve declarations through dist). After rebuild: API server = 32 pre-existing baseline errors (stash A/B identical, 0 new, none in app.ts/auth.ts); CRM typecheck = 0.
+
+### Key Decisions
+- Fixing the `req.path`â`originalUrl` mismatch is a bug fix, NOT an auth weakening: the allowlist was dead code producing accidental mandatory-auth-everywhere; matching as written restores intended behavior and re-enables broken public auth flows.
+- Conditional auth INSIDE the handler (rather than removing the route from PUBLIC_AUTH_ROUTES) keeps virgin-install bootstrap possible while closing anonymous access whenever ANY user exists.
+- Any active role may bootstrap (Sales included) because requiring an existing admin is chicken-and-egg; once one admin exists the endpoint is permanently dead (403).
+- No DB migration; no changes to sessions/hashing/strength validation/login/invitation/reset flows or existing roles/permissions/data.
+
+### Relevant Files
+- `artifacts/api-server/src/app.ts`: originalUrl-based PUBLIC_AUTH_ROUTES matching (+ health path fix)
+- `artifacts/api-server/src/routes/auth.ts`: setup handler rate limit + users-existârequire-active-session condition + 23505â409 mapping
+- `artifacts/crm/src/pages/admin-setup.tsx`: Bearer header on both fetches
+
+---
+
+## Calls KPI Zero-Count Fix Ã¢ Call Identity = type OR follow_up_type, NULL-Safe Completion Exclusion
 
 ### Goal
 - The Sales Dashboard "Calls" card returned **0** even while users saw active calls on the Activity page. The count must be byte-parity with what /follow-ups shows as active "Phone Call" rows under the same global filters.

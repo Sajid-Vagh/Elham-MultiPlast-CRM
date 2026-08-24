@@ -244,6 +244,13 @@ router.get("/auth/setup-status", async (_req, res) => {
 });
 
 router.post("/auth/admin/setup", async (req, res) => {
+  // Rate limit bootstrap attempts per IP (endpoint is reachable without a
+  // session on truly fresh installs, so abuse resistance matters here).
+  const setupRateLimitKey = `setup:${getClientIp(req)}`;
+  if (!rateLimit(setupRateLimitKey, LOGIN_RATE_LIMIT_MAX, LOGIN_RATE_LIMIT_WINDOW_MS)) {
+    return res.status(429).json({ error: "Too many requests. Please try again later." });
+  }
+
   try {
     // Check if admin already exists
     const [result] = await db
@@ -253,6 +260,23 @@ router.post("/auth/admin/setup", async (req, res) => {
 
     if ((result?.count ?? 0) > 0) {
       return res.status(403).json({ error: "Admin account already exists. Use the login page." });
+    }
+
+    // Secure bootstrap condition:
+    // - Zero users at all (virgin install): anonymous setup allowed — there is
+    //   no one who could authenticate yet.
+    // - Users exist but no Admin (this deployment): only an AUTHENTICATED,
+    //   active CRM user (any role, e.g. an existing Sales user) may create the
+    //   first Admin. Arbitrary internet users are rejected with a generic 401.
+    const [userCount] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(usersTable);
+
+    if ((userCount?.count ?? 0) > 0) {
+      const bootstrapUser = await getUserFromRequest(req);
+      if (!bootstrapUser || !bootstrapUser.isActive) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
     }
 
     const { name, email, password, confirmPassword } = req.body as {
@@ -293,21 +317,31 @@ router.post("/auth/admin/setup", async (req, res) => {
     const passwordHash = await hashPassword(password);
 
     // Create the admin user — username is "admin" for backward compat
-    const [admin] = await db
-      .insert(usersTable)
-      .values({
-        name,
-        username: "admin",
-        email,
-        passwordHash,
-        role: "admin",
-        unit: "All",
-        canViewAllReports: true,
-        canAssignLeads: true,
-        emailVerified: true, // Setup counts as verification
-        isActive: true,
-      })
-      .returning();
+    let admin: typeof usersTable.$inferSelect;
+    try {
+      [admin] = await db
+        .insert(usersTable)
+        .values({
+          name,
+          username: "admin",
+          email,
+          passwordHash,
+          role: "admin",
+          unit: "All",
+          canViewAllReports: true,
+          canAssignLeads: true,
+          emailVerified: true, // Setup counts as verification
+          isActive: true,
+        })
+        .returning();
+    } catch (insertErr: any) {
+      // Unique violation (Postgres 23505): username "admin" already taken by a
+      // legacy user, or a concurrent setup won the race — never a 500.
+      if (insertErr?.code === "23505") {
+        return res.status(409).json({ error: "Unable to create Admin account: a conflicting account already exists" });
+      }
+      throw insertErr;
+    }
 
     // Create session
     const token = generateToken();
