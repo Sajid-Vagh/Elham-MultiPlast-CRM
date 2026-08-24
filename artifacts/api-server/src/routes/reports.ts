@@ -670,10 +670,16 @@ router.get("/reports/raw-deals", async (req, res) => {
         SELECT dp.deal_id AS "dealId", coalesce(p.name, 'Unknown') AS "productName"
         FROM deal_products dp
         LEFT JOIN products p ON p.id = dp.product_id
+        WHERE NOT EXISTS (
+          SELECT 1 FROM proforma_invoices pi
+          WHERE pi.deal_id = dp.deal_id
+            AND pi.is_deleted = false
+            AND pi.deleted_at IS NULL
+        )
         UNION ALL
         SELECT pi.deal_id AS "dealId", coalesce(p.name, btrim(pii.product_name)) AS "productName"
         FROM proforma_invoice_items pii
-        JOIN proforma_invoices pi ON pi.id = pii.invoice_id AND pi.is_deleted = false
+        JOIN proforma_invoices pi ON pi.id = pii.invoice_id AND pi.is_deleted = false AND pi.deleted_at IS NULL
         LEFT JOIN products p ON p.id = pii.product_id
         WHERE pi.deal_id IS NOT NULL
       `);
