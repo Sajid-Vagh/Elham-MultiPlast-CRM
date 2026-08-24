@@ -432,9 +432,14 @@ export default function Reports() {
           case "lost-reasons":
             return [{ key: r.lostReason || "Not Specified", qty: r.totalQuantity ?? "" }];
           case "by-product": {
-            const items = Array.isArray(r.productItems) ? r.productItems : [];
-            if (!items.length) return [{ key: "(No Product)", qty: r.totalQuantity ?? "" }];
-            return items.map((p: any) => ({ key: String(p.name ?? "Unknown"), qty: Number(p.quantity ?? 0) }));
+            // By Product export lists ONLY deals that actually have products —
+            // product-less deals and unnamed products are excluded entirely.
+            return (Array.isArray(r.productItems) ? r.productItems : [])
+              .filter((p: any) => {
+                const n = String(p?.name ?? "").trim();
+                return n !== "" && n.toLowerCase() !== "unknown" && n !== "(No Product)";
+              })
+              .map((p: any) => ({ key: String(p.name), qty: Number(p.quantity ?? 0) }));
           }
           default:
             return [{ key: "All Deals", qty: r.totalQuantity ?? "" }];
@@ -472,6 +477,10 @@ export default function Reports() {
       }
 
       // Groups ranked by value (lost-reasons by count) — mirrors the tab ordering
+      if (!groupMap.size) {
+        toast({ title: "Nothing to export", description: "No deals match the current filters.", variant: "destructive" });
+        return;
+      }
       const sortedGroups = [...groupMap.entries()].sort((a, b) => {
         const [, ga] = a; const [, gb] = b;
         return activeTab === "lost-reasons"

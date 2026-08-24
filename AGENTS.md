@@ -1,22 +1,22 @@
-
-## Calls KPI Zero-Count Fix — Call Identity = type OR follow_up_type, NULL-Safe Completion Exclusion
+﻿
+## Calls KPI Zero-Count Fix â€” Call Identity = type OR follow_up_type, NULL-Safe Completion Exclusion
 
 ### Goal
 - The Sales Dashboard "Calls" card returned **0** even while users saw active calls on the Activity page. The count must be byte-parity with what /follow-ups shows as active "Phone Call" rows under the same global filters.
 
 ### Root Cause (verified against the LIVE Supabase DB, not assumed)
 - Every one of the 11 legacy `type='Call'` rows has `call_status='Completed'`. Any `type='Call' AND call_status <> 'Completed'` count is therefore **0 forever** on this dataset.
-- The "active calls" users actually see are scheduled follow-ups: `type='FollowUp'` with `follow_up_type='Call'`, `call_status='Pending'` (7 such rows). follow-ups.tsx's Phone Call filter matches EITHER column (`TYPE_VALUE_ALIASES` + `filteredActivities`: `a.type === 'Call' || a.followUpType === 'Call'`) — the dashboard counted only one column.
+- The "active calls" users actually see are scheduled follow-ups: `type='FollowUp'` with `follow_up_type='Call'`, `call_status='Pending'` (7 such rows). follow-ups.tsx's Phone Call filter matches EITHER column (`TYPE_VALUE_ALIASES` + `filteredActivities`: `a.type === 'Call' || a.followUpType === 'Call'`) â€” the dashboard counted only one column.
 - Secondary bug in the interim code: date range was applied to `created_at` (insert timestamp) instead of `follow_up_date`; and a bare SQL `ne(call_status,'Completed')` silently drops NULL `call_status` rows (three-valued logic) that the Activity page treats as Pending (`(callStatus || "Pending") === "Pending"`).
 
 ### Done
 - **Schema values verified** (`lib/db/src/schema/activities.ts`): `type` free text (values present: Note/FollowUp/Call/WhatsApp; exact-case `'Call'`), `call_status` nullable text default `'Pending'` (values: Pending/Completed), `follow_up_type` nullable text (`null` or `'Call'`). No enums anywhere.
 - **`dashboard.ts` GET /dashboard/kpi totalCalls rewritten:**
-  - Call identity: `(type = 'Call' OR follow_up_type = 'Call')` — mirrors the Activity page's dual-column match.
-  - Active filter: `(call_status IS NULL OR call_status <> 'Completed')` — excludes Completed strictly AND keeps NULL rows (which render as Pending on the page). JS belt-and-braces mirror updated identically.
-  - Date range back on `followUpDate` yyyy-MM-dd STRING comparison — byte-identical predicate to GET `/activities` lines (`gte/lte(followUpDate, startDate/endDate)`); no preset → all-time.
-  - Sales-Person/Unit scoping unchanged via `getScopedActivities` (role scoping + effective-contact `contactId ?? deal.contactId` → `sales_owner_id` / unit resolution, same as `/activities`).
-- **Live verification:** old query → 0; new query → 7 all-time and 7 within Aug-2026 range; per-owner split owner34=3, owner47=3, owner48=1 — matching the Activity page exactly.
+  - Call identity: `(type = 'Call' OR follow_up_type = 'Call')` â€” mirrors the Activity page's dual-column match.
+  - Active filter: `(call_status IS NULL OR call_status <> 'Completed')` â€” excludes Completed strictly AND keeps NULL rows (which render as Pending on the page). JS belt-and-braces mirror updated identically.
+  - Date range back on `followUpDate` yyyy-MM-dd STRING comparison â€” byte-identical predicate to GET `/activities` lines (`gte/lte(followUpDate, startDate/endDate)`); no preset â†’ all-time.
+  - Sales-Person/Unit scoping unchanged via `getScopedActivities` (role scoping + effective-contact `contactId ?? deal.contactId` â†’ `sales_owner_id` / unit resolution, same as `/activities`).
+- **Live verification:** old query â†’ 0; new query â†’ 7 all-time and 7 within Aug-2026 range; per-owner split owner34=3, owner47=3, owner48=1 â€” matching the Activity page exactly.
 - **Build verified:** API server 32 errors = pre-existing baseline, 0 in dashboard.ts.
 
 ### Key Decisions
@@ -25,26 +25,26 @@
 - today/pending/overdue mini-cards untouched (un-date-scoped `allActivities`, by-design semantics).
 
 
-## Dashboard KPI Fixes — Active Deals Whitelist, Filtered Calls, Backend Win Rate
+## Dashboard KPI Fixes â€” Active Deals Whitelist, Filtered Calls, Backend Win Rate
 
 ### Goal
 - "Active Deals" must count ONLY open pipeline stages; the "Calls" card must match the Activity section's count under the same global filters; Win Rate must be computed server-side with the standard formula.
 
 ### Done
-- **Active Deals (`dashboard.ts`):** new module-level `ACTIVE_DEAL_STAGES` = `DEAL_STAGES` minus Won/Lost (explicit whitelist — stray/legacy stage strings can no longer inflate the count). Applied consistently to the KPI endpoint's `activeDeals` + virtual My-Client contact set, the sales-performance row math (parity preserved), and the charts endpoint.
-- **Calls (`dashboard.ts` KPI):** `totalCalls` now applies the selected date range using the SAME predicate as `/activities` (activities.ts date-filters on `followUpDate`, yyyy-MM-dd string comparison — NOT createdAt): `type === "Call" && followUpDate >= startDate && <= endDate`. Owner/unit scoping unchanged via `getScopedActivities`. With no preset → all-time count (previous behavior). today/pending/overdue derivations untouched (still un-date-scoped `allActivities`).
+- **Active Deals (`dashboard.ts`):** new module-level `ACTIVE_DEAL_STAGES` = `DEAL_STAGES` minus Won/Lost (explicit whitelist â€” stray/legacy stage strings can no longer inflate the count). Applied consistently to the KPI endpoint's `activeDeals` + virtual My-Client contact set, the sales-performance row math (parity preserved), and the charts endpoint.
+- **Calls (`dashboard.ts` KPI):** `totalCalls` now applies the selected date range using the SAME predicate as `/activities` (activities.ts date-filters on `followUpDate`, yyyy-MM-dd string comparison â€” NOT createdAt): `type === "Call" && followUpDate >= startDate && <= endDate`. Owner/unit scoping unchanged via `getScopedActivities`. With no preset â†’ all-time count (previous behavior). today/pending/overdue derivations untouched (still un-date-scoped `allActivities`).
 - **Win Rate:** backend computes `winRate = totalDeals > 0 ? Math.round(wonDeals / totalDeals * 100) : 0` and returns it in the KPI payload; frontend Win Rate card displays `kpi.winRate ?? 0` (client-side math removed from `dashboard.tsx`; `winRate` added to the kpi response type).
 - **Build verified:** CRM 0 errors; API server 32 pre-existing errors, none in dashboard.ts.
 
 ### Key Decisions
-- Calls filters on `followUpDate` (not createdAt) because that is what the Activity page filters on — matching the number the user compares against is the requirement.
+- Calls filters on `followUpDate` (not createdAt) because that is what the Activity page filters on â€” matching the number the user compares against is the requirement.
 - Date scope applied ONLY to totalCalls in JS over the already-fetched scoped set: zero extra queries, and Pending/Overdue cards keep their due-date semantics regardless of window.
 - Whitelist derived from DEAL_STAGES so a future canonical stage automatically counts as active pipeline.
 
 
 ---
 
-## Sales Performance Table ↔ KPI Parity Fix
+## Sales Performance Table â†” KPI Parity Fix
 
 ### Goal
 - The dashboard's top KPI cards (Total Leads, Won Value, etc.) must exactly equal the sum of the "Sales Performance" table columns. Previously users with Production/Support roles who own leads/deals were missing from the table and ownerless rows were dropped entirely.
@@ -52,16 +52,16 @@
 ### Done
 - **Backend `dashboard.ts` GET /dashboard/sales-performance rewritten (owner-partition model):**
   - Base queries + filters are now BYTE-IDENTICAL to GET /dashboard/kpi (`allContacts`/`allDeals` incl. owner filter + date conds, then ONE global `filterContactsByUnit` / `filterDealsByUnit(allDeals, unit, allContacts)` pass) instead of per-user filtering inside a role-restricted user loop.
-  - Rows are built by partitioning `filteredContacts`/`filteredDeals` into buckets keyed by resolved `salesOwnerId` → every lead/deal lands in EXACTLY one row, so column sums equal the KPI cards by construction.
+  - Rows are built by partitioning `filteredContacts`/`filteredDeals` into buckets keyed by resolved `salesOwnerId` â†’ every lead/deal lands in EXACTLY one row, so column sums equal the KPI cards by construction.
   - Role no longer gates inclusion: admin/sales users are seeded first (zero-data roster rows preserved), then ANY other user owning data in range (production/support/etc., e.g. "Shabbir") gets a real row.
   - Deals with `salesOwnerId = null` (schema-nullable on deals) or an owner id that no longer exists in `users` collapse into one aggregate row `userName: "Unassigned"` (`userId: 0`, blank unit/photo), pinned LAST after the won-value sort.
   - Per-row stat math unchanged (wonAmount-based Won Value, My Client conversion %, followUpRate from contact-linked FollowUp activities).
-- **Frontend:** no changes needed — table renders rows generically; UserAvatar initials-fallback covers the Unassigned row.
+- **Frontend:** no changes needed â€” table renders rows generically; UserAvatar initials-fallback covers the Unassigned row.
 - **Build verified:** API server typecheck output byte-identical to baseline (32 pre-existing errors, none in dashboard.ts).
 
 ### Key Decisions
 - Partition-after-global-filter chosen over SQL GROUP BY: reuses the exact same JS filter helpers as the KPI endpoint, making divergence structurally impossible.
-- Zero-data sales/admin roster rows intentionally kept (previous behavior) — they contribute zeros, so parity holds.
+- Zero-data sales/admin roster rows intentionally kept (previous behavior) â€” they contribute zeros, so parity holds.
 - Unassigned pinned to the bottom of the leaderboard so an anonymous bucket never tops the ranking.
 - Note: neither `contacts` nor `deals` has soft-delete columns, so there is no isDeleted condition to keep in sync between the two endpoints (orders/PIs are unrelated to these KPIs).
 
@@ -77,16 +77,16 @@
 - **Frontend `dashboard.tsx`:**
   - "Active Deals" card: removed "X won / Y deals lost / Z leads lost" subtitle.
   - "Win Rate" card: removed "% conversion to client" subtitle.
-  - "Completed" AND "Conversion" mini-cards removed; mini-grid rebalanced to `grid-cols-2 sm:grid-cols-4` (remaining: Calls, Pending, Overdue, My Clients — no empty gaps at any breakpoint); unused `CheckCircle2` + `UserPlus` imports dropped; `conversionRate` removed from the kpi response type (backend still returns it).
-  - "Today's Calls" → "Calls" showing new `kpi.totalCalls` (all-time), link simplified to plain `/follow-ups`.
+  - "Completed" AND "Conversion" mini-cards removed; mini-grid rebalanced to `grid-cols-2 sm:grid-cols-4` (remaining: Calls, Pending, Overdue, My Clients â€” no empty gaps at any breakpoint); unused `CheckCircle2` + `UserPlus` imports dropped; `conversionRate` removed from the kpi response type (backend still returns it).
+  - "Today's Calls" â†’ "Calls" showing new `kpi.totalCalls` (all-time), link simplified to plain `/follow-ups`.
 - **Backend `dashboard.ts` GET /dashboard/kpi:**
-  - Activities query no longer applies the date-preset conditions (`getScopedActivities(..., [])`) — today/completed/pending/overdue were ALREADY derived from `followUpDate` in JS, so their values are unchanged; the same rows now also yield `totalCalls` = count of scoped activities with `type === 'Call'` across ALL time (owner/unit scoping preserved).
+  - Activities query no longer applies the date-preset conditions (`getScopedActivities(..., [])`) â€” today/completed/pending/overdue were ALREADY derived from `followUpDate` in JS, so their values are unchanged; the same rows now also yield `totalCalls` = count of scoped activities with `type === 'Call'` across ALL time (owner/unit scoping preserved).
   - Response adds `totalCalls`; legacy `todayTotal`/`todayCompleted` fields retained for backward compat.
 - **Build verified:** CRM typecheck 0 errors; API server 32 errors (pre-existing baseline, 0 new, none in dashboard.ts).
 
 ### Key Decisions
 - All-time Calls keeps owner/unit scoping so the number stays consistent with the /follow-ups page it links to (a sales user sees only their own calls).
-- Single un-date-scoped activities query instead of two queries — one fetch serves both the all-time Calls KPI and the date-derived cards.
+- Single un-date-scoped activities query instead of two queries â€” one fetch serves both the all-time Calls KPI and the date-derived cards.
 
 ---
 
@@ -94,22 +94,22 @@
 
 ### Goal
 - Deal numbers on the lead-detail Activity Timeline were index-based over a newest-first list, so creating a new deal renumbered every existing deal card ("Deal 1" became "Deal 2"). Numbering must be chronological and static.
-- Users need to declutter the timeline by hiding deal cards from THIS UI only — without deleting deals or affecting pipeline/reports.
+- Users need to declutter the timeline by hiding deal cards from THIS UI only â€” without deleting deals or affecting pipeline/reports.
 
 ### Done
 - **Static numbering:** `lead-detail.tsx` dealTimeline memo now builds `dealNumbers` Map from the chronologically-sorted (oldest-first) full deal list BEFORE any hiding filter; group carries its static `num`; label renders `Deal {group.num}` instead of `Deal {gi + 1}`. Hidden deals keep their numbers so unhide never reshuffles.
-- **DB:** `deals.is_hidden_from_timeline` BOOLEAN NOT NULL DEFAULT FALSE — schema `lib/db/src/schema/deals.ts` + migration `lib/db/migrations/084_add_deal_hidden_from_timeline.sql` (**must be applied against Supabase before deploy**).
-- **Backend PATCH /deals/:id:** reads `isHiddenFromTimeline` straight off `req.body` (generated zod UpdateDealBody strips unknown keys) — same pattern as otherReason/lostNotes. GET /deals list spreads full rows and GET /deals/:id uses enrichDeal spread → flag flows to frontend automatically.
+- **DB:** `deals.is_hidden_from_timeline` BOOLEAN NOT NULL DEFAULT FALSE â€” schema `lib/db/src/schema/deals.ts` + migration `lib/db/migrations/084_add_deal_hidden_from_timeline.sql` (**must be applied against Supabase before deploy**).
+- **Backend PATCH /deals/:id:** reads `isHiddenFromTimeline` straight off `req.body` (generated zod UpdateDealBody strips unknown keys) â€” same pattern as otherReason/lostNotes. GET /deals list spreads full rows and GET /deals/:id uses enrichDeal spread â†’ flag flows to frontend automatically.
 - **Generated types:** `isHiddenFromTimeline?: boolean` added to Deal interface in `lib/api-zod/src/generated/types/deal.ts` AND `lib/api-client-react/src/generated/api.schemas.ts` (Deal + DealUpdate); api-client-react dist rebuilt via `tsc --build` (project references resolve stale dist declarations).
 - **Frontend hide/unhide (`lead-detail.tsx`):**
-  - EyeOff button absolutely positioned top-right of each deal AccordionItem (hover-reveal, OUTSIDE AccordionTrigger DOM so clicks don't toggle expand) → raw-fetch PATCH `{ isHiddenFromTimeline: true }` → `onDealChange` invalidation + toast.
+  - EyeOff button absolutely positioned top-right of each deal AccordionItem (hover-reveal, OUTSIDE AccordionTrigger DOM so clicks don't toggle expand) â†’ raw-fetch PATCH `{ isHiddenFromTimeline: true }` â†’ `onDealChange` invalidation + toast.
   - Memo filters hidden deals unless `showHiddenDeals` reveal-toggle is on; revealed groups show an Eye icon to unhide.
-  - Dashed footer row "N hidden deals — show" toggles reveal; rendered OUTSIDE the empty-state ternary so hiding ALL deals still leaves an escape hatch (empty state message adapts: "All deals are hidden from this timeline.").
-- **Build verified:** CRM typecheck 0 errors; API server = 32 errors total / 12 in deals.ts — IDENTICAL counts with changes stashed (git stash A/B test), 0 new.
+  - Dashed footer row "N hidden deals â€” show" toggles reveal; rendered OUTSIDE the empty-state ternary so hiding ALL deals still leaves an escape hatch (empty state message adapts: "All deals are hidden from this timeline.").
+- **Build verified:** CRM typecheck 0 errors; API server = 32 errors total / 12 in deals.ts â€” IDENTICAL counts with changes stashed (git stash A/B test), 0 new.
 
 ### Key Decisions
-- Flag read from req.body instead of extending generated zod schemas — minimal generated-file churn, precedented by lostReason/otherReason.
-- Numbering map computed over ALL deals including hidden ones — hiding/unhiding never changes any deal's number.
+- Flag read from req.body instead of extending generated zod schemas â€” minimal generated-file churn, precedented by lostReason/otherReason.
+- Numbering map computed over ALL deals including hidden ones â€” hiding/unhiding never changes any deal's number.
 - Hide is purely presentational: no reports/pipeline/export queries filter on it.
 
 ---
@@ -117,22 +117,22 @@
 ## Timeline Raw-JSON Fix + Sequential Deal Note Numbering
 
 ### Goal
-- Timeline / Recent Activity surfaces must never render stringified JSON (`[{"text":...,"userName":...}]`) for "Follow-up Scheduled"/"Note Logged" events — only clean note text.
+- Timeline / Recent Activity surfaces must never render stringified JSON (`[{"text":...,"userName":...}]`) for "Follow-up Scheduled"/"Note Logged" events â€” only clean note text.
 - Follow-up notes on a deal render sequentially numbered ("Note 1: ...", "Note 2: ..."); a brand-new deal's first note starts from 1.
 
 ### Done
 - `artifacts/crm/src/lib/parse-notes.ts`:
   - `parseNotesText` hardened for double-stringified JSON (guard extended to leading `"`, recursion when JSON.parse yields a string).
-  - New `parseNotesEntries()` — unwraps up to 2 layers of encoded JSON, returns clean `text` entries in stored order.
-  - New `formatDealNotes()` — entries parsed from JSON arrays are prefixed `Note ${index + 1}:` and joined with newlines; plain-text notes pass through unchanged.
+  - New `parseNotesEntries()` â€” unwraps up to 2 layers of encoded JSON, returns clean `text` entries in stored order.
+  - New `formatDealNotes()` â€” entries parsed from JSON arrays are prefixed `Note ${index + 1}:` and joined with newlines; plain-text notes pass through unchanged.
 - Wired `formatDealNotes` into deal-scoped surfaces: `lead-detail.tsx` (deal Activity Timeline follow-up events; removed now-unused local `parseNote`), `deal-detail.tsx` (Activities list, + `whitespace-pre-wrap`), `deal-detail-drawer.tsx` (Activity Timeline + Follow-up History rows).
 - Already-safe surfaces verified (use parseNotesText): customer-profile-drawer, customer-profile page timeline tab, follow-ups edit dialog.
-- Verified helpers via node strip-types against the exact reported payload: single entry → clean text/"Note 1:", double-encoded → unwrapped, multi-entry → Note 1..N, plain text → untouched.
-- **Per-note visual formatting in the lead-detail Activity Timeline:** follow-up events carry a new `noteEntries?: string[]` field (populated from `parseNotesEntries` ONLY when raw notes look like JSON); the renderer shows each entry as its own row — `Note {i+1}:` label in `font-semibold text-orange-700`, note text in `font-medium text-foreground`, on a subtle `bg-orange-50` chip with an orange left border (`border-l-2 border-orange-300 rounded-r-md`, `whitespace-pre-wrap`, stacked with `space-y-1`). Plain-text notes and non-note details keep the legacy muted paragraph. `detail` is still populated for timeline search matching.
+- Verified helpers via node strip-types against the exact reported payload: single entry â†’ clean text/"Note 1:", double-encoded â†’ unwrapped, multi-entry â†’ Note 1..N, plain text â†’ untouched.
+- **Per-note visual formatting in the lead-detail Activity Timeline:** follow-up events carry a new `noteEntries?: string[]` field (populated from `parseNotesEntries` ONLY when raw notes look like JSON); the renderer shows each entry as its own row â€” `Note {i+1}:` label in `font-semibold text-orange-700`, note text in `font-medium text-foreground`, on a subtle `bg-orange-50` chip with an orange left border (`border-l-2 border-orange-300 rounded-r-md`, `whitespace-pre-wrap`, stacked with `space-y-1`). Plain-text notes and non-note details keep the legacy muted paragraph. `detail` is still populated for timeline search matching.
 - Build verified: CRM typecheck = 0 errors.
 
 ### Key Decisions
-- Numbering is index-based per notes array, so it naturally restarts at 1 for every new deal/activity — no DB counter needed.
+- Numbering is index-based per notes array, so it naturally restarts at 1 for every new deal/activity â€” no DB counter needed.
 - Plain-text notes intentionally get NO prefix (legacy data stays visually unchanged); only JSON-array history gets numbered.
 
 ---
@@ -143,8 +143,8 @@
 - Support/Admin users need a red count badge on the "Dispatch" sidebar item showing orders waiting in the dispatch queue, so newly "Ready To Dispatch" production orders are immediately visible.
 
 ### Done
-- New hook `artifacts/crm/src/lib/use-pending-dispatch-count.ts`: queries `GET /dashboard/support-kpi` and returns its `pendingDispatch` value (status = "Ready To Dispatch" AND dispatchStatus = "Pending Dispatch"/null — identical filter to the Support Dashboard KPI card).
-- Hook shares the `"support-dashboard-kpi"` query-key prefix → auto-refreshes whenever `onProductionChange()` invalidates it after Ready For Dispatch / Load Vehicle / Mark Delivered actions; badge decrements/disappears automatically. 60s polling fallback; no duplicate fetch while the Support Dashboard is open.
+- New hook `artifacts/crm/src/lib/use-pending-dispatch-count.ts`: queries `GET /dashboard/support-kpi` and returns its `pendingDispatch` value (status = "Ready To Dispatch" AND dispatchStatus = "Pending Dispatch"/null â€” identical filter to the Support Dashboard KPI card).
+- Hook shares the `"support-dashboard-kpi"` query-key prefix â†’ auto-refreshes whenever `onProductionChange()` invalidates it after Ready For Dispatch / Load Vehicle / Mark Delivered actions; badge decrements/disappears automatically. 60s polling fallback; no duplicate fetch while the Support Dashboard is open.
 - `layout.tsx`: hook enabled only for `admin` / `production_and_support`; red badge (`bg-red-500`, 99+ cap) rendered on the `/dispatch` nav item in both supportNavItems and the admin production-workspace nav, following the existing `/follow-ups` activity-badge pattern. Placed AFTER the role flags declaration (TDZ-safe).
 
 ### Key Decisions
@@ -153,13 +153,13 @@
 ---
 
 
-## Proforma Invoices List — Full History via Server-Side Pagination
+## Proforma Invoices List â€” Full History via Server-Side Pagination
 
 ### Goal
 - The Proforma Invoices list page showed only the newest 15 invoices (backend default page size); older invoices vanished as new ones were created and were unsearchable. All history must remain viewable/searchable.
 
 ### Done
-- Frontend `proforma-invoices.tsx` list mode switched to true server-side pagination: fetch sends `page`, `limit=15`, and debounced `search`; response `{ data, total }` drives the table + `totalPages` + "Page X of Y · N invoices" footer.
+- Frontend `proforma-invoices.tsx` list mode switched to true server-side pagination: fetch sends `page`, `limit=15`, and debounced `search`; response `{ data, total }` drives the table + `totalPages` + "Page X of Y Â· N invoices" footer.
 - Removed the client-side `filteredInvoices` memo / slice pagination (it was paginating the same 15 server rows) and the now-unused `useMemo` import.
 - Search box debounced 300ms; status/orderType/search changes reset to page 1; post-mutation refetches unchanged.
 - Backend `GET /proforma-invoices`: search extended with an `EXISTS` on contacts matching contact `name`/`customer_code` (parity with the removed client-side filter fields). Pagination (`page`/`limit`, cap 100) already existed.
@@ -180,12 +180,12 @@
 ### Done
 - `cancelOrder` in `order-cancellation-service.ts` notification block updated:
   - Role query widened to `admin, production, production_manager, support, production_and_support` (previously missed `production` + `support`).
-  - `title` → `Order Cancelled: ${order.orderNumber}`; `message` → `Order ${order.orderNumber} for ${customerName} has been cancelled.` + reason/cancelled-by lines.
-  - `link` → `/production/orders/:id` when a production order is linked to the deal (transaction already returns it), else `/orders/:id`.
+  - `title` â†’ `Order Cancelled: ${order.orderNumber}`; `message` â†’ `Order ${order.orderNumber} for ${customerName} has been cancelled.` + reason/cancelled-by lines.
+  - `link` â†’ `/production/orders/:id` when a production order is linked to the deal (transaction already returns it), else `/orders/:id`.
   - `type: "order_cancelled"`, `relatedId/relatedType: order` unchanged; `createNotification()` emits over SSE in real time (dedup per user/type/order prevents duplicates).
 
 ### Key Decisions
-- Reused the existing `createNotification` SSE pipeline — no frontend changes needed.
+- Reused the existing `createNotification` SSE pipeline â€” no frontend changes needed.
 - No DB migration needed.
 
 ---
@@ -212,11 +212,11 @@
 ## Production Dashboard "Product Line Summary" Partial-Ready Fix
 
 ### Goal
-- "Ready PCS" on the Production Dashboard Product Line Summary must count partial-ready pieces immediately (e.g., 600 of 1000 marked ready → Ready PCS = 600, In Production PCS = 400), instead of only counting lines whose status is fully "Ready".
+- "Ready PCS" on the Production Dashboard Product Line Summary must count partial-ready pieces immediately (e.g., 600 of 1000 marked ready â†’ Ready PCS = 600, In Production PCS = 400), instead of only counting lines whose status is fully "Ready".
 
 ### Done
 - Backend `getDashboard` piece-KPI loop in `production-service.ts`: `readyPieces` now sums `readyQuantity` across ALL product-line rows unconditionally (partial-ready lines included); `inProductionPieces` / `pendingPieces` count `quantity - readyQuantity` remaining per bucket as before.
-- Removed the old `else if (row.productionStatus === "Ready")` branch — fully-ready lines are still covered because their `readyQuantity == orderedQuantity`.
+- Removed the old `else if (row.productionStatus === "Ready")` branch â€” fully-ready lines are still covered because their `readyQuantity == orderedQuantity`.
 - Build verified: zero TS errors in production-service.ts (baseline unchanged).
 
 ### Key Decisions
@@ -229,7 +229,7 @@
 ## Production Dashboard "Active (Manufacturing)" KPI Fix
 
 ### Goal
-- The "Active (Manufacturing)" stat on the Production Dashboard must STRICTLY count orders where physical production is running right now — status exactly `In Production` / `Production On Going` — never Pending, Accepted, Planning, Packaging/Packing, Ready To/For Dispatch, or In Transport.
+- The "Active (Manufacturing)" stat on the Production Dashboard must STRICTLY count orders where physical production is running right now â€” status exactly `In Production` / `Production On Going` â€” never Pending, Accepted, Planning, Packaging/Packing, Ready To/For Dispatch, or In Transport.
 
 ### Done
 - Backend `getDashboard` in `production-service.ts` now computes a new `activeManufacturing` field: distinct order count where `status IN ("In Production", "Production On Going")`, reusing the same query rows/filters (unit, origin, date, soft-deleted-PI exclusion) as the existing KPIs. `activeOrders` (all non-terminal statuses) is kept unchanged for backward compat.
@@ -244,7 +244,7 @@
 
 
 ## Goal
-- Transform Lead Details page into Customer 360° Profile with all customer data available from one screen.
+- Transform Lead Details page into Customer 360Â° Profile with all customer data available from one screen.
 - Separate permanent Customer Comments from Follow-up Notes with version history, display across all CRM modules, Customer Profile view, search integration, and import support.
 
 ## Constraints & Preferences
@@ -261,9 +261,9 @@
 ### Done
 - Phase 1: notification dedup, badge/popup behavior, lead filter counts, upcoming follow-ups (Regular Follow up + Pending), deal pipeline filter (Regular Follow up only), auto-assignment for sales, role permissions, notes history as JSON array with audit trail, query invalidation fixes across `follow-ups.tsx`, `leads.tsx`, `lead-detail.tsx`, `leads-new.tsx`, `import.tsx`, dashboard uses React Query for category counts.
 - Phase 2: upcoming filter only `callStatus === "Pending"`; `notesToDisplay` returns latest-first; status dropdown (Pending/Completed/Cancelled/No Response) in edit dialog; notes history shown in edit dialog; status badges for all statuses; `pendingCount`, `todayActivities`, `followUpCount` all filter by Pending only; notification dismissal for Cancelled/No Response.
-- Phase 3 Task 1: Merged Activity Timeline — Section 4 (Complete Follow-up History), Section 6 (Activity Timeline), and Section 14 (Activity Log) combined into one modern `Activity Timeline` card in `lead-detail.tsx`. Uses merged data from both activities (for action types) and timeline endpoint (for system events), sorted chronologically with date filter. Log Activity dialog moved inside the merged card header.
-- Phase 3: Customer Comments feature — DB schema, migration, API zod schemas, TypeScript interfaces, backend contacts.ts with comment history tracking, frontend display in lead-detail.tsx, leads.tsx, follow-ups.tsx, deals.tsx. Import Excel comments mapping.
-- Phase 4: Customer 360° Profile — `lead-detail.tsx` rewritten with all 10 sections (now 8 sections after merge):
+- Phase 3 Task 1: Merged Activity Timeline â€” Section 4 (Complete Follow-up History), Section 6 (Activity Timeline), and Section 14 (Activity Log) combined into one modern `Activity Timeline` card in `lead-detail.tsx`. Uses merged data from both activities (for action types) and timeline endpoint (for system events), sorted chronologically with date filter. Log Activity dialog moved inside the merged card header.
+- Phase 3: Customer Comments feature â€” DB schema, migration, API zod schemas, TypeScript interfaces, backend contacts.ts with comment history tracking, frontend display in lead-detail.tsx, leads.tsx, follow-ups.tsx, deals.tsx. Import Excel comments mapping.
+- Phase 4: Customer 360Â° Profile â€” `lead-detail.tsx` rewritten with all 10 sections (now 8 sections after merge):
   1. Customer Information (inline editable via dialogs)
   2. Customer Comments (existing, enhanced)
   3. Upcoming Follow-up (fetch + Complete/Call quick actions)
@@ -273,13 +273,13 @@
   7. Notification History (from notifications table, related to contact)
   8. Quick Actions (Edit Comments, Schedule Follow-up, Move Category, Create Deal, Call, Copy Mobile, Edit Lead)
 - Phase 4: Summary Card (sticky header with name, company, mobile, category, deal stage, next follow-up, customer since + Back/Move/Edit/Delete buttons)
-- Phase 4: Category history tracking — automatic insert into `category_history` whenever category changes in PATCH /contacts/:id
+- Phase 4: Category history tracking â€” automatic insert into `category_history` whenever category changes in PATCH /contacts/:id
 - Phase 4: New backend endpoints:
-  - `GET /contacts/:id/category-history` — returns category changes with user name
-  - `GET /contacts/:id/timeline` — combined timeline of all events
-  - `GET /contacts/:id/notifications` — notification history for the contact
+  - `GET /contacts/:id/category-history` â€” returns category changes with user name
+  - `GET /contacts/:id/timeline` â€” combined timeline of all events
+  - `GET /contacts/:id/notifications` â€” notification history for the contact
 - Phase 4: Migration `009_add_category_history.sql` (run against Supabase database)
-- Phase 4: Live synchronization via React Query invalidation — after any update, all related sections automatically refresh
+- Phase 4: Live synchronization via React Query invalidation â€” after any update, all related sections automatically refresh
 - Phase 4: Attachments section removed (future-ready placeholder no longer needed)
 
 ### In Progress
@@ -290,7 +290,7 @@
 
 ## Key Decisions
 - Category history stored in `category_history` table (already existed in drizzle schema, created in DB via migration 009).
-- Timeline endpoint combines 5 data sources: lead creation, activities, category history, comment history, and deal events — all sorted by date DESC.
+- Timeline endpoint combines 5 data sources: lead creation, activities, category history, comment history, and deal events â€” all sorted by date DESC.
 - Inline editing uses a generic dialog (field name + value input) that calls `updateContact.mutate`.
 - Follow-up completion handled via direct fetch PATCH to `/api/activities/:id` to avoid coupling with existing activity update flows.
 - Summary Card uses `sticky top-0 z-10` to stay visible while scrolling.
@@ -298,14 +298,14 @@
 - Merged timeline deduplicates activity events: uses `activities` list (with full activity data) as primary source, skips matching events from timeline endpoint to avoid duplicates.
 
 ## Next Steps
-- Phase 3 Task 2: Dashboard KPI validation — review Conversion vs Conversion Client metrics, fix duplicates, ensure all KPIs are clickable.
-- Phase 3 Task 3: UI Polish — better spacing, cleaner cards, consistent typography, responsive/mobile layout.
+- Phase 3 Task 2: Dashboard KPI validation â€” review Conversion vs Conversion Client metrics, fix duplicates, ensure all KPIs are clickable.
+- Phase 3 Task 3: UI Polish â€” better spacing, cleaner cards, consistent typography, responsive/mobile layout.
 
 ## Relevant Files
 - `lib/db/src/schema/category_history.ts`: category_history table schema (pre-existing)
 - `lib/db/migrations/009_add_category_history.sql`: migration to create category_history table in DB
 - `artifacts/api-server/src/routes/contacts.ts`: category history tracking, GET endpoints for category-history, timeline, notifications
-- `artifacts/crm/src/pages/lead-detail.tsx`: Customer 360° Profile with all 10 sections + summary card + quick actions
+- `artifacts/crm/src/pages/lead-detail.tsx`: Customer 360Â° Profile with all 10 sections + summary card + quick actions
 
 ---
 
@@ -346,7 +346,7 @@
 - Added `wonAmount` to `Deal`, `DealInput`, `DealUpdate` TypeScript types in `api-zod` and `api-client-react`.
 - Updated backend `PATCH /deals/:id` to require `wonAmount > 0` when stage becomes "Won" (instead of `totalValue`).
 - Updated dashboard `totalWonValue` calculation to prefer `wonAmount`, fallback to `totalValue`.
-- Updated frontend `deals.tsx` drag & drop flow: intercept WON drops with confirmation dialog → Won Amount popup → API call with `wonAmount`.
+- Updated frontend `deals.tsx` drag & drop flow: intercept WON drops with confirmation dialog â†’ Won Amount popup â†’ API call with `wonAmount`.
 - Updated `deal-detail.tsx` manual status change to WON to use `wonAmount` instead of `totalValue`.
 
 ### In Progress
@@ -364,9 +364,9 @@
 
 ## Progress
 ### Done
-- Created `artifacts/crm/src/components/user-avatar.tsx` — reusable `UserAvatar` component wrapping Radix `<Avatar>` + `<AvatarImage>` with fallback initials and cache-busting (`?v=timestamp`).
-- Backend `reports.ts:179` — added `profilePhoto` + `username` to GET /reports/by-owner response.
-- Backend `categories.ts` — added `profilePhoto` + `username` to GET /categories/report topPerformers response.
+- Created `artifacts/crm/src/components/user-avatar.tsx` â€” reusable `UserAvatar` component wrapping Radix `<Avatar>` + `<AvatarImage>` with fallback initials and cache-busting (`?v=timestamp`).
+- Backend `reports.ts:179` â€” added `profilePhoto` + `username` to GET /reports/by-owner response.
+- Backend `categories.ts` â€” added `profilePhoto` + `username` to GET /categories/report topPerformers response.
 - Frontend: replaced all coloured dots/initials with `UserAvatar` across 12 files:
   - `layout.tsx` (sidebar user avatar)
   - `lead-form.tsx` (assigned-to user selection)
@@ -380,15 +380,15 @@
   - `reports.tsx` (Performance by Sales Owner table)
   - `settings.tsx` (user list)
   - `import.tsx` (assigned user dropdown)
-- Updated `query-invalidation.ts` `onUserChange` — invalidates `dashboard-sales-performance`, `dashboard-recent-activities`, `reports-by-owner`, `category-report` on user update.
+- Updated `query-invalidation.ts` `onUserChange` â€” invalidates `dashboard-sales-performance`, `dashboard-recent-activities`, `reports-by-owner`, `category-report` on user update.
 
 ### Note
 - The Reports "Performance by Sales Owner" table appears to show initials only when the users queried have `profilePhoto = null` in the database. The logged-in user's photo is visible via `useGetMe` (sidebar), but the by-owner endpoint queries *all* sales users. Once a photo is uploaded for each user in **Settings**, it displays correctly.
-- **Root cause of "photo works for admin but shows initials for non-admins":** legacy `profilePhoto` rows store a relative `/api/uploads/profile-photos/<file>` URL (uploaded while the local filesystem provider was active). Only `auth.ts` and `users.ts safeUser()` mapped these to working Supabase public URLs via `normalizeProfilePhotoUrl()`; every other endpoint returned the raw relative URL → 404 → initials fallback. Admin's photo worked because it was re-uploaded after the Supabase migration (absolute URL in DB).
+- **Root cause of "photo works for admin but shows initials for non-admins":** legacy `profilePhoto` rows store a relative `/api/uploads/profile-photos/<file>` URL (uploaded while the local filesystem provider was active). Only `auth.ts` and `users.ts safeUser()` mapped these to working Supabase public URLs via `normalizeProfilePhotoUrl()`; every other endpoint returned the raw relative URL â†’ 404 â†’ initials fallback. Admin's photo worked because it was re-uploaded after the Supabase migration (absolute URL in DB).
 - **Fix:** added `normalizeProfilePhotoUrl()` to all remaining avatar-bearing responses: `dashboard.ts` (sales performance KPI), `reports.ts` (by-owner), `categories.ts` (topPerformers + salesOwner/changedByUser maps), `contacts.ts` (`withOwner`, duplicate payloads, list + duplicates userMap), `import.ts` (ownerProfilePhoto), `deals.ts` (list userMap + `enrichDeal` salesOwner), `activities.ts` (userMap). Relative URLs are remapped to `{SUPABASE_URL}/storage/v1/object/public/...`; absolute URLs pass through unchanged.
 - Users whose photos predate the Supabase migration and were only on the ephemeral local filesystem must re-upload once in Settings (the old files are unrecoverable); all new uploads persist in Supabase and now render in every module for every role.
-- **403 fix (still-failing non-admin avatars):** bucket `public=true` alone is NOT sufficient. Buckets are created at runtime by inserting directly into `storage.buckets` (`createBucketViaDb`), which bypasses the Storage REST API — so Supabase never auto-creates the anonymous `SELECT` policy on `storage.objects`. The browser's `<img src>` (no auth header) then hits `storage.objects` RLS → HTTP 403 → initials fallback for every role. Fix: migration `072_add_storage_public_read_policies.sql` creates `CREATE POLICY "Public read access (all public buckets)" ON storage.objects FOR SELECT TO public USING (bucket_id IN (SELECT id FROM storage.buckets WHERE public = true));` (anon + authenticated read for all public buckets: `profile-photos`, `voice-notes`, `documents`, `builty`). Runtime self-healing added in `storage.ts`: `ensurePublicReadPolicies()` runs the same DROP/CREATE via `db.execute` (once per process) and is invoked from `ensureBucketPublic()` and at the end of `ensureBucketExists()`, so existing deployments repair on next upload/startup even if the migration is applied late.
-- **Sleep/wake photo loss fix:** After laptop sleep/resume, browser evicts in-memory image bitmaps → Radix Avatar `<img>` fires `onerror` → shows initials fallback. React Query refetches `useGetMe()` on window focus but returns the same `profilePhoto` URL string → `useMemo(() => Date.now(), [profilePhoto])` returns the same old timestamp → `<img src>` unchanged → browser won't retry a failed URL → photo stuck as initials. Fix: added `visibilitychange` listener in `UserAvatar` (`user-avatar.tsx:27-40`) that bumps a `visibilityBump` counter with a 300ms delay after the tab becomes visible. `cacheBuster` now depends on both `profilePhoto` AND `visibilityBump`, so the `<img src>` URL changes on wake, forcing a fresh image load.
+- **403 fix (still-failing non-admin avatars):** bucket `public=true` alone is NOT sufficient. Buckets are created at runtime by inserting directly into `storage.buckets` (`createBucketViaDb`), which bypasses the Storage REST API â€” so Supabase never auto-creates the anonymous `SELECT` policy on `storage.objects`. The browser's `<img src>` (no auth header) then hits `storage.objects` RLS â†’ HTTP 403 â†’ initials fallback for every role. Fix: migration `072_add_storage_public_read_policies.sql` creates `CREATE POLICY "Public read access (all public buckets)" ON storage.objects FOR SELECT TO public USING (bucket_id IN (SELECT id FROM storage.buckets WHERE public = true));` (anon + authenticated read for all public buckets: `profile-photos`, `voice-notes`, `documents`, `builty`). Runtime self-healing added in `storage.ts`: `ensurePublicReadPolicies()` runs the same DROP/CREATE via `db.execute` (once per process) and is invoked from `ensureBucketPublic()` and at the end of `ensureBucketExists()`, so existing deployments repair on next upload/startup even if the migration is applied late.
+- **Sleep/wake photo loss fix:** After laptop sleep/resume, browser evicts in-memory image bitmaps â†’ Radix Avatar `<img>` fires `onerror` â†’ shows initials fallback. React Query refetches `useGetMe()` on window focus but returns the same `profilePhoto` URL string â†’ `useMemo(() => Date.now(), [profilePhoto])` returns the same old timestamp â†’ `<img src>` unchanged â†’ browser won't retry a failed URL â†’ photo stuck as initials. Fix: added `visibilitychange` listener in `UserAvatar` (`user-avatar.tsx:27-40`) that bumps a `visibilityBump` counter with a 300ms delay after the tab becomes visible. `cacheBuster` now depends on both `profilePhoto` AND `visibilityBump`, so the `<img src>` URL changes on wake, forcing a fresh image load.
 
 ---
 
@@ -407,24 +407,24 @@ Deliver a working Proforma Invoice module with Customer Master, real GST auto-fi
 - On invoice save, auto-save customer to Customer Master if new.
 - Every user can delete invoices (not just admins); soft-delete with `deletedAt`/`deletedBy`, hidden from all views.
 - **CRM must NEVER generate fake company names or fake addresses. If GST lookup cannot return real data, return an error.** No mock provider in production. No sample data. No fake addresses.
-- GST lookup is now live via 4-tier approach: GSTVerify → GSTZen API → HTML scraping → Customer Master fallback. No mock data.
-- GST lookup must work with a FREE provider — no premium API key subscriptions.
-- The flow should work like cleartax.in: enter GSTIN → auto-fetch → auto-fill all fields.
+- GST lookup is now live via 4-tier approach: GSTVerify â†’ GSTZen API â†’ HTML scraping â†’ Customer Master fallback. No mock data.
+- GST lookup must work with a FREE provider â€” no premium API key subscriptions.
+- The flow should work like cleartax.in: enter GSTIN â†’ auto-fetch â†’ auto-fill all fields.
 
 ## Progress
 ### Done
 - Customer Master DB schema, proforma invoices schema extended, migrations (013, 014).
-- `POST /proforma-invoices/gst-lookup` endpoint with 4-tier fallback (GSTVerify → GSTZen → HTML scrape → Customer Master).
+- `POST /proforma-invoices/gst-lookup` endpoint with 4-tier fallback (GSTVerify â†’ GSTZen â†’ HTML scrape â†’ Customer Master).
 - Frontend: 500ms debounce auto-fetch, no "Verify GST" button, `gstLoading`/`gstError` states.
 - `applyGstDetails` updated with `companyName` fallback on `legalName`/`tradeName`.
-- GSTVerify API key configured — **9 demo credits remaining** (₹0.10/call thereafter).
+- GSTVerify API key configured â€” **9 demo credits remaining** (â‚¹0.10/call thereafter).
 - Product autocomplete backend + frontend.
 - Auto-save customer to Customer Master on invoice save.
 - Soft-delete for all users.
 - PDF layout reverted to original design.
-- **Multiple GST profiles per mobile number**: mobile lookup now goes through canonical `GET /customer-master/lookup?mobile=` (returns an ARRAY of all profiles; registered before the `/:id` param route). UI shows a "+ Add New Profile / GST for this number" option in both profile selectors; selecting it clears billing fields (except mobile), drops `customerMasterId`, and saves the new GST as a distinct Customer Master row tied to the same mobile (schema already allows duplicate `mobile` — only `gstin` is unique). `handleSave` now pre-creates/links the Customer Master record BEFORE the PI is saved (409 adopts the existing profile) instead of the old post-save best-effort block.
-- **Per-profile delete**: each GST profile card in the PI selection list has a subtle Trash button (top-right, `e.stopPropagation()`, `window.confirm` confirmation) calling `DELETE /api/customer-master/:id`. Deletion is a **soft delete** (`is_deleted`/`deleted_at`/`deleted_by` via migration 065) since profiles are referenced by `proforma_invoices.customer_master_id` and `voice_notes.customer_id` — historical invoices keep their link. All lookup endpoints (`lookup`, `lookup-by-gstin`, `search-by-mobile`, `search-by-name`, `by-contact`, list, single, proforma-history) and GST fallbacks (`gst.ts`, `proforma-invoices.ts` Tier 5) exclude deleted profiles; duplicate check ignores deleted rows so a GSTIN can be re-created. DELETE endpoint is now available to any authenticated user (was admin-only), matching the open POST.
-- **PDF page-border + border-leakage fix:** `.page` container now sized at `202mm × 289mm` with `margin:4mm auto` (4mm inset from A4 edges on all sides), `border:1px solid #000` as the outer rectangular frame. Each page gets its own independent border via `page-break-after:always`. Filler row removed (was the source of vertical column-border leakage into the footer). `.table-wrap` and table stretching removed; table takes natural height on all pages. Footer moved from `position:absolute` to normal flex flow as a sibling of `.page-content` — both sit inside `.page` (inside the outer border). `.page-spacer{flex:1}` pushes footer to the bottom. Client-side preview aligned with identical structure. **Product table vertical lines now stop at the table's last row; no leakage into Bank Details, Terms, Disclaimer, or Signature.**
+- **Multiple GST profiles per mobile number**: mobile lookup now goes through canonical `GET /customer-master/lookup?mobile=` (returns an ARRAY of all profiles; registered before the `/:id` param route). UI shows a "+ Add New Profile / GST for this number" option in both profile selectors; selecting it clears billing fields (except mobile), drops `customerMasterId`, and saves the new GST as a distinct Customer Master row tied to the same mobile (schema already allows duplicate `mobile` â€” only `gstin` is unique). `handleSave` now pre-creates/links the Customer Master record BEFORE the PI is saved (409 adopts the existing profile) instead of the old post-save best-effort block.
+- **Per-profile delete**: each GST profile card in the PI selection list has a subtle Trash button (top-right, `e.stopPropagation()`, `window.confirm` confirmation) calling `DELETE /api/customer-master/:id`. Deletion is a **soft delete** (`is_deleted`/`deleted_at`/`deleted_by` via migration 065) since profiles are referenced by `proforma_invoices.customer_master_id` and `voice_notes.customer_id` â€” historical invoices keep their link. All lookup endpoints (`lookup`, `lookup-by-gstin`, `search-by-mobile`, `search-by-name`, `by-contact`, list, single, proforma-history) and GST fallbacks (`gst.ts`, `proforma-invoices.ts` Tier 5) exclude deleted profiles; duplicate check ignores deleted rows so a GSTIN can be re-created. DELETE endpoint is now available to any authenticated user (was admin-only), matching the open POST.
+- **PDF page-border + border-leakage fix:** `.page` container now sized at `202mm Ã— 289mm` with `margin:4mm auto` (4mm inset from A4 edges on all sides), `border:1px solid #000` as the outer rectangular frame. Each page gets its own independent border via `page-break-after:always`. Filler row removed (was the source of vertical column-border leakage into the footer). `.table-wrap` and table stretching removed; table takes natural height on all pages. Footer moved from `position:absolute` to normal flex flow as a sibling of `.page-content` â€” both sit inside `.page` (inside the outer border). `.page-spacer{flex:1}` pushes footer to the bottom. Client-side preview aligned with identical structure. **Product table vertical lines now stop at the table's last row; no leakage into Bank Details, Terms, Disclaimer, or Signature.**
 
 ## Production Module
 
@@ -433,48 +433,48 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 
 ### Done
 - DB schema: `production_orders`, `production_timeline`, `production_notes` tables in `lib/db/src/schema/production_orders.ts`
-- Migration `017_add_production_orders.sql` — creates 3 tables + indexes
+- Migration `017_add_production_orders.sql` â€” creates 3 tables + indexes
 - Role `production_manager` added to `UserRole`, `UserInputRole`, `UserUpdateRole` types
 - Backend `production.ts` routes:
-  - `GET /production/dashboard` — KPI cards (pending, accepted, planning, in production, packing, ready for dispatch, in transport, completed today, delayed)
-  - `GET /production/orders` — list with search, status filter, priority filter, **creator filter**, **origin filter**, pagination
-  - `GET /production/orders/:id` — single order detail with invoice, items, timeline, notes, **creator info**, planning/production/packing/transport detail cards
-  - `GET /production/pending-summary` — product-wise pending production quantity (SQL GROUP BY)
-  - `GET /production/by-invoice/:invoiceId` — lookup by proforma invoice (used by Sales read-only view)
-  - `POST /production/orders/:id/start` — start production (In Production), sets productionMachine/operatorName/inProductionNotes
-  - `POST /production/orders/:id/packing` — complete packing step with packingType (Bundle/Packet) + packingNotes
-  - `POST /production/orders/:id/ready-for-dispatch` — mark as Ready For Dispatch, notifies Support
-  - `POST /production/orders/:id/transport` — book transport (Support role), sets transportName/transportDetails, moves to In Transport
-  - `POST /production/orders/:id/complete` — complete order (terminal state)
-  - `POST /production/orders/:id/notes` — add internal production note
-  - `PATCH /production/orders/:id/status` — REMOVED (returns 400, directs to specific endpoints)
-- **Production Workflow v2:** New chronological status flow: Pending → Accepted → Planning → In Production → Packing → Ready For Dispatch → In Transport → Completed
-- **Status migration:** "Machine Running" → "In Production", "Quality Check" → "Packing", "Ready For Dispatch" with existing transport data → "In Transport"
+  - `GET /production/dashboard` â€” KPI cards (pending, accepted, planning, in production, packing, ready for dispatch, in transport, completed today, delayed)
+  - `GET /production/orders` â€” list with search, status filter, priority filter, **creator filter**, **origin filter**, pagination
+  - `GET /production/orders/:id` â€” single order detail with invoice, items, timeline, notes, **creator info**, planning/production/packing/transport detail cards
+  - `GET /production/pending-summary` â€” product-wise pending production quantity (SQL GROUP BY)
+  - `GET /production/by-invoice/:invoiceId` â€” lookup by proforma invoice (used by Sales read-only view)
+  - `POST /production/orders/:id/start` â€” start production (In Production), sets productionMachine/operatorName/inProductionNotes
+  - `POST /production/orders/:id/packing` â€” complete packing step with packingType (Bundle/Packet) + packingNotes
+  - `POST /production/orders/:id/ready-for-dispatch` â€” mark as Ready For Dispatch, notifies Support
+  - `POST /production/orders/:id/transport` â€” book transport (Support role), sets transportName/transportDetails, moves to In Transport
+  - `POST /production/orders/:id/complete` â€” complete order (terminal state)
+  - `POST /production/orders/:id/notes` â€” add internal production note
+  - `PATCH /production/orders/:id/status` â€” REMOVED (returns 400, directs to specific endpoints)
+- **Production Workflow v2:** New chronological status flow: Pending â†’ Accepted â†’ Planning â†’ In Production â†’ Packing â†’ Ready For Dispatch â†’ In Transport â†’ Completed
+- **Status migration:** "Machine Running" â†’ "In Production", "Quality Check" â†’ "Packing", "Ready For Dispatch" with existing transport data â†’ "In Transport"
 - **New DB columns:** `productionMachine`, `operatorName`, `inProductionNotes`, `packingType` (Bundle/Packet with CHECK constraint), `packingNotes`, `packingCompletedById`, `packingCompletedAt`, `transportBookedById`, `transportBookedAt`. Orders frozen (`isFrozen: true`) when In Production.
-- **Migration `048_production_workflow_v2.sql`** — adds new columns, migrates old statuses, adds indexes + constraints
-- Auto-create Production Order in `proforma-invoices.ts` when status → "Converted to Order"
+- **Migration `048_production_workflow_v2.sql`** â€” adds new columns, migrates old statuses, adds indexes + constraints
+- Auto-create Production Order in `proforma-invoices.ts` when status â†’ "Converted to Order"
 - **Permanent creator info** stored on production_orders: `createdById`, `createdByName`, `createdByRole`
 - **Real-time notifications** to all production managers/admins when new production order is created (via existing SSE infrastructure)
 - Notification includes: creator name, role, customer, company, product, quantity, order number
 - **Admin-only Product Management**: POST/PATCH/DELETE on `/products` restricted to admin role
 - Frontend pages:
-  - `production-dashboard.tsx` — 8 KPI cards (Pending, Accepted, Planning, In Production, Packing, Ready for Dispatch, In Transport, Delayed) + **Pending Production Summary widget** + **Origin filter**
-  - `production-orders.tsx` — full list with search, status/priority/origin/creator filters, **Created By column**, **Origin badge**, status badges matching new color scheme
-  - `production-order-detail.tsx` — full rewrite with new workflow dialogs (Planning, Start Production, Packing, Transport Booking, Cancel); detail cards (Planning Details, Production Details, Packing Details, Transport Details); Support-specific "Dispatch Action" card at Ready For Dispatch
-  - `products.tsx` — **admin-only Create/Edit/Delete**, **Status column** (Active/Inactive)
-- `production-progress.tsx` — read-only Production Progress card for Sales users with v2 workflow steps, detail fields (plannedMachine, productionMachine, packingType, transport details), activity log timeline
-- `support-dashboard.tsx` — Ready for Dispatch + In Transport KPI cards added (from production_orders); navigates to filtered production orders
-- `App.tsx` — `RoleGuard` component redirects users based on role; production routes guarded
-- `layout.tsx` — dynamic sidebar: Sales shows only Sales nav, Production shows only Production nav, Admin shows both
-- `login.tsx` — stores `crm_user_role` in localStorage, redirects to correct dashboard based on role
-- `settings.tsx` — role dropdown includes Production Manager option
-- `seed.ts` — includes `production` user with role `production_manager`
+  - `production-dashboard.tsx` â€” 8 KPI cards (Pending, Accepted, Planning, In Production, Packing, Ready for Dispatch, In Transport, Delayed) + **Pending Production Summary widget** + **Origin filter**
+  - `production-orders.tsx` â€” full list with search, status/priority/origin/creator filters, **Created By column**, **Origin badge**, status badges matching new color scheme
+  - `production-order-detail.tsx` â€” full rewrite with new workflow dialogs (Planning, Start Production, Packing, Transport Booking, Cancel); detail cards (Planning Details, Production Details, Packing Details, Transport Details); Support-specific "Dispatch Action" card at Ready For Dispatch
+  - `products.tsx` â€” **admin-only Create/Edit/Delete**, **Status column** (Active/Inactive)
+- `production-progress.tsx` â€” read-only Production Progress card for Sales users with v2 workflow steps, detail fields (plannedMachine, productionMachine, packingType, transport details), activity log timeline
+- `support-dashboard.tsx` â€” Ready for Dispatch + In Transport KPI cards added (from production_orders); navigates to filtered production orders
+- `App.tsx` â€” `RoleGuard` component redirects users based on role; production routes guarded
+- `layout.tsx` â€” dynamic sidebar: Sales shows only Sales nav, Production shows only Production nav, Admin shows both
+- `login.tsx` â€” stores `crm_user_role` in localStorage, redirects to correct dashboard based on role
+- `settings.tsx` â€” role dropdown includes Production Manager option
+- `seed.ts` â€” includes `production` user with role `production_manager`
 - Backend 403 enforcement: all `/api/production/*` endpoints return 403 for non-production/non-admin users
 - **Query invalidation** updated to include `production-pending-summary` key
 - **Generated types** updated: `Product`, `ProductInput`, `ProductUpdate` interfaces + Zod schemas now include `status` field
 - **Unified Production Order Workflow (Sales + Support):** All production features work identically regardless of origin
   - `requestedUnit` column added to `production_orders` (original unit, never changes on transfer)
-  - Migration `047_add_requested_unit.sql` — adds `requested_unit`, `created_by_role` index, backfills existing rows
+  - Migration `047_add_requested_unit.sql` â€” adds `requested_unit`, `created_by_role` index, backfills existing rows
   - Auto-creation in `proforma-invoices.ts` and `deals.ts` sets `requestedUnit` = `productionUnit` on creation
   - `production-service.ts` `getDashboard`, `listOrders`, `getReports` accept `origin` filter (`createdByRole`)
   - `notifySalesOfProductionEvent` notifies support users when `createdByRole === "production_and_support"`
@@ -495,8 +495,8 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `ApiGstProvider` kept for backward compat (GSTZen).
 - No mock provider exists anywhere.
 - `GET /customer-master/lookup?mobile=` is the canonical multi-profile mobile lookup (array). `search-by-mobile/:mobile` kept for backward compat.
-- Uniqueness for `customer_master` is `gstin` only — same mobile with different GSTIN/trade name is a distinct profile (no migration needed; `gstin` nullable since migration 051).
-- Profile deletion is soft (`is_deleted`/`deleted_at`/`deleted_by`, migration 065) not hard — hard delete would break FK references from `proforma_invoices.customer_master_id` and `voice_notes.customer_id`, losing historical invoice links. Deleted profiles are excluded from every lookup and from the GST duplicate check (so a GSTIN can be re-registered), but their historical invoices remain intact. `proforma_invoices.ts:733` contact filter subquery intentionally does NOT filter `is_deleted` so invoices of deleted profiles stay findable.
+- Uniqueness for `customer_master` is `gstin` only â€” same mobile with different GSTIN/trade name is a distinct profile (no migration needed; `gstin` nullable since migration 051).
+- Profile deletion is soft (`is_deleted`/`deleted_at`/`deleted_by`, migration 065) not hard â€” hard delete would break FK references from `proforma_invoices.customer_master_id` and `voice_notes.customer_id`, losing historical invoice links. Deleted profiles are excluded from every lookup and from the GST duplicate check (so a GSTIN can be re-registered), but their historical invoices remain intact. `proforma_invoices.ts:733` contact filter subquery intentionally does NOT filter `is_deleted` so invoices of deleted profiles stay findable.
 
 ## Relevant Files
 - `artifacts/api-server/src/routes/proforma-invoices.ts`: gst-lookup (4-tier), renderInvoiceHtml, soft-delete DELETE, **production order auto-creation with requestedUnit + origin**
@@ -515,7 +515,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `lib/db/migrations/017_add_production_orders.sql`: migration to create production tables
 - `lib/db/migrations/027_production_enhancements.sql`: migration for creator info, product status, indexes
 - `lib/db/migrations/047_add_requested_unit.sql`: migration for requested_unit, created_by_role index
-- `lib/db/migrations/048_production_workflow_v2.sql`: migration for new v2 columns (productionMachine, operatorName, packingType, transportBookedBy/At, packingCompletedBy/At), status migration (Machine Running→In Production, QC→Packing, RFD w/ transport→In Transport)
+- `lib/db/migrations/048_production_workflow_v2.sql`: migration for new v2 columns (productionMachine, operatorName, packingType, transportBookedBy/At, packingCompletedBy/At), status migration (Machine Runningâ†’In Production, QCâ†’Packing, RFD w/ transportâ†’In Transport)
 - `artifacts/api-server/src/routes/production.ts`: all production API endpoints (dashboard, orders, **pending-summary**, **new v2 endpoints**: start, packing, ready-for-dispatch, transport, complete; **old PATCH status removed**)
 - `artifacts/api-server/src/lib/production-service.ts`: full rewrite with v2 workflow functions (startProduction, completePacking, markReadyForDispatch, bookTransport, completeOrder; **completeDispatch removed**)
 - `artifacts/api-server/src/routes/proforma-invoices.ts`: auto-create production order on "Converted to Order" with **creator info** + **real-time notifications to production users**
@@ -526,9 +526,9 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `lib/api-client-react/src/generated/api.schemas.ts`: updated UserRole const + **Product status in interfaces**
 - `artifacts/crm/src/pages/production-dashboard.tsx`: Production Dashboard with 8 KPI cards (Pending, Accepted, Planning, In Production, Packing, Ready for Dispatch, In Transport, Delayed) + **Pending Production Summary widget** + **Origin filter**
 - `artifacts/crm/src/pages/production-orders.tsx`: Production Orders list with search, status/priority/origin/creator filters, **Origin column (SALES/SUPPORT badge)**, status badges matching v2 color scheme
-- `artifacts/crm/src/pages/production-order-detail.tsx`: Full rewrite — Planning/Start/Packing/Transport/Cancel dialogs; Planning/Production/Packing/Transport detail cards; Support-specific Dispatch Action card; v2 STATUS_COLORS
-- `artifacts/crm/src/pages/products.tsx`: Product Management — **admin-only controls**, **Status column**
-- `artifacts/crm/src/components/production-progress.tsx`: read-only Production Progress for Sales users (v2 workflow steps: Pending→Accepted→Planning→In Production→Packing→Ready For Dispatch→In Transport→Completed; detail fields: plannedMachine, productionMachine, packingType, transport details; activity log timeline)
+- `artifacts/crm/src/pages/production-order-detail.tsx`: Full rewrite â€” Planning/Start/Packing/Transport/Cancel dialogs; Planning/Production/Packing/Transport detail cards; Support-specific Dispatch Action card; v2 STATUS_COLORS
+- `artifacts/crm/src/pages/products.tsx`: Product Management â€” **admin-only controls**, **Status column**
+- `artifacts/crm/src/components/production-progress.tsx`: read-only Production Progress for Sales users (v2 workflow steps: Pendingâ†’Acceptedâ†’Planningâ†’In Productionâ†’Packingâ†’Ready For Dispatchâ†’In Transportâ†’Completed; detail fields: plannedMachine, productionMachine, packingType, transport details; activity log timeline)
 - `artifacts/crm/src/pages/support-dashboard.tsx`: Ready for Dispatch + In Transport KPI cards (navigate to filtered production orders); Pending Dispatch + In Production cards retained
 - `artifacts/crm/src/App.tsx`: RoleGuard component, production routes
 - `artifacts/crm/src/components/layout.tsx`: dynamic role-based sidebar
@@ -546,32 +546,32 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 
 ## Progress
 ### Done
-- Renamed migration `019_add_existing_customers.sql` → `020_add_existing_customers.sql` (resolved naming conflict with `019_add_completed_at.sql`).
-- DB schema `lib/db/src/schema/existing_customers.ts` — Drizzle ORM table with 25 columns (pre-existing).
-- Migration `lib/db/migrations/020_add_existing_customers.sql` — CREATE TABLE with indexes (pre-existing, renamed).
-- Backend API routes `artifacts/api-server/src/routes/existing-customers.ts` — 15 endpoints:
-  - `GET /existing-customers/dashboard` — 8 KPI counts
-  - `GET /existing-customers` — paginated list with search, enriched filters, pagination
-  - `GET /existing-customers/:id` — enriched single customer detail
-  - `GET /existing-customers/:id/orders` — order history with items + sales owner
-  - `GET /existing-customers/:id/complaints` — complaint history with assigned user name
-  - `GET /existing-customers/:id/repeat-orders` — filtered repeat orders with items
-  - `GET /existing-customers/:id/communications` — communication history
-  - `POST /existing-customers/:id/communications` — log communication
-  - `GET /existing-customers/:id/notes` — internal notes (pinned first)
-  - `POST /existing-customers/:id/notes` — add note
-  - `GET /existing-customers/:id/timeline` — combined events (lead, promotion, orders, timeline, complaints, comms, follow-ups)
-  - `POST /existing-customers/:id/follow-ups` — create activity + notification for sales owner
-  - `POST /existing-customers/:id/repeat-order` — create repeat order from source (copies items, calculates totals, notifies)
-  - `PATCH /existing-customers/:id` — update status/supportOwner/repeatOrderDue/isActive
-  - `POST /existing-customers/refresh/:contactId` — refresh stats from orders
-- Route registration in `routes/index.ts` — already imported and mounted (pre-existing).
-- **Auto-promotion:** `promoteToExistingCustomer` wired into `orders.ts` PATCH when status → "Delivered" or "Completed" (not on creation). Quotations conversion unchanged.
+- Renamed migration `019_add_existing_customers.sql` â†’ `020_add_existing_customers.sql` (resolved naming conflict with `019_add_completed_at.sql`).
+- DB schema `lib/db/src/schema/existing_customers.ts` â€” Drizzle ORM table with 25 columns (pre-existing).
+- Migration `lib/db/migrations/020_add_existing_customers.sql` â€” CREATE TABLE with indexes (pre-existing, renamed).
+- Backend API routes `artifacts/api-server/src/routes/existing-customers.ts` â€” 15 endpoints:
+  - `GET /existing-customers/dashboard` â€” 8 KPI counts
+  - `GET /existing-customers` â€” paginated list with search, enriched filters, pagination
+  - `GET /existing-customers/:id` â€” enriched single customer detail
+  - `GET /existing-customers/:id/orders` â€” order history with items + sales owner
+  - `GET /existing-customers/:id/complaints` â€” complaint history with assigned user name
+  - `GET /existing-customers/:id/repeat-orders` â€” filtered repeat orders with items
+  - `GET /existing-customers/:id/communications` â€” communication history
+  - `POST /existing-customers/:id/communications` â€” log communication
+  - `GET /existing-customers/:id/notes` â€” internal notes (pinned first)
+  - `POST /existing-customers/:id/notes` â€” add note
+  - `GET /existing-customers/:id/timeline` â€” combined events (lead, promotion, orders, timeline, complaints, comms, follow-ups)
+  - `POST /existing-customers/:id/follow-ups` â€” create activity + notification for sales owner
+  - `POST /existing-customers/:id/repeat-order` â€” create repeat order from source (copies items, calculates totals, notifies)
+  - `PATCH /existing-customers/:id` â€” update status/supportOwner/repeatOrderDue/isActive
+  - `POST /existing-customers/refresh/:contactId` â€” refresh stats from orders
+- Route registration in `routes/index.ts` â€” already imported and mounted (pre-existing).
+- **Auto-promotion:** `promoteToExistingCustomer` wired into `orders.ts` PATCH when status â†’ "Delivered" or "Completed" (not on creation). Quotations conversion unchanged.
 - **List endpoint enhanced:** filters: `productionStatus`, `dispatchStatus`, `complaintStatus`, `lastOrderBefore`, `lastOrderAfter`; search includes `email`, `gstNumber`, `supportOwner`, `lastProductName`, `lastOrder.orderNumber`.
 - **Backend helper enhanced:** `enrichExistingCustomer` includes `freight`, `paymentTerms`, `deliveryTerms`, `dispatchAddress`, `transportDetails` on lastOrder.
 - **"To Call Today" KPI** fixed to use `activitiesTable` (Pending + followUpDate=today) instead of `internalNotesTable`.
-- **Frontend:** `existing-customers.tsx` — list page with 8 KPI cards, search, status filter, enriched table, pagination (pre-existing, compatible with new backends).
-- **Frontend:** `existing-customer-detail.tsx` — detail page fully rewritten with:
+- **Frontend:** `existing-customers.tsx` â€” list page with 8 KPI cards, search, status filter, enriched table, pagination (pre-existing, compatible with new backends).
+- **Frontend:** `existing-customer-detail.tsx` â€” detail page fully rewritten with:
   - Header: Back + Name + Status badge + Action buttons (Edit, Log Comm, Note, Follow-up, Repeat Order)
   - Contact Info row (6 cards): Mobile, Email, Company, City, Customer Since, GST
   - Stats row (5 cards): Total Orders, Total Revenue, Repeat Orders, Notes, Repeat Due date
@@ -581,7 +581,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
   - Assigned Team row (4 columns): Sales Owner, Support Owner, Last Product, Repeat Orders
   - 6 tabs: Orders (with repeat indicator), Repeat Orders, Complaints, Communications, Timeline (icon + dot visual timeline), Notes (pinned first)
   - 5 dialogs: Log Communication, Add Note, Edit Customer, Schedule Follow-up, Create Repeat Order
-- **App.tsx:** Routes for `/existing-customers` (list) and `/existing-customers/:id` (detail) — guarded by SUPPORT_ROLES (admin + support).
+- **App.tsx:** Routes for `/existing-customers` (list) and `/existing-customers/:id` (detail) â€” guarded by SUPPORT_ROLES (admin + support).
 - **layout.tsx:** "Customers" nav item added to supportNavItems and admin's combined nav (indigo color, Users icon).
 
 ## Key Decisions
@@ -597,7 +597,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `lib/db/src/schema/existing_customers.ts`: Drizzle ORM table schema (pre-existing)
 - `lib/db/migrations/020_add_existing_customers.sql`: migration to create existing_customers table (renamed from 019)
 - `artifacts/api-server/src/routes/existing-customers.ts`: all 15 backend endpoints + helpers
-- `artifacts/api-server/src/routes/orders.ts`: promotion trigger on status → Delivered/Completed
+- `artifacts/api-server/src/routes/orders.ts`: promotion trigger on status â†’ Delivered/Completed
 - `artifacts/crm/src/pages/existing-customers.tsx`: list page with dashboard KPIs + filters + table
 - `artifacts/crm/src/pages/existing-customer-detail.tsx`: detail page (fully rewritten with 6 tabs, 5 dialogs, extended info)
 - `artifacts/crm/src/App.tsx`: routes for existing customers
@@ -623,16 +623,16 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 ## Progress
 ### Done
 - DB schema: `units` table in `lib/db/src/schema/units.ts` (id, name, isActive, timestamps)
-- Migration `035_add_units_table.sql` — creates units table + seeds default 4 units
-- Backend `artifacts/api-server/src/routes/units.ts` — CRUD endpoints:
-  - `GET /units` — returns active units (default) or all units (`?all=true`)
-  - `POST /units` — create unit (admin only, unique name check)
-  - `PATCH /units/:id` — update unit name/isActive (admin only)
-  - `DELETE /units/:id` — hard delete unit (admin only)
+- Migration `035_add_units_table.sql` â€” creates units table + seeds default 4 units
+- Backend `artifacts/api-server/src/routes/units.ts` â€” CRUD endpoints:
+  - `GET /units` â€” returns active units (default) or all units (`?all=true`)
+  - `POST /units` â€” create unit (admin only, unique name check)
+  - `PATCH /units/:id` â€” update unit name/isActive (admin only)
+  - `DELETE /units/:id` â€” hard delete unit (admin only)
 - Route registered in `artifacts/api-server/src/routes/index.ts`
 - Frontend hooks:
-  - `artifacts/crm/src/lib/use-active-units.ts` — `useActiveUnits()` (active units for dropdowns) + `useAllUnits()` (admin management)
-  - `artifacts/crm/src/lib/use-user-units.ts` — updated to use `useActiveUnits()` instead of hardcoded array
+  - `artifacts/crm/src/lib/use-active-units.ts` â€” `useActiveUnits()` (active units for dropdowns) + `useAllUnits()` (admin management)
+  - `artifacts/crm/src/lib/use-user-units.ts` â€” updated to use `useActiveUnits()` instead of hardcoded array
 - Settings page: "Manage Units" admin section with add/toggle/delete UI + unit dropdown in user form now dynamic
 - All 12+ frontend files refactored to use `useActiveUnits()`:
   - `lead-form.tsx`, `dashboard.tsx`, `deals.tsx`, `deal-detail.tsx`, `follow-ups.tsx`, `import.tsx`, `reports.tsx`, `leads.tsx`, `categories.tsx`, `transport-logistics.tsx`, `transport-logistics-readonly.tsx`
@@ -640,11 +640,11 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - Legacy `UNITS` constant in `@/lib/units` marked as deprecated but kept for backward compat
 
 ## Key Decisions
-- `useActiveUnits()` hook fetches from `/api/units` with 5-min stale time — minimal network overhead.
+- `useActiveUnits()` hook fetches from `/api/units` with 5-min stale time â€” minimal network overhead.
 - Production unit dropdowns filter out "Not Sure" via `.filter(u => u !== "Not Sure")`.
 - User form unit dropdown prepends "All" option: `["All", ...activeUnits]`.
 - `useUserUnits()` now derives its list from `useActiveUnits()` instead of a static array.
-- Unit names stored as plain `text` in all tables — no enum constraints at DB level.
+- Unit names stored as plain `text` in all tables â€” no enum constraints at DB level.
 
 ## Relevant Files
 - `lib/db/src/schema/units.ts`: Drizzle ORM table schema
@@ -672,7 +672,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 ## Constraints & Preferences
 - Do NOT modify Production Workflow
 - Do NOT redesign UI
-- Do NOT duplicate business logic — reuse shared services
+- Do NOT duplicate business logic â€” reuse shared services
 - Every business event must remain traceable
 - Never delete historical customer information
 - Never remove complaints or cancelled orders
@@ -681,7 +681,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 ## Progress
 ### Done
 - **DB Schema (migration 041):** Added `cancelled_at`, `cancelled_by`, `cancellation_reason`, `cancellation_other_reason`, `cancellation_note` to orders; added `root_cause`, `resolved_by`, `resolved_at` to complaints; indexes
-- **Order Cancellation Service** (`order-cancellation-service.ts`): Full business logic — permission matrix (Sales before production, Production before Machine Running, P&S anytime, Admin anytime, Completed=blocked), mandatory reason validation, cascading updates (order → deal → production → activities → notifications → audit trail → customer category), Scenario A/B for My Client revert
+- **Order Cancellation Service** (`order-cancellation-service.ts`): Full business logic â€” permission matrix (Sales before production, Production before Machine Running, P&S anytime, Admin anytime, Completed=blocked), mandatory reason validation, cascading updates (order â†’ deal â†’ production â†’ activities â†’ notifications â†’ audit trail â†’ customer category), Scenario A/B for My Client revert
 - **Cancel Endpoint** (`POST /orders/:id/cancel`): Route with permission + reason validation
 - **Complaint Route Enhanced**: Enhanced search (company, secondary mobile via contacts join), priority filter, production read-only enforcement, inventory blocked from mutations, audit trail on create/update/delete, rootCause/resolvedBy/resolvedAt handling
 - **Permission Service Extended**: `canManageInventory()`, `canCancelOrder()`, `canManageComplaints()`, `canAccessUnit()` + `unit` added to `PermissionUser` interface
@@ -695,8 +695,8 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - Migration 041 must be applied against Supabase database before deployment
 
 ## Key Decisions
-- Cancellation uses `POST /orders/:id/cancel` (not PATCH) — cancellation is a distinct action, not a simple status update
-- Production order cancellation queries via `dealId` link (production_orders.dealId → deals.id)
+- Cancellation uses `POST /orders/:id/cancel` (not PATCH) â€” cancellation is a distinct action, not a simple status update
+- Production order cancellation queries via `dealId` link (production_orders.dealId â†’ deals.id)
 - Complaint search joins contacts table for company + secondary mobile (not duplicated on complaints)
 - Inventory users get read-only access enforced at route level (not just frontend)
 - `canAccessUnit()` added to permission service for backend unit isolation enforcement
@@ -735,7 +735,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - **Search role filtering**: Added `salesOwnerId` filter for sales users + `getAccessibleUnits()` unit filter to deals and activities search
 - **Notification dedup**: Extended `createNotification()` to deduplicate by `userId + type + title` when `relatedId`/`relatedType` not provided
 - **Dead code cleanup**: Removed unused `or` import from exports.ts
-- **By-Product report rewrite**: `GET /reports/by-product` now runs a single SQL aggregation with `COUNT(DISTINCT deal_id)`, `SUM(quantity)`, `SUM(quantity * COALESCE(unit_price,0))`, `COALESCE` guards, role-based `salesOwnerId` filtering, and unit isolation. **Root cause of empty table**: the `deal_products` table had 0 rows — product data actually lives in `proforma_invoice_items` (linked to deals via `proforma_invoices.deal_id`). The query now aggregates a `UNION ALL` of both sources (`deal_products` + PI items), with `btrim()` name normalization. Response contract unchanged (`productName`, `productCode`, `dealCount`, `totalQuantity`, `totalValue`). Frontend table added an explicit empty state + product-name-based row key (productId can be null for unlinked PI items).
+- **By-Product report rewrite**: `GET /reports/by-product` now runs a single SQL aggregation with `COUNT(DISTINCT deal_id)`, `SUM(quantity)`, `SUM(quantity * COALESCE(unit_price,0))`, `COALESCE` guards, role-based `salesOwnerId` filtering, and unit isolation. **Root cause of empty table**: the `deal_products` table had 0 rows â€” product data actually lives in `proforma_invoice_items` (linked to deals via `proforma_invoices.deal_id`). The query now aggregates a `UNION ALL` of both sources (`deal_products` + PI items), with `btrim()` name normalization. Response contract unchanged (`productName`, `productCode`, `dealCount`, `totalQuantity`, `totalValue`). Frontend table added an explicit empty state + product-name-based row key (productId can be null for unlinked PI items).
 - **Build verification**: 0 new errors (28 pre-existing), CRM clean
 
 ### In Progress
@@ -768,14 +768,14 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - Migrate all file storage (voice notes, documents, builty/proof-of-delivery) from local filesystem to Supabase Storage (persistent cloud storage).
 
 ## Constraints & Preferences
-- Zero frontend changes required — URL format is transparent to the player/viewer.
+- Zero frontend changes required â€” URL format is transparent to the player/viewer.
 - Local development must continue working (fallback to local filesystem when Supabase env vars are absent).
-- No new npm packages — uses native `fetch` for Supabase Storage REST API.
+- No new npm packages â€” uses native `fetch` for Supabase Storage REST API.
 - Auto-create storage buckets on first use (lazy initialization).
 
 ## Progress
 ### Done
-- **Root cause identified**: Render.com ephemeral filesystem — files saved to `uploads/` are lost on every deploy/restart. DB shows voice note with `storagePath` but `fs.existsSync` returns `false`.
+- **Root cause identified**: Render.com ephemeral filesystem â€” files saved to `uploads/` are lost on every deploy/restart. DB shows voice note with `storagePath` but `fs.existsSync` returns `false`.
 - **`SUPABASE_URL` + `SUPABASE_KEY` added to `.env`** (all 3 env files).
 - **`storage.ts` rewritten**: Added `SupabaseStorageProvider` class implementing `StorageProvider` interface using Supabase Storage REST API via native `fetch`. Added `exists()` method to interface. Auto-selects provider: Supabase when env vars present, local filesystem otherwise.
 - **`voice-notes-service.ts` updated**: All `fs.existsSync(storage.getPhysicalPath(...))` calls replaced with `storage.exists()` (async, provider-agnostic).
@@ -792,10 +792,10 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - (none)
 
 ## Key Decisions
-- `StorageProvider` interface extended with `exists(storagePath): Promise<boolean>` — replaces synchronous `fs.existsSync` calls.
-- Supabase Storage buckets are **public** — URLs are `{SUPABASE_URL}/storage/v1/object/public/{bucket}/{path}`.
+- `StorageProvider` interface extended with `exists(storagePath): Promise<boolean>` â€” replaces synchronous `fs.existsSync` calls.
+- Supabase Storage buckets are **public** â€” URLs are `{SUPABASE_URL}/storage/v1/object/public/{bucket}/{path}`.
 - Download endpoints redirect to Supabase public URL (no proxy needed for public buckets).
-- Bucket lazy-creation on first `save()` call — no startup initialization required.
+- Bucket lazy-creation on first `save()` call â€” no startup initialization required.
 - Old voice notes with `fileAvailable: false` in DB will stay unavailable (files lost on Render). Newly uploaded notes will persist in Supabase.
 
 ## Relevant Files
@@ -819,7 +819,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - Excel generated server-side using ExcelJS via existing `buildWorkbook` + `sendWorkbook` from `lib/exporter.ts`.
 - One product = one row (flatten PI items into rows).
 - Blank operator section for production manager to fill manually.
-- No data modifications — just marking rows with status.
+- No data modifications â€” just marking rows with status.
 - Download flow similar to existing export pattern: dropdown menu, blob download.
 - `needsReprint` auto-set when PI items are modified via `handlePiModification`.
 - Reprint flag cleared on each fresh download.
@@ -827,12 +827,12 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 ## Progress
 ### Done
 - **DB Migration 056** (`056_add_production_sheet_tracking.sql`): Adds `production_sheet_generated_at`, `production_sheet_generated_by`, `production_sheet_version`, `needs_reprint` columns to `production_orders` table with indexes.
-- **Schema** (`production_orders.ts`): Added 4 new columns — `productionSheetGeneratedAt`, `productionSheetGeneratedBy`, `productionSheetVersion` (int, default 0), `needsReprint` (boolean, default false).
+- **Schema** (`production_orders.ts`): Added 4 new columns â€” `productionSheetGeneratedAt`, `productionSheetGeneratedBy`, `productionSheetVersion` (int, default 0), `needsReprint` (boolean, default false).
 - **Backend `GET /production/sheet`** endpoint in `production.ts`: Generates Excel with filter modes (all/pending/today/week/month/reprint/selected/date-range/new). One product = one row with order info + product info + blank operator section. Updates tracking fields after download.
 - **Backend `GET /production/sheet/stats`** endpoint: Returns counts for dashboard widget (totalPending, needsReprint, neverGenerated, outdated).
 - **Backend `POST /production/orders/:id/mark-reprint`** endpoint: Toggles `needsReprint` flag on an order.
-- **Auto-set `needsReprint` + strict PI→production sync**: `handlePiModification` in `production-service.ts` now ALWAYS runs `resyncProductionOrderItems` regardless of the linked production order's status (inserting new PI items into `production_order_items`, updating matched rows, removing leftover Pending-only rows). If new items were added (`syncResult.added > 0`), the order is unconditionally reverted to `Pending` and all workflow progress flags are reset (`isFrozen`, `dispatchStatus`, `readyAt`, started/accepted/packing/transport/dispatch/delivered fields, `isDelayed`), so the production team sees the new work. Previously the sync was gated by status — pre-production (Pending/Accepted/Planning) auto-synced, in-production required approval, Ready For Dispatch / later statuses never inserted new items (the bug).
-- **Separate `isUpdated` flag for the amber "Updated Order" dot** (migration `076_add_production_order_is_updated.sql`): the amber dot is driven by `is_updated` (set `true` in `handlePiModification` on every PI modification; cleared `false` by `POST /production/orders/:id/read`), independent of `needs_reprint` — so viewing an order clears the dot without losing the "Updated Production Sheet Required" reminder / reprint filter, and the Blue dot (`status = 'Pending' && !isRead`) and Amber dot (`isUpdated`) follow identical view-clearing behavior.
+- **Auto-set `needsReprint` + strict PIâ†’production sync**: `handlePiModification` in `production-service.ts` now ALWAYS runs `resyncProductionOrderItems` regardless of the linked production order's status (inserting new PI items into `production_order_items`, updating matched rows, removing leftover Pending-only rows). If new items were added (`syncResult.added > 0`), the order is unconditionally reverted to `Pending` and all workflow progress flags are reset (`isFrozen`, `dispatchStatus`, `readyAt`, started/accepted/packing/transport/dispatch/delivered fields, `isDelayed`), so the production team sees the new work. Previously the sync was gated by status â€” pre-production (Pending/Accepted/Planning) auto-synced, in-production required approval, Ready For Dispatch / later statuses never inserted new items (the bug).
+- **Separate `isUpdated` flag for the amber "Updated Order" dot** (migration `076_add_production_order_is_updated.sql`): the amber dot is driven by `is_updated` (set `true` in `handlePiModification` on every PI modification; cleared `false` by `POST /production/orders/:id/read`), independent of `needs_reprint` â€” so viewing an order clears the dot without losing the "Updated Production Sheet Required" reminder / reprint filter, and the Blue dot (`status = 'Pending' && !isRead`) and Amber dot (`isUpdated`) follow identical view-clearing behavior.
 - **Frontend `production-orders.tsx`**: Added "Production Sheet" dropdown with 7 download options (All Pending, Pre-Production, Created Today, This Week, This Month, Updated/Reprint, Current Filter). Added `needsReprint` badge on each order row. Added sheet stats summary in header.
 - **Frontend `production-dashboard.tsx`**: Added "Updated Production Sheet Required" widget card with amber styling, showing needsReprint + neverGenerated counts, with "Reprint Updated" and "Full Sheet" download buttons.
 - **Build verified**: CRM clean (0 errors), API server pre-existing Drizzle errors only (zero new errors).
@@ -844,7 +844,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - (none)
 
 ## Key Decisions
-- `needsReprint` auto-set in `handlePiModification` on every PI modification; the order is reverted to `Pending` (progress flags reset) whenever new items are added — regardless of the order's prior status.
+- `needsReprint` auto-set in `handlePiModification` on every PI modification; the order is reverted to `Pending` (progress flags reset) whenever new items are added â€” regardless of the order's prior status.
 - Filter mode `reprint` queries orders where `needsReprint = true OR productionSheetVersion = 0` (never generated).
 - Excel uses `buildWorkbook`/`sendWorkbook` from existing `lib/exporter.ts` for consistency.
 - After download, all orders in the result set get `needsReprint = false` and `productionSheetVersion` incremented.
@@ -854,9 +854,9 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - `lib/db/migrations/056_add_production_sheet_tracking.sql`: Migration for production sheet tracking columns
 - `lib/db/migrations/076_add_production_order_is_updated.sql`: Migration for the `is_updated` amber-dot column (backfills from `needs_reprint`)
 - `lib/db/src/schema/production_orders.ts`: Updated with `productionSheetGeneratedAt`, `productionSheetGeneratedBy`, `productionSheetVersion`, `needsReprint`, `isRead`, `isUpdated`
-- `artifacts/api-server/src/routes/production.ts`: New endpoints — `GET /production/sheet`, `GET /production/sheet/stats`, `POST /production/orders/:id/mark-reprint`
-- `artifacts/api-server/src/lib/production-service.ts`: `handlePiModification` — auto-sets `needsReprint` on PI modification
-- `artifacts/api-server/src/lib/exporter.ts`: `buildWorkbook`, `sendWorkbook` — Excel generation utilities
+- `artifacts/api-server/src/routes/production.ts`: New endpoints â€” `GET /production/sheet`, `GET /production/sheet/stats`, `POST /production/orders/:id/mark-reprint`
+- `artifacts/api-server/src/lib/production-service.ts`: `handlePiModification` â€” auto-sets `needsReprint` on PI modification
+- `artifacts/api-server/src/lib/exporter.ts`: `buildWorkbook`, `sendWorkbook` â€” Excel generation utilities
 - `artifacts/crm/src/pages/production-orders.tsx`: Production Sheet dropdown + needsReprint badge
 - `artifacts/crm/src/pages/production-dashboard.tsx`: Updated Production Sheet Required widget
 
@@ -874,7 +874,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 ### Done
 - **Bottle Colour field:** Added `bottleColour` column to `proforma_invoice_items` schema + migration `064_add_bottle_colour_to_pi_items.sql`. Frontend PI form updated with Bottle Colour dropdown (populated from product search results + common colours), stored in submit payload and repeat-order copies. Backend POST/PATCH handlers store `bottleColour`. Sync functions `syncProductionOrderItems`/`resyncProductionOrderItems` prefer PI item's `bottleColour` over product fallback. Production sheet query reads from `proformaInvoiceItemsTable.bottleColour` directly.
 - **Builty Number optional:** Removed validation from `dispatch.tsx:142-145` and `production-order-detail.tsx:316`. Label changed to "LR / Builty Number (Optional)". Button disabled only checks `transportName`.
-- **Machine Report refactor:** Backend adds `notInArray` for Completed/Delivered/Cancelled, expanded status buckets (Pending+Accepted+Planning), dormant bucket items excluded from all calculations. Frontend — 4 summary cards (no "Completed"), updated STATUS_OPTIONS and statusColor map.
+- **Machine Report refactor:** Backend adds `notInArray` for Completed/Delivered/Cancelled, expanded status buckets (Pending+Accepted+Planning), dormant bucket items excluded from all calculations. Frontend â€” 4 summary cards (no "Completed"), updated STATUS_OPTIONS and statusColor map.
 - **Orphan PI auto-creation:** When a PI with no `contactId` is converted to Order, the status handler now auto-creates: Contact (find-or-create by mobile), Won Deal (with `wonAmount`), Sales Order (Confirmed, linked to contact+deal, items copied with colour), and updates the PI's `contactId`/`dealId`. Downstream production order creation picks up the deal automatically.
 - **Build verified:** 0 new TypeScript errors in API server (35 pre-existing), CRM clean.
 
@@ -905,10 +905,10 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 
 ## Progress
 ### Done
-- **DB:** Added `updated_at` (`timestamptz`, `defaultNow`, index DESC) + `is_repeat_enquiry` (`boolean`, default false, indexed) columns to `contacts` (schema `lib/db/src/schema/contacts.ts`, migration `lib/db/migrations/067_add_lead_updated_at_and_repeat_flag.sql` — backfills existing rows with `created_at`).
+- **DB:** Added `updated_at` (`timestamptz`, `defaultNow`, index DESC) + `is_repeat_enquiry` (`boolean`, default false, indexed) columns to `contacts` (schema `lib/db/src/schema/contacts.ts`, migration `lib/db/migrations/067_add_lead_updated_at_and_repeat_flag.sql` â€” backfills existing rows with `created_at`).
 - **Backend `contacts.ts`:**
   - `GET /contacts` sorts by `updatedAt DESC` in ALL branches (default, category, Existing Client, RFU + My-Client-with-active-deal virtual) so the most recently active lead is first.
-  - `POST /contacts` now does an explicit duplicate **pre-check** (`findExistingContact`) returning the rich 409 payload via shared `buildDuplicatePayload()` helper — deterministic, independent of DB driver error codes; the `23505` catch is the safety net. Also sets `isRead: true` for self-assigned leads so only cross-owner assignments show the blue dot.
+  - `POST /contacts` now does an explicit duplicate **pre-check** (`findExistingContact`) returning the rich 409 payload via shared `buildDuplicatePayload()` helper â€” deterministic, independent of DB driver error codes; the `23505` catch is the safety net. Also sets `isRead: true` for self-assigned leads so only cross-owner assignments show the blue dot.
   - `POST /contacts/:id/repeat-enquiry` sets `category: "Regular Follow up"`, `updatedAt: new Date()`, `isRead: false`, `isRepeatEnquiry: true`; notification message now reads "Repeat Enquiry logged by: ...".
   - `POST /contacts/:id/read` clears both `isRead` and `isRepeatEnquiry`.
   - `PATCH /contacts/:id` reassignment clears `isRepeatEnquiry` alongside `isRead = false`.
@@ -916,16 +916,16 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 - **Frontend:**
   - `leads.tsx`: unread dot is **yellow** (`isRepeatEnquiry`) or **blue** (new assignment); `markLeadAsRead` optimistically clears both flags.
   - `lead-detail.tsx`: mark-read effect also clears `isRepeatEnquiry`.
-  - `layout.tsx` bell dropdown + `notifications.tsx`: unread dot color-coded by type (`repeat_enquiry` = yellow, else blue); `repeat_enquiry: "🔄"` added to `TYPE_ICONS`.
+  - `layout.tsx` bell dropdown + `notifications.tsx`: unread dot color-coded by type (`repeat_enquiry` = yellow, else blue); `repeat_enquiry: "ðŸ”„"` added to `TYPE_ICONS`.
   - `notification-popup.tsx`: repeat-enquiry toasts get yellow accent + "Repeat Enquiry" label/footer.
-  - `leads-new.tsx`: broader duplicate detection (`err?.status === 409 || err?.data?.duplicate === true` → opens `DuplicateWarningDialog`); added `min-h-full pb-24` to fix bottom clipping.
+  - `leads-new.tsx`: broader duplicate detection (`err?.status === 409 || err?.data?.duplicate === true` â†’ opens `DuplicateWarningDialog`); added `min-h-full pb-24` to fix bottom clipping.
   - `lead-form.tsx`: `checkDuplicate` fetch now sends `Authorization: Bearer` header (was silently 401-ing, so on-blur duplicate detection never fired).
   - `duplicate-warning-dialog.tsx`: calls `onContactChange(queryClient)` after a successful repeat enquiry so the Leads list re-sorts + shows the yellow dot immediately.
 - **Build verified:** CRM typecheck clean; API server back to 34 pre-existing errors (no new).
 
 ## Key Decisions
-- `updated_at` bumped ONLY on repeat enquiry (per request) — general edits/comments/category changes do NOT reshuffle the Leads list.
-- Duplicate pre-check makes the 409 → modal flow reliable even if the DB driver error code differs from `23505`.
+- `updated_at` bumped ONLY on repeat enquiry (per request) â€” general edits/comments/category changes do NOT reshuffle the Leads list.
+- Duplicate pre-check makes the 409 â†’ modal flow reliable even if the DB driver error code differs from `23505`.
 - Migration must be applied (`067_add_lead_updated_at_and_repeat_flag.sql`) against the Supabase DB before deploy, else `updated_at`/`is_repeat_enquiry` columns are missing at runtime.
 
 ## Relevant Files
@@ -937,7 +937,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 
 ---
 
-# Production Order Chat — Conversation Threading & Order Context
+# Production Order Chat â€” Conversation Threading & Order Context
 
 ## Goal
 - Stop production_message notifications from spamming the Notification History with one row per message.
@@ -949,7 +949,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 ## Progress
 ### Done
 - **Backend `production-service.ts`:**
-  - `getMessages(orderId)` now returns an enriched object `{ orderId, orderNumber, companyName, customerName, messages }` (was a bare array). It looks up the production order + its proforma invoice (`tradeName` → companyName) so all chat surfaces get context from ONE call. Consumers updated in all 4 frontend surfaces.
+  - `getMessages(orderId)` now returns an enriched object `{ orderId, orderNumber, companyName, customerName, messages }` (was a bare array). It looks up the production order + its proforma invoice (`tradeName` â†’ companyName) so all chat surfaces get context from ONE call. Consumers updated in all 4 frontend surfaces.
   - `sendMessage` notification body is now role-tagged: `[${senderDept}] ${user.name}: ${message}` (dept = Admin/Production/Support/Sales).
   - `buildContactResponse` (by-contact) now also returns `companyName` (PI tradeName).
 - **Frontend chat consumers updated** to read `data.messages` and render `Company Name (Order #)` in headers:
@@ -958,17 +958,17 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
   - `production-order-detail.tsx` (Production order chat card)
   - `lead-detail.tsx` (Lead 360 Order Conversation card)
 - **UI conversation grouping (`notification-context.tsx`):**
-  - `getConversationKey(n)` derives a group key from the notification's role-aware link (`production:<poId>` for production/support, `orders:<salesOrderId>` for sales) — each workspace groups by its own order id; no DB schema change.
+  - `getConversationKey(n)` derives a group key from the notification's role-aware link (`production:<poId>` for production/support, `orders:<salesOrderId>` for sales) â€” each workspace groups by its own order id; no DB schema change.
   - `groupConversations(list)` collapses `production_message` notifications into one representative per thread (the NEWEST message), keeps all other notification types untouched, and returns newest-first. Exported.
   - `conversationMessageCount(list, representative)` returns how many messages are in a thread.
   - NOTE: Per-message notification ROWS are kept in the DB (needed for per-message toast popups + sounds via the existing `popupShownRef` dedup by id). Grouping is purely presentational.
-- **Notification History page (`notifications.tsx`):** filters → groups conversations → paginates; conversation rows show a violet "N messages in this conversation" badge; clicking a row still navigates to the order (pre-existing behavior).
+- **Notification History page (`notifications.tsx`):** filters â†’ groups conversations â†’ paginates; conversation rows show a violet "N messages in this conversation" badge; clicking a row still navigates to the order (pre-existing behavior).
 - **Bell dropdown (`layout.tsx`):** "New" section now renders `groupedUnread` (unread + grouped) so a conversation shows one row; empty-state condition updated.
 - **Build verified:** CRM typecheck = 0 errors; API server = 32 errors (within the known 34-35 pre-existing baseline, 0 new).
 
 ## Key Decisions
-- Grouping is UI-side, not DB-side: updating one notification row per conversation would break the existing popup/sound dedup (`popupShownRef` keyed by notification id → subsequent messages in the same thread would never toast). Keeping one row per message preserves per-message toasts while the UI collapses them into a single thread.
-- Group key derived from `link` (already role-aware) rather than adding an `orderId` column — works for both sales (`/orders/:salesOrderId`) and production (`/production/orders/:poId`) workspaces with zero migration.
+- Grouping is UI-side, not DB-side: updating one notification row per conversation would break the existing popup/sound dedup (`popupShownRef` keyed by notification id â†’ subsequent messages in the same thread would never toast). Keeping one row per message preserves per-message toasts while the UI collapses them into a single thread.
+- Group key derived from `link` (already role-aware) rather than adding an `orderId` column â€” works for both sales (`/orders/:salesOrderId`) and production (`/production/orders/:poId`) workspaces with zero migration.
 - `getMessages` enrichment keeps a single source of truth for the chat header (company + order number) across all 4 surfaces.
 - Message body prefix `[Role] Name:` satisfies the "explicit sender role in notification preview" requirement without touching notification title semantics.
 
@@ -983,7 +983,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 
 ---
 
-# Create Proforma Invoice — URL Param Hydration + Mobile Search Fix
+# Create Proforma Invoice â€” URL Param Hydration + Mobile Search Fix
 
 ## Goal
 - When navigating from an existing Deal (`?contactId=XX&dealId=YY`), the Create Proforma Invoice page must auto-fetch the deal and populate the form (Mobile Number + selected deal) with NO manual mobile search.
@@ -992,10 +992,10 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 ## Progress
 ### Done
 - **Backend `deals.ts` (`GET /deals/by-mobile/:mobile`):**
-  - Added `normalizeMobile(input)` — strips non-digits and keeps the last 10 digits as the canonical form.
-  - Phase 1 contact lookup now matches the NORMALIZED number on both `mobile` and `otherPhone` using SQL `right(regexp_replace(col, '[^0-9]', '', 'g'), 10) = ${mobile}` — the same transformation applied to the input — so a match succeeds regardless of stored formatting.
+  - Added `normalizeMobile(input)` â€” strips non-digits and keeps the last 10 digits as the canonical form.
+  - Phase 1 contact lookup now matches the NORMALIZED number on both `mobile` and `otherPhone` using SQL `right(regexp_replace(col, '[^0-9]', '', 'g'), 10) = ${mobile}` â€” the same transformation applied to the input â€” so a match succeeds regardless of stored formatting.
   - Phase 2 deal query rewritten to `LEFT JOIN` contacts (`eq(dealsTable.contactId, contactsTable.id)`) so deal rows carry their contact payload in one query; response shape `{ contacts, deals }` unchanged (full deal rows + `contact`, `salesOwner`, `activeProformaInvoice`).
-  - Active-stage filter unchanged (`stage NOT IN ('Won','Lost')`) — covers New, CL Sent, Price Given, Samples Sent, Samples Received, PI Sent.
+  - Active-stage filter unchanged (`stage NOT IN ('Won','Lost')`) â€” covers New, CL Sent, Price Given, Samples Sent, Samples Received, PI Sent.
   - Role isolation + unit accessibility preserved.
 - **Frontend `proforma-invoices.tsx`:**
   - New `hydratedFromUrlRef` gates the debounced mobile-search effect.
@@ -1007,7 +1007,7 @@ Add a Production Module with role-based access (Sales, Production Manager, Admin
 
 ## Key Decisions
 - Canonical mobile form = last 10 digits, applied identically in JS (`normalizeMobile`) and SQL (`right(regexp_replace(...), 10)`), so input and DB column always compare like-for-like.
-- Response contract preserved — the LEFT JOIN only replaces the two separate deal/contact lookups, the payload `{ contacts, deals: enrichedDeals }` is byte-for-byte compatible.
+- Response contract preserved â€” the LEFT JOIN only replaces the two separate deal/contact lookups, the payload `{ contacts, deals: enrichedDeals }` is byte-for-byte compatible.
 - Gate is ref-based (not state) to avoid extra re-renders; only `?dealId=` hydration engages it so the existing lead-detail (`?contactId=X`) flow keeps working.
 
 ## Relevant Files
@@ -1024,9 +1024,9 @@ Every search bar in the CRM that filters Contacts/Leads must match by `customerC
 
 ## Progress
 ### Done
-- **Categories page (`categories.tsx`):** frontend `filteredContacts` filter now includes `c.customerCode?.toLowerCase().includes(s)`; placeholder → "Search by name, code, company, phone, city...".
-- **Follow-ups page (`follow-ups.tsx`):** frontend search filter now also matches `a.contact?.customerCode` / `a.deal?.contact?.customerCode`; placeholder → "Search by name, code, phone, company...".
-- **Production Orders (`production-service.ts` `listOrders`):** search now additionally matches the production order's own `formattedOrderId` (PO number) and the linked Sales Order number (`orders.formattedOrderId`/`orderNumber` via `orders.dealId` → `productionOrders.dealId`, `isDeleted=false`). It already matched customer code, invoice number, product name, transport, LR, PO id.
+- **Categories page (`categories.tsx`):** frontend `filteredContacts` filter now includes `c.customerCode?.toLowerCase().includes(s)`; placeholder â†’ "Search by name, code, company, phone, city...".
+- **Follow-ups page (`follow-ups.tsx`):** frontend search filter now also matches `a.contact?.customerCode` / `a.deal?.contact?.customerCode`; placeholder â†’ "Search by name, code, phone, company...".
+- **Production Orders (`production-service.ts` `listOrders`):** search now additionally matches the production order's own `formattedOrderId` (PO number) and the linked Sales Order number (`orders.formattedOrderId`/`orderNumber` via `orders.dealId` â†’ `productionOrders.dealId`, `isDeleted=false`). It already matched customer code, invoice number, product name, transport, LR, PO id.
 - **Placeholders updated:** `leads.tsx` ("Search by name, code, company, phone..."), `existing-customers.tsx` ("Search by name, code, company, mobile..."), `orders-list.tsx` ("Search by order #, code, customer, company..."), `production-orders.tsx` ("Search by order #, code, company, invoice..."), `proforma-invoices.tsx` ("Search by order #, invoice #, code, customer...").
 - **Verified already covered (no change needed):** backend `GET /contacts?search=` includes `ilike(contactsTable.customerCode, s)` (contacts.ts:145); `orders.ts` `/orders` + `/orders/global` search includes `orderNumber` + `formattedOrderId` + customer-code subquery; `proforma-invoices.tsx` frontend filter already matches `inv.orderNo` + `inv.contact.customerCode` + `inv.invoiceNumber`; `existing-customers.ts` backend search includes `customerCode` + `lastOrder.orderNumber`; `search.ts` global search covers customer code, order number, PO number, invoice number. `dashboard.tsx`/`deals.tsx` have no text search bar (date/stage/owner filters only).
 - **Build verified:** CRM typecheck = 0 errors; API server = 32 errors (pre-existing baseline, 0 new).
@@ -1035,36 +1035,36 @@ Every search bar in the CRM that filters Contacts/Leads must match by `customerC
 - `artifacts/crm/src/pages/categories.tsx`: code filter + placeholder
 - `artifacts/crm/src/pages/follow-ups.tsx`: code filter + placeholder
 - `artifacts/crm/src/pages/leads.tsx`, `existing-customers.tsx`, `orders-list.tsx`, `production-orders.tsx`, `proforma-invoices.tsx`: placeholders
-- `artifacts/api-server/src/lib/production-service.ts`: `listOrders` search — PO number + linked Sales Order number
+- `artifacts/api-server/src/lib/production-service.ts`: `listOrders` search â€” PO number + linked Sales Order number
 
 ---
 
-# Freight & Packing Lookup — Delete (Single + Clear All)
+# Freight & Packing Lookup â€” Delete (Single + Clear All)
 
 ## Goal
-Add delete functionality to the "Freight & Packing Lookup" page (`transport-logistics-readonly.tsx` — Transport Rates + Packing Quantities tabs): a "Clear All Records" bulk-delete button in the header and per-row single-delete action columns in both tabs. Restricted to `admin` and `support` roles on both frontend and backend.
+Add delete functionality to the "Freight & Packing Lookup" page (`transport-logistics-readonly.tsx` â€” Transport Rates + Packing Quantities tabs): a "Clear All Records" bulk-delete button in the header and per-row single-delete action columns in both tabs. Restricted to `admin` and `support` roles on both frontend and backend.
 
 ## Constraints
-- Uses a NEW delete role check (`admin` OR `support`) — does NOT reuse `EDIT_ROLES` (admin/production/production_and_support) for add/upload.
+- Uses a NEW delete role check (`admin` OR `support`) â€” does NOT reuse `EDIT_ROLES` (admin/production/production_and_support) for add/upload.
 - Backend re-verifies the role before executing any SQL delete.
 
 ## Progress
 ### Done
 - **Permission helper** (`permission-service.ts`): added `canDeleteTransportLookup(user)` = `admin` || `support`.
 - **Backend `transport-masters.ts`:**
-  - `DELETE /transport-masters/destinations/:id` role check changed from `admin` only → `canDeleteTransportLookup` (admin/support).
-  - `DELETE /transport-masters/bundles/:id` role check changed from `admin` only → `canDeleteTransportLookup` (admin/support).
-  - New `DELETE /transport-masters/clear-all` — deletes all rows in both `transportDestinationMasterTable` and `productBundleMasterTable` via `returning({ id })` to count deleted rows; writes audit logs (`transport_master` + `packing_master`, action `clear_all`); returns `{ success, deleted: { destinations, bundles } }`.
+  - `DELETE /transport-masters/destinations/:id` role check changed from `admin` only â†’ `canDeleteTransportLookup` (admin/support).
+  - `DELETE /transport-masters/bundles/:id` role check changed from `admin` only â†’ `canDeleteTransportLookup` (admin/support).
+  - New `DELETE /transport-masters/clear-all` â€” deletes all rows in both `transportDestinationMasterTable` and `productBundleMasterTable` via `returning({ id })` to count deleted rows; writes audit logs (`transport_master` + `packing_master`, action `clear_all`); returns `{ success, deleted: { destinations, bundles } }`.
 - **Frontend `transport-logistics-readonly.tsx`:**
   - Added `DELETE_ROLES = ["admin", "support"]` + `canDelete` flag (computed from `useGetMe`).
   - Header: destructive "Clear All Records" button (only when `canDelete`) with `window.confirm` confirmation; shows "Clearing..." while pending.
-  - Transport Rates tab: "Actions" column with per-row trash button (`window.confirm` → `DELETE /transport-masters/destinations/:id`); colSpan adjusted (6→7) for loading/empty states when `canDelete`.
-  - Packing Quantities tab: "Actions" column with per-row trash button (`window.confirm` → `DELETE /transport-masters/bundles/:id`); colSpan adjusted (4→5).
+  - Transport Rates tab: "Actions" column with per-row trash button (`window.confirm` â†’ `DELETE /transport-masters/destinations/:id`); colSpan adjusted (6â†’7) for loading/empty states when `canDelete`.
+  - Packing Quantities tab: "Actions" column with per-row trash button (`window.confirm` â†’ `DELETE /transport-masters/bundles/:id`); colSpan adjusted (4â†’5).
   - All three delete mutations invalidate the relevant React Query keys (`transport-lookup`, `product-bundles-lookup`) on success.
 - **Build verified:** CRM typecheck = 0 errors; API server = 32 errors (pre-existing baseline, 0 new).
 
 ## Key Decisions
-- Clear-all returns per-table deleted counts from `db.delete().returning()` (Drizzle returns an array — no `as any[]` cast needed).
+- Clear-all returns per-table deleted counts from `db.delete().returning()` (Drizzle returns an array â€” no `as any[]` cast needed).
 - Deletion is a hard delete, matching the pre-existing single-row DELETE endpoints; audit logs record who cleared and how many rows.
 - No DB migration required (no schema changes).
 
@@ -1075,15 +1075,15 @@ Add delete functionality to the "Freight & Packing Lookup" page (`transport-logi
 
 ---
 
-# Packing Quantities — Merge TCI Bora + Normal Bora into single "Bora"
+# Packing Quantities â€” Merge TCI Bora + Normal Bora into single "Bora"
 
 ## Goal
 Simplify the "Packing Quantities" data on the Freight & Packing Lookup page (and the `/masters` admin page): replace the two `TCI Bora` / `Normal Bora` columns with one `Bora` column across DB schema, migrations, API routes, Excel import mapping, and frontend UI.
 
 ## Scope
-- Touches only `product_bundle_master` (packing quantities) — `bundle_size`, `liner_packing_qty`, `bora`.
-- Does NOT touch `transport_destination_master.tci_bora` / `normal_bora` (transport RATE columns in ₹, migration 068) — those stay.
-- Does NOT touch `order_items.tci_bora_qty` / `normal_bora_qty` (order-line snapshot columns from migration 042) — those stay.
+- Touches only `product_bundle_master` (packing quantities) â€” `bundle_size`, `liner_packing_qty`, `bora`.
+- Does NOT touch `transport_destination_master.tci_bora` / `normal_bora` (transport RATE columns in â‚¹, migration 068) â€” those stay.
+- Does NOT touch `order_items.tci_bora_qty` / `normal_bora_qty` (order-line snapshot columns from migration 042) â€” those stay.
 
 ## Progress
 ### Done
@@ -1096,12 +1096,12 @@ Simplify the "Packing Quantities" data on the Freight & Packing Lookup page (and
   - Bora import preview requires a `bora` quantity (single field); execute upserts `bora` only.
   - `/transport-masters/calculate` output now returns `bora` instead of `tciBoraQty`/`normalBoraQty`.
 - **Frontend `transport-logistics-readonly.tsx`** (Freight & Packing Lookup):
-  - `BundleForm`/`EMPTY_BUNDLE_FORM` → single `bora` string field.
+  - `BundleForm`/`EMPTY_BUNDLE_FORM` â†’ single `bora` string field.
   - `BORA_ALIASES`: `bora: ["bora qty", "bora quantity", "bora", "normal bora qty", "normal bora", "normal"]` (no TCI mapping).
-  - Add Record dialog: grid `grid-cols-3`→`grid-cols-2` with `Liner Packing Qty` + `Bora Qty` inputs.
-  - Packing Quantities table: single `Bora` `<th>`/`<td>` (`item.bora`); colSpan adjusted (4→3, 5→4 with Actions).
+  - Add Record dialog: grid `grid-cols-3`â†’`grid-cols-2` with `Liner Packing Qty` + `Bora Qty` inputs.
+  - Packing Quantities table: single `Bora` `<th>`/`<td>` (`item.bora`); colSpan adjusted (4â†’3, 5â†’4 with Actions).
   - Import preview (bora parser): single `Bora` column.
-- **Frontend `masters.tsx`** (admin `/masters` Packing tab): same changes — Bundle type, form, table header/cells (colSpan 7→6), import preview.
+- **Frontend `masters.tsx`** (admin `/masters` Packing tab): same changes â€” Bundle type, form, table header/cells (colSpan 7â†’6), import preview.
 - **Build verified:** CRM typecheck = 0 errors; API server = 32 errors (pre-existing baseline, 0 new); `typecheck:libs` clean.
 
 ## Key Decisions
@@ -1121,31 +1121,31 @@ Simplify the "Packing Quantities" data on the Freight & Packing Lookup page (and
 # Order Cancellation Flow
 
 ## Goal
-- Full order cancellation flow: mandatory reason + cascading updates (deal → Lost, production order → Cancelled, first-order category reversion), red "Cancelled" badges, "Cancel Order" buttons on the proforma/order detail + sales list, and a production-side acknowledge workflow so cancelled production orders drop off the default list only after being acknowledged.
+- Full order cancellation flow: mandatory reason + cascading updates (deal â†’ Lost, production order â†’ Cancelled, first-order category reversion), red "Cancelled" badges, "Cancel Order" buttons on the proforma/order detail + sales list, and a production-side acknowledge workflow so cancelled production orders drop off the default list only after being acknowledged.
 
 ## Constraints
 - Cancellation reason is mandatory; "Other" requires free text (validated server-side).
 - Completed orders cannot be cancelled (suggest Return Process).
 - Production must acknowledge a cancellation before the cancelled order disappears from the default production list.
-- Never delete historical data — everything is tracked via timeline, activity log, and audit trail.
+- Never delete historical data â€” everything is tracked via timeline, activity log, and audit trail.
 
 ## Progress
 ### Done
 - **DB:** `cancellation_acknowledged` (boolean, default false, partial index on unacknowledged rows) on `production_orders` (schema `lib/db/src/schema/production_orders.ts`, migration `lib/db/migrations/075_add_cancellation_acknowledged.sql`).
-- **Backend `order-cancellation-service.ts`:** single source of truth — `validateCancellationPermission` (permission matrix: Sales before production + must own, Production before "In Production", Production & Support anytime, Admin anytime, Completed blocked), `validateCancellationReason` (mandatory + whitelist + "Other" free text), `cancelOrder` cascade (order → Cancelled, timeline entry, linked PO → Cancelled + `cancellationAcknowledged: false`, Won deal → Lost, first-order Scenario A category reversion + `category_history` record + Existing Customers deactivated, audit trail, activity log, notifications). `POST /orders/:id/cancel` in `routes/orders.ts` delegates to it.
+- **Backend `order-cancellation-service.ts`:** single source of truth â€” `validateCancellationPermission` (permission matrix: Sales before production + must own, Production before "In Production", Production & Support anytime, Admin anytime, Completed blocked), `validateCancellationReason` (mandatory + whitelist + "Other" free text), `cancelOrder` cascade (order â†’ Cancelled, timeline entry, linked PO â†’ Cancelled + `cancellationAcknowledged: false`, Won deal â†’ Lost, first-order Scenario A category reversion + `category_history` record + Existing Customers deactivated, audit trail, activity log, notifications). `POST /orders/:id/cancel` in `routes/orders.ts` delegates to it.
 - **Backend production acknowledge:** `acknowledgeCancellation()` in `production-service.ts` (idempotent, requires status "Cancelled", writes timeline + activity + audit trail, returns enriched order); `POST /production/orders/:id/acknowledge-cancellation` in `routes/production.ts`. `listOrders` accepts `hideAcknowledgedCancellations` (default-active filter `status <> 'Cancelled' OR cancellation_acknowledged = false`; explicit status filter still shows full history). `production-service.ts` `cancelOrder` also resets the flag on the PO.
-- **Frontend production-side:** `production-order-detail.tsx` — "Not Acknowledged" badge + red "OK / Acknowledge Cancellation" button + mutation; `production-orders.tsx` — "Unacknowledged" pill badge. (committed `61e2cb9`)
+- **Frontend production-side:** `production-order-detail.tsx` â€” "Not Acknowledged" badge + red "OK / Acknowledge Cancellation" button + mutation; `production-orders.tsx` â€” "Unacknowledged" pill badge. (committed `61e2cb9`)
 - **Frontend shared `CancelOrderModal`** (`artifacts/crm/src/components/cancel-order-modal.tsx`): reason dropdown (same `CANCELLATION_REASONS` list as backend), free text when "Other", optional note, amber reversion warning, submit via `POST /orders/:id/cancel` with `{ reason, otherReason, note }`, full React Query invalidation on success.
 - **Sales-side Cancel placements:**
-  - `order-detail-global.tsx`: destructive "Cancel Order" button in the header (hidden for Cancelled/Completed), inline broken dialog replaced with the shared modal. **Fixed body field bug** — the old dialog sent `cancellationReason`/`cancellationOtherReason` which the route ignores (it expects `reason`/`otherReason`), so cancels silently did nothing.
+  - `order-detail-global.tsx`: destructive "Cancel Order" button in the header (hidden for Cancelled/Completed), inline broken dialog replaced with the shared modal. **Fixed body field bug** â€” the old dialog sent `cancellationReason`/`cancellationOtherReason` which the route ignores (it expects `reason`/`otherReason`), so cancels silently did nothing.
   - `orders-list.tsx`: "Cancel Order" button in the expanded row (hidden for Cancelled/Completed) wired to the shared modal.
   - `proforma-invoices.tsx`: "Cancel Order" icon in the list Actions column + destructive button in the detail header, both shown only when the PI has a linked sales order (`inv.orderId`). `enrichInvoice` now returns `orderId` alongside `orderNo`.
-- **Build verified:** CRM typecheck = 0 errors; API server = 29 errors (pre-existing baseline, 0 new — none in `proforma-invoices.ts`).
+- **Build verified:** CRM typecheck = 0 errors; API server = 29 errors (pre-existing baseline, 0 new â€” none in `proforma-invoices.ts`).
 
 ## Key Decisions
 - Shared `CancelOrderModal` is the single cancel UI across all surfaces; it owns invalidation (orders, order detail, timeline, dashboard, global-search, existing-customers, PI, production, deal, contact).
-- Category reversion is handled server-side (Scenario A/B) — the modal only shows an informational warning, it does not take a category input.
-- PI→order cancel requires the linked order `id`; added `orderId` to `enrichInvoice` (covers list + detail + `/all`) with the existing `orderNo` lookup, no extra API call.
+- Category reversion is handled server-side (Scenario A/B) â€” the modal only shows an informational warning, it does not take a category input.
+- PIâ†’order cancel requires the linked order `id`; added `orderId` to `enrichInvoice` (covers list + detail + `/all`) with the existing `orderNo` lookup, no extra API call.
 - Cancel-from-PI is gated on `inv.orderId` existing (i.e., the PI has been converted to a sales order).
 
 ## Relevant Files
@@ -1171,29 +1171,29 @@ Simplify the "Packing Quantities" data on the Freight & Packing Lookup page (and
 ### Done
 - **DB migration `078_add_per_user_read_tracking.sql`:** adds `contacts.read_by`, `production_orders.read_by`, `production_orders.updated_read_by` (`INTEGER[] NOT NULL DEFAULT '{}'`) + indexes. Backfills: rows already globally read (`is_read = true` / `is_updated = false`) get the array filled with all current users (stays hidden); unread rows keep `'{}'` so every user sees the dot until each reads it. Legacy `is_read` / `is_updated` / `is_repeat_enquiry` columns are KEPT for backward compatibility.
 - **Schema (`lib/db/src/schema/contacts.ts`, `production_orders.ts`):** `readBy` / `updatedReadBy` array columns added alongside the legacy booleans.
-- **Backend `contacts.ts` — per-user read logic:**
+- **Backend `contacts.ts` â€” per-user read logic:**
   - `appendReadBy(userId)` / `removeReadBy(userId)` SQL helpers (unnest + UNION dedup) mutate ONLY the requesting user's entry.
   - `POST /contacts/:id/read`, `PATCH /contacts/:id/read-status`, `POST /contacts/mark-all-read` now append/remove `req.user.id` instead of flipping the global flag; `mark-all-read` scopes to `NOT ($userId = ANY(read_by))`.
   - `withOwner()` + the `GET /contacts` list compute `isRead = readBy.includes(user.id)` and `isRepeatEnquiry = isRepeatEnquiry && !isRead` per request.
   - Repeat enquiry (`POST /contacts/:id/repeat-enquiry`) clears `readBy = []` (yellow dot for every user until each reads); lead reassignment clears `readBy = []` so only the NEW owner sees the blue dot; self-assigned leads get `readBy = [user.id]`.
-- **Backend `production.ts` + `production-service.ts` — per-user read logic:**
+- **Backend `production.ts` + `production-service.ts` â€” per-user read logic:**
   - `appendReadByUser` / `appendUpdatedReadByUser` SQL helpers added to `production.ts`.
   - `POST /production/orders/:id/read` appends the requesting user to `read_by` and `updated_read_by` (clears their blue + amber dots only).
   - `enrichProductionOrder()` computes `isRead = readBy.includes(user.id)` and `isUpdated = is_updated && !updatedReadBy.includes(user.id)` per request (used by list + detail + dashboard + reports).
   - `handlePiModification` resets `updatedReadBy = []` so the amber "updated" dot shows for every production user until each opens the order.
-- **Orders green chat icon (`hasUnreadMessages`):** already per-user — derived from the `notifications` table (`userId = user.id AND readAt IS NULL` for `production_message` / `voice_note` links). `getUnreadChatLinks(userId)` in `orders.ts` + `listOrders` in `production-service.ts` filter by the requesting user. Chat panels (`order-detail-global.tsx`, `production-order-detail.tsx`) mark only the current user's notifications read. **No `orders` DB change was needed.**
+- **Orders green chat icon (`hasUnreadMessages`):** already per-user â€” derived from the `notifications` table (`userId = user.id AND readAt IS NULL` for `production_message` / `voice_note` links). `getUnreadChatLinks(userId)` in `orders.ts` + `listOrders` in `production-service.ts` filter by the requesting user. Chat panels (`order-detail-global.tsx`, `production-order-detail.tsx`) mark only the current user's notifications read. **No `orders` DB change was needed.**
 - **Frontend (no changes required):** `leads.tsx`, `lead-detail.tsx`, `production-orders.tsx`, `production-order-detail.tsx`, `orders-list.tsx` already consume the computed `isRead` / `isUpdated` / `hasUnreadMessages` flags; mark-read actions go through the per-user endpoints.
 - **Fixes applied during completion:**
-  - `production.ts` was missing the `appendReadByUser` / `appendUpdatedReadByUser` helpers referenced by `POST /production/orders/:id/read` — added.
-  - `GET /contacts/:id` referenced an undefined `user` variable — changed to `access.user`.
-  - Rebuilt `@workspace/db` libs (`tsc --build`) — the stale `dist` still had `updateReadBy` instead of `updatedReadBy`, producing false type errors.
+  - `production.ts` was missing the `appendReadByUser` / `appendUpdatedReadByUser` helpers referenced by `POST /production/orders/:id/read` â€” added.
+  - `GET /contacts/:id` referenced an undefined `user` variable â€” changed to `access.user`.
+  - Rebuilt `@workspace/db` libs (`tsc --build`) â€” the stale `dist` still had `updateReadBy` instead of `updatedReadBy`, producing false type errors.
 - **Build verified:** CRM typecheck = 0 errors; API server = 27 errors (pre-existing baseline, 0 new).
 - **Persistence bug fix (read dots resurrecting after login):** the per-user commit `71ff343` landed Aug 12, but reads made by the still-running OLD build after migration 078's one-time backfill wrote ONLY `is_read = true` and left `read_by = '{}'`. The new `GET /contacts` / `withOwner` logic computed `isRead = readBy.includes(user.id)` and ignored the legacy flag, so every such lead showed a blue dot again next session. Fixes:
-  - `contacts.ts` list + `withOwner()` now compute `isRead = readBy.includes(user.id) || (is_read === true && readBy.length === 0)` — legacy globally-read rows with no per-user data count as read for everyone, while per-user arrays keep winning once present.
+  - `contacts.ts` list + `withOwner()` now compute `isRead = readBy.includes(user.id) || (is_read === true && readBy.length === 0)` â€” legacy globally-read rows with no per-user data count as read for everyone, while per-user arrays keep winning once present.
   - Migration `079_rebackfill_legacy_read_by.sql` re-runs the idempotent 078 backfill (`read_by = ARRAY(SELECT id FROM users)` where `read_by='{}' AND is_read=true`). Applied directly against the live DB on 2026-08-13 (14 rows fixed).
 
 ## Key Decisions
-- `read_by` arrays (not dynamic notification derivation) chosen for leads + production orders because those dots are NOT backed by notification rows — they track "has this user opened this item".
+- `read_by` arrays (not dynamic notification derivation) chosen for leads + production orders because those dots are NOT backed by notification rows â€” they track "has this user opened this item".
 - Legacy `is_read` / `is_updated` columns stay for backward compat with exports and any code not yet migrated; the CRM UI only reads the per-user computed values.
 - Backfill keeps existing behaviour: globally-read rows stay invisible to everyone, unread rows stay visible to everyone until each user reads.
 - Production order creation defaults `readBy = []` so every production user sees the blue "new order" dot until each opens it; the old owner's read state is discarded on reassignment.
@@ -1211,21 +1211,21 @@ Simplify the "Packing Quantities" data on the Freight & Packing Lookup page (and
 
 ---
 
-# Sales Order Items Sync (`order_items`) — PI Edit Parity
+# Sales Order Items Sync (`order_items`) â€” PI Edit Parity
 
 ## Goal
-- When a Converted Proforma Invoice is edited (items added/removed/changed), the Sales Order detail page (`order-detail-global.tsx`) must show EXACTLY the same items as the PI — `order_items` was never updated on PI edits, so new products reached the PI and `production_order_items` but stayed missing from the Sales Order.
+- When a Converted Proforma Invoice is edited (items added/removed/changed), the Sales Order detail page (`order-detail-global.tsx`) must show EXACTLY the same items as the PI â€” `order_items` was never updated on PI edits, so new products reached the PI and `production_order_items` but stayed missing from the Sales Order.
 
 ## Progress
 ### Done
 - **New helper `syncOrderItemsFromPi(piId, dealId, txDb)` in `production-service.ts`:**
   - Finds the linked Sales Order via `ordersTable.dealId` (repeat orders are created with `dealId = null`, so this resolves to the conversion order), excludes soft-deleted orders.
-  - **DELETE** all existing `order_items` rows for the order, then **INSERT** the current PI items field-for-field (`productId`, `productName`, `hsnCode`, `bottleType`, `bottleWeight` ← PI `weight`, `colour` ← PI `bottleColour`, `capacity`, `quantity`, `unit`, `rate`, `gstPercent`, `amount`).
+  - **DELETE** all existing `order_items` rows for the order, then **INSERT** the current PI items field-for-field (`productId`, `productName`, `hsnCode`, `bottleType`, `bottleWeight` â† PI `weight`, `colour` â† PI `bottleColour`, `capacity`, `quantity`, `unit`, `rate`, `gstPercent`, `amount`).
   - Runtime state is carried over from the replaced row when a product of the same name + colour is still present (`status`, `readyQuantity`, `dispatchedQuantity`, `dispatchStatus`, `batchNumber`, `gramage`, `remarks`, `linerPackingQty`, `tciBoraQty`, `normalBoraQty`) so an in-flight order keeps its progress.
   - Recomputes order `totalAmount` / `totalGst` / `grandTotal` from the PI items (same convention as the Won-deal conversion in `deals.ts`); order `freight` is left untouched so support-side freight adjustments are preserved.
-- **`handlePiModification` now also calls `syncOrderItemsFromPi(order.proformaInvoiceId, order.dealId, txDb)`** — so ANY production-linked PI update (revision or draft edit) refreshes `order_items`, not just `production_order_items`. `approveModification` also syncs order_items on approval.
+- **`handlePiModification` now also calls `syncOrderItemsFromPi(order.proformaInvoiceId, order.dealId, txDb)`** â€” so ANY production-linked PI update (revision or draft edit) refreshes `order_items`, not just `production_order_items`. `approveModification` also syncs order_items on approval.
 - **`PATCH /proforma-invoices/:id` (`updateInvoiceHandler`):** when a linked production order does NOT exist, the route now calls `syncOrderItemsFromPi` directly inside the transaction (revision path: `newInvoice.id` + `existing.dealId`; draft path: `piId` + `piDealId`) so a PI linked to a Sales Order is always synced, with or without a production order.
-- **Build verified:** API server typecheck — 0 errors in `proforma-invoices.ts` / `production-service.ts` (remaining errors are the documented pre-existing baseline); CRM untouched.
+- **Build verified:** API server typecheck â€” 0 errors in `proforma-invoices.ts` / `production-service.ts` (remaining errors are the documented pre-existing baseline); CRM untouched.
 
 ## Key Decisions
 - DELETE + INSERT chosen for guaranteed item-set parity (no stale leftovers), with runtime-state carry-over keyed by `productName + colour` to avoid resetting ready/dispatch progress on unchanged products.
@@ -1242,28 +1242,29 @@ Simplify the "Packing Quantities" data on the Freight & Packing Lookup page (and
 # Context-Aware Grouped Detailed Export (Reports) + By-Product Fixes
 
 ## Goal
-- Quick Export exports leaf/detail rows only (no parent aggregate rows). Detailed Export must be CONTEXT-AWARE: group raw deals by the active tab's dimension (Stage / Sales Person / City / State / Product / Lost Reason) with group header rows, per-group subtotals, and a grand total — instead of dumping a flat deal list.
+- Quick Export exports leaf/detail rows only (no parent aggregate rows). Detailed Export must be CONTEXT-AWARE: group raw deals by the active tab's dimension (Stage / Sales Person / City / State / Product / Lost Reason) with group header rows, per-group subtotals, and a grand total â€” instead of dumping a flat deal list.
 - By Product quantities must not double when a deal has multiple PI versions (v1/v2); Detailed Export shows real per-deal-per-product quantities matching the aggregated tab.
 
 ## Done
 - **By Product Quick Export parent-row fix (`artifacts/crm/src/pages/reports.tsx` buildTabSheet):** products WITH variants export ONLY variant leaf rows (name becomes `"Product - weight / colour"`, now carrying productCode); variant-less products still export their own row. On-screen expandable table unchanged.
-- **PI-version doubling fix (`artifacts/api-server/src/routes/reports.ts` GET /reports/by-product + GET /reports/raw-deals product subquery):** new `latest_pi` CTE — `SELECT DISTINCT ON (deal_id) deal_id, id FROM proforma_invoices WHERE deal_id IS NOT NULL AND is_deleted=false AND deleted_at IS NULL ORDER BY deal_id, is_active DESC, id DESC`. DISTINCT ON guarantees ONE PI per deal (double-counting structurally impossible); ordering prefers the app-canonical `is_active` flag (set by deactivateActivePis on every revision), falling back to highest id for legacy rows. exports.ts has NO such aggregation (verified).
+- **PI-version doubling fix (`artifacts/api-server/src/routes/reports.ts` GET /reports/by-product + GET /reports/raw-deals product subquery):** new `latest_pi` CTE â€” `SELECT DISTINCT ON (deal_id) deal_id, id FROM proforma_invoices WHERE deal_id IS NOT NULL AND is_deleted=false AND deleted_at IS NULL ORDER BY deal_id, is_active DESC, id DESC`. DISTINCT ON guarantees ONE PI per deal (double-counting structurally impossible); ordering prefers the app-canonical `is_active` flag (set by deactivateActivePis on every revision), falling back to highest id for legacy rows. exports.ts has NO such aggregation (verified).
 - **Per-deal product quantities for Detailed Export:** raw-deals product UNION query now SUMs quantity per deal+product (both halves GROUP BY 1,2 under the same latest_pi rule) and records carry new fields `productItems: [{name, quantity}]` (qty desc) + `totalQuantity`. Legacy `products: string[]` untouched (drill-down compat).
 - **Context-aware grouped Detailed Export (`reports.tsx` doDetailedExport rewrite):**
-  - Groups by active tab: pipeline→stage, by-owner→salesPerson, by-city→cityName, by-state→state, lost-reasons→lostReason ("Not Specified"), by-product→explodes each deal into one entry PER productItem (qty = item qty); deals w/o products land in "(No Product)".
-  - Sheet layout: full-width merged group-header row (`Product: 5L Oval Jerry Can`) → detail rows → `Total (N deals)` subtotal row (qty/value in their columns) → spacer; GRAND TOTAL row last. Headers gained a `Total Qty` column (after Stage).
-  - `downloadExcel` supports `mergeRows` (SheetJS `!merges`; community build cannot bold cells — merged uppercase-label rows used instead). CSV path shares the same rows (merges ignored).
+  - Groups by active tab: pipelineâ†’stage, by-ownerâ†’salesPerson, by-cityâ†’cityName, by-stateâ†’state, lost-reasonsâ†’lostReason ("Not Specified"), by-productâ†’explodes each deal into one entry PER productItem (qty = item qty); deals w/o products land in "(No Product)".
+  - Sheet layout: full-width merged group-header row (`Product: 5L Oval Jerry Can`) â†’ detail rows â†’ `Total (N deals)` subtotal row (qty/value in their columns) â†’ spacer; GRAND TOTAL row last. Headers gained a `Total Qty` column (after Stage).
+  - `downloadExcel` supports `mergeRows` (SheetJS `!merges`; community build cannot bold cells â€” merged uppercase-label rows used instead). CSV path shares the same rows (merges ignored).
   - Filename now tab-aware with `_Detailed` suffix via buildExportFileName(..., suffix): e.g. `By_Product_Detailed_14-08-2026.xlsx`.
   - Groups sorted by value desc (lost-reasons by count desc) mirroring tab order; toast reports group/row counts.
-- **Live DB verification:** deal 7 (3 products) explodes into 3 groups with correct qtys; deal 8 (PI v1 inactive + v2 ACTIVE, identical items) counts 2,000 once from ACTIVE v2 — old join would have counted 4,000. Full rewritten by-product query executes cleanly.
-- **Build verified:** CRM typecheck 0 errors; API server 32 errors = exact pre-existing baseline (reports.ts:72 'user' possibly-null ×3 present on HEAD via stash A/B test).
+- **Live DB verification:** deal 7 (3 products) explodes into 3 groups with correct qtys; deal 8 (PI v1 inactive + v2 ACTIVE, identical items) counts 2,000 once from ACTIVE v2 â€” old join would have counted 4,000. Full rewritten by-product query executes cleanly.
+- **Build verified:** CRM typecheck 0 errors; API server 32 errors = exact pre-existing baseline (reports.ts:72 'user' possibly-null Ã—3 present on HEAD via stash A/B test).
 
 ## Key Decisions
 - `is_active DESC, id DESC` inside DISTINCT ON: honors existing versioning machinery (getActivePiForDeal/deactivateActivePis consumers) while never dropping legacy deals whose flags were unmaintained.
-- By Product group rows show DEAL value (per requirement) while Quantity comes from PI items — group subtotal sums what the rows display; grand-total qty equals the aggregated tab's Total Qty.
+- By Product group rows show DEAL value (per requirement) while Quantity comes from PI items â€” group subtotal sums what the rows display; grand-total qty equals the aggregated tab's Total Qty.
 - Frontend-only grouping (no new backend grouping endpoint): raw-deals already carries every needed dimension; only additive fields required.
-- Local dev DB lags production schema (missing pii.product_id/bottle_colour) — verification scripts adapted around them; fix touches JOIN logic only.
+- Local dev DB lags production schema (missing pii.product_id/bottle_colour) â€” verification scripts adapted around them; fix touches JOIN logic only.
 
 ## Relevant Files
 - `artifacts/crm/src/pages/reports.tsx`: buildTabSheet by-product leaf-only rows; downloadExcel merges; buildExportFileName suffix; DETAILED_EXPORT_HEADERS + grouped doDetailedExport
 - `artifacts/api-server/src/routes/reports.ts`: latest_pi CTE (by-product + raw-deals); raw-deals per-deal product quantities (productItems/totalQuantity)
+
