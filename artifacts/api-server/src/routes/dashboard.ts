@@ -559,7 +559,9 @@ router.get("/dashboard/sales-performance", async (req, res) => {
       const activeDeals = userDeals.filter(d => isActiveDealStage(d.stage)).length;
       const totalWonValue = userDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? 0), 0);
       const myClients = userContacts.filter(c => c.category === "My Client").length;
-      const conversionRate = totalContacts > 0 ? Math.round((myClients / totalContacts) * 100) : 0;
+      // Same formula as the global Win Rate KPI card above:
+      // Math.round((wonDeals / totalDeals) * 100), division by zero guarded.
+      const winRate = totalDeals > 0 ? Math.round((wonDeals / totalDeals) * 100) : 0;
 
       const totalFollowUps = userActivities.filter(a => a.type === "FollowUp").length;
       const completedFollowUps = userActivities.filter(a => a.type === "FollowUp" && a.callStatus === "Completed").length;
@@ -579,7 +581,7 @@ router.get("/dashboard/sales-performance", async (req, res) => {
         activeDeals,
         totalWonValue,
         myClients,
-        conversionRate,
+        winRate,
         followUpRate,
       };
     });

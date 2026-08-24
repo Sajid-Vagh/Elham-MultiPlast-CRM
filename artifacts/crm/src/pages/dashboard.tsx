@@ -106,7 +106,7 @@ export default function Dashboard() {
         userId: number; userName: string; colorCode: string; profilePhoto?: string | null; unit: string;
         totalContacts: number; totalDeals: number; wonDeals: number; lostDeals: number;
         activeDeals: number; totalWonValue: number; myClients: number;
-        conversionRate: number; followUpRate: number;
+        followUpRate: number; winRate: number;
       }[]>;
     },
     enabled: !!token && isAdmin,
@@ -355,7 +355,7 @@ export default function Dashboard() {
                   <TableHead className="text-red-500">Lost</TableHead>
                   <TableHead>Won Value</TableHead>
                   <TableHead>Clients</TableHead>
-                  <TableHead>Conv. Rate</TableHead>
+                  <TableHead>Win Rate</TableHead>
                    <TableHead>Activity %</TableHead>
                 </TableRow>
               </TableHeader>
@@ -376,8 +376,8 @@ export default function Dashboard() {
                     <TableCell>{privacyHidden ? "₹ *******" : `₹${row.totalWonValue.toLocaleString()}`}</TableCell>
                     <TableCell>{row.myClients}</TableCell>
                     <TableCell>
-                      <span className={`font-medium ${row.conversionRate >= 20 ? "text-green-600" : row.conversionRate >= 10 ? "text-amber-600" : "text-red-500"}`}>
-                        {row.conversionRate}%
+                      <span className={`font-medium ${row.winRate >= 20 ? "text-green-600" : row.winRate >= 10 ? "text-amber-600" : "text-red-500"}`}>
+                        {row.winRate}%
                       </span>
                     </TableCell>
                     <TableCell>{row.followUpRate}%</TableCell>
