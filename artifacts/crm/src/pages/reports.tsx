@@ -305,11 +305,24 @@ export default function Reports() {
       }
       case "by-product": {
         const d = [...(byProduct ?? [])].sort((a, b) => (b.totalValue ?? 0) - (a.totalValue ?? 0));
+        // Export ONLY detailed (leaf) rows: variant breakdowns when present.
+        // Parent/grouping rows are excluded so the file has no duplicate-looking
+        // aggregate entries. A product with no variants IS its own detail row.
         const rows: any[][] = [];
         for (const r of d) {
-          rows.push([r.productName, r.productCode ?? "-", r.dealCount, r.totalQuantity ?? 0, r.totalValue ?? 0]);
-          for (const v of r.variants ?? []) {
-            rows.push([`${r.productName} - ${v.weight ?? "-"} / ${v.colour ?? "-"}`, "", v.dealCount, v.totalQuantity ?? 0, v.totalValue ?? 0]);
+          const variants = r.variants ?? [];
+          if (variants.length > 0) {
+            for (const v of variants) {
+              rows.push([
+                `${r.productName} - ${v.weight ?? "-"} / ${v.colour ?? "-"}`,
+                r.productCode ?? "",
+                v.dealCount,
+                v.totalQuantity ?? 0,
+                v.totalValue ?? 0,
+              ]);
+            }
+          } else {
+            rows.push([r.productName, r.productCode ?? "-", r.dealCount, r.totalQuantity ?? 0, r.totalValue ?? 0]);
           }
         }
         return {
