@@ -75,7 +75,7 @@ router.post("/users", async (req, res) => {
   const { password, ...fields } = parsed.data;
   try {
     const passwordHash = await bcrypt.hash(password, 10);
-    const [user] = await db.insert(usersTable).values({ ...fields, passwordHash }).returning();
+    const [user] = await db.insert(usersTable).values({ ...fields, passwordHash, isActive: true, emailVerified: false }).returning();
 
     // Notify all admins about new user creation
     const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));

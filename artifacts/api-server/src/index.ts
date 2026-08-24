@@ -2,7 +2,7 @@ import app from "./app";
 import bcrypt from "bcryptjs";
 import { logger } from "./lib/logger";
 import { closeDb, waitForDb, db, usersTable, sessionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -21,40 +21,29 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 async function seedUsers() {
+  // Migration-safe: only seed when the database is completely empty.
+  // If ANY user exists, preserve all existing data — no overwrites, no deletes.
   const existing = await db.select().from(usersTable).limit(1);
   if (existing.length > 0) {
-    logger.info("Users already exist, skipping seed");
+    logger.info("Users already exist, skipping seed — existing data preserved");
     return;
   }
 
-  logger.info("No users found, seeding default users...");
+  // Check if this is a fresh database with no admin
+  const [adminCount] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(usersTable)
+    .where(eq(usersTable.role, "admin"));
 
-  const users = [
-    { name: "Admin", username: "admin", password: "admin123", role: "admin", colorCode: "#6366f1", unit: "All", canViewAllReports: true, canAssignLeads: true },
-    { name: "Ravi", username: "ravi", password: "elham2024", role: "sales", colorCode: "#ef4444", unit: "Himatnagar", canViewAllReports: false, canAssignLeads: false },
-    { name: "Sneha", username: "sneha", password: "elham2024", role: "sales", colorCode: "#f59e0b", unit: "Surat", canViewAllReports: false, canAssignLeads: false },
-    { name: "Mohit", username: "mohit", password: "elham2024", role: "sales", colorCode: "#10b981", unit: "Rajkot", canViewAllReports: false, canAssignLeads: false },
-    { name: "Priya", username: "priya", password: "elham2024", role: "sales", colorCode: "#3b82f6", unit: "Himatnagar", canViewAllReports: false, canAssignLeads: false },
-    { name: "Deepak", username: "deepak", password: "elham2024", role: "sales", colorCode: "#8b5cf6", unit: "Surat", canViewAllReports: false, canAssignLeads: false },
-    { name: "Kavita", username: "kavita", password: "elham2024", role: "sales", colorCode: "#ec4899", unit: "Rajkot", canViewAllReports: false, canAssignLeads: false },
-  ];
-
-  for (const u of users) {
-    const passwordHash = await bcrypt.hash(u.password, 10);
-    await db.insert(usersTable).values({
-      name: u.name,
-      username: u.username,
-      passwordHash,
-      role: u.role,
-      colorCode: u.colorCode,
-      unit: u.unit,
-      canViewAllReports: u.canViewAllReports,
-      canAssignLeads: u.canAssignLeads,
-    }).onConflictDoNothing({ target: usersTable.username });
-    logger.info(`Seeded user: ${u.username}`);
+  if ((adminCount?.count ?? 0) > 0) {
+    logger.info("Admin exists, skipping seed");
+    return;
   }
 
-  logger.info("Seed complete!");
+  // Fresh database: do NOT seed predictable credentials.
+  // The first admin must use the secure /auth/admin/setup flow.
+  logger.info("Fresh database detected — admin setup required. No users seeded.");
+  logger.info("Navigate to /admin-setup to create the first Admin account.");
 }
 
 async function main() {
