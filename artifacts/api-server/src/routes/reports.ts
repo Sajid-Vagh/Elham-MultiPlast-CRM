@@ -285,6 +285,16 @@ router.get("/reports/by-product", async (req, res) => {
       WITH allowed_deals AS (
         SELECT id FROM deals WHERE ${where}
       ),
+      -- Deals that already have at least one (non-deleted) proforma invoice.
+      -- When a deal has PI items we count ONLY those (they are the source of
+      -- truth) and we MUST skip the duplicate rows in deal_products so the
+      -- same product is not counted twice for that deal.
+      deals_with_pi AS (
+        SELECT DISTINCT pi.deal_id AS deal_id
+        FROM proforma_invoices pi
+        WHERE pi.is_deleted = false
+          AND pi.deal_id IN (SELECT id FROM allowed_deals)
+      ),
       src AS (
         SELECT ad.id AS deal_id, dp.product_id AS product_id,
                coalesce(p.name, 'Unknown') AS product_name,
@@ -294,6 +304,9 @@ router.get("/reports/by-product", async (req, res) => {
         FROM deal_products dp
         JOIN allowed_deals ad ON ad.id = dp.deal_id
         LEFT JOIN products p ON p.id = dp.product_id
+        WHERE NOT EXISTS (
+          SELECT 1 FROM deals_with_pi dwp WHERE dwp.deal_id = ad.id
+        )
         UNION ALL
         SELECT ad.id AS deal_id, pii.product_id AS product_id,
                coalesce(p.name, btrim(pii.product_name)) AS product_name,
