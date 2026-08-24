@@ -408,7 +408,14 @@ export default function Reports() {
         return;
       }
       const json = await res.json();
-      const rows: any[] = json?.data ?? [];
+      const fetchedRows: any[] = json?.data ?? [];
+      // The Lost Reasons report is STRICTLY about lost deals: other stages have
+      // no lost reason and would only land in a misleading "Not Specified"
+      // group, so they are discarded from this specific export. All other tabs
+      // keep every deal (missing city/state/owner fall into Unknown/Unassigned).
+      const rows: any[] = activeTab === "lost-reasons"
+        ? fetchedRows.filter(r => r.stage === "Lost")
+        : fetchedRows;
       if (!rows.length) {
         toast({ title: "Nothing to export", description: "No deal records match the current filters.", variant: "destructive" });
         return;

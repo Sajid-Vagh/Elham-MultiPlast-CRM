@@ -1268,3 +1268,4 @@ Simplify the "Packing Quantities" data on the Freight & Packing Lookup page (and
 - `artifacts/crm/src/pages/reports.tsx`: buildTabSheet by-product leaf-only rows; downloadExcel merges; buildExportFileName suffix; DETAILED_EXPORT_HEADERS + grouped doDetailedExport
 - `artifacts/api-server/src/routes/reports.ts`: latest_pi CTE (by-product + raw-deals); raw-deals per-deal product quantities (productItems/totalQuantity)
 
+
