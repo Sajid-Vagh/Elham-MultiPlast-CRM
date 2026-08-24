@@ -285,6 +285,19 @@ router.get("/reports/by-product", async (req, res) => {
       WITH allowed_deals AS (
         SELECT id FROM deals WHERE ${where}
       ),
+      -- Exactly ONE (current) Proforma Invoice per deal: prefer the version the
+      -- app marks active (is_active = true, set by deactivateActivePis on each
+      -- revision), falling back to the highest id for legacy rows whose flags
+      -- were never maintained. Without this, items from BOTH v1 and v2 of a
+      -- revised PI get summed here and quantities/values double.
+      latest_pi AS (
+        SELECT DISTINCT ON (deal_id) deal_id, id
+        FROM proforma_invoices
+        WHERE deal_id IS NOT NULL
+          AND is_deleted = false
+          AND deleted_at IS NULL
+        ORDER BY deal_id, is_active DESC, id DESC
+      ),
       src AS (
         -- First half: deal_products. Only count these for deals that do NOT
         -- have a (non-deleted) Proforma Invoice. Converted deals store their
@@ -312,8 +325,8 @@ router.get("/reports/by-product", async (req, res) => {
                pii.quantity AS quantity,
                coalesce(pii.amount, pii.quantity * coalesce(pii.rate, 0)) AS value
         FROM proforma_invoice_items pii
-        JOIN proforma_invoices pi ON pi.id = pii.invoice_id AND pi.is_deleted = false AND pi.deleted_at IS NULL
-        JOIN allowed_deals ad ON ad.id = pi.deal_id
+        JOIN latest_pi lp ON lp.id = pii.invoice_id
+        JOIN allowed_deals ad ON ad.id = lp.deal_id
         LEFT JOIN products p ON p.id = pii.product_id
       )
       SELECT t.product_id AS "productId",
@@ -667,6 +680,16 @@ router.get("/reports/raw-deals", async (req, res) => {
     const productMap = new Map<number, Set<string>>();
     try {
       const { rows: prodRows } = await db.execute(sql`
+        WITH latest_pi AS (
+          -- One current PI per deal (same rule as /reports/by-product) so
+          -- superseded v1 items cannot inject stale product names.
+          SELECT DISTINCT ON (deal_id) deal_id, id
+          FROM proforma_invoices
+          WHERE deal_id IS NOT NULL
+            AND is_deleted = false
+            AND deleted_at IS NULL
+          ORDER BY deal_id, is_active DESC, id DESC
+        )
         SELECT dp.deal_id AS "dealId", coalesce(p.name, 'Unknown') AS "productName"
         FROM deal_products dp
         LEFT JOIN products p ON p.id = dp.product_id
@@ -677,11 +700,10 @@ router.get("/reports/raw-deals", async (req, res) => {
             AND pi.deleted_at IS NULL
         )
         UNION ALL
-        SELECT pi.deal_id AS "dealId", coalesce(p.name, btrim(pii.product_name)) AS "productName"
+        SELECT lp.deal_id AS "dealId", coalesce(p.name, btrim(pii.product_name)) AS "productName"
         FROM proforma_invoice_items pii
-        JOIN proforma_invoices pi ON pi.id = pii.invoice_id AND pi.is_deleted = false AND pi.deleted_at IS NULL
+        JOIN latest_pi lp ON lp.id = pii.invoice_id
         LEFT JOIN products p ON p.id = pii.product_id
-        WHERE pi.deal_id IS NOT NULL
       `);
       for (const row of (prodRows ?? []) as any[]) {
         const id = row.dealId;
