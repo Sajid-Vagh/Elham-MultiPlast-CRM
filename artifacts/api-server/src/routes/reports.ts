@@ -675,9 +675,12 @@ router.get("/reports/raw-deals", async (req, res) => {
     const allUsers = await db.select().from(usersTable);
     const userMap = new Map(allUsers.map(u => [u.id, u]));
 
-    // Product names per deal (deal_products + proforma_invoice_items) so the
-    // "By Product" report rows can drill down to the underlying deals.
+    // Products (+ per-deal-per-product QUANTITIES) so the "By Product" report
+    // can drill down AND the context-aware Detailed Export can group raw deals
+    // by product with real quantities. Uses latest_pi so superseded PI versions
+    // cannot inject stale names or double the quantities.
     const productMap = new Map<number, Set<string>>();
+    const productQtyMap = new Map<number, Map<string, number>>();
     try {
       const { rows: prodRows } = await db.execute(sql`
         WITH latest_pi AS (
@@ -690,7 +693,8 @@ router.get("/reports/raw-deals", async (req, res) => {
             AND deleted_at IS NULL
           ORDER BY deal_id, is_active DESC, id DESC
         )
-        SELECT dp.deal_id AS "dealId", coalesce(p.name, 'Unknown') AS "productName"
+        SELECT dp.deal_id AS "dealId", coalesce(p.name, 'Unknown') AS "productName",
+               sum(dp.quantity)::float AS "quantity"
         FROM deal_products dp
         LEFT JOIN products p ON p.id = dp.product_id
         WHERE NOT EXISTS (
@@ -699,17 +703,23 @@ router.get("/reports/raw-deals", async (req, res) => {
             AND pi.is_deleted = false
             AND pi.deleted_at IS NULL
         )
+        GROUP BY 1, 2
         UNION ALL
-        SELECT lp.deal_id AS "dealId", coalesce(p.name, btrim(pii.product_name)) AS "productName"
+        SELECT lp.deal_id AS "dealId", coalesce(p.name, btrim(pii.product_name)) AS "productName",
+               sum(pii.quantity)::float AS "quantity"
         FROM proforma_invoice_items pii
         JOIN latest_pi lp ON lp.id = pii.invoice_id
         LEFT JOIN products p ON p.id = pii.product_id
+        GROUP BY 1, 2
       `);
       for (const row of (prodRows ?? []) as any[]) {
         const id = row.dealId;
         if (id == null) continue;
         if (!productMap.has(id)) productMap.set(id, new Set());
         productMap.get(id)!.add(row.productName);
+        if (!productQtyMap.has(id)) productQtyMap.set(id, new Map());
+        const qm = productQtyMap.get(id)!;
+        qm.set(row.productName, (qm.get(row.productName) ?? 0) + Number(row.quantity ?? 0));
       }
     } catch { /* products are optional for the drill-down */ }
 
@@ -753,6 +763,10 @@ router.get("/reports/raw-deals", async (req, res) => {
         salesPerson: owner?.name ?? "",
         salesOwnerId: d.salesOwnerId ?? null,
         products: [...(productMap.get(d.id) ?? [])],
+        productItems: [...(productQtyMap.get(d.id)?.entries() ?? [])]
+          .map(([name, quantity]) => ({ name, quantity }))
+          .sort((a, b) => b.quantity - a.quantity),
+        totalQuantity: [...(productQtyMap.get(d.id)?.values() ?? [])].reduce((s, q) => s + q, 0),
         createdDate: d.createdAt ? new Date(d.createdAt).toISOString() : "",
         contactId: d.contactId,
         dealId: d.id,

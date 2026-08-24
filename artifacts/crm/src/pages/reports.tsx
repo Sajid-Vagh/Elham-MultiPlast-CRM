@@ -81,10 +81,14 @@ function downloadCSV(headers: string[], rows: any[][], filename: string) {
   URL.revokeObjectURL(url);
 }
 
-function downloadExcel(sheets: { name: string; headers: string[]; rows: any[][] }[], filename: string) {
+function downloadExcel(sheets: { name: string; headers: string[]; rows: any[][]; mergeRows?: number[] }[], filename: string) {
   const wb = XLSX.utils.book_new();
   for (const s of sheets) {
     const ws = XLSX.utils.aoa_to_sheet([s.headers, ...s.rows]);
+    // Group-header rows span the full table width (+1 offset: row 0 is the header row)
+    if (s.mergeRows?.length && s.headers.length > 1) {
+      ws["!merges"] = s.mergeRows.map(r => ({ s: { r: r + 1, c: 0 }, e: { r: r + 1, c: s.headers.length - 1 } }));
+    }
     XLSX.utils.book_append_sheet(wb, ws, s.name.slice(0, 31));
   }
   XLSX.writeFile(wb, filename);
@@ -131,12 +135,12 @@ function formatRangeLabel(d: string): string {
   return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function buildExportFileName(tab: string, df: DateFilterState, ext: "xlsx" | "csv"): string {
+function buildExportFileName(tab: string, df: DateFilterState, ext: "xlsx" | "csv", suffix = ""): string {
   const tabName = TAB_FILE_NAMES[tab] || tab;
   const isCustom = df.preset === "custom" && df.startDate && df.endDate;
   const base = isCustom
-    ? `${tabName}_${shortDatePart(df.startDate!)}_to_${shortDatePart(df.endDate!)}`
-    : `${tabName}_Report_${todayFileNameDate()}`;
+    ? `${tabName}_${shortDatePart(df.startDate!)}_to_${shortDatePart(df.endDate!)}${suffix}`
+    : `${tabName}_Report_${todayFileNameDate()}${suffix}`;
   return `${base}.${ext}`;
 }
 
@@ -368,12 +372,27 @@ export default function Reports() {
     "State",
     "Deal Name",
     "Stage",
+    "Total Qty",
     "Value",
     "Probability",
     "Lost Reason",
     "Sales Person",
     "Created Date",
   ];
+  const DETAILED_QTY_COL = DETAILED_EXPORT_HEADERS.indexOf("Total Qty");
+  const DETAILED_VALUE_COL = DETAILED_EXPORT_HEADERS.indexOf("Value");
+
+  // Which dimension the Detailed Export groups raw deals by — mirrors the
+  // aggregation of the currently active tab so the export explains the numbers
+  // on screen instead of dumping a flat list.
+  const GROUP_LABEL_BY_TAB: Record<string, string> = {
+    pipeline: "Stage",
+    "by-owner": "Sales Person",
+    "by-city": "City",
+    "by-state": "State",
+    "by-product": "Product",
+    "lost-reasons": "Lost Reason",
+  };
 
   const doDetailedExport = async (format: "xlsx" | "csv") => {
     try {
@@ -394,7 +413,35 @@ export default function Reports() {
         toast({ title: "Nothing to export", description: "No deal records match the current filters.", variant: "destructive" });
         return;
       }
-      const sheetRows = rows.map(r => [
+
+      // ── Group assignment per active tab ────────────────────────────────────
+      // By Product explodes a deal into one entry PER product it contains
+      // (with that product's own quantity); every other tab yields a single
+      // group per deal.
+      const groupPrefix = GROUP_LABEL_BY_TAB[activeTab] ?? "";
+      const groupsOf = (r: any): { key: string; qty: number | "" }[] => {
+        switch (activeTab) {
+          case "pipeline":
+            return [{ key: r.stage || "Unknown", qty: r.totalQuantity ?? "" }];
+          case "by-owner":
+            return [{ key: r.salesPerson || "Unassigned", qty: r.totalQuantity ?? "" }];
+          case "by-city":
+            return [{ key: r.cityName || r.city || "Unknown", qty: r.totalQuantity ?? "" }];
+          case "by-state":
+            return [{ key: r.state || "Unknown", qty: r.totalQuantity ?? "" }];
+          case "lost-reasons":
+            return [{ key: r.lostReason || "Not Specified", qty: r.totalQuantity ?? "" }];
+          case "by-product": {
+            const items = Array.isArray(r.productItems) ? r.productItems : [];
+            if (!items.length) return [{ key: "(No Product)", qty: r.totalQuantity ?? "" }];
+            return items.map((p: any) => ({ key: String(p.name ?? "Unknown"), qty: Number(p.quantity ?? 0) }));
+          }
+          default:
+            return [{ key: "All Deals", qty: r.totalQuantity ?? "" }];
+        }
+      };
+
+      const detailRow = (r: any, qty: number | "") => [
         r.clientName,
         r.company,
         r.mobile,
@@ -402,19 +449,73 @@ export default function Reports() {
         r.state,
         r.dealName,
         r.stage,
+        qty === "" ? "" : qty,
         r.value,
         r.probability,
         r.lostReason,
         r.salesPerson,
         r.createdDate ? new Date(r.createdDate).toLocaleDateString("en-IN") : "",
-      ]);
-      const fname = buildExportFileName("raw-deals", dateFilter, format);
+      ];
+
+      interface DetailGroup { rows: any[][]; qty: number; value: number }
+      const groupMap = new Map<string, DetailGroup>();
+      let detailRowCount = 0;
+      for (const r of rows) {
+        for (const g of groupsOf(r)) {
+          if (!groupMap.has(g.key)) groupMap.set(g.key, { rows: [], qty: 0, value: 0 });
+          const grp = groupMap.get(g.key)!;
+          grp.rows.push(detailRow(r, g.qty));
+          grp.qty += typeof g.qty === "number" ? g.qty : 0;
+          grp.value += Number(r.value ?? 0);
+          detailRowCount++;
+        }
+      }
+
+      // Groups ranked by value (lost-reasons by count) — mirrors the tab ordering
+      const sortedGroups = [...groupMap.entries()].sort((a, b) => {
+        const [, ga] = a; const [, gb] = b;
+        return activeTab === "lost-reasons"
+          ? (gb.rows.length - ga.rows.length) || (gb.value - ga.value)
+          : gb.value - ga.value;
+      });
+
+      // ── Sheet layout: group header → deals → group total → spacer ─────────
+      const COLS = DETAILED_EXPORT_HEADERS.length;
+      const blankRow = () => Array(COLS).fill("");
+      const sheetRows: any[][] = [];
+      const mergeRows: number[] = [];
+      for (const [key, g] of sortedGroups) {
+        mergeRows.push(sheetRows.length);
+        sheetRows.push([`${groupPrefix}: ${key}`, ...blankRow().slice(1)]);
+        for (const dr of g.rows) sheetRows.push(dr);
+        const sub = blankRow();
+        sub[0] = `Total (${g.rows.length} deal${g.rows.length !== 1 ? "s" : ""})`;
+        sub[DETAILED_QTY_COL] = g.qty;
+        sub[DETAILED_VALUE_COL] = Math.round(g.value * 100) / 100;
+        sheetRows.push(sub);
+        sheetRows.push(blankRow());
+      }
+      const grandQty = sortedGroups.reduce((s, [, g]) => s + g.qty, 0);
+      const grandValue = sortedGroups.reduce((s, [, g]) => s + g.value, 0);
+      const grand = blankRow();
+      grand[0] = activeTab === "by-product"
+        ? `GRAND TOTAL (${sortedGroups.length} products · ${detailRowCount} product-deal rows)`
+        : `GRAND TOTAL (${detailRowCount} deals)`;
+      grand[DETAILED_QTY_COL] = grandQty;
+      grand[DETAILED_VALUE_COL] = Math.round(grandValue * 100) / 100;
+      sheetRows.push(grand);
+
+      const fname = buildExportFileName(activeTab, dateFilter, format, "_Detailed");
+      const sheetName = `By ${groupPrefix || "Deal"} — Grouped`;
       if (format === "xlsx") {
-        downloadExcel([{ name: "Raw Deals", headers: DETAILED_EXPORT_HEADERS, rows: sheetRows }], fname);
+        downloadExcel([{ name: sheetName, headers: DETAILED_EXPORT_HEADERS, rows: sheetRows, mergeRows }], fname);
       } else {
         downloadCSV(DETAILED_EXPORT_HEADERS, sheetRows, fname);
       }
-      toast({ title: "Export completed", description: `Detailed ${format.toUpperCase()} downloaded (${rows.length} deal records).` });
+      toast({
+        title: "Export completed",
+        description: `Detailed ${format.toUpperCase()} grouped by ${groupPrefix.toLowerCase() || "deal"} — ${sortedGroups.length} group${sortedGroups.length !== 1 ? "s" : ""}, ${detailRowCount} row${detailRowCount !== 1 ? "s" : ""}.`,
+      });
     } catch {
       toast({ title: "Export failed", description: "Could not fetch raw deal data.", variant: "destructive" });
     }

@@ -1236,3 +1236,34 @@ Simplify the "Packing Quantities" data on the Freight & Packing Lookup page (and
 ## Relevant Files
 - `artifacts/api-server/src/lib/production-service.ts`: `syncOrderItemsFromPi` helper; `handlePiModification` + `approveModification` call it
 - `artifacts/api-server/src/routes/proforma-invoices.ts`: `updateInvoiceHandler` fallback calls in revision + draft transactions
+
+---
+
+# Context-Aware Grouped Detailed Export (Reports) + By-Product Fixes
+
+## Goal
+- Quick Export exports leaf/detail rows only (no parent aggregate rows). Detailed Export must be CONTEXT-AWARE: group raw deals by the active tab's dimension (Stage / Sales Person / City / State / Product / Lost Reason) with group header rows, per-group subtotals, and a grand total — instead of dumping a flat deal list.
+- By Product quantities must not double when a deal has multiple PI versions (v1/v2); Detailed Export shows real per-deal-per-product quantities matching the aggregated tab.
+
+## Done
+- **By Product Quick Export parent-row fix (`artifacts/crm/src/pages/reports.tsx` buildTabSheet):** products WITH variants export ONLY variant leaf rows (name becomes `"Product - weight / colour"`, now carrying productCode); variant-less products still export their own row. On-screen expandable table unchanged.
+- **PI-version doubling fix (`artifacts/api-server/src/routes/reports.ts` GET /reports/by-product + GET /reports/raw-deals product subquery):** new `latest_pi` CTE — `SELECT DISTINCT ON (deal_id) deal_id, id FROM proforma_invoices WHERE deal_id IS NOT NULL AND is_deleted=false AND deleted_at IS NULL ORDER BY deal_id, is_active DESC, id DESC`. DISTINCT ON guarantees ONE PI per deal (double-counting structurally impossible); ordering prefers the app-canonical `is_active` flag (set by deactivateActivePis on every revision), falling back to highest id for legacy rows. exports.ts has NO such aggregation (verified).
+- **Per-deal product quantities for Detailed Export:** raw-deals product UNION query now SUMs quantity per deal+product (both halves GROUP BY 1,2 under the same latest_pi rule) and records carry new fields `productItems: [{name, quantity}]` (qty desc) + `totalQuantity`. Legacy `products: string[]` untouched (drill-down compat).
+- **Context-aware grouped Detailed Export (`reports.tsx` doDetailedExport rewrite):**
+  - Groups by active tab: pipeline→stage, by-owner→salesPerson, by-city→cityName, by-state→state, lost-reasons→lostReason ("Not Specified"), by-product→explodes each deal into one entry PER productItem (qty = item qty); deals w/o products land in "(No Product)".
+  - Sheet layout: full-width merged group-header row (`Product: 5L Oval Jerry Can`) → detail rows → `Total (N deals)` subtotal row (qty/value in their columns) → spacer; GRAND TOTAL row last. Headers gained a `Total Qty` column (after Stage).
+  - `downloadExcel` supports `mergeRows` (SheetJS `!merges`; community build cannot bold cells — merged uppercase-label rows used instead). CSV path shares the same rows (merges ignored).
+  - Filename now tab-aware with `_Detailed` suffix via buildExportFileName(..., suffix): e.g. `By_Product_Detailed_14-08-2026.xlsx`.
+  - Groups sorted by value desc (lost-reasons by count desc) mirroring tab order; toast reports group/row counts.
+- **Live DB verification:** deal 7 (3 products) explodes into 3 groups with correct qtys; deal 8 (PI v1 inactive + v2 ACTIVE, identical items) counts 2,000 once from ACTIVE v2 — old join would have counted 4,000. Full rewritten by-product query executes cleanly.
+- **Build verified:** CRM typecheck 0 errors; API server 32 errors = exact pre-existing baseline (reports.ts:72 'user' possibly-null ×3 present on HEAD via stash A/B test).
+
+## Key Decisions
+- `is_active DESC, id DESC` inside DISTINCT ON: honors existing versioning machinery (getActivePiForDeal/deactivateActivePis consumers) while never dropping legacy deals whose flags were unmaintained.
+- By Product group rows show DEAL value (per requirement) while Quantity comes from PI items — group subtotal sums what the rows display; grand-total qty equals the aggregated tab's Total Qty.
+- Frontend-only grouping (no new backend grouping endpoint): raw-deals already carries every needed dimension; only additive fields required.
+- Local dev DB lags production schema (missing pii.product_id/bottle_colour) — verification scripts adapted around them; fix touches JOIN logic only.
+
+## Relevant Files
+- `artifacts/crm/src/pages/reports.tsx`: buildTabSheet by-product leaf-only rows; downloadExcel merges; buildExportFileName suffix; DETAILED_EXPORT_HEADERS + grouped doDetailedExport
+- `artifacts/api-server/src/routes/reports.ts`: latest_pi CTE (by-product + raw-deals); raw-deals per-deal product quantities (productItems/totalQuantity)
