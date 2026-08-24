@@ -8,6 +8,7 @@ import { Layout } from "@/components/layout";
 import { ErrorBoundary } from "@/components/error-boundary";
 import Login from "@/pages/login";
 import AdminSetup from "@/pages/admin-setup";
+import VerifyEmail from "@/pages/verify-email";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
 import AcceptInvitation from "@/pages/accept-invitation";
@@ -82,6 +83,7 @@ function Router() {
     <Switch>
       <Route path="/login" component={Login} />
       <Route path="/admin-setup" component={AdminSetup} />
+      <Route path="/verify-email" component={VerifyEmail} />
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/accept-invitation" component={AcceptInvitation} />

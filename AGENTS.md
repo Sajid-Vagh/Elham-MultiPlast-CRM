@@ -1,4 +1,39 @@
-﻿
+## First-Admin Bootstrap — No Public Registration, Combined Login/Setup Landing, Env Allowlist + Email-Verified Two-Phase Activation
+
+### Goal
+- Final rules for first-admin bootstrap: NO public registration anywhere; the auth landing page (`/login`) shows LEFT=Login and RIGHT=a conditional First-Admin Setup card; the right side renders ONLY while no Admin exists AND secure conditions hold; once the first Admin exists only Login remains; all other users are created/invited by an Admin inside the CRM.
+- User-confirmed decisions: (1) email rule = optional `BOOTSTRAP_ADMIN_EMAIL` env allowlist PLUS emailed verification-link ownership proof; (2) activation = two-phase — submission stores the admin INACTIVE+UNVERIFIED and emails a link; account + session are issued ONLY when the link is opened.
+
+### Done
+- **`GET /auth/setup-status` extended:** response now `{ adminExists, bootstrapAvailable }`. `adminExists` = count of ACTIVE admins (a pending INACTIVE+UNVERIFIED row from an earlier attempt does NOT count, otherwise a lost email would lock bootstrap forever). `bootstrapAvailable` = `!adminExists && (totalUsers === 0 || caller holds a valid ACTIVE session of any role)` — anonymous visitors on a populated install never see the card.
+- **`POST /auth/admin/setup` two-phase:** rate limit (unchanged) → active-admin guard 403 → conditional auth (virgin install anonymous OK / populated install requires authenticated ACTIVE user else 401, unchanged) → **email allowlist**: if `BOOTSTRAP_ADMIN_EMAIL` env is set, non-matching emails get generic 403 (unset = step skipped); emails normalized to lowercase for lookup/insert/resend (resubmission with different casing refreshes instead of 23505-conflict) → creation stores `role=admin, isActive=false, emailVerified=false, verificationToken, verificationExpiresAt(24h)` and calls `sendVerificationEmail` → responds `201 {message, verificationRequired:true}` with NO session and NO user payload. Resubmission of the same (case-insensitive) email UPDATES the existing pending row (name/hash/token rotated), never duplicates. SMTP_HOST absent logs an explicit ops warning (email util is console-only today).
+- **`POST /auth/verify-email` bootstrap activation:** on token match, if user is `role=admin && !isActive`: re-checks NO other ACTIVE admin exists (late/racing second link → 403 "Admin account already exists"), then sets `emailVerified=true, isActive=true`, clears token fields, mints a normal 7-day session and returns `{ message, user: serializeUser(...), token }`. Non-admin verifications keep legacy behavior exactly (message-only, no session).
+- **Frontend shared form** `artifacts/crm/src/components/admin-setup-form.tsx`: extracted from the old admin-setup page (logo header, password strength meter, show/hide, validation) + new success state rendering a "Verify your email" panel after `verificationRequired`.
+- **`login.tsx` rewritten as combined landing page:** LEFT login card (Google OAuth + forgot-password untouched), RIGHT `<AdminSetupForm />` rendered ONLY when `setup-status.bootstrapAvailable === true`; removed the old auto-redirect to `/admin-setup`; status fetch attaches Bearer when present so an authenticated Sales session can reveal the card on populated installs; fetch failure defaults to hiding the card.
+- **`admin-setup.tsx` standalone page** now self-guards via `bootstrapAvailable` and renders either the shared form or a "First-admin setup is not available" notice linking to `/login` (strangers on populated installs no longer see a dead form).
+- **NEW `/verify-email` page + route** (`verify-email.tsx`, registered in App.tsx next to `/admin-setup`): reads `?token=`, POSTs `/api/auth/verify-email`; admin-activation responses store `crm_token`/role/unit + seed the `getMe` cache and show "Continue to CRM"; plain verifications show success → Login. Ref-guard prevents double-submitting the single-use token on remount.
+- **E2E verified (real Express app + in-memory fake db via module-loader redirect): 38/38 assertions** — status visibility matrix (anon/sales/post-active), anon submit 401, allowlist mismatch 403, two-phase row state + zero sessions minted at submit, unverified admin login blocked 403, resubmit rotates token on SAME row, env-unset skips allowlist, bogus/rotated tokens 400, correct token → activated+session+`me()` 200, card hidden for everyone post-activation, further setups 403, late second-admin verification 403 (row stays inactive), legacy non-admin verify unchanged (no session), setup rate limit trips 429 by attempt 11, pre-existing Sales user byte-untouched.
+- **Fake-db fidelity fixes during verification** (harness-only): StringChunk.value arrays broke count projections (made total-user count read 0 → virgin-install branch fired spuriously) and `or()` was treated as AND. Harness deleted after use.
+- **Build verified:** API server typecheck = 32 errors (exact pre-existing baseline, 0 in app.ts/auth.ts); CRM typecheck = 0.
+
+### Key Decisions
+- Two-phase (inactive-until-verified) chosen per explicit user decision over immediate activation; login flow itself untouched — the inactive gate is the EXISTING isActive check.
+- `adminExists`/setup guard count ACTIVE admins only: a pending row must be recoverable (resubmission refreshes it) or a lost email bricks bootstrap; the verify-email side still enforces single-active-admin so racing links cannot mint two Admins.
+- Email normalization to lowercase confined to the setup flow (lookup/insert/resend); general login semantics untouched.
+- The setup card lives on `/login` (single landing surface); `/admin-setup` kept working for backward compat/bookmarks but self-guards identically.
+- Deployment prerequisites called out: set `BOOTSTRAP_ADMIN_EMAIL` in production env, configure real SMTP (current email util only logs), and `FRONTEND_URL` must point at the CRM origin so emailed links resolve.
+
+### Relevant Files
+- `artifacts/api-server/src/routes/auth.ts`: setup-status (`adminExists`=active admins, `bootstrapAvailable`), two-phase setup handler (allowlist + normalize + inactive insert/update + email), verify-email bootstrap activation (+session)
+- `artifacts/crm/src/components/admin-setup-form.tsx`: NEW shared first-admin form with verification-sent state
+- `artifacts/crm/src/pages/login.tsx`: LEFT login / RIGHT conditional setup card, redirect removed
+- `artifacts/crm/src/pages/admin-setup.tsx`: thin wrapper, bootstrapAvailable-guarded
+- `artifacts/crm/src/pages/verify-email.tsx` + `App.tsx` route: NEW verification landing consuming emailed tokens
+- `artifacts/api-server/src/lib/email.ts`: unchanged console-only sender (`sendVerificationEmail` → `/verify-email?token=`)
+
+---
+
+
 ## First-Admin Setup 401 Fix â€” Express Mount-Prefix Whitelist Mismatch + Conditional Bootstrap Auth
 
 ### Goal

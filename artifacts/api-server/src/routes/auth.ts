@@ -229,14 +229,34 @@ router.post("/auth/login", async (req, res) => {
 });
 
 // ─── Admin Setup (first-time) ──────────────────────────────
-router.get("/auth/setup-status", async (_req, res) => {
+router.get("/auth/setup-status", async (req, res) => {
   try {
     const [result] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(usersTable)
-      .where(eq(usersTable.role, "admin"));
+      .where(and(eq(usersTable.role, "admin"), eq(usersTable.isActive, true)));
 
-    return res.json({ adminExists: (result?.count ?? 0) > 0 });
+    // "Admin exists" means a USABLE admin: a pending INACTIVE+UNVERIFIED row
+    // left by an earlier bootstrap attempt does NOT count — otherwise a lost
+    // verification email would lock first-admin setup forever.
+    const adminExists = (result?.count ?? 0) > 0;
+
+    // The First-Admin Setup card may be shown ONLY while no Admin exists AND
+    // the secure bootstrap conditions are satisfiable: either a virgin install
+    // (zero users at all) or the caller holds a valid ACTIVE CRM session
+    // (any role). Anonymous visitors on a populated install never see it.
+    let bootstrapAvailable = !adminExists;
+    if (bootstrapAvailable) {
+      const [userCount] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(usersTable);
+      if ((userCount?.count ?? 0) > 0) {
+        const caller = await getUserFromRequest(req);
+        bootstrapAvailable = !!caller && caller.isActive;
+      }
+    }
+
+    return res.json({ adminExists, bootstrapAvailable });
   } catch (err) {
     logger.error({ err }, "Setup status check error");
     return res.status(500).json({ error: "Internal Server Error" });
@@ -252,11 +272,13 @@ router.post("/auth/admin/setup", async (req, res) => {
   }
 
   try {
-    // Check if admin already exists
+    // Check if an ACTIVE admin already exists. A pending (inactive, unverified)
+    // first-admin row from an earlier attempt does NOT block: resubmission
+    // refreshes it instead of dead-ending the bootstrap.
     const [result] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(usersTable)
-      .where(eq(usersTable.role, "admin"));
+      .where(and(eq(usersTable.role, "admin"), eq(usersTable.isActive, true)));
 
     if ((result?.count ?? 0) > 0) {
       return res.status(403).json({ error: "Admin account already exists. Use the login page." });
@@ -290,7 +312,18 @@ router.post("/auth/admin/setup", async (req, res) => {
       return res.status(400).json({ error: "All fields are required" });
     }
 
-    if (!validateEmail(email)) {
+    // Emails are matched case-insensitively throughout the bootstrap flow
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Bootstrap Admin email allowlist: when BOOTSTRAP_ADMIN_EMAIL is
+    // configured, ONLY that exact address may claim the first Admin account.
+    const allowedBootstrapEmail = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
+    if (allowedBootstrapEmail && normalizedEmail !== allowedBootstrapEmail) {
+      logger.warn({ ip: getClientIp(req) }, "First-admin setup rejected: email not on the bootstrap allowlist");
+      return res.status(403).json({ error: "This email is not authorized for first-admin setup" });
+    }
+
+    if (!validateEmail(normalizedEmail)) {
       return res.status(400).json({ error: "Invalid email address" });
     }
 
@@ -304,62 +337,82 @@ router.post("/auth/admin/setup", async (req, res) => {
     }
 
     // Check email uniqueness
-    const [existingEmail] = await db
-      .select({ id: usersTable.id })
+    const [existingUser] = await db
+      .select()
       .from(usersTable)
-      .where(eq(usersTable.email, email))
+      .where(eq(usersTable.email, normalizedEmail))
       .limit(1);
 
-    if (existingEmail) {
+    if (existingUser && existingUser.isActive) {
       return res.status(409).json({ error: "An account with this email already exists" });
     }
 
+    // Two-phase bootstrap: the account is stored INACTIVE + UNVERIFIED and a
+    // verification link is emailed. The account (and its session) only becomes
+    // usable after the emailed link is opened (POST /auth/verify-email).
+    const verificationToken = generateSecureToken();
+    const verificationExpiresAt = new Date(Date.now() + VERIFICATION_TOKEN_EXPIRY_MS);
     const passwordHash = await hashPassword(password);
 
-    // Create the admin user — username is "admin" for backward compat
     let admin: typeof usersTable.$inferSelect;
-    try {
+    if (existingUser && existingUser.role === "admin" && !existingUser.emailVerified) {
+      // Pending (unverified) first-admin attempt already exists for this email:
+      // refresh it and re-send the verification link — never duplicate rows.
       [admin] = await db
-        .insert(usersTable)
-        .values({
+        .update(usersTable)
+        .set({
           name,
-          username: "admin",
-          email,
           passwordHash,
-          role: "admin",
-          unit: "All",
-          canViewAllReports: true,
-          canAssignLeads: true,
-          emailVerified: true, // Setup counts as verification
-          isActive: true,
+          verificationToken,
+          verificationExpiresAt,
         })
+        .where(eq(usersTable.id, existingUser.id))
         .returning();
-    } catch (insertErr: any) {
-      // Unique violation (Postgres 23505): username "admin" already taken by a
-      // legacy user, or a concurrent setup won the race — never a 500.
-      if (insertErr?.code === "23505") {
-        return res.status(409).json({ error: "Unable to create Admin account: a conflicting account already exists" });
+    } else if (existingUser) {
+      return res.status(409).json({ error: "An account with this email already exists" });
+    } else {
+      try {
+        [admin] = await db
+          .insert(usersTable)
+          .values({
+            name,
+            username: "admin",
+            email: normalizedEmail,
+            passwordHash,
+            role: "admin",
+            unit: "All",
+            canViewAllReports: true,
+            canAssignLeads: true,
+            emailVerified: false, // Verified via the emailed link before activation
+            isActive: false, // Activated only after email verification succeeds
+            verificationToken,
+            verificationExpiresAt,
+          })
+          .returning();
+      } catch (insertErr: any) {
+        // Unique violation (Postgres 23505): username "admin" already taken by a
+        // legacy user, or a concurrent setup won the race — never a 500.
+        if (insertErr?.code === "23505") {
+          return res.status(409).json({ error: "Unable to create Admin account: a conflicting account already exists" });
+        }
+        throw insertErr;
       }
-      throw insertErr;
     }
 
-    // Create session
-    const token = generateToken();
-    const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
+    await sendVerificationEmail(email, verificationToken);
 
-    await db.insert(sessionsTable).values({
-      token,
-      userId: admin!.id,
-      expiresAt,
-      ipAddress: getClientIp(req),
-      userAgent: getUserAgent(req),
-    });
+    if (!process.env.SMTP_HOST) {
+      logger.warn(
+        { userId: admin!.id },
+        "SMTP_HOST is not configured — the first-admin verification email cannot be delivered. Configure SMTP_* variables so the bootstrap link reaches the designated mailbox.",
+      );
+    }
 
-    logger.info({ userId: admin!.id, email }, "Admin account created via first-time setup");
+    logger.info({ userId: admin!.id, email: normalizedEmail }, "First-admin setup submitted — awaiting email verification");
 
     return res.status(201).json({
-      user: serializeUser(admin!),
-      token,
+      message: "Admin account created. Open the verification link sent to your email to activate it.",
+      verificationRequired: true,
     });
   } catch (err) {
     logger.error({ err }, "Admin setup error");
@@ -502,6 +555,53 @@ router.post("/auth/verify-email", async (req, res) => {
 
     if (!user) {
       return res.status(400).json({ error: "Invalid or expired verification token" });
+    }
+
+    // Bootstrap activation: an INACTIVE admin account created by the
+    // first-admin setup becomes usable ONLY here, after mailbox ownership is
+    // proven. If an active Admin already exists (another pending attempt won,
+    // or one was created meanwhile), this link must NOT mint a second Admin.
+    if (user.role === "admin" && !user.isActive) {
+      const [activeAdmin] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(usersTable)
+        .where(and(eq(usersTable.role, "admin"), eq(usersTable.isActive, true)));
+
+      if ((activeAdmin?.count ?? 0) > 0) {
+        logger.warn({ userId: user.id }, "Late first-admin verification rejected: an active Admin already exists");
+        return res.status(403).json({ error: "Admin account already exists. Use the login page." });
+      }
+
+      await db
+        .update(usersTable)
+        .set({
+          emailVerified: true,
+          isActive: true,
+          verificationToken: null,
+          verificationExpiresAt: null,
+        })
+        .where(eq(usersTable.id, user.id));
+
+      // Issue the bootstrap session now that the account is verified+active
+      const sessionToken = generateToken();
+      const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
+
+      await db.insert(sessionsTable).values({
+        token: sessionToken,
+        userId: user.id,
+        expiresAt,
+        ipAddress: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
+
+      logger.info({ userId: user.id }, "First-admin account activated via email verification");
+
+      const activated = { ...user, emailVerified: true, isActive: true };
+      return res.json({
+        message: "Email verified successfully",
+        user: serializeUser(activated),
+        token: sessionToken,
+      });
     }
 
     await db
