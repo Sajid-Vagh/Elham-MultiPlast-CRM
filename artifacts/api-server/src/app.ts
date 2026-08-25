@@ -24,10 +24,11 @@ app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile apps, curl, server-to-server)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
-      return callback(null, true);
-    }
-    return callback(null, true); // In dev, allow all. In prod, restrict.
+    if (allowedOrigins.includes("*")) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // Reject unknown origins in production
+    logger.warn({ origin, allowedOrigins }, "CORS origin rejected");
+    return callback(new Error("Not allowed by CORS"));
   },
   credentials: true,
 }));

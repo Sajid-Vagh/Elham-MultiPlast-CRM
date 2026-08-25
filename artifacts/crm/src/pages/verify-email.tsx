@@ -50,6 +50,12 @@ export default function VerifyEmail() {
           return;
         }
 
+        if (data.mfaSetupRequired && data.mfaSetupToken) {
+          // First-admin email verified — redirect to MFA setup (mandatory)
+          setLocation(`/setup-mfa?token=${data.mfaSetupToken}`);
+          return;
+        }
+
         if (data.token && data.user) {
           // Bootstrap admin activation — establish the session immediately
           localStorage.setItem("crm_token", data.token);

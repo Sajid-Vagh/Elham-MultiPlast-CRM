@@ -1,12 +1,12 @@
+import nodemailer from "nodemailer";
 import { logger } from "./logger";
 
 /**
- * Email utility — currently logs emails to console.
- * Replace with a real SMTP/SendGrid/Resend integration when ready.
+ * Email utility — uses real SMTP when SMTP_HOST is configured,
+ * falls back to console logging for local development.
  *
- * To activate real email sending, set these env vars:
- *   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
- * or use a transactional email service (SendGrid, Resend, Postmark).
+ * Required env vars for real email sending:
+ *   SMTP_HOST, SMTP_PORT (default 587), SMTP_USER, SMTP_PASS, SMTP_FROM
  */
 
 interface SendEmailOptions {
@@ -16,29 +16,56 @@ interface SendEmailOptions {
   text?: string;
 }
 
+// Lazy-initialized transporter — created once, reused across sends
+let _transporter: nodemailer.Transporter | null = null;
+
+function getTransporter(): nodemailer.Transporter | null {
+  if (_transporter) return _transporter;
+
+  const host = process.env.SMTP_HOST;
+  if (!host) return null;
+
+  const port = Number(process.env.SMTP_PORT || 587);
+  const secure = port === 465; // true for 465 (TLS), false for 587 (STARTTLS)
+
+  _transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: process.env.SMTP_USER
+      ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+      : undefined,
+    connectionTimeout: 10_000,
+    greetingTimeout: 5_000,
+  });
+
+  logger.info({ host, port, secure, auth: !!process.env.SMTP_USER }, "SMTP transporter initialized");
+  return _transporter;
+}
+
 export async function sendEmail(options: SendEmailOptions): Promise<boolean> {
   const { to, subject, html, text } = options;
+  const from = process.env.SMTP_FROM || "noreply@elham.com";
 
-  // Log for development — in production, integrate with your email provider
-  logger.info({ to, subject }, "Email sent (logged only — configure SMTP for real delivery)");
+  const transporter = getTransporter();
 
-  // In development, log the email content for testing
-  if (process.env.NODE_ENV !== "production") {
-    logger.debug({ to, subject, html, text }, "Email content");
+  if (!transporter) {
+    // No SMTP configured — log only (development mode)
+    logger.warn({ to, subject }, "Email logged only — SMTP_HOST not configured. Set SMTP_* env vars for real delivery.");
+    if (process.env.NODE_ENV !== "production") {
+      logger.debug({ to, subject, html, text }, "Email content (dev mode only)");
+    }
+    return true;
   }
 
-  // TODO: Replace with real email sending when SMTP is configured
-  // Example with nodemailer:
-  //
-  // import nodemailer from "nodemailer";
-  // const transporter = nodemailer.createTransport({
-  //   host: process.env.SMTP_HOST,
-  //   port: Number(process.env.SMTP_PORT || 587),
-  //   auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  // });
-  // await transporter.sendMail({ from: process.env.SMTP_FROM, to, subject, html, text });
-
-  return true;
+  try {
+    const info = await transporter.sendMail({ from, to, subject, html, text });
+    logger.info({ to, subject, messageId: info.messageId }, "Email sent successfully");
+    return true;
+  } catch (err) {
+    logger.error({ err, to, subject }, "Failed to send email");
+    return false;
+  }
 }
 
 /**

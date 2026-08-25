@@ -611,25 +611,18 @@ router.post("/auth/verify-email", async (req, res) => {
         })
         .where(eq(usersTable.id, user.id));
 
-      // Issue the bootstrap session now that the account is verified+active
-      const sessionToken = generateToken();
-      const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
+      // MFA setup is mandatory — generate a setup token so the admin must
+      // complete TOTP enrollment before receiving a session. This prevents
+      // bypassing MFA by clicking the email link instead of the OTP path.
+      const mfaSetupToken = generateToken();
+      await db.update(usersTable).set({ mfaSetupToken }).where(eq(usersTable.id, user.id));
 
-      await db.insert(sessionsTable).values({
-        token: sessionToken,
-        userId: user.id,
-        expiresAt,
-        ipAddress: getClientIp(req),
-        userAgent: getUserAgent(req),
-      });
+      logger.info({ userId: user.id }, "First-admin email verified — MFA setup required");
 
-      logger.info({ userId: user.id }, "First-admin account activated via email verification");
-
-      const activated = { ...user, emailVerified: true, isActive: true };
       return res.json({
-        message: "Email verified successfully",
-        user: serializeUser(activated),
-        token: sessionToken,
+        message: "Email verified successfully. Please set up two-factor authentication.",
+        mfaSetupRequired: true,
+        mfaSetupToken,
       });
     }
 
