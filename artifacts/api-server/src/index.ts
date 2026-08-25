@@ -5,6 +5,7 @@ import { closeDb, waitForDb, db, usersTable, sessionsTable } from "@workspace/db
 import { eq, sql } from "drizzle-orm";
 import fs from "node:fs";
 import path from "node:path";
+import { initSocket } from "./lib/socket";
 
 const rawPort = process.env["PORT"];
 
@@ -120,13 +121,19 @@ async function main() {
     }
   })();
 
-  const server = app.listen(port, (err) => {
+  // Create HTTP server first, then attach Socket.IO before listening
+  const httpServer = app.listen(port, (err) => {
     if (err) {
       logger.error({ err }, "Error listening on port");
       process.exit(1);
     }
     logger.info({ port }, "Server listening");
   });
+
+  // Attach Socket.IO to the same HTTP server (WebSocket upgrade shares port)
+  initSocket(httpServer);
+
+  const server = httpServer;
 
   // Daily orphan voice note cleanup — runs every 24 hours
   const VOICE_NOTE_CLEANUP_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours

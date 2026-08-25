@@ -6,6 +6,7 @@ import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import { normalizeProfilePhotoUrl } from "../lib/storage";
+import { emitFollowupCreated, emitFollowupUpdated, emitActivityCreated } from "../lib/socket";
 
 const router: IRouter = Router();
 
@@ -479,6 +480,13 @@ router.post("/activities", async (req, res) => {
       }
     }
 
+    // Emit real-time socket event after successful DB write
+    if (activity!.type === "FollowUp") {
+      emitFollowupCreated(activity!.id, activity!.contactId, activity!.dealId, activity!.assignedTo);
+    } else {
+      emitActivityCreated(activity!.id, activity!.contactId, activity!.dealId);
+    }
+
     const enriched = await enrichActivity(activity!);
     res.status(201).json(enriched);
   } catch (err) {
@@ -606,6 +614,9 @@ router.patch("/activities/:id", async (req, res) => {
     } catch (sideEffectErr) {
       req.log.error({ err: sideEffectErr }, "Activity update side-effect error");
     }
+
+    // Emit real-time socket event after successful DB write
+    emitFollowupUpdated(activity.id, activity.contactId, activity.dealId);
 
     res.json(await enrichActivity(activity));
   } catch (err) {

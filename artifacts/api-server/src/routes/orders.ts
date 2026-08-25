@@ -10,6 +10,7 @@ import { promoteToExistingCustomer } from "./existing-customers";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import { parseStartDate, parseEndDate, startOfTodayInBusinessTz, shiftDaysInBusinessTz, datePartsInBusinessTz, zonedMonthStart } from "../lib/date-range";
 import { cancelOrder } from "../lib/order-cancellation-service";
+import { emitOrderCreated, emitOrderUpdated } from "../lib/socket";
 
 const PRODUCTION_UNITS = ["Himatnagar", "Surat", "Rajkot"] as const;
 
@@ -608,6 +609,9 @@ router.post("/orders", async (req, res) => {
     // Audit log
     await logAudit("order", order.id, "created", null, order, user.id, undefined, user.role);
 
+    // Emit real-time socket event after successful DB write
+    emitOrderCreated(order.id);
+
     res.status(201).json(await enrichOrder(order));
   } catch (err) {
     console.error("Create order error:", err);
@@ -730,6 +734,9 @@ router.patch("/orders/:id", async (req, res) => {
 
     // Audit
     await logAudit("order", id, "updated", existing, updated, user.id, undefined, user.role);
+
+    // Emit real-time socket event after successful DB write
+    emitOrderUpdated(id);
 
     res.json(await enrichOrder(updated));
   } catch (err) {

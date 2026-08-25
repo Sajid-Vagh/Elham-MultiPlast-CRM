@@ -81,6 +81,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
+    "socket.io-client": "^4.8.3",
     "xlsx": "^0.18.5"
   }
 }

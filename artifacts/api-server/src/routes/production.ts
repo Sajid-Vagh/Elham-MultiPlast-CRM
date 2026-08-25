@@ -31,6 +31,10 @@ import {
   repairStuckOrders,
 } from "../lib/production-service";
 import { transferOrder, getTransferHistory } from "../lib/production-transfer-service";
+import {
+  emitProductionCreated, emitProductionUpdated,
+  emitProductionStatusChanged, emitProductionChat,
+} from "../lib/socket";
 
 const router: IRouter = Router();
 
@@ -244,6 +248,8 @@ router.post("/production/orders/:id/start", async (req, res) => {
     const { machine, operatorName, notes } = req.body;
     const result = await startProduction(user, id, { machine, operatorName, notes });
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
+    emitProductionStatusChanged(id, "In Production");
+    emitProductionUpdated(id);
     res.json(result.order);
   } catch (err) {
     req.log.error({ err }, "Start production error:");
@@ -264,6 +270,8 @@ router.post("/production/orders/:id/packing", async (req, res) => {
     }
     const result = await completePacking(user, id, { packingType, notes });
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
+    emitProductionStatusChanged(id, "Packing");
+    emitProductionUpdated(id);
     res.json(result.order);
   } catch (err) {
     req.log.error({ err }, "Packing error:");
@@ -281,6 +289,8 @@ router.post("/production/orders/:id/ready-for-dispatch", async (req, res) => {
     const { notes } = req.body;
     const result = await markReadyForDispatch(user, id, notes);
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
+    emitProductionStatusChanged(id, "Ready For Dispatch");
+    emitProductionUpdated(id);
     res.json(result.order);
   } catch (err) {
     req.log.error({ err }, "Ready for dispatch error:");
@@ -320,6 +330,8 @@ router.post("/production/orders/:id/transport", async (req, res) => {
     }
     const result = await bookTransport(user, id, { transportCompany: transportCompany.trim(), bookingNumber: bookingNumber.trim() });
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
+    emitProductionStatusChanged(id, "In Transport");
+    emitProductionUpdated(id);
     res.json(result.order);
   } catch (err) {
     req.log.error({ err }, "Book transport error:");
@@ -336,6 +348,8 @@ router.post("/production/orders/:id/complete", async (req, res) => {
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     const result = await completeOrder(user, id);
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
+    emitProductionStatusChanged(id, "Completed");
+    emitProductionUpdated(id);
     res.json(result.order);
   } catch (err) {
     req.log.error({ err }, "Complete order error:");
@@ -372,6 +386,8 @@ router.post("/production/orders/:id/cancel", async (req, res) => {
     if (!reason || !reason.trim()) { res.status(400).json({ error: "Cancellation reason is required" }); return; }
     const result = await cancelOrder(user, id, reason);
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
+    emitProductionStatusChanged(id, "Cancelled");
+    emitProductionUpdated(id);
     res.json(result.order);
   } catch (err) {
     req.log.error({ err }, "Cancel production order error:");
@@ -390,6 +406,7 @@ router.post("/production/orders/:id/acknowledge-cancellation", async (req, res) 
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     const result = await acknowledgeCancellation(user, id);
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
+    emitProductionUpdated(id);
     res.json(result.order);
   } catch (err) {
     req.log.error({ err }, "Acknowledge cancellation error:");
@@ -503,6 +520,7 @@ router.post("/production/orders/:id/messages", async (req, res) => {
     if (!message || !message.trim()) { res.status(400).json({ error: "Message is required" }); return; }
     const result = await sendMessage(user, id, message);
     if (result.error) { res.status(result.status).json({ error: result.error }); return; }
+    emitProductionChat(id, user.id, user.name ?? "Unknown", user.role);
     res.status(201).json(result.message);
   } catch (err) {
     req.log.error({ err }, "Send production message error:");

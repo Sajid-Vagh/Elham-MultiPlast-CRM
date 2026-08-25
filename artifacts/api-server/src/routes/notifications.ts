@@ -3,6 +3,7 @@ import { db, notificationsTable, usersTable, contactsTable } from "@workspace/db
 import { eq, and, isNull, desc, sql } from "drizzle-orm";
 import { getUserFromRequest, getUserIdFromToken } from "./auth";
 import { notificationEmitter, NOTIFICATION_EVENT } from "../lib/notification-emitter";
+import { emitNotificationNew } from "../lib/socket";
 
 const router: IRouter = Router();
 
@@ -451,6 +452,8 @@ export async function createNotification(params: {
   const [n] = await db.insert(notificationsTable).values({ ...params, createdAt: new Date() }).returning();
   if (n) {
     await emitNotificationEvent(n);
+    // Also emit via Socket.IO for real-time React Query invalidation
+    emitNotificationNew(n.id, n.userId);
   }
   return n;
 }

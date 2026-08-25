@@ -12,6 +12,7 @@ import { normalizeProfilePhotoUrl } from "../lib/storage";
 import { contactMobileListMatches } from "../lib/mobile-list";
 import { normalizeStateCity } from "../utils/geoMapping";
 import { generateUnknownName } from "../lib/auto-name";
+import { emitEnquiryCreated, emitEnquiryUpdated, emitEnquiryAssigned, emitEnquiryDeleted } from "../lib/socket";
 
 const router: IRouter = Router();
 
@@ -367,6 +368,11 @@ router.post("/contacts", async (req, res) => {
           relatedType: "contact",
         });
       }
+    }
+    // Emit real-time socket events after successful DB write
+    emitEnquiryCreated(contact!.id, contact!.salesOwnerId);
+    if (contact && values.salesOwnerId && values.salesOwnerId !== user.id) {
+      emitEnquiryAssigned(contact.id, values.salesOwnerId);
     }
     res.status(201).json(await withOwner(contact!, user));
   } catch (err: any) {
@@ -1082,6 +1088,12 @@ router.patch("/contacts/:id", async (req, res) => {
           callStatus: "Completed",
         });
       }
+    }
+
+    // Emit real-time socket events after successful DB write
+    emitEnquiryUpdated(contact.id, contact.salesOwnerId);
+    if (newOwnerId !== undefined && newOwnerId !== oldContact.salesOwnerId) {
+      emitEnquiryAssigned(contact.id, newOwnerId);
     }
 
     res.json(await withOwner(contact, user));

@@ -10,6 +10,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getHomeRoute, readWorkspace } from "@/lib/use-workspace";
 import { AdminSetupForm } from "@/components/admin-setup-form";
+import { reconnectSocket } from "@/lib/socket";
 
 export default function Login() {
   const [, setLocation] = useLocation();
@@ -90,6 +91,7 @@ export default function Login() {
       localStorage.setItem("crm_user_role", data.user.role);
       localStorage.setItem("crm_user_unit", data.user.unit || "All");
       queryClient.setQueryData(getGetMeQueryKey(), data.user);
+      reconnectSocket();
       const ws = readWorkspace(data.user.role);
       setLocation(getHomeRoute(ws));
     } catch {
@@ -111,6 +113,7 @@ export default function Login() {
         localStorage.setItem("crm_user_role", data.user.role);
         localStorage.setItem("crm_user_unit", data.user.unit || "All");
         queryClient.setQueryData(getGetMeQueryKey(), data.user);
+        reconnectSocket();
         const ws = readWorkspace(data.user.role);
         setLocation(getHomeRoute(ws));
       },

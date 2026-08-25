@@ -20,6 +20,7 @@ import { notifyProductionUsers } from "../lib/notification-service";
 import { logActivity, logDealStageActivity, formatTimestamp } from "../lib/activity-logger";
 import { canAccessSalesResource } from "../lib/permission-service";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
+import { emitDealCreated, emitDealUpdated } from "../lib/socket";
 
 const router: IRouter = Router();
 
@@ -452,6 +453,9 @@ router.post("/deals", async (req, res) => {
         relatedType: "deal",
       });
     }
+
+    // Emit real-time socket event after successful DB write
+    emitDealCreated(deal!.id, deal!.contactId, deal!.salesOwnerId || contact?.salesOwnerId || null);
 
     res.status(201).json(await enrichDeal(deal!));
   } catch (err) {
@@ -891,6 +895,8 @@ router.patch("/deals/:id", async (req, res) => {
     }
 
     console.log("[DEAL-PATCH-DEBUG] === PATCH /deals/:id SUCCESS === deal.id:", deal.id);
+    // Emit real-time socket event after successful DB write
+    emitDealUpdated(deal.id, deal.contactId, deal.salesOwnerId);
     res.json(await enrichDeal(deal));
   } catch (err) {
     console.error("[DEAL-PATCH-DEBUG] === PATCH /deals/:id CATCH ERROR ===", err);

@@ -48,6 +48,7 @@ import WonDeals from "@/pages/won-deals";
 import { readWorkspace, getHomeRoute } from "@/lib/use-workspace";
 import { GlobalFilterProvider } from "@/lib/global-filters";
 import { ProductionFilterProvider } from "@/lib/production-filters";
+import { SocketProvider } from "@/lib/socket-provider";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -307,16 +308,18 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <GlobalFilterProvider>
-        <ProductionFilterProvider>
-        <TooltipProvider>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-            <Router />
-          </WouterRouter>
-          <Toaster />
-        </TooltipProvider>
-        </ProductionFilterProvider>
-      </GlobalFilterProvider>
+      <SocketProvider>
+        <GlobalFilterProvider>
+          <ProductionFilterProvider>
+          <TooltipProvider>
+            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+              <Router />
+            </WouterRouter>
+            <Toaster />
+          </TooltipProvider>
+          </ProductionFilterProvider>
+        </GlobalFilterProvider>
+      </SocketProvider>
     </QueryClientProvider>
   );
 }

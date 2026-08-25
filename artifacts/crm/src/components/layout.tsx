@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 import { UserAvatar } from "@/components/user-avatar";
 import { useWorkspace, getWorkspaceLabel, getHomeRoute, type Workspace } from "@/lib/use-workspace";
+import { disconnectSocket } from "@/lib/socket";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { data: user, isLoading } = useGetMe();
@@ -667,6 +668,7 @@ const moduleBadges = useModuleBadgeCounts();
                     localStorage.removeItem("crm_user_role");
                     localStorage.removeItem("crm_user_unit");
                     sessionStorage.removeItem("crm_notif_since");
+                    disconnectSocket();
                     setShowLogoutConfirm(false);
                     setLocation("/login");
                   },

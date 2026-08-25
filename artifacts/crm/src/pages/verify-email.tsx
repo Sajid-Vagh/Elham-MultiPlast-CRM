@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { MailCheck, CircleCheck, CircleX } from "lucide-react";
 import { getHomeRoute, readWorkspace } from "@/lib/use-workspace";
+import { reconnectSocket } from "@/lib/socket";
 
 type VerifyState = "working" | "success" | "activated" | "error";
 
@@ -55,6 +56,7 @@ export default function VerifyEmail() {
           localStorage.setItem("crm_user_role", data.user.role);
           localStorage.setItem("crm_user_unit", data.user.unit || "All");
           queryClient.setQueryData(getGetMeQueryKey(), data.user);
+          reconnectSocket();
           setState("activated");
         } else {
           setState("success");

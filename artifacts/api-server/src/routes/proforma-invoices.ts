@@ -19,6 +19,7 @@ import { getAccessibleUnits } from "../lib/unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 import { findLinkedProductionOrder, canModifyPiForProductionStatus, PI_LOCKED_ERROR, syncOrderItemsFromPi } from "../lib/production-service";
 import { normalizeStateCity } from "../utils/geoMapping";
+import { emitProformaUpdated, emitDealUpdated } from "../lib/socket";
 
 const router: IRouter = Router();
 
@@ -1175,6 +1176,9 @@ router.post("/proforma-invoices", async (req, res) => {
     }
 
     const response = await enrichInvoice(invoice!);
+    // Emit real-time socket event after successful DB write
+    emitProformaUpdated(invoice!.id, invoice!.dealId, invoice!.contactId);
+    if (invoice!.dealId) emitDealUpdated(invoice!.dealId, invoice!.contactId!, invoice!.salesOwnerId ?? null);
     res.status(201).json({ ...response, dealStageUpdated });
   } catch (err) {
     req.log.error({ err }, "Create proforma invoice error");
@@ -1972,6 +1976,9 @@ async function updateInvoiceHandler(req: any, res: any) {
     } catch (syncErr) {
       req.log.warn({ err: syncErr }, "Production auto-sync failed for PI update");
     }
+
+    // Emit real-time socket event after successful DB write
+    emitProformaUpdated(invoice!.id, invoice!.dealId, invoice!.contactId);
 
     res.json(await enrichInvoice(invoice!));
   } catch (err) {
