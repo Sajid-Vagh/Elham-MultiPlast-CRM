@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Pencil, Trash2, SlidersHorizontal, Users, Camera, X as XIcon, CheckCircle2, ArrowLeft, Settings2, Truck, AlertTriangle, BarChart3, Shield, Building2, Package } from "lucide-react";
+import { Plus, Pencil, Trash2, SlidersHorizontal, Users, Camera, X as XIcon, CheckCircle2, ArrowLeft, Settings2, Truck, AlertTriangle, BarChart3, Shield, Building2, Package, Key } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -725,6 +725,22 @@ export default function Settings() {
         me={me as any}
         updateUser={updateUser}
       />
+
+      {/* Security */}
+      <Card className="border-primary/20 bg-primary/[0.02]">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Key className="h-4 w-4 text-primary" />
+            Security
+          </CardTitle>
+          <CardDescription>Manage your password, two-factor authentication, active sessions, and security activity log.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="outline" onClick={() => window.location.href = "/security"}>
+            <Key className="h-3.5 w-3.5 mr-1" /> Open Security Settings
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Preferences */}
       <Card>

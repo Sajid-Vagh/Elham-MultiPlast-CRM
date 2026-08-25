@@ -26,6 +26,16 @@ export const usersTable = pgTable("users", {
   lockedUntil: timestamp("locked_until", { withTimezone: true }),
   googleId: text("google_id"),
   isActive: boolean("is_active").notNull().default(true),
+  // MFA / TOTP
+  mfaEnabled: boolean("mfa_enabled").notNull().default(false),
+  mfaSecretEncrypted: text("mfa_secret_encrypted"),
+  mfaVerifiedAt: timestamp("mfa_verified_at", { withTimezone: true }),
+  recoveryCodesHash: text("recovery_codes_hash"),
+  mfaSetupToken: text("mfa_setup_token"),
+  // Email OTP
+  otpHash: text("otp_hash"),
+  otpExpiresAt: timestamp("otp_expires_at", { withTimezone: true }),
+  otpAttempts: integer("otp_attempts").notNull().default(0),
 });
 
 export const insertUserSchema = createInsertSchema(usersTable).omit({ id: true, createdAt: true });

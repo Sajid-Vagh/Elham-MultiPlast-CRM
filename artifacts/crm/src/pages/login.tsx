@@ -111,7 +111,13 @@ export default function Login() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     login.mutate({ data: { username: email, password } as any }, {
-      onSuccess: (data) => {
+      onSuccess: (data: any) => {
+        // MFA challenge: server returns mfaRequired + mfaToken instead of session
+        if (data.mfaRequired && data.mfaToken) {
+          setLocation(`/mfa-verify?token=${data.mfaToken}`);
+          return;
+        }
+
         localStorage.setItem("crm_token", data.token);
         localStorage.setItem("crm_user_role", data.user.role);
         localStorage.setItem("crm_user_unit", data.user.unit || "All");

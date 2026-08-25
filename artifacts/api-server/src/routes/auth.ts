@@ -10,6 +10,7 @@ import {
   sendPasswordResetEmail,
   sendVerificationEmail,
   sendInvitationEmail,
+  sendOtpEmail,
 } from "../lib/email";
 
 const router: IRouter = Router();
@@ -206,6 +207,20 @@ router.post("/auth/login", async (req, res) => {
     // Clear rate limit on success
     resetRateLimit(rateLimitKey);
 
+    // Check if MFA is enabled — if so, issue a temporary MFA challenge token
+    if (user.mfaEnabled && user.mfaSecretEncrypted) {
+      const mfaToken = generateToken();
+      await db.update(usersTable)
+        .set({ mfaSetupToken: mfaToken })
+        .where(eq(usersTable.id, user.id));
+
+      return res.json({
+        mfaRequired: true,
+        mfaToken,
+        message: "Please enter your authenticator code",
+      });
+    }
+
     // Create session
     const token = generateToken();
     const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
@@ -401,14 +416,28 @@ router.post("/auth/admin/setup", async (req, res) => {
 
     await sendVerificationEmail(email, verificationToken);
 
+    // Also send a 6-digit OTP for the first-admin flow (OTP-based verification)
+    const { generateOTP, hashOTP } = await import("../lib/mfa");
+    const otp = generateOTP();
+    const otpHashVal = await hashOTP(otp);
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    await db.update(usersTable).set({
+      otpHash: otpHashVal,
+      otpExpiresAt,
+      otpAttempts: 0,
+    }).where(eq(usersTable.id, admin!.id));
+
+    await sendOtpEmail(normalizedEmail, otp);
+
     if (!process.env.SMTP_HOST) {
       logger.warn(
         { userId: admin!.id },
-        "SMTP_HOST is not configured — the first-admin verification email cannot be delivered. Configure SMTP_* variables so the bootstrap link reaches the designated mailbox.",
+        "SMTP_HOST is not configured — the first-admin verification email/OTP cannot be delivered. Configure SMTP_* variables so the bootstrap link reaches the designated mailbox.",
       );
     }
 
-    logger.info({ userId: admin!.id, email: normalizedEmail }, "First-admin setup submitted — awaiting email verification");
+    logger.info({ userId: admin!.id, email: normalizedEmail }, "First-admin setup submitted — awaiting email OTP verification");
 
     return res.status(201).json({
       message: "Admin account created. Open the verification link sent to your email to activate it.",

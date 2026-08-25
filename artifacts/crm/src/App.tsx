@@ -10,6 +10,10 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import Login from "@/pages/login";
 import AdminSetup from "@/pages/admin-setup";
 import VerifyEmail from "@/pages/verify-email";
+import VerifyOtp from "@/pages/verify-otp";
+import SetupMfa from "@/pages/setup-mfa";
+import MfaVerify from "@/pages/mfa-verify";
+import Security from "@/pages/security";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
 import AcceptInvitation from "@/pages/accept-invitation";
@@ -89,6 +93,10 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/admin-setup" component={AdminSetup} />
       <Route path="/verify-email" component={VerifyEmail} />
+      <Route path="/verify-otp" component={VerifyOtp} />
+      <Route path="/setup-mfa" component={SetupMfa} />
+      <Route path="/mfa-verify" component={MfaVerify} />
+      <Route path="/security" component={Security} />
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/accept-invitation" component={AcceptInvitation} />

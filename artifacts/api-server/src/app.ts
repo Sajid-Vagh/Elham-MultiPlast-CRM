@@ -66,6 +66,11 @@ const PUBLIC_AUTH_ROUTES = new Set([
   "POST:/api/auth/google",
   "GET:/api/auth/google/callback",
   "POST:/api/auth/invitations/accept",
+  "POST:/api/auth/otp/send",
+  "POST:/api/auth/otp/verify",
+  "POST:/api/auth/mfa/setup",
+  "POST:/api/auth/mfa/verify-setup",
+  "POST:/api/auth/mfa/verify-login",
 ]);
 
 // Global auth middleware — protects all /api/* routes except public ones
