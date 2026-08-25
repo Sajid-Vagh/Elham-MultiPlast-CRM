@@ -88,7 +88,7 @@ export default function Dashboard() {
         newOrders: number; newOrderRevenue: number; repeatOrders: number; repeatOrderRevenue: number; totalOrderRevenue: number;
       }>;
     },
-    enabled: !!token,
+    enabled: !!token && !!me?.id,
     staleTime: 30_000,
   });
 
@@ -109,7 +109,7 @@ export default function Dashboard() {
         followUpRate: number; winRate: number;
       }[]>;
     },
-    enabled: !!token && isAdmin,
+    enabled: !!token && !!me?.id && isAdmin,
     staleTime: 30_000,
   });
 
@@ -129,7 +129,7 @@ export default function Dashboard() {
         monthlyTrends: { month: string; contacts: number; deals: number }[];
       }>;
     },
-    enabled: !!token,
+    enabled: !!token && !!me?.id,
     staleTime: 60_000,
   });
 
@@ -146,7 +146,7 @@ export default function Dashboard() {
       if (!res.ok) return [];
       return res.json() as Promise<any[]>;
     },
-    enabled: !!token,
+    enabled: !!token && !!me?.id,
     staleTime: 30_000,
   });
 
@@ -163,7 +163,7 @@ export default function Dashboard() {
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: !!token,
+    enabled: !!token && !!me?.id,
     staleTime: 30_000,
   });
 

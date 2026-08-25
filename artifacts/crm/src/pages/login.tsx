@@ -90,6 +90,9 @@ export default function Login() {
       localStorage.setItem("crm_token", data.token);
       localStorage.setItem("crm_user_role", data.user.role);
       localStorage.setItem("crm_user_unit", data.user.unit || "All");
+      // Wipe ALL cached data from any previous session so the new user
+      // never sees stale data (dashboard KPIs, contacts, deals, etc.)
+      queryClient.clear();
       queryClient.setQueryData(getGetMeQueryKey(), data.user);
       reconnectSocket();
       const ws = readWorkspace(data.user.role);
@@ -112,6 +115,9 @@ export default function Login() {
         localStorage.setItem("crm_token", data.token);
         localStorage.setItem("crm_user_role", data.user.role);
         localStorage.setItem("crm_user_unit", data.user.unit || "All");
+        // Wipe ALL cached data from any previous session so the new user
+        // never sees stale data (dashboard KPIs, contacts, deals, etc.)
+        queryClient.clear();
         queryClient.setQueryData(getGetMeQueryKey(), data.user);
         reconnectSocket();
         const ws = readWorkspace(data.user.role);

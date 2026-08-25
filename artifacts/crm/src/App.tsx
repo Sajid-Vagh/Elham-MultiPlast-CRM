@@ -1,5 +1,6 @@
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useGetMe } from "@workspace/api-client-react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
@@ -62,7 +63,10 @@ function ProtectedLayout({ children }: { children: React.ReactNode }) {
 
 function RoleGuard({ allowedRoles, children }: { allowedRoles: string[]; children: React.ReactNode }) {
   const [, setLocation] = useLocation();
-  const role = localStorage.getItem("crm_user_role") ?? "";
+  const { data: me } = useGetMe();
+  const role = me?.role ?? localStorage.getItem("crm_user_role") ?? "";
+
+  if (!me) return null; // wait for server-confirmed identity before deciding
 
   if (!allowedRoles.includes(role)) {
     setLocation(getHomeRoute(readWorkspace(role)));

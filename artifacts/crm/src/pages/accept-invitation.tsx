@@ -109,6 +109,7 @@ export default function AcceptInvitation() {
       localStorage.setItem("crm_token", data.token);
       localStorage.setItem("crm_user_role", data.user.role);
       localStorage.setItem("crm_user_unit", data.user.unit || "All");
+      queryClient.clear();
       queryClient.setQueryData(getGetMeQueryKey(), data.user);
 
       setSuccess(true);

@@ -664,6 +664,9 @@ const moduleBadges = useModuleBadgeCounts();
               onClick={() => {
                 logout.mutate(undefined, {
                   onSuccess: () => {
+                    // Clear ALL cached React Query data so no stale data from
+                    // this session leaks into the next user's session.
+                    queryClient.clear();
                     localStorage.removeItem("crm_token");
                     localStorage.removeItem("crm_user_role");
                     localStorage.removeItem("crm_user_unit");
