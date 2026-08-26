@@ -60,6 +60,7 @@ const PUBLIC_AUTH_ROUTES = new Set([
   "POST:/api/auth/login",
   "POST:/api/auth/admin/setup",
   "GET:/api/auth/setup-status",
+  "GET:/api/auth/bootstrap-state",
   "POST:/api/auth/forgot-password",
   "POST:/api/auth/reset-password",
   "POST:/api/auth/verify-email",

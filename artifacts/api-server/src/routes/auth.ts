@@ -16,7 +16,7 @@ import {
 const router: IRouter = Router();
 
 // ─── Constants ──────────────────────────────────────────────
-const GENERIC_LOGIN_ERROR = "Invalid email or password";
+const GENERIC_LOGIN_ERROR = "Invalid email/username or password.";
 const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 30 * 60 * 1000; // 30 minutes
@@ -147,7 +147,7 @@ router.post("/auth/login", async (req, res) => {
   const rateLimitKey = `login:${identifier.toLowerCase()}`;
   if (!rateLimit(rateLimitKey, LOGIN_RATE_LIMIT_MAX, LOGIN_RATE_LIMIT_WINDOW_MS)) {
     return res.status(429).json({
-      error: "Too many login attempts. Please try again later.",
+      error: "Too many login attempts. Please wait a few minutes and try again.",
     });
   }
 
@@ -163,19 +163,19 @@ router.post("/auth/login", async (req, res) => {
       );
 
     if (!user) {
-      return res.status(401).json({ error: GENERIC_LOGIN_ERROR });
+      return res.status(401).json({ error: "Invalid email/username or password." });
     }
 
     // Check if account is active
     if (!user.isActive) {
-      return res.status(403).json({ error: "Account has been deactivated. Contact your administrator." });
+      return res.status(403).json({ error: "Account setup is incomplete. Please complete verification." });
     }
 
     // Check if account is locked
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       const minutesLeft = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
       return res.status(423).json({
-        error: `Account is locked. Try again in ${minutesLeft} minute${minutesLeft === 1 ? "" : "s"}.`,
+        error: "Account is temporarily locked due to too many failed attempts. Please try again later.",
       });
     }
 
@@ -194,7 +194,7 @@ router.post("/auth/login", async (req, res) => {
 
       await db.update(usersTable).set(updateData).where(eq(usersTable.id, user.id));
 
-      return res.status(401).json({ error: GENERIC_LOGIN_ERROR });
+      return res.status(401).json({ error: "Invalid email/username or password." });
     }
 
     // Login successful — reset failed attempts and lockout
@@ -274,6 +274,101 @@ router.get("/auth/setup-status", async (req, res) => {
     return res.json({ adminExists, bootstrapAvailable });
   } catch (err) {
     logger.error({ err }, "Setup status check error");
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── Bootstrap State (single source of truth for auth UI) ──
+// Returns exactly one auth mode so the frontend renders ONE screen.
+router.get("/auth/bootstrap-state", async (req, res) => {
+  try {
+    // Count active admins
+    const [adminResult] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(usersTable)
+      .where(and(eq(usersTable.role, "admin"), eq(usersTable.isActive, true)));
+    const adminExists = (adminResult?.count ?? 0) > 0;
+
+    // Count total users
+    const [userResult] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(usersTable);
+    const anyUserExists = (userResult?.count ?? 0) > 0;
+
+    // CASE 1: Active admin exists → normal login
+    if (adminExists) {
+      return res.json({
+        mode: "LOGIN",
+        setupAvailable: false,
+      });
+    }
+
+    // CASE 2: No active admin — check for pending first-admin
+    const [pendingAdmin] = await db
+      .select()
+      .from(usersTable)
+      .where(and(
+        eq(usersTable.role, "admin"),
+        eq(usersTable.isActive, false),
+      ))
+      .limit(1);
+
+    if (pendingAdmin) {
+      // Check if email is verified
+      if (!pendingAdmin.emailVerified) {
+        return res.json({
+          mode: "FIRST_ADMIN_VERIFICATION",
+          setupAvailable: false,
+          pendingEmail: pendingAdmin.email,
+          pendingName: pendingAdmin.name,
+        });
+      }
+
+      // Email verified but MFA not yet enabled
+      if (!pendingAdmin.mfaEnabled) {
+        return res.json({
+          mode: "FIRST_ADMIN_MFA_SETUP",
+          setupAvailable: false,
+          pendingEmail: pendingAdmin.email,
+          pendingName: pendingAdmin.name,
+        });
+      }
+
+      // Fallback: treat as verification required
+      return res.json({
+        mode: "FIRST_ADMIN_VERIFICATION",
+        setupAvailable: false,
+        pendingEmail: pendingAdmin.email,
+        pendingName: pendingAdmin.name,
+      });
+    }
+
+    // CASE 3: No admin and no pending admin — virgin install
+    // Allow anonymous setup on completely empty DB
+    if (!anyUserExists) {
+      return res.json({
+        mode: "FIRST_ADMIN_SETUP",
+        setupAvailable: true,
+      });
+    }
+
+    // CASE 4: Users exist but no admin and no pending admin
+    // Require authenticated session (existing user of any role)
+    const caller = await getUserFromRequest(req);
+    if (caller && caller.isActive) {
+      return res.json({
+        mode: "FIRST_ADMIN_SETUP",
+        setupAvailable: true,
+      });
+    }
+
+    // Unauthenticated on populated install with no admin: show login only
+    return res.json({
+      mode: "LOGIN",
+      setupAvailable: false,
+    });
+  } catch (err) {
+    logger.error({ err }, "Bootstrap state check error");
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });
