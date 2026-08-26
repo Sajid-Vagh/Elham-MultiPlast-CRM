@@ -100,15 +100,25 @@ router.post("/auth/otp/send", async (req, res) => {
       otpAttempts: 0,
     }).where(eq(usersTable.id, user.id));
 
+    // ── DEV OTP LOG ──────────────────────────────────────────
+    // console.log used intentionally (not pino) for guaranteed visibility.
+    if (!process.env.SMTP_HOST && process.env.NODE_ENV !== "production") {
+      console.log("");
+      console.log("========================================================");
+      console.log("  [DEV AUTH OTP]  Email Verification Code (Resend)");
+      console.log("========================================================");
+      console.log("  Email:  " + normalizedEmail);
+      console.log("  OTP:    " + otp);
+      console.log("  Expires: 10 minutes");
+      console.log("========================================================");
+      console.log("");
+    }
+
     // Send OTP via email
     await sendOtpEmail(normalizedEmail, otp);
 
     if (!process.env.SMTP_HOST) {
       logger.warn({ userId: user.id }, "SMTP_HOST not configured — OTP email cannot be delivered");
-      // In development, log the OTP for testing
-      if (process.env.NODE_ENV !== "production") {
-        logger.info({ otp, email: normalizedEmail }, "DEV MODE: OTP code (not sent via email)");
-      }
     }
 
     logger.info({ userId: user.id }, "OTP sent for email verification");

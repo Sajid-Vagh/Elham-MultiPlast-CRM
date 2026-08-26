@@ -523,6 +523,22 @@ router.post("/auth/admin/setup", async (req, res) => {
       otpAttempts: 0,
     }).where(eq(usersTable.id, admin!.id));
 
+    // ── DEV OTP LOG ──────────────────────────────────────────
+    // MUST print before sendOtpEmail so the OTP is visible even if
+    // the email call throws. console.log is used (not pino) because
+    // pino-pretty can silently drop or reformat structured objects.
+    if (!process.env.SMTP_HOST && process.env.NODE_ENV !== "production") {
+      console.log("");
+      console.log("========================================================");
+      console.log("  [DEV AUTH OTP]  First-Admin Email Verification Code");
+      console.log("========================================================");
+      console.log("  Email:  " + normalizedEmail);
+      console.log("  OTP:    " + otp);
+      console.log("  Expires: 10 minutes");
+      console.log("========================================================");
+      console.log("");
+    }
+
     await sendOtpEmail(normalizedEmail, otp);
 
     if (!process.env.SMTP_HOST) {
@@ -530,12 +546,6 @@ router.post("/auth/admin/setup", async (req, res) => {
         { userId: admin!.id },
         "SMTP_HOST is not configured — the first-admin verification email/OTP cannot be delivered.",
       );
-      if (process.env.NODE_ENV !== "production") {
-        logger.info(
-          { otp, email: normalizedEmail },
-          "[DEV OTP] First-admin verification code (not sent via email)",
-        );
-      }
     }
 
     logger.info({ userId: admin!.id, email: normalizedEmail }, "First-admin setup submitted — awaiting email OTP verification");
