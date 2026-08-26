@@ -528,8 +528,14 @@ router.post("/auth/admin/setup", async (req, res) => {
     if (!process.env.SMTP_HOST) {
       logger.warn(
         { userId: admin!.id },
-        "SMTP_HOST is not configured — the first-admin verification email/OTP cannot be delivered. Configure SMTP_* variables so the bootstrap link reaches the designated mailbox.",
+        "SMTP_HOST is not configured — the first-admin verification email/OTP cannot be delivered.",
       );
+      if (process.env.NODE_ENV !== "production") {
+        logger.info(
+          { otp, email: normalizedEmail },
+          "[DEV OTP] First-admin verification code (not sent via email)",
+        );
+      }
     }
 
     logger.info({ userId: admin!.id, email: normalizedEmail }, "First-admin setup submitted — awaiting email OTP verification");
