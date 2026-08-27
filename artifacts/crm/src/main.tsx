@@ -3,14 +3,12 @@ import App from "./App";
 import "./index.css";
 import { setBaseUrl } from "@workspace/api-client-react";
 
-// API base URL — use relative proxy in dev, absolute URL in production
-const isDev = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+// API base URL — use relative proxy in dev, absolute URL in production if provided
 let apiUrl = import.meta.env.VITE_API_URL;
-// Safeguard against malformed env variables like literally "https"
 if (!apiUrl || apiUrl === "https" || apiUrl === "http" || !apiUrl.startsWith("http")) {
-  apiUrl = "https://api.elhammultiplast.com";
+  apiUrl = "/api"; // fallback to relative path (Vercel rewrite will handle it)
 }
-setBaseUrl(isDev ? "/api" : apiUrl);
+setBaseUrl(apiUrl);
 
 // Auto-capitalize: sentence case in text inputs and textareas
 // (first letter of the string + first letter after . ? ! followed by a space)
