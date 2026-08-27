@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import { useQueryClient } from "@tanstack/react-query";
 import { playNotificationSoundForType, showBrowserNotification } from "./notification-sound";
 import { toast } from "@/hooks/use-toast";
+import { resolveApiUrl } from "@workspace/api-client-react";
 
 interface Notification {
   id: number;
@@ -276,9 +277,7 @@ export function NotificationProvider({ userId, children }: { userId: number | un
     if (!userId) return;
 
     const t = localStorage.getItem("crm_token");
-    const url = t
-      ? `/api/notifications/stream?token=${encodeURIComponent(t)}`
-      : "/api/notifications/stream";
+    const url = resolveApiUrl(`/api/notifications/stream${t ? `?token=${encodeURIComponent(t)}` : ""}`);
 
     function connect() {
       if (!mountedRef.current) return;

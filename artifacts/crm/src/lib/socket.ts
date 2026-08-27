@@ -1,4 +1,5 @@
 import { io, type Socket } from "socket.io-client";
+import { resolveApiUrl } from "@workspace/api-client-react";
 
 // ─── Event types (mirrors backend socket.ts) ───────────────
 // Duplicated here because the frontend build cannot import from the backend.
@@ -38,7 +39,8 @@ function getSocketUrl(): string {
   if (isDev) {
     return window.location.origin;
   }
-  return window.location.origin;
+  const resolved = resolveApiUrl("/");
+  return resolved.endsWith("/") ? resolved.slice(0, -1) : resolved;
 }
 
 /**
