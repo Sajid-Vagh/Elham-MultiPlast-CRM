@@ -49,6 +49,8 @@ RUN PORT=${PORT} BASE_PATH=${BASE_PATH} API_PORT=8080 \
 # =============================================================================
 FROM nginx:1.27-alpine AS production
 
+ENV API_PROXY_URL="https://api.elhammultiplast.com"
+
 RUN rm /etc/nginx/conf.d/default.conf
 
 COPY --from=build /repo/artifacts/crm/dist/public /usr/share/nginx/html
@@ -63,6 +65,25 @@ RUN printf 'server {\n\
     try_files $uri $uri/ /index.html;\n\
   }\n\
 \n\
+  # Proxy /api to the backend URL\n\
+  location /api/ {\n\
+    proxy_pass ${API_PROXY_URL}/api/;\n\
+    proxy_set_header Host $proxy_host;\n\
+    proxy_set_header X-Real-IP $remote_addr;\n\
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n\
+    proxy_set_header X-Forwarded-Proto $scheme;\n\
+  }\n\
+\n\
+  # Proxy /socket.io to the backend URL\n\
+  location /socket.io/ {\n\
+    proxy_pass ${API_PROXY_URL}/socket.io/;\n\
+    proxy_http_version 1.1;\n\
+    proxy_set_header Upgrade $http_upgrade;\n\
+    proxy_set_header Connection "Upgrade";\n\
+    proxy_set_header Host $proxy_host;\n\
+    proxy_set_header X-Real-IP $remote_addr;\n\
+  }\n\
+\n\
   # Aggressive caching for hashed static assets\n\
   location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {\n\
     expires 1y;\n\
@@ -74,7 +95,7 @@ RUN printf 'server {\n\
     return 200 "ok";\n\
     add_header Content-Type text/plain;\n\
   }\n\
-}\n' > /etc/nginx/conf.d/crm.conf
+}\n' > /etc/nginx/templates/default.conf.template
 
 EXPOSE 80
 
