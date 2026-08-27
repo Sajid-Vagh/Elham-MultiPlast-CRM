@@ -73,6 +73,11 @@ const PUBLIC_AUTH_ROUTES = new Set([
   "POST:/api/auth/mfa/setup",
   "POST:/api/auth/mfa/verify-setup",
   "POST:/api/auth/mfa/verify-login",
+  // SSE notifications: EventSource cannot send Authorization headers, so the
+  // frontend passes ?token= and the handler validates it via getUserIdFromToken.
+  // Must be whitelisted here so the global middleware does not 401 before the
+  // handler runs (same pattern as the login/setup allowlist).
+  "GET:/api/notifications/stream",
 ]);
 
 // Global auth middleware — protects all /api/* routes except public ones
