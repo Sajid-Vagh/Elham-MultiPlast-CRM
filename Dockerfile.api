@@ -1,5 +1,6 @@
-# =============================================================================
-# Stage 1: install all workspace dependencies
+﻿# =============================================================================
+# Stage 1: install ALL workspace deps with --shamefully-hoist
+# This produces a flat node_modules (no symlinks) that Docker can copy safely.
 # =============================================================================
 FROM node:22-alpine AS deps
 
@@ -9,18 +10,18 @@ WORKDIR /repo
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 
-# Copy all package.json files the workspace needs
 COPY lib/db/package.json                     lib/db/
 COPY lib/api-zod/package.json                lib/api-zod/
 COPY lib/api-client-react/package.json       lib/api-client-react/
 COPY artifacts/api-server/package.json       artifacts/api-server/
 
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-RUN pnpm install --frozen-lockfile
+# --shamefully-hoist = traditional flat layout, real files, no symlinks
+RUN pnpm install --frozen-lockfile --shamefully-hoist
 
 
 # =============================================================================
-# Stage 2: build lib/* packages then the api-server
+# Stage 2: build — esbuild bundles all @workspace/* deps into dist/index.mjs
 # =============================================================================
 FROM deps AS build
 
@@ -30,30 +31,33 @@ COPY lib/                   lib/
 COPY artifacts/api-server/  artifacts/api-server/
 COPY tsconfig.base.json     ./
 
-# esbuild bundles all @workspace/* deps inline -> dist/index.mjs
 WORKDIR /repo/artifacts/api-server
 RUN pnpm run build
 
+
 # =============================================================================
-# Stage 3: pnpm deploy - creates a flat, symlink-free node_modules with only
-# the npm packages that esbuild externalized (nodemailer, xlsx, etc.)
-# This is the correct pnpm way to prepare a production deployment folder.
+# Stage 3: production — install only prod deps (flat) for the final image
 # =============================================================================
-FROM deps AS deploy
+FROM node:22-alpine AS prod-deps
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /repo
 
-COPY lib/                   lib/
-COPY artifacts/api-server/  artifacts/api-server/
-COPY tsconfig.base.json     ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 
-# pnpm deploy resolves workspace: deps and creates a self-contained
-# /api-deploy/node_modules with a flat structure Node.js can resolve normally
-RUN pnpm --filter @workspace/api-server deploy --prod --legacy /api-deploy
+COPY lib/db/package.json                     lib/db/
+COPY lib/api-zod/package.json                lib/api-zod/
+COPY lib/api-client-react/package.json       lib/api-client-react/
+COPY artifacts/api-server/package.json       artifacts/api-server/
+
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+# --prod skips devDependencies so the copied node_modules stays lean
+RUN pnpm install --frozen-lockfile --shamefully-hoist --prod
 
 
 # =============================================================================
-# Stage 4: minimal production image - non-root
+# Stage 4: minimal production image — non-root
 # =============================================================================
 FROM node:22-alpine AS production
 
@@ -61,13 +65,11 @@ RUN addgroup -g 1001 -S appgroup && adduser -S appuser -u 1001 -G appgroup
 
 WORKDIR /app
 
-# Compiled bundle from the build stage
-COPY --from=build  --chown=appuser:appgroup /repo/artifacts/api-server/dist    ./dist
-COPY --from=build  --chown=appuser:appgroup /repo/artifacts/api-server/scripts ./scripts
-COPY --from=build  --chown=appuser:appgroup /repo/artifacts/api-server/package.json ./package.json
-
-# Flat, symlink-free node_modules from pnpm deploy (contains nodemailer, xlsx, etc.)
-COPY --from=deploy --chown=appuser:appgroup /api-deploy/node_modules           ./node_modules
+COPY --from=build     --chown=appuser:appgroup /repo/artifacts/api-server/dist        ./dist
+COPY --from=build     --chown=appuser:appgroup /repo/artifacts/api-server/scripts     ./scripts
+COPY --from=build     --chown=appuser:appgroup /repo/artifacts/api-server/package.json ./package.json
+# Flat real-file node_modules — contains nodemailer, xlsx, etc. that esbuild externalized
+COPY --from=prod-deps --chown=appuser:appgroup /repo/node_modules                     ./node_modules
 
 RUN mkdir -p /app/uploads && chown appuser:appgroup /app/uploads
 
