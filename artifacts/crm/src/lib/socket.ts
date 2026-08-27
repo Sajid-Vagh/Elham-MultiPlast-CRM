@@ -35,10 +35,9 @@ let socket: CRMSocket | null = null;
 
 function getSocketUrl(): string {
   const isDev = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-  if (isDev) {
-    return window.location.origin;
-  }
-  return window.location.origin;
+  const viteUrl = import.meta.env.VITE_API_URL;
+  if (viteUrl) return viteUrl;
+  return isDev ? window.location.origin : "https://api.elhammultiplast.com";
 }
 
 /**
