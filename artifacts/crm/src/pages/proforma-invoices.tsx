@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
-import { customFetch } from "@workspace/api-client-react/custom-fetch";
+import { customFetch, resolveApiUrl } from "@workspace/api-client-react/custom-fetch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -319,7 +319,7 @@ export default function ProformaInvoicesPage() {
       params.set("page", String(page));
       params.set("limit", String(perPage));
       if (debouncedSearch) params.set("search", debouncedSearch);
-      const url = `/api/proforma-invoices?${params.toString()}`;
+      const url = resolveApiUrl(`/api/proforma-invoices?${params.toString()}`);
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
