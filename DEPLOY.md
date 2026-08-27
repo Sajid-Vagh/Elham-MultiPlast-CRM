@@ -1,4 +1,5 @@
-﻿# Elham CRM — Dokploy Deployment Guide
+
+# Elham CRM — Dokploy Deployment Guide
 
 This project has **two services** that are deployed as separate Dokploy Applications:
 
@@ -92,6 +93,12 @@ RAPIDAPI_GST_KEY=${{project.RAPIDAPI_GST_KEY}}
 RAPIDAPI_GST_HOST=${{project.RAPIDAPI_GST_HOST}}
 ```
 
+### Watch Paths (Auto-Deploy Filtering)
+To ensure the API only redeploys when backend code changes (and ignores CRM changes), paste this exact string into the **Watch Paths** setting:
+```text
+artifacts/api-server/**, lib/**, package.json, pnpm-workspace.yaml, pnpm-lock.yaml, Dockerfile.api
+```
+
 ### Domain
 - **Host:** `api.elham.com`
 - **Port:** `8080`
@@ -129,6 +136,12 @@ BASE_PATH=/
 
 ### Environment Variables
 The CRM is pure static files — no runtime env vars needed.
+
+### Watch Paths (Auto-Deploy Filtering)
+To ensure the CRM only redeploys when frontend code changes (and ignores API changes), paste this exact string into the **Watch Paths** setting:
+```text
+artifacts/crm/**, lib/api-client-react/**, lib/api-zod/**, package.json, pnpm-workspace.yaml, pnpm-lock.yaml, Dockerfile.crm
+```
 
 ### Domain
 - **Host:** `app.elham.com`

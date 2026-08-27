@@ -1,4 +1,4 @@
-﻿# =============================================================================
+# =============================================================================
 # Stage 1: install all workspace dependencies
 # =============================================================================
 FROM node:22-alpine AS deps
@@ -79,6 +79,6 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:8080/api/healthz || exit 1
+  CMD wget -qO- http://127.0.0.1:8080/api/healthz || exit 1
 
 CMD ["node", "--import", "./scripts/load-env.mjs", "--enable-source-maps", "./dist/index.mjs"]
