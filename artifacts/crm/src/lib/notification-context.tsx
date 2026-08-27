@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { resolveApiUrl } from "@workspace/api-client-react/custom-fetch";
 import { playNotificationSoundForType, showBrowserNotification } from "./notification-sound";
 import { toast } from "@/hooks/use-toast";
 
@@ -208,7 +207,7 @@ export function NotificationProvider({ userId, children }: { userId: number | un
     if (isInitial) setLoading(true);
     setError(null);
     try {
-      const res = await fetch(resolveApiUrl("/api/notifications/history?filter=all&limit=250&offset=0"), { headers: getHeaders() });
+      const res = await fetch("/api/notifications/history?filter=all&limit=250&offset=0", { headers: getHeaders() });
       if (res.ok) {
         const data = await res.json();
         const fetched: Notification[] = data.notifications || [];
@@ -245,7 +244,7 @@ export function NotificationProvider({ userId, children }: { userId: number | un
                 if (!playedSet.has(newest.id)) {
                   playNotificationSoundForType(newest.type);
                   addSoundPlayedId(newest.id);
-                  fetch(resolveApiUrl(`/api/notifications/${newest.id}/mark-sound-played`), {
+                  fetch(`/api/notifications/${newest.id}/mark-sound-played`, {
                     method: "PATCH", headers: getHeaders(),
                   }).catch(() => {});
                 }
@@ -278,8 +277,8 @@ export function NotificationProvider({ userId, children }: { userId: number | un
 
     const t = localStorage.getItem("crm_token");
     const url = t
-      ? resolveApiUrl(`/api/notifications/stream?token=${encodeURIComponent(t)}`)
-      : resolveApiUrl("/api/notifications/stream");
+      ? `/api/notifications/stream?token=${encodeURIComponent(t)}`
+      : "/api/notifications/stream";
 
     function connect() {
       if (!mountedRef.current) return;
@@ -312,7 +311,7 @@ export function NotificationProvider({ userId, children }: { userId: number | un
           if (!playedSet.has(n.id)) {
             playNotificationSoundForType(n.type);
             addSoundPlayedId(n.id);
-            fetch(resolveApiUrl(`/api/notifications/${n.id}/mark-sound-played`), {
+            fetch(`/api/notifications/${n.id}/mark-sound-played`, {
               method: "PATCH", headers: getHeaders(),
             }).catch(() => {});
           }
@@ -354,14 +353,14 @@ export function NotificationProvider({ userId, children }: { userId: number | un
 
   const markAsRead = useCallback(async (id: number) => {
     try {
-      await fetch(resolveApiUrl(`/api/notifications/${id}/read`), { method: "PATCH", headers: getHeaders() });
+      await fetch(`/api/notifications/${id}/read`, { method: "PATCH", headers: getHeaders() });
       setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n)));
     } catch { /* ignore */ }
   }, []);
 
   const markAllAsRead = useCallback(async () => {
     try {
-      await fetch(resolveApiUrl("/api/notifications/read-all"), { method: "POST", headers: getHeaders() });
+      await fetch("/api/notifications/read-all", { method: "POST", headers: getHeaders() });
       setNotifications((prev) => prev.map((n) => (n.readAt ? n : { ...n, readAt: new Date().toISOString() })));
     } catch { /* ignore */ }
   }, []);
@@ -371,7 +370,7 @@ export function NotificationProvider({ userId, children }: { userId: number | un
     // Notification History page never loses entries. Dismissing a popup should
     // not delete history.
     try {
-      await fetch(resolveApiUrl(`/api/notifications/${id}/seen`), { method: "PATCH", headers: getHeaders() });
+      await fetch(`/api/notifications/${id}/seen`, { method: "PATCH", headers: getHeaders() });
       setNotifications((prev) => prev.map((n) =>
         n.id === id ? { ...n, notificationSeen: true, notificationSeenAt: new Date().toISOString() } : n
       ));
@@ -382,7 +381,7 @@ export function NotificationProvider({ userId, children }: { userId: number | un
     // Mark as READ by related entity (activity / chat) — keeps the entry in
     // history but stops it counting as unread.
     try {
-      await fetch(resolveApiUrl("/api/notifications/read-by-related"), {
+      await fetch("/api/notifications/read-by-related", {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...getHeaders() },
         body: JSON.stringify({ relatedId, relatedType }),
@@ -406,7 +405,7 @@ export function NotificationProvider({ userId, children }: { userId: number | un
     setTotal((prev) => Math.max(0, prev - 1));
 
     try {
-      const res = await fetch(resolveApiUrl(`/api/notifications/${id}`), { method: "DELETE", headers: getHeaders() });
+      const res = await fetch(`/api/notifications/${id}`, { method: "DELETE", headers: getHeaders() });
       if (!res.ok) throw new Error(`Delete failed (${res.status})`);
       toast({ title: "Notification deleted" });
     } catch (err: any) {
@@ -436,7 +435,7 @@ export function NotificationProvider({ userId, children }: { userId: number | un
     setTotal(0);
 
     try {
-      const res = await fetch(resolveApiUrl("/api/notifications/clear-all"), { method: "DELETE", headers: getHeaders() });
+      const res = await fetch("/api/notifications/clear-all", { method: "DELETE", headers: getHeaders() });
       if (!res.ok) throw new Error(`Clear failed (${res.status})`);
       toast({ title: "All notifications cleared" });
     } catch (err: any) {
