@@ -5,9 +5,7 @@ import { setBaseUrl } from "@workspace/api-client-react";
 
 // API base URL — use relative proxy in dev, absolute URL in production
 const isDev = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-const viteUrl = import.meta.env.VITE_API_URL;
-const apiUrl = viteUrl ? (viteUrl.endsWith('/api') ? viteUrl : `${viteUrl}/api`) : (isDev ? "/api" : "https://api.elhammultiplast.com/api");
-setBaseUrl(apiUrl);
+setBaseUrl(import.meta.env.VITE_API_URL || (isDev ? "/api" : "https://api.elhammultiplast.com"));
 
 // Auto-capitalize: sentence case in text inputs and textareas
 // (first letter of the string + first letter after . ? ! followed by a space)
