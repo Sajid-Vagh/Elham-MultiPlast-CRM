@@ -1,0 +1,59 @@
+# =============================================================================
+# .dockerignore — exclude everything that should not go into Docker build context
+# =============================================================================
+
+# Git
+.git
+.gitignore
+
+# Node modules (installed fresh inside the container)
+node_modules
+**/node_modules
+
+# Build outputs (rebuilt inside the container)
+**/dist
+**/.next
+**/.cache
+**/build
+
+# Environment files with real secrets (use .env.dokploy in Dokploy UI)
+.env
+.env.*
+!.env.dokploy.example
+
+# Log files
+**/*.log
+**/server_std*.txt
+**/frontend_std*.txt
+**/errs.txt
+
+# Test / CI artifacts
+**/coverage
+**/.tmp-setup-test
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+
+# Docker files (not needed inside context)
+Dockerfile*
+docker-compose*.yml
+
+# Misc project files not needed for the build
+*.md
+replit.md
+anchored-summary.md
+*.replit
+.replitignore
+.local
+.claude
+uploads/
+check_*.js
+check_*.mjs
+check_*.ts
+test-*.js
+test_*.mjs
+fix-*.js
+diagnose-*.js

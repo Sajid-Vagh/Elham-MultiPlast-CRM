@@ -1,0 +1,22 @@
+﻿# =============================================================================
+# Elham CRM - Frontend (React SPA served by nginx)
+# Deploy as a separate Dokploy application.
+# VITE_API_URL is baked into the JS bundle at build time - set it at project level.
+# =============================================================================
+
+services:
+  crm:
+    build:
+      context: .
+      dockerfile: Dockerfile.crm
+      args:
+        VITE_API_URL: ${{project.VITE_API_URL}}
+        PORT: "80"
+        BASE_PATH: "/"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3

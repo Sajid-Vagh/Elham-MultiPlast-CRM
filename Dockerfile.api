@@ -1,0 +1,72 @@
+# =============================================================================
+# Stage 1: install all workspace dependencies
+# =============================================================================
+FROM node:22-alpine AS deps
+
+# pnpm via corepack
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+WORKDIR /repo
+
+# Copy workspace manifest files first (layer cache friendly)
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
+
+# Copy only the package.json files the workspace needs (without source)
+COPY lib/db/package.json                        lib/db/
+COPY lib/api-zod/package.json                   lib/api-zod/
+COPY lib/api-client-react/package.json          lib/api-client-react/
+COPY artifacts/api-server/package.json          artifacts/api-server/
+
+# Install full workspace (needed for workspace: protocol resolution)
+# Skip puppeteer Chromium download — it is externalized from the esbuild bundle
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+RUN pnpm install --frozen-lockfile
+
+
+# =============================================================================
+# Stage 2: build lib/* packages then the api-server
+# =============================================================================
+FROM deps AS build
+
+WORKDIR /repo
+
+# Copy all source needed for the build
+COPY lib/                   lib/
+COPY artifacts/api-server/  artifacts/api-server/
+COPY tsconfig.base.json     ./
+
+# Build the api-server (esbuild bundles src/index.ts ? dist/index.mjs)
+WORKDIR /repo/artifacts/api-server
+RUN pnpm run build
+
+
+# =============================================================================
+# Stage 3: production image — minimal, non-root
+# =============================================================================
+FROM node:22-alpine AS production
+
+RUN addgroup -g 1001 -S appgroup && adduser -S appuser -u 1001 -G appgroup
+
+WORKDIR /app
+
+# Only copy what is needed to run
+COPY --from=build --chown=appuser:appgroup /repo/artifacts/api-server/dist         ./dist
+COPY --from=build --chown=appuser:appgroup /repo/artifacts/api-server/scripts      ./scripts
+COPY --from=build --chown=appuser:appgroup /repo/artifacts/api-server/package.json ./package.json
+# node_modules are needed for externalized packages (nodemailer, xlsx, puppeteer, etc.)
+COPY --from=build --chown=appuser:appgroup /repo/node_modules                      ./node_modules
+
+# Uploads dir for local fallback (when Supabase Storage is not configured)
+RUN mkdir -p /app/uploads && chown appuser:appgroup /app/uploads
+
+USER appuser
+
+ENV NODE_ENV=production
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:8080/api/health || exit 1
+
+CMD ["node", "--import", "./scripts/load-env.mjs", "--enable-source-maps", "./dist/index.mjs"]

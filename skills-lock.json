@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "docker-patterns": {
+      "source": "affaan-m/ecc",
+      "sourceType": "github",
+      "skillPath": "skills/docker-patterns/SKILL.md",
+      "computedHash": "af6deba271429bcb5198a7e56a4f71f948509e06037e6a3210d0ad5f516eeb29"
+    }
+  }
+}

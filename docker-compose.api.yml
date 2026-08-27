@@ -1,0 +1,50 @@
+﻿# =============================================================================
+# Elham CRM - API Server
+# Deploy as a separate Dokploy application.
+# Variables are set at the Dokploy project level and referenced below.
+# =============================================================================
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    environment:
+      # Core
+      NODE_ENV: production
+      PORT: ${{project.PORT}}
+      BASE_PATH: ${{project.BASE_PATH}}
+      SESSION_SECRET: ${{project.SESSION_SECRET}}
+      CORS_ORIGINS: ${{project.CORS_ORIGINS}}
+      FRONTEND_URL: ${{project.FRONTEND_URL}}
+      # Database
+      DATABASE_URL: ${{project.DATABASE_URL}}
+      # Supabase Storage
+      SUPABASE_URL: ${{project.SUPABASE_URL}}
+      SUPABASE_KEY: ${{project.SUPABASE_KEY}}
+      SUPABASE_SERVICE_ROLE_KEY: ${{project.SUPABASE_SERVICE_ROLE_KEY}}
+      # SMTP
+      SMTP_HOST: ${{project.SMTP_HOST}}
+      SMTP_PORT: ${{project.SMTP_PORT}}
+      SMTP_USER: ${{project.SMTP_USER}}
+      SMTP_PASS: ${{project.SMTP_PASS}}
+      SMTP_FROM: ${{project.SMTP_FROM}}
+      # Google OAuth
+      GOOGLE_CLIENT_ID: ${{project.GOOGLE_CLIENT_ID}}
+      GOOGLE_CLIENT_SECRET: ${{project.GOOGLE_CLIENT_SECRET}}
+      # Bootstrap
+      BOOTSTRAP_ADMIN_EMAIL: ${{project.BOOTSTRAP_ADMIN_EMAIL}}
+      # GST APIs
+      GSTVERIFY_API_KEY: ${{project.GSTVERIFY_API_KEY}}
+      GSTVERIFY_BASE_URL: ${{project.GSTVERIFY_BASE_URL}}
+      GST_API_URL: ${{project.GST_API_URL}}
+      GST_API_KEY: ${{project.GST_API_KEY}}
+      RAPIDAPI_GST_KEY: ${{project.RAPIDAPI_GST_KEY}}
+      RAPIDAPI_GST_HOST: ${{project.RAPIDAPI_GST_HOST}}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3

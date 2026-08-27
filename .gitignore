@@ -52,6 +52,8 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+!.env.dokploy.example
+.env.dokploy
 *.pem
 *.key
 *.p12
