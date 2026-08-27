@@ -1,4 +1,4 @@
-# =============================================================================
+ï»¿# =============================================================================
 # Stage 1: install all workspace dependencies
 # =============================================================================
 FROM node:22-alpine AS deps
@@ -9,16 +9,18 @@ WORKDIR /repo
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 
-# Only the packages the CRM and its workspace deps need
-COPY lib/api-zod/package.json             lib/api-zod/
-COPY lib/api-client-react/package.json    lib/api-client-react/
-COPY artifacts/crm/package.json           artifacts/crm/
+# Only the packages the CRM workspace needs
+COPY lib/api-zod/package.json            lib/api-zod/
+COPY lib/api-client-react/package.json   lib/api-client-react/
+COPY artifacts/crm/package.json          artifacts/crm/
 
 RUN pnpm install --frozen-lockfile
 
 
 # =============================================================================
 # Stage 2: build the Vite SPA
+# Node_modules stay in /repo here (same stage = no symlink copy issue).
+# The output is pure static HTML/JS/CSS - no node_modules in production.
 # =============================================================================
 FROM deps AS build
 
@@ -29,42 +31,44 @@ COPY lib/api-client-react/  lib/api-client-react/
 COPY artifacts/crm/         artifacts/crm/
 COPY tsconfig.base.json     ./
 
-# Build-time args injected by docker-compose.dokploy.yml
+# Build-time args â€” Vite bakes VITE_API_URL into the JS bundle
 ARG VITE_API_URL
 ARG PORT=80
 ARG BASE_PATH=/
 
 WORKDIR /repo/artifacts/crm
 
-# Vite reads PORT, BASE_PATH, and API_PORT at build time via vite.config.ts
-# For production the SPA talks directly to the API domain — no proxy needed
-RUN PORT=${PORT} BASE_PATH=${BASE_PATH} API_PORT=8080 pnpm run build
+RUN PORT=${PORT} BASE_PATH=${BASE_PATH} API_PORT=8080 \
+    VITE_API_URL=${VITE_API_URL} \
+    pnpm run build
 
 
 # =============================================================================
-# Stage 3: serve with nginx (Traefik will terminate TLS in front of this)
+# Stage 3: serve static files with nginx
+# No node_modules needed - only the built dist/ is copied.
 # =============================================================================
 FROM nginx:1.27-alpine AS production
 
-# Remove default nginx config
 RUN rm /etc/nginx/conf.d/default.conf
 
-# Minimal SPA config — nginx only serves static files; Traefik handles routing
 COPY --from=build /repo/artifacts/crm/dist/public /usr/share/nginx/html
 
 RUN printf 'server {\n\
   listen 80;\n\
   root /usr/share/nginx/html;\n\
   index index.html;\n\
+\n\
   # SPA fallback: unknown paths -> index.html (client-side routing)\n\
   location / {\n\
     try_files $uri $uri/ /index.html;\n\
   }\n\
-  # Static asset caching\n\
+\n\
+  # Aggressive caching for hashed static assets\n\
   location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {\n\
     expires 1y;\n\
     add_header Cache-Control "public, immutable";\n\
   }\n\
+\n\
   # Health check endpoint for Dokploy\n\
   location /health {\n\
     return 200 "ok";\n\

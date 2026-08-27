@@ -1,24 +1,20 @@
-# =============================================================================
+ï»¿# =============================================================================
 # Stage 1: install all workspace dependencies
 # =============================================================================
 FROM node:22-alpine AS deps
 
-# pnpm via corepack
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /repo
 
-# Copy workspace manifest files first (layer cache friendly)
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 
-# Copy only the package.json files the workspace needs (without source)
-COPY lib/db/package.json                        lib/db/
-COPY lib/api-zod/package.json                   lib/api-zod/
-COPY lib/api-client-react/package.json          lib/api-client-react/
-COPY artifacts/api-server/package.json          artifacts/api-server/
+# Copy all package.json files the workspace needs
+COPY lib/db/package.json                     lib/db/
+COPY lib/api-zod/package.json                lib/api-zod/
+COPY lib/api-client-react/package.json       lib/api-client-react/
+COPY artifacts/api-server/package.json       artifacts/api-server/
 
-# Install full workspace (needed for workspace: protocol resolution)
-# Skip puppeteer Chromium download — it is externalized from the esbuild bundle
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 RUN pnpm install --frozen-lockfile
 
@@ -30,18 +26,34 @@ FROM deps AS build
 
 WORKDIR /repo
 
-# Copy all source needed for the build
 COPY lib/                   lib/
 COPY artifacts/api-server/  artifacts/api-server/
 COPY tsconfig.base.json     ./
 
-# Build the api-server (esbuild bundles src/index.ts ? dist/index.mjs)
+# esbuild bundles all @workspace/* deps inline -> dist/index.mjs
 WORKDIR /repo/artifacts/api-server
 RUN pnpm run build
 
+# =============================================================================
+# Stage 3: pnpm deploy - creates a flat, symlink-free node_modules with only
+# the npm packages that esbuild externalized (nodemailer, xlsx, etc.)
+# This is the correct pnpm way to prepare a production deployment folder.
+# =============================================================================
+FROM deps AS deploy
+
+WORKDIR /repo
+
+COPY lib/                   lib/
+COPY artifacts/api-server/  artifacts/api-server/
+COPY tsconfig.base.json     ./
+
+# pnpm deploy resolves workspace: deps and creates a self-contained
+# /api-deploy/node_modules with a flat structure Node.js can resolve normally
+RUN pnpm --filter @workspace/api-server deploy --prod /api-deploy
+
 
 # =============================================================================
-# Stage 3: production image — minimal, non-root
+# Stage 4: minimal production image - non-root
 # =============================================================================
 FROM node:22-alpine AS production
 
@@ -49,14 +61,14 @@ RUN addgroup -g 1001 -S appgroup && adduser -S appuser -u 1001 -G appgroup
 
 WORKDIR /app
 
-# Only copy what is needed to run
-COPY --from=build --chown=appuser:appgroup /repo/artifacts/api-server/dist         ./dist
-COPY --from=build --chown=appuser:appgroup /repo/artifacts/api-server/scripts      ./scripts
-COPY --from=build --chown=appuser:appgroup /repo/artifacts/api-server/package.json ./package.json
-# node_modules are needed for externalized packages (nodemailer, xlsx, puppeteer, etc.)
-COPY --from=build --chown=appuser:appgroup /repo/node_modules                      ./node_modules
+# Compiled bundle from the build stage
+COPY --from=build  --chown=appuser:appgroup /repo/artifacts/api-server/dist    ./dist
+COPY --from=build  --chown=appuser:appgroup /repo/artifacts/api-server/scripts ./scripts
+COPY --from=build  --chown=appuser:appgroup /repo/artifacts/api-server/package.json ./package.json
 
-# Uploads dir for local fallback (when Supabase Storage is not configured)
+# Flat, symlink-free node_modules from pnpm deploy (contains nodemailer, xlsx, etc.)
+COPY --from=deploy --chown=appuser:appgroup /api-deploy/node_modules           ./node_modules
+
 RUN mkdir -p /app/uploads && chown appuser:appgroup /app/uploads
 
 USER appuser
