@@ -93,8 +93,8 @@ app.use("/api", async (req, res, next) => {
     return next();
   }
 
-  // Allow health check
-  if (req.path === "/health" || fullPath === "/api/health") {
+  // Allow health check (both /healthz route and legacy /health)
+  if (req.path === "/health" || req.path === "/healthz" || fullPath === "/api/health" || fullPath === "/api/healthz") {
     return next();
   }
 
