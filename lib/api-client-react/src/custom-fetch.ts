@@ -347,6 +347,21 @@ export const customFetch = async <T>(
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
 
+    // Auto-logout on 401: clear stale session and redirect to login.
+    // This breaks the infinite loading loop when a stored token has expired
+    // or been invalidated (e.g. server restart, DB reset, session pruned).
+    if (response.status === 401 && typeof window !== "undefined") {
+      const currentPath = window.location.pathname;
+      // Only redirect if not already on an auth page (prevents redirect loops)
+      const AUTH_PAGES = ["/login", "/forgot-password", "/reset-password", "/verify-email", "/accept-invitation", "/admin-setup", "/verify-otp", "/mfa-verify", "/setup-mfa"];
+      if (!AUTH_PAGES.some(p => currentPath.startsWith(p))) {
+        localStorage.removeItem("crm_token");
+        localStorage.removeItem("crm_user_role");
+        localStorage.removeItem("crm_unit");
+        window.location.replace("/login");
+      }
+    }
+
     throw new ApiError(response, errorData, {
       method: options.method || "GET",
       url: finalUrl,

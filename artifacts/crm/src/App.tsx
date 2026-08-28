@@ -57,7 +57,12 @@ import { SocketProvider } from "@/lib/socket-provider";
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: 1, staleTime: 30000 },
+    queries: {
+      // Do NOT retry on failure — a 401 auto-redirects to /login via customFetch,
+      // and retrying would fire the request again before the redirect completes.
+      retry: 0,
+      staleTime: 30000,
+    },
   },
 });
 
