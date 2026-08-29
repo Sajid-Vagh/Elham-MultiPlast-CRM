@@ -673,6 +673,45 @@ export interface ProformaInvoice {
 
 export type ProformaInvoiceList = ProformaInvoice[];
 
+export interface BulkCustomerRow {
+  name?: string | null;
+  companyName?: string | null;
+  mobile?: string | null;
+  email?: string | null;
+  city?: string | null;
+  state?: string | null;
+}
+
+export interface BulkCustomerImportInput {
+  rows: BulkCustomerRow[];
+  category: string;
+  defaultSalesOwnerId?: number | null;
+}
+
+export type BulkCustomerImportResultDuplicateDetailsItem = {
+  rowNum: number;
+  mobile: string;
+  name: string;
+  existingContactId: number;
+  existingContactName: string;
+  existingCategory: string;
+};
+
+export type BulkCustomerImportResultErrorsItem = {
+  rowNum: number;
+  reason: string;
+};
+
+export interface BulkCustomerImportResult {
+  imported: number;
+  skipped: number;
+  invalid: number;
+  duplicates: number;
+  duplicateDetails: BulkCustomerImportResultDuplicateDetailsItem[];
+  errors: BulkCustomerImportResultErrorsItem[];
+  importedInto: string;
+}
+
 export type ListContactsParams = {
 salesOwnerId?: number;
 city?: string;

@@ -7,6 +7,10 @@
   ],
   "rewrites": [
     {
+      "source": "/api/(.*)",
+      "destination": "https://test-api.elhammultiplast.com/api/$1"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

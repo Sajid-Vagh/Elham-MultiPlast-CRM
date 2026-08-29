@@ -1220,3 +1220,40 @@ export const ImportIndiaMartResponse = zod.object({
 })
 
 
+/**
+ * @summary Bulk import customers from simplified 5-column Excel
+ */
+export const ImportBulkCustomersBody = zod.object({
+  "rows": zod.array(zod.object({
+  "name": zod.string().nullish(),
+  "companyName": zod.string().nullish(),
+  "mobile": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish()
+})),
+  "category": zod.string(),
+  "defaultSalesOwnerId": zod.number().nullish()
+})
+
+export const ImportBulkCustomersResponse = zod.object({
+  "imported": zod.number(),
+  "skipped": zod.number(),
+  "invalid": zod.number(),
+  "duplicates": zod.number(),
+  "duplicateDetails": zod.array(zod.object({
+  "rowNum": zod.number(),
+  "mobile": zod.string(),
+  "name": zod.string(),
+  "existingContactId": zod.number(),
+  "existingContactName": zod.string(),
+  "existingCategory": zod.string()
+})),
+  "errors": zod.array(zod.object({
+  "rowNum": zod.number(),
+  "reason": zod.string()
+})),
+  "importedInto": zod.string()
+})
+
+
