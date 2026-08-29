@@ -461,15 +461,37 @@ export const ListContactProformaInvoicesResponse = zod.array(ListContactProforma
 /**
  * @summary List all products
  */
+export const ListProductsQueryParams = zod.object({
+  "search": zod.coerce.string().optional()
+})
+
 export const ListProductsResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "category": zod.string().nullish(),
+  "industry": zod.string().nullish(),
+  "machineType": zod.string().nullish(),
   "pricePerUnit": zod.number().nullish(),
-  "productCode": zod.string(),
+  "productCode": zod.string().nullish(),
   "bottleWeight": zod.string().nullish(),
   "bottleColour": zod.string().nullish(),
+  "bottleColourCode": zod.string().nullish(),
   "capColour": zod.string().nullish(),
+  "materialType": zod.string().nullish(),
+  "hsnCode": zod.string().nullish(),
+  "defaultUnit": zod.string().nullish(),
+  "defaultGst": zod.number().nullish(),
+  "status": zod.string().nullish(),
+  "variants": zod.array(zod.object({
+  "id": zod.number(),
+  "productId": zod.number(),
+  "weight": zod.string().nullish(),
+  "defaultColor": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string().optional(),
+  "updatedAt": zod.string().optional()
+})).optional(),
+  "variantCount": zod.number().optional(),
   "createdAt": zod.string().optional()
 })
 export const ListProductsResponse = zod.array(ListProductsResponseItem)
@@ -481,22 +503,53 @@ export const ListProductsResponse = zod.array(ListProductsResponseItem)
 export const CreateProductBody = zod.object({
   "name": zod.string(),
   "category": zod.string().nullish(),
+  "industry": zod.string().nullish(),
+  "machineType": zod.string().nullish(),
   "pricePerUnit": zod.number().nullish(),
-  "productCode": zod.string(),
+  "productCode": zod.string().nullish(),
   "bottleWeight": zod.string().nullish(),
   "bottleColour": zod.string().nullish(),
-  "capColour": zod.string().nullish()
+  "bottleColourCode": zod.string().nullish(),
+  "capColour": zod.string().nullish(),
+  "materialType": zod.string().nullish(),
+  "hsnCode": zod.string().nullish(),
+  "defaultUnit": zod.string().nullish(),
+  "defaultGst": zod.number().nullish(),
+  "status": zod.string().nullish(),
+  "variants": zod.array(zod.object({
+  "weight": zod.string().nullish(),
+  "defaultColor": zod.string().nullish(),
+  "isActive": zod.boolean().nullish()
+})).optional()
 })
 
 export const CreateProductResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "category": zod.string().nullish(),
+  "industry": zod.string().nullish(),
+  "machineType": zod.string().nullish(),
   "pricePerUnit": zod.number().nullish(),
-  "productCode": zod.string(),
+  "productCode": zod.string().nullish(),
   "bottleWeight": zod.string().nullish(),
   "bottleColour": zod.string().nullish(),
+  "bottleColourCode": zod.string().nullish(),
   "capColour": zod.string().nullish(),
+  "materialType": zod.string().nullish(),
+  "hsnCode": zod.string().nullish(),
+  "defaultUnit": zod.string().nullish(),
+  "defaultGst": zod.number().nullish(),
+  "status": zod.string().nullish(),
+  "variants": zod.array(zod.object({
+  "id": zod.number(),
+  "productId": zod.number(),
+  "weight": zod.string().nullish(),
+  "defaultColor": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string().optional(),
+  "updatedAt": zod.string().optional()
+})).optional(),
+  "variantCount": zod.number().optional(),
   "createdAt": zod.string().optional()
 })
 
@@ -509,11 +562,29 @@ export const GetProductResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "category": zod.string().nullish(),
+  "industry": zod.string().nullish(),
+  "machineType": zod.string().nullish(),
   "pricePerUnit": zod.number().nullish(),
-  "productCode": zod.string(),
+  "productCode": zod.string().nullish(),
   "bottleWeight": zod.string().nullish(),
   "bottleColour": zod.string().nullish(),
+  "bottleColourCode": zod.string().nullish(),
   "capColour": zod.string().nullish(),
+  "materialType": zod.string().nullish(),
+  "hsnCode": zod.string().nullish(),
+  "defaultUnit": zod.string().nullish(),
+  "defaultGst": zod.number().nullish(),
+  "status": zod.string().nullish(),
+  "variants": zod.array(zod.object({
+  "id": zod.number(),
+  "productId": zod.number(),
+  "weight": zod.string().nullish(),
+  "defaultColor": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string().optional(),
+  "updatedAt": zod.string().optional()
+})).optional(),
+  "variantCount": zod.number().optional(),
   "createdAt": zod.string().optional()
 })
 
@@ -525,22 +596,53 @@ export const UpdateProductParams = zod.object({
 export const UpdateProductBody = zod.object({
   "name": zod.string().optional(),
   "category": zod.string().nullish(),
+  "industry": zod.string().nullish(),
+  "machineType": zod.string().nullish(),
   "pricePerUnit": zod.number().nullish(),
-  "productCode": zod.string().optional(),
+  "productCode": zod.string().nullish(),
   "bottleWeight": zod.string().nullish(),
   "bottleColour": zod.string().nullish(),
-  "capColour": zod.string().nullish()
+  "bottleColourCode": zod.string().nullish(),
+  "capColour": zod.string().nullish(),
+  "materialType": zod.string().nullish(),
+  "hsnCode": zod.string().nullish(),
+  "defaultUnit": zod.string().nullish(),
+  "defaultGst": zod.number().nullish(),
+  "status": zod.string().nullish(),
+  "variants": zod.array(zod.object({
+  "weight": zod.string().nullish(),
+  "defaultColor": zod.string().nullish(),
+  "isActive": zod.boolean().nullish()
+})).optional()
 })
 
 export const UpdateProductResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "category": zod.string().nullish(),
+  "industry": zod.string().nullish(),
+  "machineType": zod.string().nullish(),
   "pricePerUnit": zod.number().nullish(),
-  "productCode": zod.string(),
+  "productCode": zod.string().nullish(),
   "bottleWeight": zod.string().nullish(),
   "bottleColour": zod.string().nullish(),
+  "bottleColourCode": zod.string().nullish(),
   "capColour": zod.string().nullish(),
+  "materialType": zod.string().nullish(),
+  "hsnCode": zod.string().nullish(),
+  "defaultUnit": zod.string().nullish(),
+  "defaultGst": zod.number().nullish(),
+  "status": zod.string().nullish(),
+  "variants": zod.array(zod.object({
+  "id": zod.number(),
+  "productId": zod.number(),
+  "weight": zod.string().nullish(),
+  "defaultColor": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string().optional(),
+  "updatedAt": zod.string().optional()
+})).optional(),
+  "variantCount": zod.number().optional(),
   "createdAt": zod.string().optional()
 })
 
@@ -834,11 +936,29 @@ export const ListDealProductsResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "category": zod.string().nullish(),
+  "industry": zod.string().nullish(),
+  "machineType": zod.string().nullish(),
   "pricePerUnit": zod.number().nullish(),
-  "productCode": zod.string(),
+  "productCode": zod.string().nullish(),
   "bottleWeight": zod.string().nullish(),
   "bottleColour": zod.string().nullish(),
+  "bottleColourCode": zod.string().nullish(),
   "capColour": zod.string().nullish(),
+  "materialType": zod.string().nullish(),
+  "hsnCode": zod.string().nullish(),
+  "defaultUnit": zod.string().nullish(),
+  "defaultGst": zod.number().nullish(),
+  "status": zod.string().nullish(),
+  "variants": zod.array(zod.object({
+  "id": zod.number(),
+  "productId": zod.number(),
+  "weight": zod.string().nullish(),
+  "defaultColor": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string().optional(),
+  "updatedAt": zod.string().optional()
+})).optional(),
+  "variantCount": zod.number().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "quantity": zod.number(),
@@ -865,11 +985,29 @@ export const AddDealProductResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "category": zod.string().nullish(),
+  "industry": zod.string().nullish(),
+  "machineType": zod.string().nullish(),
   "pricePerUnit": zod.number().nullish(),
-  "productCode": zod.string(),
+  "productCode": zod.string().nullish(),
   "bottleWeight": zod.string().nullish(),
   "bottleColour": zod.string().nullish(),
+  "bottleColourCode": zod.string().nullish(),
   "capColour": zod.string().nullish(),
+  "materialType": zod.string().nullish(),
+  "hsnCode": zod.string().nullish(),
+  "defaultUnit": zod.string().nullish(),
+  "defaultGst": zod.number().nullish(),
+  "status": zod.string().nullish(),
+  "variants": zod.array(zod.object({
+  "id": zod.number(),
+  "productId": zod.number(),
+  "weight": zod.string().nullish(),
+  "defaultColor": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string().optional(),
+  "updatedAt": zod.string().optional()
+})).optional(),
+  "variantCount": zod.number().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "quantity": zod.number(),

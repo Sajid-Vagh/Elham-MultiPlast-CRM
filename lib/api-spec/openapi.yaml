@@ -349,6 +349,11 @@ paths:
       operationId: listProducts
       tags: [products]
       summary: List all products
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
       responses:
         "200":
           description: List of products
@@ -1136,9 +1141,38 @@ components:
           items:
             $ref: "#/components/schemas/Contact"
 
+    ProductVariant:
+      type: object
+      required: [id, productId, isActive]
+      properties:
+        id:
+          type: integer
+        productId:
+          type: integer
+        weight:
+          type: ["string", "null"]
+        defaultColor:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    ProductVariantInput:
+      type: object
+      properties:
+        weight:
+          type: ["string", "null"]
+        defaultColor:
+          type: ["string", "null"]
+        isActive:
+          type: ["boolean", "null"]
+
     Product:
       type: object
-      required: [id, name, productCode]
+      required: [id, name]
       properties:
         id:
           type: integer
@@ -1146,37 +1180,79 @@ components:
           type: string
         category:
           type: ["string", "null"]
+        industry:
+          type: ["string", "null"]
+        machineType:
+          type: ["string", "null"]
         pricePerUnit:
           type: ["number", "null"]
         productCode:
-          type: string
+          type: ["string", "null"]
         bottleWeight:
           type: ["string", "null"]
         bottleColour:
           type: ["string", "null"]
+        bottleColourCode:
+          type: ["string", "null"]
         capColour:
           type: ["string", "null"]
+        materialType:
+          type: ["string", "null"]
+        hsnCode:
+          type: ["string", "null"]
+        defaultUnit:
+          type: ["string", "null"]
+        defaultGst:
+          type: ["number", "null"]
+        status:
+          type: ["string", "null"]
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductVariant"
+        variantCount:
+          type: integer
         createdAt:
           type: string
 
     ProductInput:
       type: object
-      required: [name, productCode]
+      required: [name]
       properties:
         name:
           type: string
         category:
           type: ["string", "null"]
+        industry:
+          type: ["string", "null"]
+        machineType:
+          type: ["string", "null"]
         pricePerUnit:
           type: ["number", "null"]
         productCode:
-          type: string
+          type: ["string", "null"]
         bottleWeight:
           type: ["string", "null"]
         bottleColour:
           type: ["string", "null"]
+        bottleColourCode:
+          type: ["string", "null"]
         capColour:
           type: ["string", "null"]
+        materialType:
+          type: ["string", "null"]
+        hsnCode:
+          type: ["string", "null"]
+        defaultUnit:
+          type: ["string", "null"]
+        defaultGst:
+          type: ["number", "null"]
+        status:
+          type: ["string", "null"]
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductVariantInput"
 
     ProductUpdate:
       type: object
@@ -1185,16 +1261,36 @@ components:
           type: string
         category:
           type: ["string", "null"]
+        industry:
+          type: ["string", "null"]
+        machineType:
+          type: ["string", "null"]
         pricePerUnit:
           type: ["number", "null"]
         productCode:
-          type: string
+          type: ["string", "null"]
         bottleWeight:
           type: ["string", "null"]
         bottleColour:
           type: ["string", "null"]
+        bottleColourCode:
+          type: ["string", "null"]
         capColour:
           type: ["string", "null"]
+        materialType:
+          type: ["string", "null"]
+        hsnCode:
+          type: ["string", "null"]
+        defaultUnit:
+          type: ["string", "null"]
+        defaultGst:
+          type: ["number", "null"]
+        status:
+          type: ["string", "null"]
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductVariantInput"
 
     Deal:
       type: object
