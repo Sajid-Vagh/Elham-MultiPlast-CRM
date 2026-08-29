@@ -5,8 +5,8 @@
  * Elham Multiplast CRM API
  * OpenAPI spec version: 0.1.0
  */
+import type { StateStat } from './stateStat';
 
-export type GetReportByProductParams = {
-month?: string;
-salesOwnerId?: number;
+export type GetReportByState200 = {
+  dealsByState: StateStat[];
 };

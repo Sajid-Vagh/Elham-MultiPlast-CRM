@@ -20,9 +20,6 @@ export type UserRole = typeof UserRole[keyof typeof UserRole];
 export const UserRole = {
   admin: 'admin',
   sales: 'sales',
-  production: 'production',
-  production_and_support: 'production_and_support',
-  inventory: 'inventory',
 } as const;
 
 export type UserUnit = typeof UserUnit[keyof typeof UserUnit];
@@ -42,9 +39,6 @@ export interface User {
   role: UserRole;
   colorCode: string;
   unit: UserUnit;
-  canViewAllReports?: boolean;
-  canAssignLeads?: boolean;
-  permissions?: Record<string, boolean>;
   /** @nullable */
   profilePhoto?: string | null;
   createdAt?: string;
@@ -61,9 +55,6 @@ export type UserInputRole = typeof UserInputRole[keyof typeof UserInputRole];
 export const UserInputRole = {
   admin: 'admin',
   sales: 'sales',
-  production: 'production',
-  production_and_support: 'production_and_support',
-  inventory: 'inventory',
 } as const;
 
 export type UserInputUnit = typeof UserInputUnit[keyof typeof UserInputUnit];
@@ -83,9 +74,6 @@ export interface UserInput {
   role: UserInputRole;
   colorCode: string;
   unit: UserInputUnit;
-  canViewAllReports?: boolean;
-  canAssignLeads?: boolean;
-  permissions?: Record<string, boolean>;
 }
 
 export type UserUpdateRole = typeof UserUpdateRole[keyof typeof UserUpdateRole];
@@ -94,9 +82,6 @@ export type UserUpdateRole = typeof UserUpdateRole[keyof typeof UserUpdateRole];
 export const UserUpdateRole = {
   admin: 'admin',
   sales: 'sales',
-  production: 'production',
-  production_and_support: 'production_and_support',
-  inventory: 'inventory',
 } as const;
 
 export interface UserUpdate {
@@ -107,11 +92,6 @@ export interface UserUpdate {
   role?: UserUpdateRole;
   colorCode?: string;
   unit?: string;
-  canViewAllReports?: boolean;
-  canAssignLeads?: boolean;
-  permissions?: Record<string, boolean>;
-  /** @nullable */
-  profilePhoto?: string | null;
 }
 
 /**
@@ -139,7 +119,7 @@ export const ContactUnit = {
   Himatnagar: 'Himatnagar',
   Surat: 'Surat',
   Rajkot: 'Rajkot',
-  'Not Sure': 'Not Sure',
+  Not_Sure: 'Not Sure',
 } as const;
 
 /**
@@ -201,31 +181,6 @@ export interface Contact {
   lastCallDate?: string | null;
   /** @nullable */
   nextCallDate?: string | null;
-  /** @nullable */
-  state?: string | null;
-  /** @nullable */
-  category?: string | null;
-  /** @nullable */
-  customerSince?: string | null;
-  /** @nullable */
-  totalOrders?: number | null;
-  /** @nullable */
-  totalRevenue?: number | null;
-  /** @nullable */
-  lastPurchaseDate?: string | null;
-  /** @nullable */
-  customerStatus?: string | null;
-  /** @nullable */
-  customerComments?: string | null;
-  /** @nullable */
-  commentUpdatedAt?: string | null;
-  /** @nullable */
-  commentUpdatedBy?: number | null;
-  customerCode?: string | null;
-  isMyClient: boolean;
-  isRead?: boolean;
-  isRepeatEnquiry?: boolean;
-  updatedAt?: string;
   createdAt: string;
 }
 
@@ -245,8 +200,6 @@ export interface ContactInput {
   leadSource?: string | null;
   /** @nullable */
   city?: string | null;
-  /** @nullable */
-  state?: string | null;
   /** @nullable */
   address?: string | null;
   /** @nullable */
@@ -297,10 +250,6 @@ export interface ContactUpdate {
   state?: string | null;
   /** @nullable */
   category?: string | null;
-  /** @nullable */
-  unitChangeReason?: string | null;
-  /** @nullable */
-  customerComments?: string | null;
 }
 
 export interface DuplicateGroup {
@@ -315,55 +264,15 @@ export interface Product {
   /** @nullable */
   category?: string | null;
   /** @nullable */
-  industry?: string | null;
-  /** @nullable */
-  machineType?: string | null;
-  /** @nullable */
   pricePerUnit?: number | null;
-  /** @nullable */
-  productCode?: string | null;
+  productCode: string;
   /** @nullable */
   bottleWeight?: string | null;
   /** @nullable */
   bottleColour?: string | null;
   /** @nullable */
-  bottleColourCode?: string | null;
-  /** @nullable */
   capColour?: string | null;
-  /** @nullable */
-  materialType?: string | null;
-  /** @nullable */
-  hsnCode?: string | null;
-  /** @nullable */
-  defaultUnit?: string | null;
-  /** @nullable */
-  defaultGst?: number | null;
-  /** @nullable */
-  status?: string | null;
   createdAt?: string;
-  variants?: ProductVariant[];
-  variantCount?: number;
-}
-
-export interface ProductVariant {
-  id: number;
-  productId: number;
-  /** @nullable */
-  weight?: string | null;
-  /** @nullable */
-  defaultColor?: string | null;
-  isActive: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface ProductVariantInput {
-  /** @nullable */
-  weight?: string | null;
-  /** @nullable */
-  defaultColor?: string | null;
-  /** @nullable */
-  isActive?: boolean | null;
 }
 
 export interface ProductInput {
@@ -371,32 +280,14 @@ export interface ProductInput {
   /** @nullable */
   category?: string | null;
   /** @nullable */
-  industry?: string | null;
-  /** @nullable */
-  machineType?: string | null;
-  /** @nullable */
   pricePerUnit?: number | null;
-  /** @nullable */
-  productCode?: string | null;
+  productCode: string;
   /** @nullable */
   bottleWeight?: string | null;
   /** @nullable */
   bottleColour?: string | null;
   /** @nullable */
-  bottleColourCode?: string | null;
-  /** @nullable */
   capColour?: string | null;
-  /** @nullable */
-  materialType?: string | null;
-  /** @nullable */
-  hsnCode?: string | null;
-  /** @nullable */
-  defaultUnit?: string | null;
-  /** @nullable */
-  defaultGst?: number | null;
-  /** @nullable */
-  status?: string | null;
-  variants?: ProductVariantInput[];
 }
 
 export interface ProductUpdate {
@@ -404,32 +295,14 @@ export interface ProductUpdate {
   /** @nullable */
   category?: string | null;
   /** @nullable */
-  industry?: string | null;
-  /** @nullable */
-  machineType?: string | null;
-  /** @nullable */
   pricePerUnit?: number | null;
-  /** @nullable */
-  productCode?: string | null;
+  productCode?: string;
   /** @nullable */
   bottleWeight?: string | null;
   /** @nullable */
   bottleColour?: string | null;
   /** @nullable */
-  bottleColourCode?: string | null;
-  /** @nullable */
   capColour?: string | null;
-  /** @nullable */
-  materialType?: string | null;
-  /** @nullable */
-  hsnCode?: string | null;
-  /** @nullable */
-  defaultUnit?: string | null;
-  /** @nullable */
-  defaultGst?: number | null;
-  /** @nullable */
-  status?: string | null;
-  variants?: ProductVariantInput[];
 }
 
 export type DealStage = typeof DealStage[keyof typeof DealStage];
@@ -479,27 +352,8 @@ export interface Deal {
   /** @nullable */
   salesOwnerId?: number | null;
   salesOwner?: User;
-  /** @nullable */
-  wonAmount?: number | null;
-  /** @nullable */
-  productionUnit?: string | null;
-  /** @nullable */
-  completedAt?: string | null;
-  /** Hidden only from the lead-detail Activity Timeline UI; still in DB/reports */
-  isHiddenFromTimeline?: boolean;
   createdAt: string;
   updatedAt?: string;
-  /** Active proforma invoice for this deal (if any) */
-  activeProformaInvoice?: {
-    id: number;
-    invoiceNumber: string;
-    status: string;
-    taxableAmount?: number | string;
-    grandTotal: number | string;
-    version: number;
-    isActive: boolean;
-    createdAt: string;
-  } | null;
 }
 
 export type DealInputStage = typeof DealInputStage[keyof typeof DealInputStage];
@@ -530,10 +384,6 @@ export interface DealInput {
   notes?: string | null;
   /** @nullable */
   salesOwnerId?: number | null;
-  /** @nullable */
-  wonAmount?: number | null;
-  /** @nullable */
-  productionUnit?: string | null;
 }
 
 export type DealUpdateStage = typeof DealUpdateStage[keyof typeof DealUpdateStage];
@@ -563,11 +413,6 @@ export interface DealUpdate {
   notes?: string | null;
   /** @nullable */
   salesOwnerId?: number | null;
-  /** @nullable */
-  wonAmount?: number | null;
-  /** @nullable */
-  productionUnit?: string | null;
-  isHiddenFromTimeline?: boolean;
 }
 
 export interface DealProduct {
@@ -664,10 +509,6 @@ export interface ActivityInput {
   followUpType?: string | null;
   /** @nullable */
   callStatus?: string | null;
-  /** @nullable */
-  reminder?: string | null;
-  /** @nullable */
-  assignedTo?: number | null;
 }
 
 export type ActivityUpdateType = typeof ActivityUpdateType[keyof typeof ActivityUpdateType];
@@ -727,16 +568,6 @@ export interface OwnerStat {
   totalWonValue: number;
 }
 
-export interface ProductVariantStat {
-  /** @nullable */
-  weight?: string | null;
-  /** @nullable */
-  colour?: string | null;
-  dealCount: number;
-  totalQuantity: number;
-  totalValue: number;
-}
-
 export interface ProductStat {
   productId: number;
   productName: string;
@@ -744,7 +575,6 @@ export interface ProductStat {
   totalQuantity: number;
   totalValue: number;
   dealCount: number;
-  variants?: ProductVariantStat[];
 }
 
 export interface CityStat {
@@ -803,45 +633,6 @@ export interface ImportResult {
   skipped: number;
   duplicates: string[];
   errors?: string[];
-}
-
-export interface BulkCustomerRow {
-  /** @nullable */
-  name?: string | null;
-  /** @nullable */
-  companyName?: string | null;
-  /** @nullable */
-  mobile?: string | null;
-  /** @nullable */
-  email?: string | null;
-  /** @nullable */
-  city?: string | null;
-  /** @nullable */
-  state?: string | null;
-}
-
-export interface BulkCustomerImportInput {
-  rows: BulkCustomerRow[];
-  category: string;
-  /** @nullable */
-  defaultSalesOwnerId?: number | null;
-}
-
-export interface BulkCustomerImportResult {
-  imported: number;
-  skipped: number;
-  invalid: number;
-  duplicates: number;
-  duplicateDetails: Array<{
-    rowNum: number;
-    mobile: string;
-    name: string;
-    existingContactId: number;
-    existingContactName: string;
-    existingCategory: string;
-  }>;
-  errors: Array<{ rowNum: number; reason: string }>;
-  importedInto: string;
 }
 
 export interface IndiaMartLeadInput {
@@ -903,9 +694,6 @@ contactId?: number;
 salesOwnerId?: number;
 stage?: string;
 unit?: string;
-completedDealVisibility?: "hide" | "24h" | "3d" | "forever";
-startDate?: string;
-endDate?: string;
 };
 
 export type ListActivitiesParams = {
@@ -913,8 +701,6 @@ dealId?: number;
 contactId?: number;
 userId?: number;
 upcoming?: boolean;
-startDate?: string;
-endDate?: string;
 };
 
 export type GetPipelineReportParams = {
@@ -922,31 +708,22 @@ salesOwnerId?: number;
 unit?: string;
 month?: string;
 city?: string;
-startDate?: string;
-endDate?: string;
 };
 
 export type GetReportByOwnerParams = {
 month?: string;
 unit?: string;
-salesOwnerId?: number;
-startDate?: string;
-endDate?: string;
 };
 
 export type GetReportByProductParams = {
 month?: string;
 salesOwnerId?: number;
-startDate?: string;
-endDate?: string;
 };
 
 export type GetReportLostReasonsParams = {
 month?: string;
 salesOwnerId?: number;
 unit?: string;
-startDate?: string;
-endDate?: string;
 };
 
 export type GetReportLostReasons200Item = {
@@ -958,15 +735,11 @@ export type GetReportLostReasons200Item = {
 export type GetReportByCityParams = {
 month?: string;
 salesOwnerId?: number;
-startDate?: string;
-endDate?: string;
 };
 
 export type GetReportByStateParams = {
 month?: string;
 salesOwnerId?: number;
-startDate?: string;
-endDate?: string;
 };
 
 export type GetReportByState200 = {

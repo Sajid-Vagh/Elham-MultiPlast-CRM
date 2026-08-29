@@ -11,6 +11,4 @@ salesOwnerId?: number;
 unit?: string;
 month?: string;
 city?: string;
-startDate?: string;
-endDate?: string;
 };

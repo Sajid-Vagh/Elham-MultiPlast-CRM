@@ -26,7 +26,10 @@ export default defineConfig({
       target: "generated",
       client: "react-query",
       mode: "split",
-      baseUrl: "https://elham-multiplast-crm.onrender.com/api",
+      // Deployment-neutral relative base path.
+      // resolveApiUrl() in custom-fetch.ts prepends the runtime VITE_API_URL (_baseUrl)
+      // to all relative paths, so no environment-specific domain belongs here.
+      baseUrl: "/api",
       clean: true,
       prettier: true,
       override: {

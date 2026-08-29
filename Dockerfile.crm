@@ -49,12 +49,17 @@ RUN PORT=${PORT} BASE_PATH=${BASE_PATH} API_PORT=8080 \
 # =============================================================================
 FROM nginx:1.27-alpine AS production
 
-ENV API_PROXY_URL="https://api.elhammultiplast.com"
+# API_PROXY_URL: nginx proxy target for /api and /socket.io routes.
+# Must be set at container runtime — Dokploy: add to project-level environment variables.
+# Intentionally NO hardcoded default. The entrypoint validates this before starting nginx.
+# Vercel does NOT use this Dockerfile — it is only used by Docker/Dokploy deployments.
+ENV API_PROXY_URL=""
 
 RUN rm /etc/nginx/conf.d/default.conf
 
 COPY --from=build /repo/artifacts/crm/dist/public /usr/share/nginx/html
 
+# Write the nginx template — uses envsubst at container startup via the entrypoint.
 RUN mkdir -p /etc/nginx/templates && printf 'server {\n\
   listen 80;\n\
   root /usr/share/nginx/html;\n\
@@ -97,7 +102,27 @@ RUN mkdir -p /etc/nginx/templates && printf 'server {\n\
   }\n\
 }\n' > /etc/nginx/templates/default.conf.template
 
+# Entrypoint: validate API_PROXY_URL then start nginx via the official template mechanism.
+# The official nginx image runs envsubst on /etc/nginx/templates/*.template → /etc/nginx/conf.d/
+# before calling nginx -g 'daemon off;'.
+# We add an explicit guard so a missing/empty API_PROXY_URL fails with a clear error
+# instead of producing an invalid nginx config (proxy_pass with no URL = nginx parse error).
+RUN printf '#!/bin/sh\n\
+set -e\n\
+if [ -z "${API_PROXY_URL}" ]; then\n\
+  echo "ERROR: API_PROXY_URL is not set."\n\
+  echo "Set API_PROXY_URL to the backend API base URL in Dokploy environment variables."\n\
+  echo "Example: API_PROXY_URL=https://api.elhammultiplast.com"\n\
+  exit 1\n\
+fi\n\
+# Delegate to the official nginx entrypoint which runs envsubst then starts nginx\n\
+exec /docker-entrypoint.sh nginx -g "daemon off;"\n' > /docker-entrypoint-guard.sh \
+  && chmod +x /docker-entrypoint-guard.sh
+
 EXPOSE 80
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD wget -qO- http://127.0.0.1:80/health || exit 1
+
+CMD ["/docker-entrypoint-guard.sh"]
+
