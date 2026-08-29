@@ -1831,12 +1831,16 @@ const setItemDisplay = (idx: number, patch: Partial<InvoiceItem>) => {
     function headerHtml(): string {
       return `
     <div class="header">
-      <div class="header-logo"><img src="${LOGO_DATA_URI}" alt="Elham Multiplast" style="height:70pt;object-fit:contain;" /></div>
-      <div class="gstin-top"><strong>GSTIN :</strong> 24AAJFE2064P1Z6</div>
-      <div class="invoice-title">PROFORMA INVOICE</div>
-      <div class="company-name">ELHAM MULTIPLAST LLP</div>
-      <div class="header-address">PLOT NO. 1429-1430, NR. FORTUNE PETROL PUMP,<br>OPP. KHIJADIYA TALAV, ILOL, HIMATNAGAR,<br>SABARKANTHA, GUJARAT - 383220</div>
-      <div class="header-email">elhammultiplast@gmail.com</div>
+      <div class="header-inner">
+        <div class="header-logo"><img src="${LOGO_DATA_URI}" alt="Elham Multiplast" style="height:70pt;max-width:120pt;object-fit:contain;" /></div>
+        <div class="header-center">
+          <div class="gstin-top"><strong>GSTIN :</strong> 24AAJFE2064P1Z6</div>
+          <div class="invoice-title">PROFORMA INVOICE</div>
+          <div class="company-name">ELHAM MULTIPLAST LLP</div>
+          <div class="header-address">PLOT NO. 1429-1430, NR. FORTUNE PETROL PUMP,<br>OPP. KHIJADIYA TALAV, ILOL, HIMATNAGAR,<br>SABARKANTHA, GUJARAT - 383220</div>
+          <div class="header-email">elhammultiplast@gmail.com</div>
+        </div>
+      </div>
     </div>
     <div class="party-section">
       <div class="party-left">
@@ -1960,9 +1964,11 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;line-height:1.35;marg
 /* ── Spacer: pushes table+header up, footer down ── */
 .page-spacer{flex:1;}
 
-.header{position:relative;text-align:center;border-bottom:1.5px solid #000;padding:6pt 8pt 5pt 8pt;}
-.header-logo{position:absolute;left:0;top:5pt;}
-.gstin-top{font-size:7.5pt;margin-bottom:3pt;}
+.header{border-bottom:1.5px solid #000;padding:6pt 8pt 5pt 8pt;}
+.header-inner{display:flex;align-items:flex-start;}
+.header-logo{flex:0 0 auto;margin-right:10pt;}
+.header-center{flex:1;text-align:center;}
+.gstin-top{text-align:center;font-size:7.5pt;margin-bottom:3pt;}
 .invoice-title{font-size:13pt;font-weight:bold;margin:2pt 0 3pt 0;text-decoration:underline;}
 .company-name{font-size:16pt;font-weight:bold;letter-spacing:0.3pt;margin:0 0 2pt 0;}
 .header-address{font-size:7.5pt;line-height:1.4;color:#000;margin-bottom:1pt;}
