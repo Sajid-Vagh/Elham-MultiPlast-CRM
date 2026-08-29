@@ -5,18 +5,37 @@
  * Elham Multiplast CRM API
  * OpenAPI spec version: 0.1.0
  */
+import type { ProductVariantInput } from './productVariantInput';
 
 export interface ProductInput {
   name: string;
   /** @nullable */
   category?: string | null;
   /** @nullable */
+  industry?: string | null;
+  /** @nullable */
+  machineType?: string | null;
+  /** @nullable */
   pricePerUnit?: number | null;
-  productCode: string;
+  /** @nullable */
+  productCode?: string | null;
   /** @nullable */
   bottleWeight?: string | null;
   /** @nullable */
   bottleColour?: string | null;
   /** @nullable */
+  bottleColourCode?: string | null;
+  /** @nullable */
   capColour?: string | null;
+  /** @nullable */
+  materialType?: string | null;
+  /** @nullable */
+  hsnCode?: string | null;
+  /** @nullable */
+  defaultUnit?: string | null;
+  /** @nullable */
+  defaultGst?: number | null;
+  /** @nullable */
+  status?: string | null;
+  variants?: ProductVariantInput[];
 }

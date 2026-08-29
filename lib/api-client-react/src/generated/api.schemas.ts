@@ -267,20 +267,60 @@ export interface DuplicateGroup {
   contacts: Contact[];
 }
 
+export interface ProductVariant {
+  id: number;
+  productId: number;
+  /** @nullable */
+  weight?: string | null;
+  /** @nullable */
+  defaultColor?: string | null;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProductVariantInput {
+  /** @nullable */
+  weight?: string | null;
+  /** @nullable */
+  defaultColor?: string | null;
+  /** @nullable */
+  isActive?: boolean | null;
+}
+
 export interface Product {
   id: number;
   name: string;
   /** @nullable */
   category?: string | null;
   /** @nullable */
+  industry?: string | null;
+  /** @nullable */
+  machineType?: string | null;
+  /** @nullable */
   pricePerUnit?: number | null;
-  productCode: string;
+  /** @nullable */
+  productCode?: string | null;
   /** @nullable */
   bottleWeight?: string | null;
   /** @nullable */
   bottleColour?: string | null;
   /** @nullable */
+  bottleColourCode?: string | null;
+  /** @nullable */
   capColour?: string | null;
+  /** @nullable */
+  materialType?: string | null;
+  /** @nullable */
+  hsnCode?: string | null;
+  /** @nullable */
+  defaultUnit?: string | null;
+  /** @nullable */
+  defaultGst?: number | null;
+  /** @nullable */
+  status?: string | null;
+  variants?: ProductVariant[];
+  variantCount?: number;
   createdAt?: string;
 }
 
@@ -289,14 +329,32 @@ export interface ProductInput {
   /** @nullable */
   category?: string | null;
   /** @nullable */
+  industry?: string | null;
+  /** @nullable */
+  machineType?: string | null;
+  /** @nullable */
   pricePerUnit?: number | null;
-  productCode: string;
+  /** @nullable */
+  productCode?: string | null;
   /** @nullable */
   bottleWeight?: string | null;
   /** @nullable */
   bottleColour?: string | null;
   /** @nullable */
+  bottleColourCode?: string | null;
+  /** @nullable */
   capColour?: string | null;
+  /** @nullable */
+  materialType?: string | null;
+  /** @nullable */
+  hsnCode?: string | null;
+  /** @nullable */
+  defaultUnit?: string | null;
+  /** @nullable */
+  defaultGst?: number | null;
+  /** @nullable */
+  status?: string | null;
+  variants?: ProductVariantInput[];
 }
 
 export interface ProductUpdate {
@@ -304,14 +362,32 @@ export interface ProductUpdate {
   /** @nullable */
   category?: string | null;
   /** @nullable */
+  industry?: string | null;
+  /** @nullable */
+  machineType?: string | null;
+  /** @nullable */
   pricePerUnit?: number | null;
-  productCode?: string;
+  /** @nullable */
+  productCode?: string | null;
   /** @nullable */
   bottleWeight?: string | null;
   /** @nullable */
   bottleColour?: string | null;
   /** @nullable */
+  bottleColourCode?: string | null;
+  /** @nullable */
   capColour?: string | null;
+  /** @nullable */
+  materialType?: string | null;
+  /** @nullable */
+  hsnCode?: string | null;
+  /** @nullable */
+  defaultUnit?: string | null;
+  /** @nullable */
+  defaultGst?: number | null;
+  /** @nullable */
+  status?: string | null;
+  variants?: ProductVariantInput[];
 }
 
 export type DealStage = typeof DealStage[keyof typeof DealStage];
@@ -735,6 +811,10 @@ followUpDue?: boolean;
 
 export type SearchContactByMobileParams = {
 mobile: string;
+};
+
+export type ListProductsParams = {
+search?: string;
 };
 
 export type ListDealsParams = {

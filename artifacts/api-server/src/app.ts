@@ -32,6 +32,7 @@ function isAllowedOrigin(origin: string): boolean {
   // Vercel preview deployments for this project
   if (
     /^https:\/\/elham-multi-plast-crm(-[a-z0-9-]+)?\.vercel\.app$/i.test(origin) ||
+    /^https:\/\/elhammulti-plast-crm(-[a-z0-9-]+)?\.vercel\.app$/i.test(origin) ||
     /^https:\/\/[a-z0-9-]+-sajidvagh032-1688s-projects\.vercel\.app$/i.test(origin) ||
     /^https:\/\/elhammultiplast(-[a-z0-9-]+)?\.vercel\.app$/i.test(origin)
   ) {
