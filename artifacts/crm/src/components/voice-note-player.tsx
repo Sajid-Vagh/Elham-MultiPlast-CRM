@@ -76,6 +76,8 @@ export function VoiceNotePlayer({
   const [duration, setDuration] = useState(0);
   const [showTranscript, setShowTranscript] = useState(false);
   const [sourceError, setSourceError] = useState(false);
+  const [audioBlobUrl, setAudioBlobUrl] = useState<string | null>(null);
+  const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { data: currentUser } = useGetMe();
   const queryClient = useQueryClient();
@@ -106,6 +108,63 @@ export function VoiceNotePlayer({
     }
   };
 
+  // Fetch audio with authentication credentials and create a scoped Blob URL
+  useEffect(() => {
+    setSourceError(false);
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+
+    if (!note.id || !note.fileAvailable) {
+      setAudioBlobUrl(null);
+      setIsLoadingAudio(false);
+      return;
+    }
+
+    let isMounted = true;
+    let currentBlobUrl: string | null = null;
+    setIsLoadingAudio(true);
+
+    const fetchAudio = async () => {
+      try {
+        const token = localStorage.getItem("crm_token");
+        const streamUrl = note.url || `/api/voice-notes/${note.id}/stream`;
+        const res = await fetch(streamUrl, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+
+        if (!res.ok) {
+          if (isMounted) {
+            setSourceError(true);
+            setIsLoadingAudio(false);
+          }
+          return;
+        }
+
+        const blob = await res.blob();
+        if (!isMounted) return;
+
+        currentBlobUrl = URL.createObjectURL(blob);
+        setAudioBlobUrl(currentBlobUrl);
+        setIsLoadingAudio(false);
+      } catch {
+        if (isMounted) {
+          setSourceError(true);
+          setIsLoadingAudio(false);
+        }
+      }
+    };
+
+    fetchAudio();
+
+    return () => {
+      isMounted = false;
+      if (currentBlobUrl) {
+        URL.revokeObjectURL(currentBlobUrl);
+      }
+    };
+  }, [note.id, note.url, note.fileAvailable]);
+
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -126,10 +185,10 @@ export function VoiceNotePlayer({
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
     };
-  }, []);
+  }, [audioBlobUrl]);
 
   const togglePlay = () => {
-    if (!audioRef.current) return;
+    if (!audioRef.current || isLoadingAudio) return;
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
@@ -150,11 +209,11 @@ export function VoiceNotePlayer({
     audioRef.current.currentTime = pct * duration;
   };
 
-  const hasValidSource = note.url && !sourceError && note.fileAvailable;
+  const hasValidSource = (audioBlobUrl || isLoadingAudio) && !sourceError && note.fileAvailable;
 
-  // Always render audio element (hidden) so onError listener can detect failures
-  const audioElement = note.url ? (
-    <audio ref={audioRef} src={note.url} preload="metadata" className="hidden" />
+  // Always render audio element (hidden) with Blob URL
+  const audioElement = audioBlobUrl ? (
+    <audio ref={audioRef} src={audioBlobUrl} preload="metadata" className="hidden" />
   ) : null;
 
   if (!hasValidSource) {
@@ -189,9 +248,16 @@ export function VoiceNotePlayer({
           variant="ghost"
           size="sm"
           onClick={togglePlay}
+          disabled={isLoadingAudio}
           className={`rounded-full shrink-0 ${compact ? "h-7 w-7" : "h-8 w-8"} p-0`}
         >
-          {isPlaying ? <Pause className={compact ? "h-3 w-3" : "h-4 w-4"} /> : <Play className={compact ? "h-3 w-3" : "h-4 w-4"} />}
+          {isLoadingAudio ? (
+            <Loader2 className={`${compact ? "h-3 w-3" : "h-4 w-4"} animate-spin text-muted-foreground`} />
+          ) : isPlaying ? (
+            <Pause className={compact ? "h-3 w-3" : "h-4 w-4"} />
+          ) : (
+            <Play className={compact ? "h-3 w-3" : "h-4 w-4"} />
+          )}
         </Button>
 
         <div

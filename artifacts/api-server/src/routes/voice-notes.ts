@@ -385,14 +385,39 @@ router.delete("/voice-notes/:id", async (req: Request, res: Response) => {
 });
 
 // ────────────────────────────────────────────────
-// GET /voice-notes/:id/stream — Stream audio bytes for <audio> playback
-// Public endpoint (no auth) — access is gated by the list endpoint.
-// The <audio> element cannot send custom headers, so this must be public.
+// GET /voice-notes/:id/stream — Stream audio bytes for playback (authenticated & authorized)
 // ────────────────────────────────────────────────
 router.get("/voice-notes/:id/stream", async (req: Request, res: Response) => {
   try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid voice note id" }); return; }
+
+    const [noteRow] = await db.select().from(voiceNotesTable).where(eq(voiceNotesTable.id, id));
+    if (!noteRow || noteRow.deletedAt) {
+      res.status(404).json({ error: "Voice note not found or unavailable" });
+      return;
+    }
+
+    // Unit access authorization
+    if (noteRow.dealId) {
+      const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, noteRow.dealId));
+      if (deal) {
+        const [contact] = await db.select({ unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+        if (!canAccessUnit(user, contact?.unit || null)) {
+          res.status(403).json({ error: "Access denied: unit mismatch" });
+          return;
+        }
+      }
+    } else if (noteRow.productionOrderId) {
+      const [po] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, noteRow.productionOrderId));
+      if (po && !canAccessUnit(user, po.productionUnit || null)) {
+        res.status(403).json({ error: "Access denied: unit mismatch" });
+        return;
+      }
+    }
 
     const audioData = await getVoiceNoteAudioData(id);
     if (!audioData) {
@@ -403,7 +428,7 @@ router.get("/voice-notes/:id/stream", async (req: Request, res: Response) => {
     res.setHeader("Content-Type", audioData.mimeType);
     res.setHeader("Content-Length", audioData.data.length);
     res.setHeader("Accept-Ranges", "bytes");
-    res.setHeader("Cache-Control", "private, max-age=86400");
+    res.setHeader("Cache-Control", "private, no-cache");
     res.end(audioData.data);
   } catch (err) {
     req.log.error({ err }, "Stream voice note error:");
@@ -514,6 +539,30 @@ router.get("/voice-notes/:id/download", async (req: Request, res: Response) => {
 
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid voice note id" }); return; }
+
+    const [noteRow] = await db.select().from(voiceNotesTable).where(eq(voiceNotesTable.id, id));
+    if (!noteRow || noteRow.deletedAt) {
+      res.status(404).json({ error: "This voice note is unavailable." });
+      return;
+    }
+
+    // Unit access authorization
+    if (noteRow.dealId) {
+      const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, noteRow.dealId));
+      if (deal) {
+        const [contact] = await db.select({ unit: contactsTable.unit }).from(contactsTable).where(eq(contactsTable.id, deal.contactId));
+        if (!canAccessUnit(user, contact?.unit || null)) {
+          res.status(403).json({ error: "Access denied: unit mismatch" });
+          return;
+        }
+      }
+    } else if (noteRow.productionOrderId) {
+      const [po] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, noteRow.productionOrderId));
+      if (po && !canAccessUnit(user, po.productionUnit || null)) {
+        res.status(403).json({ error: "Access denied: unit mismatch" });
+        return;
+      }
+    }
 
     const audioData = await getVoiceNoteAudioData(id);
     if (!audioData) {
