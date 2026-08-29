@@ -9,6 +9,4 @@
 export type GetReportByCityParams = {
 month?: string;
 salesOwnerId?: number;
-startDate?: string;
-endDate?: string;
 };

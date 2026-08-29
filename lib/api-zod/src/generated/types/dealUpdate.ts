@@ -20,6 +20,4 @@ export interface DealUpdate {
   notes?: string | null;
   /** @nullable */
   salesOwnerId?: number | null;
-  /** @nullable */
-  wonAmount?: number | null;
 }

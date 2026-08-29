@@ -18,14 +18,33 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
-// CORS — restrict to known origins in production
+// CORS — restrict to known origins in production while supporting Vercel preview deployments
 const allowedOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || "http://localhost:5173").split(",").map(s => s.trim());
+
+function isAllowedOrigin(origin: string): boolean {
+  if (allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
+    return true;
+  }
+  // Localhost / 127.0.0.1 development
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+    return true;
+  }
+  // Vercel preview deployments for this project
+  if (
+    /^https:\/\/elham-multi-plast-crm(-[a-z0-9-]+)?\.vercel\.app$/i.test(origin) ||
+    /^https:\/\/[a-z0-9-]+-sajidvagh032-1688s-projects\.vercel\.app$/i.test(origin) ||
+    /^https:\/\/elhammultiplast(-[a-z0-9-]+)?\.vercel\.app$/i.test(origin)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile apps, curl, server-to-server)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes("*")) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
+    if (isAllowedOrigin(origin)) return callback(null, true);
     // Reject unknown origins in production
     logger.warn({ origin, allowedOrigins }, "CORS origin rejected");
     return callback(new Error("Not allowed by CORS"));

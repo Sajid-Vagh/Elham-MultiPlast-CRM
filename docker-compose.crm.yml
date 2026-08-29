@@ -1,9 +1,3 @@
-﻿# =============================================================================
-# Elham CRM - Frontend (React SPA served by nginx)
-# Deploy as a separate Dokploy application.
-# VITE_API_URL is baked into the JS bundle at build time - set it at project level.
-# =============================================================================
-
 services:
   crm:
     build:
@@ -14,6 +8,10 @@ services:
         PORT: "80"
         BASE_PATH: "/"
     restart: unless-stopped
+    environment:
+      # API_PROXY_URL is used by nginx at container startup to set the /api proxy target.
+      # Must be set in Dokploy project-level environment variables.
+      API_PROXY_URL: ${{project.API_PROXY_URL}}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:80/health || exit 1"]
       interval: 30s

@@ -293,29 +293,43 @@ async function parseSuccessBody(
       return response.blob();
   }
 }
-function getBasePath(base: string): string {
-  return base.replace(/https?:\/\/[^\/]+/, "");
-}
-
 export function resolveApiUrl(url: string): string {
-  if (_baseUrl && url.startsWith("/")) {
-    const basePath = getBasePath(_baseUrl);
-    if (basePath && url.startsWith(basePath)) {
-      return _baseUrl + url.slice(basePath.length);
-    }
-    return `${_baseUrl}${url}`;
+  if (!url) return url;
+
+  // If already absolute URL (http:// or https://), return as-is
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return url;
   }
 
-  if (_baseUrl && url.includes("elham-multiplast-crm.onrender.com")) {
-    const path = url.replace(/https?:\/\/[^\/]+/, "");
-    const basePath = getBasePath(_baseUrl);
-    if (basePath && path.startsWith(basePath)) {
-      return `${_baseUrl}${path.slice(basePath.length)}`;
+  // Socket base root resolution ("/")
+  if (url === "/") {
+    if (_baseUrl) {
+      return _baseUrl.replace(/\/+$/, "").replace(/\/api$/, "");
     }
-    return `${_baseUrl}${path}`;
+    return "/";
   }
 
-  return url;
+  // Legacy fallback for any old onrender.com strings
+  let normalized = url;
+  if (normalized.includes("elham-multiplast-crm.onrender.com")) {
+    normalized = normalized.replace(/https?:\/\/[^\/]+/, "");
+  }
+
+  // Ensure relative path has a leading slash
+  const path = normalized.startsWith("/") ? normalized : `/${normalized}`;
+
+  // Ensure path starts with /api (unless it's an /uploads path or static asset)
+  const apiPath = path.startsWith("/api/") || path === "/api" || path.startsWith("/api?") || path.startsWith("/uploads/")
+    ? path
+    : `/api${path}`;
+
+  if (!_baseUrl) {
+    return apiPath;
+  }
+
+  // Clean _baseUrl: remove trailing slashes and any trailing /api so we never duplicate /api
+  const cleanBase = _baseUrl.replace(/\/+$/, "").replace(/\/api$/, "");
+  return `${cleanBase}${apiPath}`;
 }
 
 export const customFetch = async <T>(

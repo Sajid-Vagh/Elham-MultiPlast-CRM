@@ -11,6 +11,4 @@ dealId?: number;
 contactId?: number;
 userId?: number;
 upcoming?: boolean;
-startDate?: string;
-endDate?: string;
 };

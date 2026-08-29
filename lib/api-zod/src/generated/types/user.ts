@@ -15,5 +15,7 @@ export interface User {
   role: UserRole;
   colorCode: string;
   unit: UserUnit;
+  /** @nullable */
+  profilePhoto?: string | null;
   createdAt?: string;
 }

@@ -43,8 +43,5 @@ export interface Contact {
   lastCallDate?: string | null;
   /** @nullable */
   nextCallDate?: string | null;
-  isRead?: boolean;
-  isRepeatEnquiry?: boolean;
-  updatedAt?: string;
   createdAt: string;
 }

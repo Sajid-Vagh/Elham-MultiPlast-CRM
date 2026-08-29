@@ -134,8 +134,13 @@ PORT=80
 BASE_PATH=/
 ```
 
-### Environment Variables
-The CRM is pure static files — no runtime env vars needed.
+### Environment Variables (Runtime)
+> `API_PROXY_URL` is used by nginx at container startup to proxy `/api` and `/socket.io` to the backend.
+> It was previously hardcoded in `Dockerfile.crm` — it must now be supplied explicitly.
+
+```
+API_PROXY_URL=${{project.API_PROXY_URL}}
+```
 
 ### Watch Paths (Auto-Deploy Filtering)
 To ensure the CRM only redeploys when frontend code changes (and ignores API changes), paste this exact string into the **Watch Paths** setting:

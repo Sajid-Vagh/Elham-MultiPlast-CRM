@@ -63,7 +63,6 @@ import type {
   ProformaInvoiceList,
   ReportSummary,
   SearchContactByMobileParams,
-  StateStat,
   User,
   UserInput,
   UserUpdate
@@ -86,7 +85,7 @@ export const getHealthCheckUrl = () => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/healthz`
+  return `/api/healthz`
 }
 
 /**
@@ -109,7 +108,7 @@ export const healthCheck = async ( options?: RequestInit): Promise<HealthStatus>
 
 export const getHealthCheckQueryKey = () => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/healthz`
+    `/api/healthz`
     ] as const;
     }
 
@@ -163,7 +162,7 @@ export const getLoginUrl = () => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/auth/login`
+  return `/api/auth/login`
 }
 
 /**
@@ -233,7 +232,7 @@ export const getLogoutUrl = () => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/auth/logout`
+  return `/api/auth/logout`
 }
 
 /**
@@ -303,7 +302,7 @@ export const getGetMeUrl = () => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/auth/me`
+  return `/api/auth/me`
 }
 
 /**
@@ -326,7 +325,7 @@ export const getMe = async ( options?: RequestInit): Promise<User> => {
 
 export const getGetMeQueryKey = () => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/auth/me`
+    `/api/auth/me`
     ] as const;
     }
 
@@ -380,7 +379,7 @@ export const getListUsersUrl = () => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/users`
+  return `/api/users`
 }
 
 /**
@@ -403,7 +402,7 @@ export const listUsers = async ( options?: RequestInit): Promise<User[]> => {
 
 export const getListUsersQueryKey = () => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/users`
+    `/api/users`
     ] as const;
     }
 
@@ -457,7 +456,7 @@ export const getCreateUserUrl = () => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/users`
+  return `/api/users`
 }
 
 /**
@@ -527,7 +526,7 @@ export const getGetUserUrl = (id: number,) => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/users/${id}`
+  return `/api/users/${id}`
 }
 
 export const getUser = async (id: number, options?: RequestInit): Promise<User> => {
@@ -547,7 +546,7 @@ export const getUser = async (id: number, options?: RequestInit): Promise<User> 
 
 export const getGetUserQueryKey = (id: number,) => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/users/${id}`
+    `/api/users/${id}`
     ] as const;
     }
 
@@ -598,7 +597,7 @@ export const getUpdateUserUrl = (id: number,) => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/users/${id}`
+  return `/api/users/${id}`
 }
 
 export const updateUser = async (id: number,
@@ -663,7 +662,7 @@ export const getDeleteUserUrl = (id: number,) => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/users/${id}`
+  return `/api/users/${id}`
 }
 
 export const deleteUser = async (id: number, options?: RequestInit): Promise<void> => {
@@ -734,7 +733,7 @@ export const getListContactsUrl = (params?: ListContactsParams,) => {
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `https://elham-multiplast-crm.onrender.com/api/contacts?${stringifiedParams}` : `https://elham-multiplast-crm.onrender.com/api/contacts`
+  return stringifiedParams.length > 0 ? `/api/contacts?${stringifiedParams}` : `/api/contacts`
 }
 
 /**
@@ -757,7 +756,7 @@ export const listContacts = async (params?: ListContactsParams, options?: Reques
 
 export const getListContactsQueryKey = (params?: ListContactsParams,) => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/contacts`, ...(params ? [params] : [])
+    `/api/contacts`, ...(params ? [params] : [])
     ] as const;
     }
 
@@ -811,7 +810,7 @@ export const getCreateContactUrl = () => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/contacts`
+  return `/api/contacts`
 }
 
 /**
@@ -881,7 +880,7 @@ export const getGetContactUrl = (id: number,) => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/contacts/${id}`
+  return `/api/contacts/${id}`
 }
 
 export const getContact = async (id: number, options?: RequestInit): Promise<Contact> => {
@@ -901,7 +900,7 @@ export const getContact = async (id: number, options?: RequestInit): Promise<Con
 
 export const getGetContactQueryKey = (id: number,) => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/contacts/${id}`
+    `/api/contacts/${id}`
     ] as const;
     }
 
@@ -952,7 +951,7 @@ export const getUpdateContactUrl = (id: number,) => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/contacts/${id}`
+  return `/api/contacts/${id}`
 }
 
 export const updateContact = async (id: number,
@@ -1017,7 +1016,7 @@ export const getDeleteContactUrl = (id: number,) => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/contacts/${id}`
+  return `/api/contacts/${id}`
 }
 
 export const deleteContact = async (id: number, options?: RequestInit): Promise<void> => {
@@ -1081,7 +1080,7 @@ export const getBulkDeleteContactsUrl = () => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/contacts/bulk-delete`
+  return `/api/contacts/bulk-delete`
 }
 
 /**
@@ -1151,7 +1150,7 @@ export const getListDuplicateContactsUrl = () => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/contacts/duplicates`
+  return `/api/contacts/duplicates`
 }
 
 /**
@@ -1174,7 +1173,7 @@ export const listDuplicateContacts = async ( options?: RequestInit): Promise<Dup
 
 export const getListDuplicateContactsQueryKey = () => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/contacts/duplicates`
+    `/api/contacts/duplicates`
     ] as const;
     }
 
@@ -1235,7 +1234,7 @@ export const getSearchContactByMobileUrl = (params: SearchContactByMobileParams,
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `https://elham-multiplast-crm.onrender.com/api/contacts/search/mobile?${stringifiedParams}` : `https://elham-multiplast-crm.onrender.com/api/contacts/search/mobile`
+  return stringifiedParams.length > 0 ? `/api/contacts/search/mobile?${stringifiedParams}` : `/api/contacts/search/mobile`
 }
 
 /**
@@ -1258,7 +1257,7 @@ export const searchContactByMobile = async (params: SearchContactByMobileParams,
 
 export const getSearchContactByMobileQueryKey = (params?: SearchContactByMobileParams,) => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/contacts/search/mobile`, ...(params ? [params] : [])
+    `/api/contacts/search/mobile`, ...(params ? [params] : [])
     ] as const;
     }
 
@@ -1312,7 +1311,7 @@ export const getListContactProformaInvoicesUrl = (id: number,) => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/contacts/${id}/proforma-invoices`
+  return `/api/contacts/${id}/proforma-invoices`
 }
 
 /**
@@ -1335,7 +1334,7 @@ export const listContactProformaInvoices = async (id: number, options?: RequestI
 
 export const getListContactProformaInvoicesQueryKey = (id: number,) => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/contacts/${id}/proforma-invoices`
+    `/api/contacts/${id}/proforma-invoices`
     ] as const;
     }
 
@@ -1384,18 +1383,20 @@ export function useListContactProformaInvoices<TData = Awaited<ReturnType<typeof
 
 
 
-export const getListProductsUrl = (search?: string) => {
-  const url = new URL(`https://elham-multiplast-crm.onrender.com/api/products`);
-  if (search) url.searchParams.set("search", search);
-  return url.toString();
+export const getListProductsUrl = () => {
+
+
+
+
+  return `/api/products`
 }
 
 /**
  * @summary List all products
  */
-export const listProducts = async ( params?: { search?: string }, options?: RequestInit): Promise<Product[]> => {
+export const listProducts = async ( options?: RequestInit): Promise<Product[]> => {
 
-  return customFetch<Product[]>(getListProductsUrl(params?.search),
+  return customFetch<Product[]>(getListProductsUrl(),
   {
     ...options,
     method: 'GET'
@@ -1408,24 +1409,23 @@ export const listProducts = async ( params?: { search?: string }, options?: Requ
 
 
 
-export const getListProductsQueryKey = (params?: { search?: string }) => {
+export const getListProductsQueryKey = () => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/products`,
-    params?.search || "all"
+    `/api/products`
     ] as const;
     }
 
 
-export const getListProductsQueryOptions = <TData = Awaited<ReturnType<typeof listProducts>>, TError = ErrorType<unknown>>( params?: { search?: string }, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListProductsQueryOptions = <TData = Awaited<ReturnType<typeof listProducts>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListProductsQueryKey(params);
+  const queryKey =  queryOptions?.queryKey ?? getListProductsQueryKey();
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listProducts>>> = ({ signal }) => listProducts(params, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listProducts>>> = ({ signal }) => listProducts({ signal, ...requestOptions });
 
 
 
@@ -1443,12 +1443,11 @@ export type ListProductsQueryError = ErrorType<unknown>
  */
 
 export function useListProducts<TData = Awaited<ReturnType<typeof listProducts>>, TError = ErrorType<unknown>>(
-  params?: { search?: string },
   options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListProductsQueryOptions(params, options)
+  const queryOptions = getListProductsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -1466,7 +1465,7 @@ export const getCreateProductUrl = () => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/products`
+  return `/api/products`
 }
 
 /**
@@ -1536,7 +1535,7 @@ export const getGetProductUrl = (id: number,) => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/products/${id}`
+  return `/api/products/${id}`
 }
 
 export const getProduct = async (id: number, options?: RequestInit): Promise<Product> => {
@@ -1556,7 +1555,7 @@ export const getProduct = async (id: number, options?: RequestInit): Promise<Pro
 
 export const getGetProductQueryKey = (id: number,) => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/products/${id}`
+    `/api/products/${id}`
     ] as const;
     }
 
@@ -1607,7 +1606,7 @@ export const getUpdateProductUrl = (id: number,) => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/products/${id}`
+  return `/api/products/${id}`
 }
 
 export const updateProduct = async (id: number,
@@ -1672,7 +1671,7 @@ export const getDeleteProductUrl = (id: number,) => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/products/${id}`
+  return `/api/products/${id}`
 }
 
 export const deleteProduct = async (id: number, options?: RequestInit): Promise<void> => {
@@ -1743,7 +1742,7 @@ export const getListDealsUrl = (params?: ListDealsParams,) => {
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `https://elham-multiplast-crm.onrender.com/api/deals?${stringifiedParams}` : `https://elham-multiplast-crm.onrender.com/api/deals`
+  return stringifiedParams.length > 0 ? `/api/deals?${stringifiedParams}` : `/api/deals`
 }
 
 /**
@@ -1766,7 +1765,7 @@ export const listDeals = async (params?: ListDealsParams, options?: RequestInit)
 
 export const getListDealsQueryKey = (params?: ListDealsParams,) => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/deals`, ...(params ? [params] : [])
+    `/api/deals`, ...(params ? [params] : [])
     ] as const;
     }
 
@@ -1820,7 +1819,7 @@ export const getCreateDealUrl = () => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/deals`
+  return `/api/deals`
 }
 
 /**
@@ -1890,7 +1889,7 @@ export const getGetDealUrl = (id: number,) => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/deals/${id}`
+  return `/api/deals/${id}`
 }
 
 export const getDeal = async (id: number, options?: RequestInit): Promise<Deal> => {
@@ -1910,7 +1909,7 @@ export const getDeal = async (id: number, options?: RequestInit): Promise<Deal> 
 
 export const getGetDealQueryKey = (id: number,) => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/deals/${id}`
+    `/api/deals/${id}`
     ] as const;
     }
 
@@ -1961,7 +1960,7 @@ export const getUpdateDealUrl = (id: number,) => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/deals/${id}`
+  return `/api/deals/${id}`
 }
 
 export const updateDeal = async (id: number,
@@ -2026,7 +2025,7 @@ export const getDeleteDealUrl = (id: number,) => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/deals/${id}`
+  return `/api/deals/${id}`
 }
 
 export const deleteDeal = async (id: number, options?: RequestInit): Promise<void> => {
@@ -2090,7 +2089,7 @@ export const getListDealProductsUrl = (id: number,) => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/deals/${id}/products`
+  return `/api/deals/${id}/products`
 }
 
 export const listDealProducts = async (id: number, options?: RequestInit): Promise<DealProduct[]> => {
@@ -2110,7 +2109,7 @@ export const listDealProducts = async (id: number, options?: RequestInit): Promi
 
 export const getListDealProductsQueryKey = (id: number,) => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/deals/${id}/products`
+    `/api/deals/${id}/products`
     ] as const;
     }
 
@@ -2161,7 +2160,7 @@ export const getAddDealProductUrl = (id: number,) => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/deals/${id}/products`
+  return `/api/deals/${id}/products`
 }
 
 export const addDealProduct = async (id: number,
@@ -2227,7 +2226,7 @@ export const getRemoveDealProductUrl = (id: number,
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/deals/${id}/products/${productId}`
+  return `/api/deals/${id}/products/${productId}`
 }
 
 export const removeDealProduct = async (id: number,
@@ -2299,7 +2298,7 @@ export const getListActivitiesUrl = (params?: ListActivitiesParams,) => {
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `https://elham-multiplast-crm.onrender.com/api/activities?${stringifiedParams}` : `https://elham-multiplast-crm.onrender.com/api/activities`
+  return stringifiedParams.length > 0 ? `/api/activities?${stringifiedParams}` : `/api/activities`
 }
 
 /**
@@ -2322,7 +2321,7 @@ export const listActivities = async (params?: ListActivitiesParams, options?: Re
 
 export const getListActivitiesQueryKey = (params?: ListActivitiesParams,) => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/activities`, ...(params ? [params] : [])
+    `/api/activities`, ...(params ? [params] : [])
     ] as const;
     }
 
@@ -2376,7 +2375,7 @@ export const getCreateActivityUrl = () => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/activities`
+  return `/api/activities`
 }
 
 /**
@@ -2446,7 +2445,7 @@ export const getUpdateActivityUrl = (id: number,) => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/activities/${id}`
+  return `/api/activities/${id}`
 }
 
 export const updateActivity = async (id: number,
@@ -2511,7 +2510,7 @@ export const getDeleteActivityUrl = (id: number,) => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/activities/${id}`
+  return `/api/activities/${id}`
 }
 
 export const deleteActivity = async (id: number, options?: RequestInit): Promise<void> => {
@@ -2575,7 +2574,7 @@ export const getGetReportSummaryUrl = () => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/reports/summary`
+  return `/api/reports/summary`
 }
 
 /**
@@ -2598,7 +2597,7 @@ export const getReportSummary = async ( options?: RequestInit): Promise<ReportSu
 
 export const getGetReportSummaryQueryKey = () => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/reports/summary`
+    `/api/reports/summary`
     ] as const;
     }
 
@@ -2659,7 +2658,7 @@ export const getGetPipelineReportUrl = (params?: GetPipelineReportParams,) => {
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `https://elham-multiplast-crm.onrender.com/api/reports/pipeline?${stringifiedParams}` : `https://elham-multiplast-crm.onrender.com/api/reports/pipeline`
+  return stringifiedParams.length > 0 ? `/api/reports/pipeline?${stringifiedParams}` : `/api/reports/pipeline`
 }
 
 /**
@@ -2682,7 +2681,7 @@ export const getPipelineReport = async (params?: GetPipelineReportParams, option
 
 export const getGetPipelineReportQueryKey = (params?: GetPipelineReportParams,) => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/reports/pipeline`, ...(params ? [params] : [])
+    `/api/reports/pipeline`, ...(params ? [params] : [])
     ] as const;
     }
 
@@ -2743,7 +2742,7 @@ export const getGetReportByOwnerUrl = (params?: GetReportByOwnerParams,) => {
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `https://elham-multiplast-crm.onrender.com/api/reports/by-owner?${stringifiedParams}` : `https://elham-multiplast-crm.onrender.com/api/reports/by-owner`
+  return stringifiedParams.length > 0 ? `/api/reports/by-owner?${stringifiedParams}` : `/api/reports/by-owner`
 }
 
 /**
@@ -2766,7 +2765,7 @@ export const getReportByOwner = async (params?: GetReportByOwnerParams, options?
 
 export const getGetReportByOwnerQueryKey = (params?: GetReportByOwnerParams,) => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/reports/by-owner`, ...(params ? [params] : [])
+    `/api/reports/by-owner`, ...(params ? [params] : [])
     ] as const;
     }
 
@@ -2827,7 +2826,7 @@ export const getGetReportByProductUrl = (params?: GetReportByProductParams,) => 
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `https://elham-multiplast-crm.onrender.com/api/reports/by-product?${stringifiedParams}` : `https://elham-multiplast-crm.onrender.com/api/reports/by-product`
+  return stringifiedParams.length > 0 ? `/api/reports/by-product?${stringifiedParams}` : `/api/reports/by-product`
 }
 
 /**
@@ -2850,7 +2849,7 @@ export const getReportByProduct = async (params?: GetReportByProductParams, opti
 
 export const getGetReportByProductQueryKey = (params?: GetReportByProductParams,) => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/reports/by-product`, ...(params ? [params] : [])
+    `/api/reports/by-product`, ...(params ? [params] : [])
     ] as const;
     }
 
@@ -2911,7 +2910,7 @@ export const getGetReportLostReasonsUrl = (params?: GetReportLostReasonsParams,)
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `https://elham-multiplast-crm.onrender.com/api/reports/lost-reasons?${stringifiedParams}` : `https://elham-multiplast-crm.onrender.com/api/reports/lost-reasons`
+  return stringifiedParams.length > 0 ? `/api/reports/lost-reasons?${stringifiedParams}` : `/api/reports/lost-reasons`
 }
 
 /**
@@ -2934,7 +2933,7 @@ export const getReportLostReasons = async (params?: GetReportLostReasonsParams, 
 
 export const getGetReportLostReasonsQueryKey = (params?: GetReportLostReasonsParams,) => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/reports/lost-reasons`, ...(params ? [params] : [])
+    `/api/reports/lost-reasons`, ...(params ? [params] : [])
     ] as const;
     }
 
@@ -2995,7 +2994,7 @@ export const getGetReportByCityUrl = (params?: GetReportByCityParams,) => {
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `https://elham-multiplast-crm.onrender.com/api/reports/by-city?${stringifiedParams}` : `https://elham-multiplast-crm.onrender.com/api/reports/by-city`
+  return stringifiedParams.length > 0 ? `/api/reports/by-city?${stringifiedParams}` : `/api/reports/by-city`
 }
 
 /**
@@ -3018,7 +3017,7 @@ export const getReportByCity = async (params?: GetReportByCityParams, options?: 
 
 export const getGetReportByCityQueryKey = (params?: GetReportByCityParams,) => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/reports/by-city`, ...(params ? [params] : [])
+    `/api/reports/by-city`, ...(params ? [params] : [])
     ] as const;
     }
 
@@ -3079,7 +3078,7 @@ export const getGetReportByStateUrl = (params?: GetReportByStateParams,) => {
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `https://elham-multiplast-crm.onrender.com/api/reports/by-state?${stringifiedParams}` : `https://elham-multiplast-crm.onrender.com/api/reports/by-state`
+  return stringifiedParams.length > 0 ? `/api/reports/by-state?${stringifiedParams}` : `/api/reports/by-state`
 }
 
 /**
@@ -3099,9 +3098,10 @@ export const getReportByState = async (params?: GetReportByStateParams, options?
 
 
 
+
 export const getGetReportByStateQueryKey = (params?: GetReportByStateParams,) => {
     return [
-    `https://elham-multiplast-crm.onrender.com/api/reports/by-state`, ...(params ? [params] : [])
+    `/api/reports/by-state`, ...(params ? [params] : [])
     ] as const;
     }
 
@@ -3116,6 +3116,7 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof getReportByState>>> = ({ signal }) => getReportByState(params, { signal, ...requestOptions });
+
 
 
 
@@ -3146,12 +3147,15 @@ export function useGetReportByState<TData = Awaited<ReturnType<typeof getReportB
 
 
 
+
+
+
 export const getImportExcelUrl = () => {
 
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/import/excel`
+  return `/api/import/excel`
 }
 
 /**
@@ -3221,7 +3225,7 @@ export const getImportIndiaMartUrl = () => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/import/indiamart`
+  return `/api/import/indiamart`
 }
 
 /**
@@ -3290,7 +3294,8 @@ export const getImportBulkCustomersUrl = () => {
 
 
 
-  return `https://elham-multiplast-crm.onrender.com/api/import/bulk-customers`
+
+  return `/api/import/bulk-customers`
 }
 
 /**
