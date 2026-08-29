@@ -185,10 +185,10 @@ router.patch("/users/:id", async (req, res) => {
   if (fields.role !== undefined) updateData.role = fields.role;
   if (fields.colorCode !== undefined) updateData.colorCode = fields.colorCode;
   if (fields.unit !== undefined) updateData.unit = fields.unit;
-  if (fields.canViewAllReports !== undefined) updateData.canViewAllReports = fields.canViewAllReports;
-  if (fields.canAssignLeads !== undefined) updateData.canAssignLeads = fields.canAssignLeads;
-  if (fields.permissions !== undefined) updateData.permissions = fields.permissions;
-  if (fields.profilePhoto !== undefined) updateData.profilePhoto = fields.profilePhoto;
+  if ((fields as any).canViewAllReports !== undefined) updateData.canViewAllReports = (fields as any).canViewAllReports;
+  if ((fields as any).canAssignLeads !== undefined) updateData.canAssignLeads = (fields as any).canAssignLeads;
+  if ((fields as any).permissions !== undefined) updateData.permissions = (fields as any).permissions;
+  if ((fields as any).profilePhoto !== undefined) updateData.profilePhoto = (fields as any).profilePhoto;
   if (password && isAdmin) {
     updateData.passwordHash = await bcrypt.hash(password, 10);
   }

@@ -949,7 +949,7 @@ export default function Settings() {
                   <TableRow key={u.id}>
                     <TableCell className="font-medium">{u.name}</TableCell>
                     <TableCell className="text-muted-foreground font-mono text-sm">@{u.username}</TableCell>
-                    <TableCell><Badge variant={u.role === "admin" ? "default" : u.role === "production_and_support" ? "outline" : "secondary"}>{u.role === "production" ? "Production" : u.role === "production_and_support" ? "Production & Support" : u.role}</Badge></TableCell>
+                    <TableCell><Badge variant={u.role === "admin" ? "default" : u.role === "production_and_support" ? "outline" : "secondary"}>{u.role === "admin" ? "Admin" : u.role === "sales" ? "Sales" : u.role === "inventory" ? "Inventory" : u.role === "production" ? "Production" : u.role === "production_and_support" ? "Production & Support" : u.role}</Badge></TableCell>
                     <TableCell>{u.unit}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -958,10 +958,10 @@ export default function Settings() {
                       </div>
                     </TableCell>
                     <TableCell className="text-center text-sm">
-                      {u.role === "admin" || u.role === "production_and_support" || u.role === "production" ? <span className="text-muted-foreground">\u2014</span> : (u.canViewAllReports ? <span className="text-green-600 font-medium">Yes</span> : <span className="text-red-500">No</span>)}
+                      {u.role === "admin" || u.role === "production_and_support" || u.role === "production" || u.role === "inventory" ? <span className="text-muted-foreground">—</span> : (u.canViewAllReports ? <span className="text-green-600 font-medium">Yes</span> : <span className="text-red-500">No</span>)}
                     </TableCell>
                     <TableCell className="text-center text-sm">
-                      {u.role === "admin" || u.role === "production_and_support" || u.role === "production" ? <span className="text-muted-foreground">\u2014</span> : (u.canAssignLeads ? <span className="text-green-600 font-medium">Yes</span> : <span className="text-red-500">No</span>)}
+                      {u.role === "admin" || u.role === "production_and_support" || u.role === "production" || u.role === "inventory" ? <span className="text-muted-foreground">—</span> : (u.canAssignLeads ? <span className="text-green-600 font-medium">Yes</span> : <span className="text-red-500">No</span>)}
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">

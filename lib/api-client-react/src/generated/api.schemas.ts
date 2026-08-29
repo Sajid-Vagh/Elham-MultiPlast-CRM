@@ -20,6 +20,9 @@ export type UserRole = typeof UserRole[keyof typeof UserRole];
 export const UserRole = {
   admin: 'admin',
   sales: 'sales',
+  inventory: 'inventory',
+  production: 'production',
+  production_and_support: 'production_and_support',
 } as const;
 
 export type UserUnit = typeof UserUnit[keyof typeof UserUnit];
@@ -55,6 +58,9 @@ export type UserInputRole = typeof UserInputRole[keyof typeof UserInputRole];
 export const UserInputRole = {
   admin: 'admin',
   sales: 'sales',
+  inventory: 'inventory',
+  production: 'production',
+  production_and_support: 'production_and_support',
 } as const;
 
 export type UserInputUnit = typeof UserInputUnit[keyof typeof UserInputUnit];
@@ -82,6 +88,9 @@ export type UserUpdateRole = typeof UserUpdateRole[keyof typeof UserUpdateRole];
 export const UserUpdateRole = {
   admin: 'admin',
   sales: 'sales',
+  inventory: 'inventory',
+  production: 'production',
+  production_and_support: 'production_and_support',
 } as const;
 
 export interface UserUpdate {
