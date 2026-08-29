@@ -893,8 +893,8 @@ router.post("/auth/invitations", async (req, res) => {
     return res.status(400).json({ error: "Valid email is required" });
   }
 
-  if (!role || !["sales", "production", "production_and_support", "support", "inventory"].includes(role)) {
-    return res.status(400).json({ error: "Valid role is required (sales, production, production_and_support, support, inventory)" });
+  if (!role || !["admin", "sales", "production", "production_and_support", "support", "inventory"].includes(role)) {
+    return res.status(400).json({ error: "Valid role is required (admin, sales, production, production_and_support, support, inventory)" });
   }
 
   try {

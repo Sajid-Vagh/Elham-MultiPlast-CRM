@@ -952,7 +952,7 @@ components:
           type: string
         role:
           type: string
-          enum: [admin, sales]
+          enum: [admin, sales, inventory, production, production_and_support]
         colorCode:
           type: string
         unit:
@@ -975,7 +975,7 @@ components:
           type: string
         role:
           type: string
-          enum: [admin, sales]
+          enum: [admin, sales, inventory, production, production_and_support]
         colorCode:
           type: string
         unit:
@@ -993,7 +993,7 @@ components:
           type: ["string", "null"]
         role:
           type: string
-          enum: [admin, sales]
+          enum: [admin, sales, inventory, production, production_and_support]
         colorCode:
           type: string
         unit:

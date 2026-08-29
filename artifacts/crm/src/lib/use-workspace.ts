@@ -12,10 +12,11 @@ export function getWorkspaceLabel(w: Workspace): string {
   return WORKSPACE_LABELS[w];
 }
 
-export function getHomeRoute(workspace: Workspace): string {
+export function getHomeRoute(workspace: Workspace | string): string {
   switch (workspace) {
     case "production": return "/production/dashboard";
     case "support": return "/support-dashboard";
+    case "inventory": return "/inventory";
     default: return "/dashboard";
   }
 }
@@ -33,6 +34,7 @@ export function getDefaultWorkspace(role: string): Workspace {
   switch (role) {
     case "production": return "production";
     case "production_and_support": return "support";
+    case "inventory": return "inventory" as any;
     default: return "sales";
   }
 }
