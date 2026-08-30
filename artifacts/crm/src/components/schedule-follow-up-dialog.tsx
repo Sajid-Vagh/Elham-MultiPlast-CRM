@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCreateActivity, getListActivitiesQueryKey } from "@workspace/api-client-react";
+import { useCreateActivity, getListActivitiesQueryKey, ActivityInputPriority } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -30,7 +30,7 @@ const FOLLOW_UP_TYPES = [
   { value: "Site Visit", label: "Site Visit", icon: MapPin },
 ];
 
-const PRIORITIES = [
+const PRIORITIES: { value: ActivityInputPriority; label: string; color: string }[] = [
   { value: "High", label: "High", color: "text-red-600 bg-red-50" },
   { value: "Medium", label: "Medium", color: "text-amber-600 bg-amber-50" },
   { value: "Low", label: "Low", color: "text-green-600 bg-green-50" },
@@ -51,7 +51,7 @@ export function ScheduleFollowUpDialog({ open, onOpenChange, contactId, dealId }
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [followUpType, setFollowUpType] = useState("");
-  const [priority, setPriority] = useState("Medium");
+  const [priority, setPriority] = useState<ActivityInputPriority>("Medium");
   const [assignedTo, setAssignedTo] = useState("");
   const [reminder, setReminder] = useState("");
   const [notes, setNotes] = useState("");
