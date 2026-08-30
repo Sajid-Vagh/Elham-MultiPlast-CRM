@@ -562,7 +562,8 @@ export default function Reports() {
         const data = await res.json();
         setDetailData(data);
         setDetailOpen(true);
-        toast({ title: "Lost Records", description: `${data.length} records loaded` });
+        const count = data.total ?? (Array.isArray(data.data) ? data.data.length : Array.isArray(data) ? data.length : 0);
+        toast({ title: "Lost Records", description: `${count} records loaded` });
       } else {
         const text = await res.text();
         console.error("Lost detail fetch failed:", res.status, text);
@@ -598,7 +599,8 @@ export default function Reports() {
         const data = await res.json();
         setDetailData(data);
         setDetailOpen(true);
-        toast({ title: `${stage} Deals`, description: `${data.length} records loaded` });
+        const count = data.total ?? (Array.isArray(data.data) ? data.data.length : Array.isArray(data) ? data.length : 0);
+        toast({ title: `${stage} Deals`, description: `${count} records loaded` });
       } else {
         const text = await res.text();
         console.error("Stage detail fetch failed:", res.status, text);
