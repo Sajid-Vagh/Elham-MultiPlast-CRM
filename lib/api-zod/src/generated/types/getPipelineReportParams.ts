@@ -10,5 +10,7 @@ export type GetPipelineReportParams = {
 salesOwnerId?: number;
 unit?: string;
 month?: string;
+startDate?: string;
+endDate?: string;
 city?: string;
 };

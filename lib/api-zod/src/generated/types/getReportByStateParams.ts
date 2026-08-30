@@ -9,4 +9,6 @@
 export type GetReportByStateParams = {
 month?: string;
 salesOwnerId?: number;
+startDate?: string;
+endDate?: string;
 };

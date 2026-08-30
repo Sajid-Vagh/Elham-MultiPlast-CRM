@@ -9,4 +9,6 @@
 export type GetReportByProductParams = {
 month?: string;
 salesOwnerId?: number;
+startDate?: string;
+endDate?: string;
 };
