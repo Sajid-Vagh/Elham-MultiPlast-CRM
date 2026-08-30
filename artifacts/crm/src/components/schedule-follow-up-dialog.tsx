@@ -101,6 +101,8 @@ export function ScheduleFollowUpDialog({ open, onOpenChange, contactId, dealId }
         followUpDate: date,
         followUpTime: time || null,
         followUpType: followUpType,
+        priority: priority || "Medium",
+        reminder: reminder || null,
         callStatus: "Pending",
         assignedTo: assignedTo ? Number(assignedTo) : null,
       },

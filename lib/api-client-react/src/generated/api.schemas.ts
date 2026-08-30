@@ -541,6 +541,18 @@ export const ActivityFollowUpType = {
   Email: 'Email',
 } as const;
 
+/**
+ * @nullable
+ */
+export type ActivityPriority = typeof ActivityPriority[keyof typeof ActivityPriority] | null;
+
+
+export const ActivityPriority = {
+  High: 'High',
+  Medium: 'Medium',
+  Low: 'Low',
+} as const;
+
 export interface Activity {
   id: number;
   dealId: number;
@@ -566,6 +578,12 @@ export interface Activity {
   /** @nullable */
   updatedBy?: number | null;
   isEdited?: boolean;
+  /** @nullable */
+  priority?: ActivityPriority;
+  /** @nullable */
+  reminder?: string | null;
+  /** @nullable */
+  assignedTo?: number | null;
 }
 
 export type ActivityInputType = typeof ActivityInputType[keyof typeof ActivityInputType];
@@ -578,6 +596,18 @@ export const ActivityInputType = {
   Note: 'Note',
   FollowUp: 'FollowUp',
   Meeting: 'Meeting',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ActivityInputPriority = typeof ActivityInputPriority[keyof typeof ActivityInputPriority] | null;
+
+
+export const ActivityInputPriority = {
+  High: 'High',
+  Medium: 'Medium',
+  Low: 'Low',
 } as const;
 
 export interface ActivityInput {
@@ -594,6 +624,12 @@ export interface ActivityInput {
   followUpType?: string | null;
   /** @nullable */
   callStatus?: string | null;
+  /** @nullable */
+  priority?: ActivityInputPriority;
+  /** @nullable */
+  reminder?: string | null;
+  /** @nullable */
+  assignedTo?: number | null;
 }
 
 export type ActivityUpdateType = typeof ActivityUpdateType[keyof typeof ActivityUpdateType];
@@ -606,6 +642,18 @@ export const ActivityUpdateType = {
   Note: 'Note',
   FollowUp: 'FollowUp',
   Meeting: 'Meeting',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ActivityUpdatePriority = typeof ActivityUpdatePriority[keyof typeof ActivityUpdatePriority] | null;
+
+
+export const ActivityUpdatePriority = {
+  High: 'High',
+  Medium: 'Medium',
+  Low: 'Low',
 } as const;
 
 export interface ActivityUpdate {
@@ -622,6 +670,12 @@ export interface ActivityUpdate {
   callStatus?: string | null;
   /** @nullable */
   contactId?: number | null;
+  /** @nullable */
+  priority?: ActivityUpdatePriority;
+  /** @nullable */
+  reminder?: string | null;
+  /** @nullable */
+  assignedTo?: number | null;
 }
 
 export interface ReportSummary {

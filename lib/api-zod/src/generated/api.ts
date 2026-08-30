@@ -1057,7 +1057,10 @@ export const ListActivitiesResponseItem = zod.object({
   "createdAt": zod.string(),
   "updatedAt": zod.string().nullish(),
   "updatedBy": zod.number().nullish(),
-  "isEdited": zod.boolean().optional()
+  "isEdited": zod.boolean().optional(),
+  "priority": zod.union([zod.literal('High'),zod.literal('Medium'),zod.literal('Low'),zod.literal(null)]).nullish(),
+  "reminder": zod.string().nullish(),
+  "assignedTo": zod.number().nullish()
 })
 export const ListActivitiesResponse = zod.array(ListActivitiesResponseItem)
 
@@ -1073,7 +1076,10 @@ export const CreateActivityBody = zod.object({
   "followUpDate": zod.string(),
   "followUpTime": zod.string().nullish(),
   "followUpType": zod.string().nullish(),
-  "callStatus": zod.string().nullish()
+  "callStatus": zod.string().nullish(),
+  "priority": zod.union([zod.literal('High'),zod.literal('Medium'),zod.literal('Low'),zod.literal(null)]).nullish(),
+  "reminder": zod.string().nullish(),
+  "assignedTo": zod.number().nullish()
 })
 
 export const CreateActivityResponse = zod.object({
@@ -1100,7 +1106,10 @@ export const CreateActivityResponse = zod.object({
   "createdAt": zod.string(),
   "updatedAt": zod.string().nullish(),
   "updatedBy": zod.number().nullish(),
-  "isEdited": zod.boolean().optional()
+  "isEdited": zod.boolean().optional(),
+  "priority": zod.union([zod.literal('High'),zod.literal('Medium'),zod.literal('Low'),zod.literal(null)]).nullish(),
+  "reminder": zod.string().nullish(),
+  "assignedTo": zod.number().nullish()
 })
 
 
@@ -1115,7 +1124,10 @@ export const UpdateActivityBody = zod.object({
   "followUpTime": zod.string().nullish(),
   "followUpType": zod.string().nullish(),
   "callStatus": zod.string().nullish(),
-  "contactId": zod.number().nullish()
+  "contactId": zod.number().nullish(),
+  "priority": zod.union([zod.literal('High'),zod.literal('Medium'),zod.literal('Low'),zod.literal(null)]).nullish(),
+  "reminder": zod.string().nullish(),
+  "assignedTo": zod.number().nullish()
 })
 
 export const UpdateActivityResponse = zod.object({
@@ -1142,7 +1154,10 @@ export const UpdateActivityResponse = zod.object({
   "createdAt": zod.string(),
   "updatedAt": zod.string().nullish(),
   "updatedBy": zod.number().nullish(),
-  "isEdited": zod.boolean().optional()
+  "isEdited": zod.boolean().optional(),
+  "priority": zod.union([zod.literal('High'),zod.literal('Medium'),zod.literal('Low'),zod.literal(null)]).nullish(),
+  "reminder": zod.string().nullish(),
+  "assignedTo": zod.number().nullish()
 })
 
 

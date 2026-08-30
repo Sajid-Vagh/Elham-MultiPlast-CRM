@@ -1430,6 +1430,13 @@ components:
           type: ["integer", "null"]
         isEdited:
           type: boolean
+        priority:
+          type: ["string", "null"]
+          enum: [High, Medium, Low, null]
+        reminder:
+          type: ["string", "null"]
+        assignedTo:
+          type: ["integer", "null"]
 
     ActivityInput:
       type: object
@@ -1452,6 +1459,13 @@ components:
           type: ["string", "null"]
         callStatus:
           type: ["string", "null"]
+        priority:
+          type: ["string", "null"]
+          enum: [High, Medium, Low, null]
+        reminder:
+          type: ["string", "null"]
+        assignedTo:
+          type: ["integer", "null"]
 
     ActivityUpdate:
       type: object
@@ -1470,6 +1484,13 @@ components:
         callStatus:
           type: ["string", "null"]
         contactId:
+          type: ["integer", "null"]
+        priority:
+          type: ["string", "null"]
+          enum: [High, Medium, Low, null]
+        reminder:
+          type: ["string", "null"]
+        assignedTo:
           type: ["integer", "null"]
 
     ReportSummary:

@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ActivityFollowUpType } from './activityFollowUpType';
+import type { ActivityPriority } from './activityPriority';
 import type { ActivityType } from './activityType';
 import type { User } from './user';
 
@@ -34,4 +35,10 @@ export interface Activity {
   /** @nullable */
   updatedBy?: number | null;
   isEdited?: boolean;
+  /** @nullable */
+  priority?: ActivityPriority;
+  /** @nullable */
+  reminder?: string | null;
+  /** @nullable */
+  assignedTo?: number | null;
 }

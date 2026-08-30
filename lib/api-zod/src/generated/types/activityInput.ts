@@ -5,6 +5,7 @@
  * Elham Multiplast CRM API
  * OpenAPI spec version: 0.1.0
  */
+import type { ActivityInputPriority } from './activityInputPriority';
 import type { ActivityInputType } from './activityInputType';
 
 export interface ActivityInput {
@@ -21,4 +22,10 @@ export interface ActivityInput {
   followUpType?: string | null;
   /** @nullable */
   callStatus?: string | null;
+  /** @nullable */
+  priority?: ActivityInputPriority;
+  /** @nullable */
+  reminder?: string | null;
+  /** @nullable */
+  assignedTo?: number | null;
 }
