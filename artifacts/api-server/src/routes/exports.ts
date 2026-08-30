@@ -113,7 +113,7 @@ router.get("/reports", async (req, res) => {
     const reportContactConditions: SQL[] = [];
     const contactUnitCond = accessibleUnits ? inArray(contactsTable.unit, accessibleUnits) : undefined;
     if (contactUnitCond) reportContactConditions.push(contactUnitCond);
-    if (user.role === "sales") reportContactConditions.push(eq(contactsTable.salesOwnerId, user.id));
+    if (user.role !== "admin" && !user.canViewAllReports) reportContactConditions.push(eq(contactsTable.salesOwnerId, user.id));
 
     const contacts = reportContactConditions.length
       ? await db.select().from(contactsTable).where(and(...reportContactConditions))
@@ -124,7 +124,7 @@ router.get("/reports", async (req, res) => {
     const unitContactIds = accessibleUnits ? new Set(contacts.map(c => c.id)) : null;
 
     const dealConditions: SQL[] = [];
-    if (user.role === "sales") dealConditions.push(eq(dealsTable.salesOwnerId, user.id));
+    if (user.role !== "admin" && !user.canViewAllReports) dealConditions.push(eq(dealsTable.salesOwnerId, user.id));
     if (ownerId) dealConditions.push(eq(dealsTable.salesOwnerId, ownerId));
     if (stage) dealConditions.push(eq(dealsTable.stage, stage));
 
