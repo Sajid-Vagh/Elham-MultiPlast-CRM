@@ -164,11 +164,9 @@ export default function Reports() {
   // `?view=won_deals`. On mount, this auto-opens the Won Deals drill-down
   // table (same view as clicking the "Won" stage row in Pipeline by Stage).
   const viewParam = useMemo(() => {
-    if (typeof window === "undefined") return null;
-    const search = window.location.search || (location.includes("?") ? location.split("?")[1] : "");
-    if (!search) return null;
-    const params = new URLSearchParams(search.startsWith("?") ? search : `?${search}`);
-    return params.get("view");
+    const qs = location.split("?")[1];
+    if (!qs) return null;
+    return new URLSearchParams(qs).get("view");
   }, [location]);
   const openedViewRef = useRef<string | null>(null);
 
