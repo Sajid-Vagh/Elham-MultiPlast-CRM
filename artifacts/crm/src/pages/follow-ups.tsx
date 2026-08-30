@@ -140,9 +140,11 @@ export default function FollowUps() {
   // clicked category pre-filtered. Re-runs whenever the param changes, so
   // clicking another card while already on this page also re-filters.
   const statusParam = useMemo(() => {
-    const qs = location.split("?")[1];
-    if (!qs) return null;
-    return new URLSearchParams(qs).get("status");
+    if (typeof window === "undefined") return null;
+    const search = window.location.search || (location.includes("?") ? location.split("?")[1] : "");
+    if (!search) return null;
+    const params = new URLSearchParams(search.startsWith("?") ? search : `?${search}`);
+    return params.get("status");
   }, [location]);
 
   useEffect(() => {
