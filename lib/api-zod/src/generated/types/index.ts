@@ -68,6 +68,7 @@ export * from './productStat';
 export * from './productUpdate';
 export * from './productVariant';
 export * from './productVariantInput';
+export * from './productVariantStat';
 export * from './proformaInvoice';
 export * from './proformaInvoiceList';
 export * from './reportSummary';

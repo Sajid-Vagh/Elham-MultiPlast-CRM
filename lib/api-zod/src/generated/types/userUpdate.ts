@@ -15,4 +15,6 @@ export interface UserUpdate {
   role?: UserUpdateRole;
   colorCode?: string;
   unit?: string;
+  canViewAllReports?: boolean;
+  canAssignLeads?: boolean;
 }

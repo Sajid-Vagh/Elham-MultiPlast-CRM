@@ -33,6 +33,8 @@ export const LoginResponse = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }),
   "token": zod.string()
@@ -56,6 +58,8 @@ export const GetMeResponse = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 })
 
@@ -71,6 +75,8 @@ export const ListUsersResponseItem = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 })
 export const ListUsersResponse = zod.array(ListUsersResponseItem)
@@ -85,7 +91,9 @@ export const CreateUserBody = zod.object({
   "password": zod.string(),
   "role": zod.enum(['admin', 'sales', 'inventory', 'production', 'production_and_support']),
   "colorCode": zod.string(),
-  "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All'])
+  "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional()
 })
 
 export const CreateUserResponse = zod.object({
@@ -96,6 +104,8 @@ export const CreateUserResponse = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 })
 
@@ -112,6 +122,8 @@ export const GetUserResponse = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 })
 
@@ -126,7 +138,9 @@ export const UpdateUserBody = zod.object({
   "password": zod.string().nullish(),
   "role": zod.enum(['admin', 'sales', 'inventory', 'production', 'production_and_support']).optional(),
   "colorCode": zod.string().optional(),
-  "unit": zod.string().optional()
+  "unit": zod.string().optional(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional()
 })
 
 export const UpdateUserResponse = zod.object({
@@ -137,6 +151,8 @@ export const UpdateUserResponse = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 })
 
@@ -175,6 +191,8 @@ export const ListContactsResponseItem = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -230,6 +248,8 @@ export const CreateContactResponse = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -266,6 +286,8 @@ export const GetContactResponse = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -323,6 +345,8 @@ export const UpdateContactResponse = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -380,6 +404,8 @@ export const ListDuplicateContactsResponseItem = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -421,6 +447,8 @@ export const SearchContactByMobileResponse = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -682,6 +710,8 @@ export const ListDealsResponseItem = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -712,6 +742,8 @@ export const ListDealsResponseItem = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "createdAt": zod.string(),
@@ -752,6 +784,8 @@ export const CreateDealResponse = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -782,6 +816,8 @@ export const CreateDealResponse = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "createdAt": zod.string(),
@@ -811,6 +847,8 @@ export const GetDealResponse = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -841,6 +879,8 @@ export const GetDealResponse = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "createdAt": zod.string(),
@@ -880,6 +920,8 @@ export const UpdateDealResponse = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
@@ -910,6 +952,8 @@ export const UpdateDealResponse = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "createdAt": zod.string(),
@@ -1052,6 +1096,8 @@ export const ListActivitiesResponseItem = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "createdAt": zod.string(),
@@ -1101,6 +1147,8 @@ export const CreateActivityResponse = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "createdAt": zod.string(),
@@ -1149,6 +1197,8 @@ export const UpdateActivityResponse = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "createdAt": zod.string(),
@@ -1190,7 +1240,9 @@ export const GetPipelineReportQueryParams = zod.object({
   "salesOwnerId": zod.coerce.number().optional(),
   "unit": zod.coerce.string().optional(),
   "month": zod.coerce.string().optional(),
-  "city": zod.coerce.string().optional()
+  "city": zod.coerce.string().optional(),
+  "startDate": zod.coerce.string().optional(),
+  "endDate": zod.coerce.string().optional()
 })
 
 export const GetPipelineReportResponseItem = zod.object({
@@ -1207,7 +1259,10 @@ export const GetPipelineReportResponse = zod.array(GetPipelineReportResponseItem
  */
 export const GetReportByOwnerQueryParams = zod.object({
   "month": zod.coerce.string().optional(),
-  "unit": zod.coerce.string().optional()
+  "unit": zod.coerce.string().optional(),
+  "salesOwnerId": zod.coerce.number().optional(),
+  "startDate": zod.coerce.string().optional(),
+  "endDate": zod.coerce.string().optional()
 })
 
 export const GetReportByOwnerResponseItem = zod.object({
@@ -1228,7 +1283,10 @@ export const GetReportByOwnerResponse = zod.array(GetReportByOwnerResponseItem)
  */
 export const GetReportByProductQueryParams = zod.object({
   "month": zod.coerce.string().optional(),
-  "salesOwnerId": zod.coerce.number().optional()
+  "salesOwnerId": zod.coerce.number().optional(),
+  "unit": zod.coerce.string().optional(),
+  "startDate": zod.coerce.string().optional(),
+  "endDate": zod.coerce.string().optional()
 })
 
 export const GetReportByProductResponseItem = zod.object({
@@ -1237,7 +1295,14 @@ export const GetReportByProductResponseItem = zod.object({
   "productCode": zod.string().optional(),
   "totalQuantity": zod.number(),
   "totalValue": zod.number(),
-  "dealCount": zod.number()
+  "dealCount": zod.number(),
+  "variants": zod.array(zod.object({
+  "weight": zod.string().nullish(),
+  "colour": zod.string().nullish(),
+  "dealCount": zod.number(),
+  "totalQuantity": zod.number(),
+  "totalValue": zod.number()
+})).optional()
 })
 export const GetReportByProductResponse = zod.array(GetReportByProductResponseItem)
 
@@ -1248,7 +1313,9 @@ export const GetReportByProductResponse = zod.array(GetReportByProductResponseIt
 export const GetReportLostReasonsQueryParams = zod.object({
   "month": zod.coerce.string().optional(),
   "salesOwnerId": zod.coerce.number().optional(),
-  "unit": zod.coerce.string().optional()
+  "unit": zod.coerce.string().optional(),
+  "startDate": zod.coerce.string().optional(),
+  "endDate": zod.coerce.string().optional()
 })
 
 export const GetReportLostReasonsResponseItem = zod.object({
@@ -1264,7 +1331,10 @@ export const GetReportLostReasonsResponse = zod.array(GetReportLostReasonsRespon
  */
 export const GetReportByCityQueryParams = zod.object({
   "month": zod.coerce.string().optional(),
-  "salesOwnerId": zod.coerce.number().optional()
+  "salesOwnerId": zod.coerce.number().optional(),
+  "unit": zod.coerce.string().optional(),
+  "startDate": zod.coerce.string().optional(),
+  "endDate": zod.coerce.string().optional()
 })
 
 export const GetReportByCityResponseItem = zod.object({
@@ -1283,7 +1353,10 @@ export const GetReportByCityResponse = zod.array(GetReportByCityResponseItem)
  */
 export const GetReportByStateQueryParams = zod.object({
   "month": zod.coerce.string().optional(),
-  "salesOwnerId": zod.coerce.number().optional()
+  "salesOwnerId": zod.coerce.number().optional(),
+  "unit": zod.coerce.string().optional(),
+  "startDate": zod.coerce.string().optional(),
+  "endDate": zod.coerce.string().optional()
 })
 
 export const GetReportByStateResponse = zod.object({
@@ -1356,6 +1429,8 @@ export const ImportIndiaMartResponse = zod.object({
   "colorCode": zod.string(),
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "profilePhoto": zod.string().nullish(),
+  "canViewAllReports": zod.boolean().optional(),
+  "canAssignLeads": zod.boolean().optional(),
   "createdAt": zod.string().optional()
 }).optional(),
   "otherPhone": zod.string().nullish(),
