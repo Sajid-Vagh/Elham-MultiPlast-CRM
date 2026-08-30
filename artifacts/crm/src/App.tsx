@@ -101,7 +101,11 @@ function Router() {
       <Route path="/verify-otp" component={VerifyOtp} />
       <Route path="/setup-mfa" component={SetupMfa} />
       <Route path="/mfa-verify" component={MfaVerify} />
-      <Route path="/security" component={Security} />
+      <Route path="/security">
+        <ProtectedLayout>
+          <RoleGuard allowedRoles={["admin", "sales", "production", "production_and_support", "inventory"]}><Security /></RoleGuard>
+        </ProtectedLayout>
+      </Route>
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/accept-invitation" component={AcceptInvitation} />
