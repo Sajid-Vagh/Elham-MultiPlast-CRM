@@ -386,7 +386,8 @@ router.get("/dashboard/kpi", async (req, res) => {
       unitFilter,
       callActivityConds
     );
-    const totalCalls = callActivities.length;
+    // Parity with /follow-ups page & sidebar badge: count active pending activities
+    const totalCalls = callActivities.filter(a => (a.callStatus || "Pending") === "Pending").length;
 
     const todayActivities = allActivities.filter(a => a.followUpDate === today);
     const todayTotal = todayActivities.length;
