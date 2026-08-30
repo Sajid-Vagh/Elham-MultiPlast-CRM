@@ -117,30 +117,30 @@ export function AdminSetupForm() {
 
   return (
     <Card className="w-full max-w-md shadow-xl border-primary/10">
-      <CardHeader className="space-y-4 text-center pb-4 pt-7">
+      <CardHeader className="space-y-1 text-center pb-2 pt-4">
         <div className="mx-auto">
-          <img src="/images/logo1.png" alt="Elham MultiPlast LLP" className="max-w-[200px] w-full h-auto mx-auto" />
+          <img src="/images/logo1.png" alt="Elham MultiPlast LLP" className="max-w-[140px] sm:max-w-[160px] w-full h-auto mx-auto" />
         </div>
-        <CardDescription>Create your first Admin account to get started</CardDescription>
+        <CardDescription className="text-sm font-semibold">Create your first Admin account to get started</CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
-        <CardContent className="space-y-4">
-          <div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md text-sm text-blue-700 dark:text-blue-300">
+        <CardContent className="space-y-2 pt-1">
+          <div className="p-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md text-[11px] text-blue-700 dark:text-blue-300">
             This is a fresh CRM installation. Create the first Admin account to begin.
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="setup-name">Full Name</Label>
+          <div className="space-y-0.5">
+            <Label htmlFor="setup-name" className="text-xs font-medium">Full Name</Label>
             <Input
               id="setup-name"
               value={name}
               onChange={e => setName(e.target.value)}
               required
               placeholder="John Doe"
-              className="bg-background"
+              className="bg-background h-8 text-sm"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="setup-email">Email Address</Label>
+          <div className="space-y-0.5">
+            <Label htmlFor="setup-email" className="text-xs font-medium">Email Address</Label>
             <Input
               id="setup-email"
               type="email"
@@ -148,11 +148,11 @@ export function AdminSetupForm() {
               onChange={e => setEmail(e.target.value)}
               required
               placeholder="admin@elham.com"
-              className="bg-background"
+              className="bg-background h-8 text-sm"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="setup-password">Password</Label>
+          <div className="space-y-0.5">
+            <Label htmlFor="setup-password" className="text-xs font-medium">Password</Label>
             <div className="relative">
               <Input
                 id="setup-password"
@@ -161,7 +161,7 @@ export function AdminSetupForm() {
                 onChange={e => setPassword(e.target.value)}
                 required
                 minLength={8}
-                className="bg-background pr-10"
+                className="bg-background h-8 text-sm pr-10"
               />
               <button
                 type="button"
@@ -172,28 +172,30 @@ export function AdminSetupForm() {
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
-            {strength.label && (
-              <p className={`text-xs ${strength.color}`}>Password strength: {strength.label}</p>
-            )}
-            <p className="text-xs text-muted-foreground">Min 8 chars, upper, lower, number, special character</p>
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+              <span>Min 8 chars (upper, lower, num, spec)</span>
+              {strength.label && (
+                <span className={`font-medium ${strength.color}`}>Strength: {strength.label}</span>
+              )}
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="setup-confirm-password">Confirm Password</Label>
+          <div className="space-y-0.5">
+            <Label htmlFor="setup-confirm-password" className="text-xs font-medium">Confirm Password</Label>
             <Input
               id="setup-confirm-password"
               type={showPassword ? "text" : "password"}
               value={confirmPassword}
               onChange={e => setConfirmPassword(e.target.value)}
               required
-              className="bg-background"
+              className="bg-background h-8 text-sm"
             />
           </div>
         </CardContent>
-        <CardFooter className="flex flex-col gap-2">
-          <Button type="submit" className="w-full" disabled={loading}>
+        <CardFooter className="flex flex-col gap-1.5 pt-2 pb-4">
+          <Button type="submit" className="w-full h-9 text-sm font-medium" disabled={loading}>
             {loading ? "Creating Account..." : "Create Admin Account"}
           </Button>
-          <p className="text-xs text-muted-foreground text-center">
+          <p className="text-[10px] text-muted-foreground text-center">
             A verification link will be sent to this email. The account activates only after verification.
           </p>
         </CardFooter>
