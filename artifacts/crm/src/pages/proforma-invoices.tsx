@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
+import { LOGO_DATA_URI } from "@workspace/api-zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1828,11 +1829,9 @@ const setItemDisplay = (idx: number, patch: Partial<InvoiceItem>) => {
     }
 
     function headerHtml(): string {
-      // Use absolute URL so the image resolves inside srcDoc iframe (about:blank origin)
-      const logoUrl = `${window.location.origin}/proforma-logo.png`;
       return `
     <div class="header">
-      <div class="header-logo"><img src="${logoUrl}" alt="Elham Multiplast" style="height:70pt;object-fit:contain;" /></div>
+      <div class="header-logo"><img src="${LOGO_DATA_URI}" alt="Elham Multiplast" style="height:70pt;object-fit:contain;" /></div>
       <div class="gstin-top"><strong>GSTIN :</strong> 24AAJFE2064P1Z6</div>
       <div class="invoice-title">PROFORMA INVOICE</div>
       <div class="company-name">ELHAM MULTIPLAST LLP</div>

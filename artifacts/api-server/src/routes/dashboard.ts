@@ -535,10 +535,12 @@ router.get("/dashboard/sales-performance", async (req, res) => {
       return bucket;
     };
 
-    // Seed admin/sales users first so the roster keeps showing team members
-    // even when they own nothing in the selected range (zero rows).
-    const salesUsers = allUsers.filter(u => u.role === "admin" || u.role === "sales");
-    for (const u of salesUsers) bucketForOwner(u.id);
+    // Seed active admin, sales, production, and production & support users first
+    // so the roster keeps showing team members across these 4 roles even when
+    // they own nothing in the selected range (zero rows).
+    const TARGET_ROLES = new Set(["admin", "sales", "production", "production_and_support"]);
+    const rosterUsers = allUsers.filter(u => u.isActive !== false && TARGET_ROLES.has(u.role));
+    for (const u of rosterUsers) bucketForOwner(u.id);
 
     // Any other user who owns data in range (production/support/etc.) gets a
     // real row too — ownership drives inclusion, not role.

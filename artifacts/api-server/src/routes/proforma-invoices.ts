@@ -20,6 +20,7 @@ import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 import { findLinkedProductionOrder, canModifyPiForProductionStatus, PI_LOCKED_ERROR, syncOrderItemsFromPi } from "../lib/production-service";
 import { normalizeStateCity } from "../utils/geoMapping";
 import { emitProformaUpdated, emitDealUpdated } from "../lib/socket";
+import { LOGO_DATA_URI } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
@@ -38,25 +39,6 @@ const COMPANY_DEFAULTS = {
   disclaimer: "Products supplied are generic industrial packaging developed independently by Elham Multiplast LLP for functional applications. Any branding, labeling, or market usage by the buyer shall be at the buyer's sole responsibility.",
 };
 
-// Load the Elham logo once at startup for embedding in PDF invoice headers.
-// Puppeteer's setContent() has no web-server context, so relative /proforma-logo.png
-// paths won't resolve — a data URI is the only reliable option.
-let LOGO_DATA_URI = "";
-try {
-  // Server runs from artifacts/api-server, logo is in artifacts/crm/public
-  const logoCandidates = [
-    path.resolve(process.cwd(), "..", "crm", "public", "proforma-logo.png"),
-    path.resolve(process.cwd(), "artifacts", "crm", "public", "proforma-logo.png"),
-    path.resolve(process.cwd(), "proforma-logo.png"),
-  ];
-  for (const candidate of logoCandidates) {
-    if (fs.existsSync(candidate)) {
-      const logoBuf = fs.readFileSync(candidate);
-      LOGO_DATA_URI = `data:image/png;base64,${logoBuf.toString("base64")}`;
-      break;
-    }
-  }
-} catch { /* logo file not found — header renders without logo */ }
 
 // Material types that are redundant on the invoice — stripped from the item
 // description shown in the "Description of Goods" column.
