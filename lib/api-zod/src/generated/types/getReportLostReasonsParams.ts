@@ -10,6 +10,4 @@ export type GetReportLostReasonsParams = {
 month?: string;
 salesOwnerId?: number;
 unit?: string;
-startDate?: string;
-endDate?: string;
 };
