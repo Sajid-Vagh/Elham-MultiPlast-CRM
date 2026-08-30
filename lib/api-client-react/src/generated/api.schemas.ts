@@ -44,6 +44,8 @@ export interface User {
   unit: UserUnit;
   /** @nullable */
   profilePhoto?: string | null;
+  canViewAllReports?: boolean;
+  canAssignLeads?: boolean;
   createdAt?: string;
 }
 
@@ -80,6 +82,8 @@ export interface UserInput {
   role: UserInputRole;
   colorCode: string;
   unit: UserInputUnit;
+  canViewAllReports?: boolean;
+  canAssignLeads?: boolean;
 }
 
 export type UserUpdateRole = typeof UserUpdateRole[keyof typeof UserUpdateRole];
@@ -101,6 +105,8 @@ export interface UserUpdate {
   role?: UserUpdateRole;
   colorCode?: string;
   unit?: string;
+  canViewAllReports?: boolean;
+  canAssignLeads?: boolean;
 }
 
 /**
@@ -707,6 +713,14 @@ export interface OwnerStat {
   totalWonValue: number;
 }
 
+export interface ProductVariantStat {
+  weight?: string | null;
+  colour?: string | null;
+  dealCount: number;
+  totalQuantity: number;
+  totalValue: number;
+}
+
 export interface ProductStat {
   productId: number;
   productName: string;
@@ -714,6 +728,7 @@ export interface ProductStat {
   totalQuantity: number;
   totalValue: number;
   dealCount: number;
+  variants?: ProductVariantStat[];
 }
 
 export interface CityStat {
@@ -890,22 +905,32 @@ salesOwnerId?: number;
 unit?: string;
 month?: string;
 city?: string;
+startDate?: string;
+endDate?: string;
 };
 
 export type GetReportByOwnerParams = {
 month?: string;
 unit?: string;
+salesOwnerId?: number;
+startDate?: string;
+endDate?: string;
 };
 
 export type GetReportByProductParams = {
 month?: string;
 salesOwnerId?: number;
+unit?: string;
+startDate?: string;
+endDate?: string;
 };
 
 export type GetReportLostReasonsParams = {
 month?: string;
 salesOwnerId?: number;
 unit?: string;
+startDate?: string;
+endDate?: string;
 };
 
 export type GetReportLostReasons200Item = {
@@ -917,11 +942,17 @@ export type GetReportLostReasons200Item = {
 export type GetReportByCityParams = {
 month?: string;
 salesOwnerId?: number;
+unit?: string;
+startDate?: string;
+endDate?: string;
 };
 
 export type GetReportByStateParams = {
 month?: string;
 salesOwnerId?: number;
+unit?: string;
+startDate?: string;
+endDate?: string;
 };
 
 export type GetReportByState200 = {

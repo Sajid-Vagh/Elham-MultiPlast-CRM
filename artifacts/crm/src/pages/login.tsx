@@ -97,8 +97,8 @@ export default function Login() {
   }, [mode, setLocation]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 p-4 py-8 sm:py-12 overflow-y-auto">
+      <div className="w-full max-w-md my-auto">
         {mode === "LOADING" && <LoadingScreen />}
         {mode === "ERROR" && <ErrorScreen error={bootstrapError} onRetry={() => setMode("LOADING")} />}
         {mode === "FIRST_ADMIN_SETUP" && <FirstAdminSetup onSuccess={(email) => { setPendingEmail(email); setMode("FIRST_ADMIN_OTP"); }} />}
@@ -241,52 +241,52 @@ function FirstAdminSetup({ onSuccess }: { onSuccess: (email: string) => void }) 
 
   return (
     <Card className="shadow-xl border-primary/10">
-      <CardHeader className="space-y-3 text-center pb-2 pt-10">
+      <CardHeader className="space-y-2 text-center pb-2 pt-6">
         <div className="mx-auto"><Logo /></div>
-        <CardDescription className="text-base">Set up your CRM</CardDescription>
-        <p className="text-sm text-muted-foreground -mt-1">Create the first Administrator account to get started.</p>
+        <CardDescription className="text-base font-semibold">Set up your CRM</CardDescription>
+        <p className="text-xs text-muted-foreground -mt-1">Create the first Administrator account to get started.</p>
       </CardHeader>
       <form onSubmit={handleSubmit}>
-        <CardContent className="space-y-4">
-          <div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md text-sm text-blue-700 dark:text-blue-300">
+        <CardContent className="space-y-3 pt-1">
+          <div className="p-2.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md text-xs text-blue-700 dark:text-blue-300">
             This is a fresh CRM installation. Create the first Admin account to begin.
           </div>
           {error && (
-            <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-md text-sm text-red-700 dark:text-red-300">
+            <div className="p-2.5 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-md text-xs text-red-700 dark:text-red-300">
               {error}
             </div>
           )}
-          <div className="space-y-2">
-            <Label htmlFor="admin-name">Full Name</Label>
-            <Input id="admin-name" value={name} onChange={e => setName(e.target.value)} required placeholder="John Doe" className="bg-background" autoFocus />
+          <div className="space-y-1">
+            <Label htmlFor="admin-name" className="text-xs font-medium">Full Name</Label>
+            <Input id="admin-name" value={name} onChange={e => setName(e.target.value)} required placeholder="Admin" className="bg-background h-9 text-sm" autoFocus />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="admin-email">Email Address</Label>
-            <Input id="admin-email" type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="admin@elham.com" className="bg-background" />
+          <div className="space-y-1">
+            <Label htmlFor="admin-email" className="text-xs font-medium">Email Address</Label>
+            <Input id="admin-email" type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="admin@elham.com" className="bg-background h-9 text-sm" />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="admin-password">Password</Label>
+          <div className="space-y-1">
+            <Label htmlFor="admin-password" className="text-xs font-medium">Password</Label>
             <div className="relative">
-              <Input id="admin-password" type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} required minLength={8} className="bg-background pr-10" />
+              <Input id="admin-password" type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} required minLength={8} className="bg-background h-9 text-sm pr-10" />
               <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors" tabIndex={-1}>
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
-            {strength.label && <p className={`text-xs ${strength.color}`}>Password strength: {strength.label}</p>}
-            <p className="text-xs text-muted-foreground">Min 8 chars, upper, lower, number, special character</p>
+            {strength.label && <p className={`text-[11px] ${strength.color}`}>Password strength: {strength.label}</p>}
+            <p className="text-[11px] text-muted-foreground">Min 8 chars, upper, lower, number, special character</p>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="admin-confirm">Confirm Password</Label>
-            <Input id="admin-confirm" type={showPassword ? "text" : "password"} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required className="bg-background" />
+          <div className="space-y-1">
+            <Label htmlFor="admin-confirm" className="text-xs font-medium">Confirm Password</Label>
+            <Input id="admin-confirm" type={showPassword ? "text" : "password"} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required className="bg-background h-9 text-sm" />
           </div>
         </CardContent>
-        <CardFooter className="flex flex-col gap-3">
-          <Button type="submit" className="w-full" disabled={loading}>
+        <CardFooter className="flex flex-col gap-2 pt-2 pb-6">
+          <Button type="submit" className="w-full h-10 font-medium" disabled={loading}>
             {loading ? (
               <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating Account...</>
             ) : "Create Admin Account"}
           </Button>
-          <p className="text-xs text-muted-foreground text-center">
+          <p className="text-[11px] text-muted-foreground text-center">
             A verification code will be sent to this email. The account activates only after verification.
           </p>
         </CardFooter>

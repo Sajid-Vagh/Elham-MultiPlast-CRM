@@ -5,6 +5,7 @@
  * Elham Multiplast CRM API
  * OpenAPI spec version: 0.1.0
  */
+import type { ProductVariantStat } from './productVariantStat';
 
 export interface ProductStat {
   productId: number;
@@ -13,4 +14,5 @@ export interface ProductStat {
   totalQuantity: number;
   totalValue: number;
   dealCount: number;
+  variants?: ProductVariantStat[];
 }

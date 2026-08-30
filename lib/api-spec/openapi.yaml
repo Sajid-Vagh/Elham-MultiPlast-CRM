@@ -715,6 +715,14 @@ paths:
           in: query
           schema:
             type: string
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
       responses:
         "200":
           description: Pipeline breakdown
@@ -736,6 +744,18 @@ paths:
           schema:
             type: string
         - name: unit
+          in: query
+          schema:
+            type: string
+        - name: salesOwnerId
+          in: query
+          schema:
+            type: integer
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
           in: query
           schema:
             type: string
@@ -763,6 +783,18 @@ paths:
           in: query
           schema:
             type: integer
+        - name: unit
+          in: query
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
       responses:
         "200":
           description: Product stats
@@ -788,6 +820,14 @@ paths:
           schema:
             type: integer
         - name: unit
+          in: query
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
           in: query
           schema:
             type: string
@@ -823,6 +863,18 @@ paths:
           in: query
           schema:
             type: integer
+        - name: unit
+          in: query
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
       responses:
         "200":
           description: City stats
@@ -847,6 +899,18 @@ paths:
           in: query
           schema:
             type: integer
+        - name: unit
+          in: query
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
       responses:
         "200":
           description: State stats
@@ -965,6 +1029,10 @@ components:
           enum: [Himatnagar, Surat, Rajkot, All]
         profilePhoto:
           type: ["string", "null"]
+        canViewAllReports:
+          type: boolean
+        canAssignLeads:
+          type: boolean
         createdAt:
           type: string
 
@@ -986,6 +1054,10 @@ components:
         unit:
           type: string
           enum: [Himatnagar, Surat, Rajkot, All]
+        canViewAllReports:
+          type: boolean
+        canAssignLeads:
+          type: boolean
 
     UserUpdate:
       type: object
@@ -1003,6 +1075,10 @@ components:
           type: string
         unit:
           type: string
+        canViewAllReports:
+          type: boolean
+        canAssignLeads:
+          type: boolean
 
     Contact:
       type: object
@@ -1548,6 +1624,23 @@ components:
         totalWonValue:
           type: number
 
+    ProductVariantStat:
+      type: object
+      required: [dealCount, totalQuantity, totalValue]
+      properties:
+        weight:
+          type: string
+          nullable: true
+        colour:
+          type: string
+          nullable: true
+        dealCount:
+          type: integer
+        totalQuantity:
+          type: number
+        totalValue:
+          type: number
+
     ProductStat:
       type: object
       required: [productId, productName, totalQuantity, totalValue, dealCount]
@@ -1564,6 +1657,10 @@ components:
           type: number
         dealCount:
           type: integer
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductVariantStat"
 
     CityStat:
       type: object

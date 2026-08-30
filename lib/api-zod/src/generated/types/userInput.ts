@@ -15,4 +15,6 @@ export interface UserInput {
   role: UserInputRole;
   colorCode: string;
   unit: UserInputUnit;
+  canViewAllReports?: boolean;
+  canAssignLeads?: boolean;
 }

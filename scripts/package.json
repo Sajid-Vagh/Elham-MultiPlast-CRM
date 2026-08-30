@@ -11,6 +11,7 @@
     "fix-profile-photos": "tsx --env-file ../.env ./src/fix-profile-photos.ts",
     "backfill-product-variants": "tsx --env-file ../.env ./src/backfill-product-variants.ts",
     "reset-sequences": "tsx --env-file ../.env ./src/reset-sequences.ts",
+    "reset-db": "tsx ./src/reset-db.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
