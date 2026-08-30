@@ -126,11 +126,12 @@ function ProductForm({ initial, onSave, onCancel, loading }: { initial?: Partial
             </div>
           )}
           {isPet && (
-            <div><Label>Machine Type</Label>
+            <div>
+              <Label>Machine Type</Label>
               <div className="flex h-9 items-center rounded-md border border-input bg-muted/50 px-3 text-sm">
                 <span className="text-muted-foreground">Outsourced</span>
-                <Badge className="ml-2 bg-amber-100 text-amber-700 border-amber-200 text-[10px]">Not manufactured in-house</Badge>
               </div>
+              <p className="text-[11px] text-amber-700 font-medium mt-1">Not manufactured in-house</p>
             </div>
           )}
           <div><Label>HSN Code</Label>
