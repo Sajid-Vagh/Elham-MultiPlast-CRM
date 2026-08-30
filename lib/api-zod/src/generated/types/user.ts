@@ -17,7 +17,5 @@ export interface User {
   unit: UserUnit;
   /** @nullable */
   profilePhoto?: string | null;
-  canViewAllReports?: boolean;
-  canAssignLeads?: boolean;
   createdAt?: string;
 }

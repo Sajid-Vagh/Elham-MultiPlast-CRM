@@ -65,7 +65,6 @@ export * from './pipelineStageCount';
 export * from './product';
 export * from './productInput';
 export * from './productStat';
-export * from './productStatVariantsItem';
 export * from './productUpdate';
 export * from './productVariant';
 export * from './productVariantInput';

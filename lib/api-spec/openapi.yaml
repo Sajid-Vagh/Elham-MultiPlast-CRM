@@ -711,14 +711,6 @@ paths:
           in: query
           schema:
             type: string
-        - name: startDate
-          in: query
-          schema:
-            type: string
-        - name: endDate
-          in: query
-          schema:
-            type: string
         - name: city
           in: query
           schema:
@@ -747,18 +739,6 @@ paths:
           in: query
           schema:
             type: string
-        - name: salesOwnerId
-          in: query
-          schema:
-            type: integer
-        - name: startDate
-          in: query
-          schema:
-            type: string
-        - name: endDate
-          in: query
-          schema:
-            type: string
       responses:
         "200":
           description: Owner stats
@@ -783,14 +763,6 @@ paths:
           in: query
           schema:
             type: integer
-        - name: startDate
-          in: query
-          schema:
-            type: string
-        - name: endDate
-          in: query
-          schema:
-            type: string
       responses:
         "200":
           description: Product stats
@@ -816,14 +788,6 @@ paths:
           schema:
             type: integer
         - name: unit
-          in: query
-          schema:
-            type: string
-        - name: startDate
-          in: query
-          schema:
-            type: string
-        - name: endDate
           in: query
           schema:
             type: string
@@ -859,14 +823,6 @@ paths:
           in: query
           schema:
             type: integer
-        - name: startDate
-          in: query
-          schema:
-            type: string
-        - name: endDate
-          in: query
-          schema:
-            type: string
       responses:
         "200":
           description: City stats
@@ -891,14 +847,6 @@ paths:
           in: query
           schema:
             type: integer
-        - name: startDate
-          in: query
-          schema:
-            type: string
-        - name: endDate
-          in: query
-          schema:
-            type: string
       responses:
         "200":
           description: State stats
@@ -1017,10 +965,6 @@ components:
           enum: [Himatnagar, Surat, Rajkot, All]
         profilePhoto:
           type: ["string", "null"]
-        canViewAllReports:
-          type: boolean
-        canAssignLeads:
-          type: boolean
         createdAt:
           type: string
 
@@ -1614,10 +1558,6 @@ components:
           type: string
         productCode:
           type: string
-        variants:
-          type: array
-          items:
-            type: object
         totalQuantity:
           type: number
         totalValue:
