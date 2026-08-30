@@ -251,7 +251,7 @@ export default function Security() {
   const pwColors = ["bg-red-500", "bg-orange-500", "bg-yellow-500", "bg-lime-500", "bg-green-500", "bg-emerald-600"];
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-8 max-w-3xl">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-8 max-w-3xl min-h-full pb-16">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Security</h1>
         <p className="text-muted-foreground mt-1">Manage your password, two-factor authentication, and sessions</p>

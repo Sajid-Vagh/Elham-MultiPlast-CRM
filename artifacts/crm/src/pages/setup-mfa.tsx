@@ -162,8 +162,8 @@ export default function SetupMfa() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
-      <Card className="w-full max-w-lg shadow-xl border-primary/10">
+    <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4 overflow-y-auto">
+      <Card className="w-full max-w-lg shadow-xl border-primary/10 max-h-[calc(100vh-2rem)] overflow-y-auto">
         <CardHeader className="space-y-4 text-center pb-4 pt-7">
           <div className="mx-auto">
             <Shield className="h-12 w-12 text-primary" />
