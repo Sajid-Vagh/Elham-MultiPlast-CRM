@@ -373,13 +373,10 @@ router.get("/dashboard/kpi", async (req, res) => {
     //    sales_owner_id, unit via the effective contact's unit. No direct
     //    owner column exists on activities, so the join-through-contact
     //    resolution below is what keeps ?ownerId= accurate.
-    const callActivityConds: any[] = [
-      or(
-        eq(activitiesTable.type, "Call"),
-        eq(activitiesTable.followUpType, "Call"),
-      ),
-      or(isNull(activitiesTable.callStatus), ne(activitiesTable.callStatus, "Completed")),
-    ];
+    // ── "All Activities" KPI: Count of all activities matching global filters ──
+    // Parity with /follow-ups: counts all activity types (Call, FollowUp, Site Visit,
+    // Video Call, WhatsApp, Email, Meeting) scoped by date, owner, and unit.
+    const callActivityConds: any[] = [];
     if (startDate) callActivityConds.push(gte(activitiesTable.followUpDate, startDate));
     if (endDate) callActivityConds.push(lte(activitiesTable.followUpDate, endDate));
 
@@ -389,12 +386,7 @@ router.get("/dashboard/kpi", async (req, res) => {
       unitFilter,
       callActivityConds
     );
-    // Belt & braces: mirror the two SQL clauses in JS over the scoped set —
-    // same membership test the Activity page applies client-side.
-    const totalCalls = callActivities.filter(a =>
-      (a.type === "Call" || a.followUpType === "Call") &&
-      (a.callStatus == null || a.callStatus !== "Completed")
-    ).length;
+    const totalCalls = callActivities.length;
 
     const todayActivities = allActivities.filter(a => a.followUpDate === today);
     const todayTotal = todayActivities.length;
