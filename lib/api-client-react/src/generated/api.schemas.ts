@@ -44,6 +44,8 @@ export interface User {
   unit: UserUnit;
   /** @nullable */
   profilePhoto?: string | null;
+  canViewAllReports?: boolean;
+  canAssignLeads?: boolean;
   createdAt?: string;
 }
 
@@ -707,10 +709,13 @@ export interface OwnerStat {
   totalWonValue: number;
 }
 
+export type ProductStatVariantsItem = { [key: string]: unknown };
+
 export interface ProductStat {
   productId: number;
   productName: string;
   productCode?: string;
+  variants?: ProductStatVariantsItem[];
   totalQuantity: number;
   totalValue: number;
   dealCount: number;
@@ -889,23 +894,32 @@ export type GetPipelineReportParams = {
 salesOwnerId?: number;
 unit?: string;
 month?: string;
+startDate?: string;
+endDate?: string;
 city?: string;
 };
 
 export type GetReportByOwnerParams = {
 month?: string;
 unit?: string;
+salesOwnerId?: number;
+startDate?: string;
+endDate?: string;
 };
 
 export type GetReportByProductParams = {
 month?: string;
 salesOwnerId?: number;
+startDate?: string;
+endDate?: string;
 };
 
 export type GetReportLostReasonsParams = {
 month?: string;
 salesOwnerId?: number;
 unit?: string;
+startDate?: string;
+endDate?: string;
 };
 
 export type GetReportLostReasons200Item = {
@@ -917,11 +931,15 @@ export type GetReportLostReasons200Item = {
 export type GetReportByCityParams = {
 month?: string;
 salesOwnerId?: number;
+startDate?: string;
+endDate?: string;
 };
 
 export type GetReportByStateParams = {
 month?: string;
 salesOwnerId?: number;
+startDate?: string;
+endDate?: string;
 };
 
 export type GetReportByState200 = {

@@ -6,10 +6,4 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type GetReportByOwnerParams = {
-month?: string;
-unit?: string;
-salesOwnerId?: number;
-startDate?: string;
-endDate?: string;
-};
+export type ProductStatVariantsItem = { [key: string]: unknown };

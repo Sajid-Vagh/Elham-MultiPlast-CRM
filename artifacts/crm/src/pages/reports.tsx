@@ -1018,13 +1018,13 @@ export default function Reports() {
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                  {variants.map((v, vi) => (
+                                  {variants.map((v: any, vi: number) => (
                                     <TableRow key={vi}>
-                                      <TableCell className="text-sm">{v.weight || "-"}</TableCell>
-                                      <TableCell className="text-sm">{v.colour || "-"}</TableCell>
-                                      <TableCell className="text-sm">{v.dealCount}</TableCell>
-                                      <TableCell className="text-sm">{v.totalQuantity}</TableCell>
-                                      <TableCell className="text-sm">₹{Number(v.totalValue).toLocaleString()}</TableCell>
+                                      <TableCell className="text-sm">{String(v.weight || "-")}</TableCell>
+                                      <TableCell className="text-sm">{String(v.colour || "-")}</TableCell>
+                                      <TableCell className="text-sm">{String(v.dealCount ?? 0)}</TableCell>
+                                      <TableCell className="text-sm">{String(v.totalQuantity ?? 0)}</TableCell>
+                                      <TableCell className="text-sm">₹{Number(v.totalValue ?? 0).toLocaleString()}</TableCell>
                                     </TableRow>
                                   ))}
                                 </TableBody>
