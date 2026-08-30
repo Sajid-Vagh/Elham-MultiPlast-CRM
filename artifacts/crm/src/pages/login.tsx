@@ -553,24 +553,24 @@ function MfaSetup({ email, mfaSetupToken, onSuccess }: { email: string; mfaSetup
   };
 
   return (
-    <Card className="shadow-xl border-primary/10">
-      <CardHeader className="space-y-3 text-center pb-4 pt-10">
+    <Card className="shadow-xl border-primary/10 max-h-[calc(100vh-1.5rem)] overflow-y-auto">
+      <CardHeader className="space-y-1.5 text-center pb-2 pt-4">
         <div className="mx-auto">
-          <div className="w-14 h-14 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center mx-auto">
-            <Shield className="h-7 w-7 text-purple-600 dark:text-purple-400" />
+          <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center mx-auto">
+            <Shield className="h-5 w-5 text-purple-600 dark:text-purple-400" />
           </div>
         </div>
-        <CardDescription className="text-lg text-foreground font-medium">Secure your account</CardDescription>
+        <CardDescription className="text-base text-foreground font-semibold">Secure your account</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-5">
+      <CardContent className="space-y-3 pt-1">
         {state === "loading" && <Spinner text="Generating QR code..." />}
 
         {state === "error" && (
           <div className="text-center space-y-3">
-            <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-md text-sm text-red-700 dark:text-red-300">
+            <div className="p-2.5 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-md text-xs text-red-700 dark:text-red-300">
               {error}
             </div>
-            <Link href="/login" className="text-sm text-primary hover:underline inline-flex items-center gap-1">
+            <Link href="/login" className="text-xs text-primary hover:underline inline-flex items-center gap-1">
               <ArrowLeft className="h-3 w-3" /> Back to Login
             </Link>
           </div>
@@ -578,40 +578,40 @@ function MfaSetup({ email, mfaSetupToken, onSuccess }: { email: string; mfaSetup
 
         {state === "scan" && (
           <>
-            <p className="text-sm text-muted-foreground text-center">
+            <p className="text-xs text-muted-foreground text-center">
               Set up two-factor authentication using an authenticator app.
             </p>
 
             {/* QR Code */}
-            <div className="space-y-2">
-              <p className="text-sm font-medium flex items-center gap-1.5">
-                <QrCode className="h-4 w-4" /> Scan QR code
+            <div className="space-y-1">
+              <p className="text-xs font-medium flex items-center gap-1.5">
+                <QrCode className="h-3.5 w-3.5" /> Scan QR code
               </p>
               <div className="flex justify-center">
-                <div className="bg-white p-3 rounded-xl border shadow-sm">
-                  <img src={qrCode} alt="MFA QR Code" className="w-44 h-44" />
+                <div className="bg-white p-2 rounded-lg border shadow-sm">
+                  <img src={qrCode} alt="MFA QR Code" className="w-32 h-32" />
                 </div>
               </div>
             </div>
 
             {/* Manual Key */}
-            <div className="space-y-2">
-              <p className="text-sm font-medium flex items-center gap-1.5">
-                <Key className="h-4 w-4" /> Or enter this key manually
+            <div className="space-y-1">
+              <p className="text-xs font-medium flex items-center gap-1.5">
+                <Key className="h-3.5 w-3.5" /> Or enter this key manually
               </p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 bg-muted px-3 py-2 rounded text-sm font-mono break-all select-all">
+              <div className="flex items-center gap-1.5">
+                <code className="flex-1 bg-muted px-2.5 py-1.5 rounded text-xs font-mono break-all select-all">
                   {manualKey}
                 </code>
-                <Button variant="outline" size="sm" onClick={() => { navigator.clipboard.writeText(manualKey); toast({ title: "Key copied" }); }}>
+                <Button variant="outline" size="sm" className="h-7 px-2" onClick={() => { navigator.clipboard.writeText(manualKey); toast({ title: "Key copied" }); }}>
                   <Copy className="h-3.5 w-3.5" />
                 </Button>
               </div>
             </div>
 
             {/* Code Input */}
-            <div className="space-y-2 pt-2 border-t">
-              <Label className="text-sm font-medium">Enter the 6-digit code from your app</Label>
+            <div className="space-y-1.5 pt-2 border-t">
+              <Label className="text-xs font-medium">Enter the 6-digit code from your app</Label>
               <Input
                 type="text"
                 inputMode="numeric"
@@ -620,11 +620,11 @@ function MfaSetup({ email, mfaSetupToken, onSuccess }: { email: string; mfaSetup
                 onChange={e => { setCode(e.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); }}
                 onKeyDown={e => { if (e.key === "Enter" && code.length === 6) handleVerify(); }}
                 placeholder="000000"
-                className="text-center text-lg font-mono tracking-widest bg-background"
+                className="text-center text-base h-8 font-mono tracking-widest bg-background"
                 autoFocus
               />
-              {error && <p className="text-sm text-destructive text-center">{error}</p>}
-              <Button className="w-full" onClick={handleVerify} disabled={code.length !== 6}>
+              {error && <p className="text-xs text-destructive text-center">{error}</p>}
+              <Button className="w-full h-8 text-xs font-medium" onClick={handleVerify} disabled={code.length !== 6}>
                 Verify & Enable Two-Factor Authentication
               </Button>
             </div>
