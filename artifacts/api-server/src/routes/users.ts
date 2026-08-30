@@ -116,7 +116,7 @@ router.get("/users/contact-owners", async (req, res) => {
       .select()
       .from(usersTable)
       .where(or(
-        inArray(usersTable.role, ["admin", "sales", "production_and_support"]),
+        inArray(usersTable.role, ["admin", "sales", "production", "production_and_support"]),
         sql`EXISTS (SELECT 1 FROM contacts c WHERE c.sales_owner_id = ${usersTable.id})`
       ))
       .orderBy(usersTable.name);
