@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Download, FileSpreadsheet, FileText, FileType, FileDown, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useGetMe } from "@workspace/api-client-react";
+import { ExportVerificationDialog } from "./export-verification-dialog";
 
 interface ExportDropdownProps {
   exportUrl: string;
@@ -35,9 +37,12 @@ export function ExportDropdown({
   detailedLabel = "Detailed Export (Complete Report)",
 }: ExportDropdownProps) {
   const [loading, setLoading] = useState<{ mode: string; format: string } | null>(null);
+  const [verifyOpen, setVerifyOpen] = useState(false);
+  const [pendingExport, setPendingExport] = useState<{ mode: string; format: string; ids?: number[] } | null>(null);
   const { toast } = useToast();
+  const { data: me } = useGetMe();
 
-  const doExport = useCallback(async (mode: string, format: string, ids?: number[]) => {
+  const runExport = useCallback(async (mode: string, format: string, ids?: number[], exportAuthToken?: string) => {
     setLoading({ mode, format });
     try {
       const token = localStorage.getItem("crm_token");
@@ -49,6 +54,10 @@ export function ExportDropdown({
         params.set("ids", ids.join(","));
       }
 
+      if (exportAuthToken) {
+        params.set("exportToken", exportAuthToken);
+      }
+
       if (onBeforeExport) {
         const extra = onBeforeExport();
         Object.entries(extra).forEach(([k, v]) => {
@@ -57,9 +66,14 @@ export function ExportDropdown({
       }
 
       const url = `${exportUrl}?${params.toString()}`;
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+      };
+      if (exportAuthToken) {
+        headers["X-Export-Token"] = exportAuthToken;
+      }
+
+      const res = await fetch(url, { headers });
 
       if (!res.ok) {
         const err = await res.text();
@@ -85,8 +99,25 @@ export function ExportDropdown({
       toast({ title: "Export failed", description: err.message, variant: "destructive" });
     } finally {
       setLoading(null);
+      setPendingExport(null);
     }
   }, [exportUrl, filename, onBeforeExport, toast]);
+
+  const doExport = (mode: string, format: string, ids?: number[]) => {
+    // Only Admin users require export OTP verification
+    if (me?.role === "admin") {
+      setPendingExport({ mode, format, ids });
+      setVerifyOpen(true);
+    } else {
+      runExport(mode, format, ids);
+    }
+  };
+
+  const handleVerified = async (exportToken: string) => {
+    if (pendingExport) {
+      await runExport(pendingExport.mode, pendingExport.format, pendingExport.ids, exportToken);
+    }
+  };
 
   const isLoading = loading !== null;
 
@@ -133,38 +164,50 @@ export function ExportDropdown({
   const hasSelection = selectedIds && selectedIds.length > 0;
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" disabled={disabled || isLoading}>
-          {isLoading ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <Download className="h-4 w-4 mr-2" />
-          )}
-          {isLoading ? "Exporting..." : "Export"}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-60">
-        {renderExportOptions("quick", quickLabel)}
-        {renderExportOptions("detailed", detailedLabel)}
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" disabled={disabled || isLoading}>
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            {isLoading ? "Exporting..." : "Export"}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-60">
+          {renderExportOptions("quick", quickLabel)}
+          {renderExportOptions("detailed", detailedLabel)}
 
-        {hasSelection && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <FileDown className="h-4 w-4 mr-2" />
-                <span>Export Selected ({selectedIds.length})</span>
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                {renderSelectedExportOptions("quick")}
-                <DropdownMenuSeparator />
-                {renderSelectedExportOptions("detailed")}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+          {hasSelection && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <FileDown className="h-4 w-4 mr-2" />
+                  <span>Export Selected ({selectedIds.length})</span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {renderSelectedExportOptions("quick")}
+                  <DropdownMenuSeparator />
+                  {renderSelectedExportOptions("detailed")}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <ExportVerificationDialog
+        open={verifyOpen}
+        onOpenChange={(isOpen) => {
+          setVerifyOpen(isOpen);
+          if (!isOpen) setPendingExport(null);
+        }}
+        onVerified={handleVerified}
+        exportLabel={filename}
+      />
+    </>
   );
 }

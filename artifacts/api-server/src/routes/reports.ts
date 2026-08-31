@@ -3,6 +3,7 @@ import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsT
 import { eq, and, gte, lte, sql, inArray, or, isNull, type SQL } from "drizzle-orm";
 import { GetPipelineReportQueryParams, GetReportByOwnerQueryParams, GetReportByProductQueryParams, GetReportByCityQueryParams, GetReportByStateQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
+import { validateExportAuth } from "../lib/export-auth";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 import { normalizeProfilePhotoUrl } from "../lib/storage";
 import { normalizeState, normalizeCity, inferStateFromCity } from "../utils/geoMapping";
@@ -668,6 +669,14 @@ router.get("/reports/raw-deals", async (req, res) => {
     const params = GetPipelineReportQueryParams.safeParse(req.query);
     const user = await restrictToOwnDeals(req, params.data ?? {});
     if (!user) { res.status(403).json({ error: "Unauthorized" }); return; }
+
+    const authCheck = await validateExportAuth(req, user, "reports_raw_deals");
+    if (!authCheck.valid) {
+      return res.status(authCheck.status || 403).json({
+        error: authCheck.error,
+        verificationRequired: authCheck.verificationRequired,
+      });
+    }
 
     let deals = await db.select().from(dealsTable);
     const allContacts = await db.select().from(contactsTable);

@@ -30,6 +30,11 @@ import {
   safeStr,
   safeNum,
 } from "../lib/exporter";
+import {
+  requestExportOtp,
+  verifyExportOtp,
+  validateExportAuth,
+} from "../lib/export-auth";
 
 const router: IRouter = Router();
 
@@ -100,6 +105,93 @@ function mapGet<K, V>(m: Map<K, V>, key: K | null | undefined): V | undefined {
   if (key == null) return undefined;
   return m.get(key);
 }
+
+// ─── Export OTP Authentication Endpoints (Admin Only) ───────
+router.post("/auth/send-otp", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket?.remoteAddress || "unknown";
+    const result = await requestExportOtp(user, ip);
+    if (!result.success) {
+      res.status(result.status || 400).json({ error: result.error || result.message });
+      return;
+    }
+    res.json(result);
+  } catch (err: any) {
+    console.error("Export OTP send error", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.post("/auth/verify-otp", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+    const { code } = req.body as { code?: string };
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket?.remoteAddress || "unknown";
+    const result = await verifyExportOtp(user, code || "", ip);
+    if (!result.success) {
+      res.status(result.status || 400).json({
+        error: result.error,
+        attemptsRemaining: result.attemptsRemaining,
+      });
+      return;
+    }
+    res.json(result);
+  } catch (err: any) {
+    console.error("Export OTP verify error", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.get("/auth/status", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+    res.json({
+      role: user.role,
+      requiresVerification: user.role === "admin",
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// ─── Export Authorization Middleware ─────────────────────────
+// Automatically guards all subsequent export endpoints:
+// - Non-admin users (Sales, Production, Support, etc.) are untouched and bypass verification.
+// - Admin users MUST have a valid, unexpired exportToken, otherwise rejected with 403.
+router.use(async (req, res, next) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const exportType = req.path.replace(/^\//, "") || "export";
+    const authCheck = await validateExportAuth(req, user, exportType);
+    if (!authCheck.valid) {
+      res.status(authCheck.status || 403).json({
+        error: authCheck.error,
+        verificationRequired: authCheck.verificationRequired,
+      });
+      return;
+    }
+    return next();
+  } catch (err: any) {
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
 
 // ─── 1. GET /exports/reports ─────────────────────────────────────────────────
 router.get("/reports", async (req, res) => {

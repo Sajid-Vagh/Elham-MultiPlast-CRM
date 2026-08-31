@@ -2,6 +2,8 @@ import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Download, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useGetMe } from "@workspace/api-client-react";
+import { ExportVerificationDialog } from "./export-verification-dialog";
 
 interface ExportButtonProps {
   exportUrl: string;
@@ -11,10 +13,9 @@ interface ExportButtonProps {
   label?: string;
 }
 
-// Single-click "Detailed Export" button. Immediately downloads the complete
-// Excel report (mode=detailed) — no Quick/Detailed dropdown, no format picker.
-// Used on standard pages (Leads, Deals, Activities, Existing Customers,
-// Dispatch). The Reports page keeps its own Quick/Detailed dropdown.
+// Single-click "Detailed Export" button.
+// For Admin users: requires 6-digit OTP verification before downloading.
+// For Non-admin users: immediately downloads according to current permissions.
 export function ExportButton({
   exportUrl,
   filename = "export",
@@ -23,15 +24,21 @@ export function ExportButton({
   label = "Export",
 }: ExportButtonProps) {
   const [loading, setLoading] = useState(false);
+  const [verifyOpen, setVerifyOpen] = useState(false);
   const { toast } = useToast();
+  const { data: me } = useGetMe();
 
-  const doExport = useCallback(async () => {
+  const runExport = useCallback(async (exportAuthToken?: string) => {
     setLoading(true);
     try {
       const token = localStorage.getItem("crm_token");
       const params = new URLSearchParams();
       params.set("mode", "detailed");
       params.set("format", "xlsx");
+
+      if (exportAuthToken) {
+        params.set("exportToken", exportAuthToken);
+      }
 
       if (onBeforeExport) {
         const extra = onBeforeExport();
@@ -41,9 +48,14 @@ export function ExportButton({
       }
 
       const url = `${exportUrl}?${params.toString()}`;
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+      };
+      if (exportAuthToken) {
+        headers["X-Export-Token"] = exportAuthToken;
+      }
+
+      const res = await fetch(url, { headers });
 
       if (!res.ok) {
         const err = await res.text();
@@ -61,7 +73,7 @@ export function ExportButton({
       document.body.removeChild(a);
       URL.revokeObjectURL(a.href);
 
-      toast({ title: "Export completed", description: `Detailed XLSX downloaded.` });
+      toast({ title: "Export completed", description: "Detailed XLSX downloaded." });
     } catch (err: any) {
       console.error("Export error:", err);
       toast({ title: "Export failed", description: err.message, variant: "destructive" });
@@ -70,14 +82,32 @@ export function ExportButton({
     }
   }, [exportUrl, filename, onBeforeExport, toast]);
 
+  const handleClick = () => {
+    // Only Admin users require additional export OTP verification
+    if (me?.role === "admin") {
+      setVerifyOpen(true);
+    } else {
+      runExport();
+    }
+  };
+
   return (
-    <Button variant="outline" size="sm" onClick={doExport} disabled={disabled || loading}>
-      {loading ? (
-        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-      ) : (
-        <Download className="h-4 w-4 mr-2" />
-      )}
-      {loading ? "Exporting..." : label}
-    </Button>
+    <>
+      <Button variant="outline" size="sm" onClick={handleClick} disabled={disabled || loading}>
+        {loading ? (
+          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+        ) : (
+          <Download className="h-4 w-4 mr-2" />
+        )}
+        {loading ? "Exporting..." : label}
+      </Button>
+
+      <ExportVerificationDialog
+        open={verifyOpen}
+        onOpenChange={setVerifyOpen}
+        onVerified={runExport}
+        exportLabel={label === "Export" ? filename : label}
+      />
+    </>
   );
 }
