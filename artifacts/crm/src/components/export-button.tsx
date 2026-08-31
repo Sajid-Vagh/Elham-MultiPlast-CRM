@@ -58,8 +58,21 @@ export function ExportButton({
       const res = await fetch(url, { headers });
 
       if (!res.ok) {
-        const err = await res.text();
-        throw new Error(err || "Export failed");
+        const text = await res.text();
+        let isVerificationRequired = res.status === 403;
+        try {
+          const json = JSON.parse(text);
+          if (json.verificationRequired) {
+            isVerificationRequired = true;
+          }
+        } catch {}
+
+        if (isVerificationRequired && !exportAuthToken) {
+          setVerifyOpen(true);
+          return;
+        }
+
+        throw new Error(text || "Export failed");
       }
 
       const blob = await res.blob();
@@ -84,7 +97,8 @@ export function ExportButton({
 
   const handleClick = () => {
     // Only Admin users require additional export OTP verification
-    if (me?.role === "admin") {
+    const role = me?.role || localStorage.getItem("crm_user_role");
+    if (role === "admin") {
       setVerifyOpen(true);
     } else {
       runExport();

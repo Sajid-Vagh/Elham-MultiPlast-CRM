@@ -373,7 +373,8 @@ export default function Reports() {
   };
 
   const doQuickExport = (format: "xlsx" | "csv") => {
-    if (me?.role === "admin") {
+    const role = me?.role || localStorage.getItem("crm_user_role");
+    if (role === "admin") {
       setPendingExportAction({ type: "quick", format });
       setExportVerifyOpen(true);
     } else {
@@ -426,6 +427,11 @@ export default function Reports() {
 
       const res = await fetch(`/api/reports/raw-deals?${params.toString()}`, { headers });
       if (!res.ok) {
+        if (res.status === 403 && !exportAuthToken) {
+          setPendingExportAction({ type: "detailed", format });
+          setExportVerifyOpen(true);
+          return;
+        }
         toast({ title: "Export failed", description: "Could not fetch raw deal data.", variant: "destructive" });
         return;
       }
@@ -560,7 +566,8 @@ export default function Reports() {
   };
 
   const doDetailedExport = (format: "xlsx" | "csv") => {
-    if (me?.role === "admin") {
+    const role = me?.role || localStorage.getItem("crm_user_role");
+    if (role === "admin") {
       setPendingExportAction({ type: "detailed", format });
       setExportVerifyOpen(true);
     } else {

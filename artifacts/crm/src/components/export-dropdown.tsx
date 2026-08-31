@@ -76,8 +76,22 @@ export function ExportDropdown({
       const res = await fetch(url, { headers });
 
       if (!res.ok) {
-        const err = await res.text();
-        throw new Error(err || "Export failed");
+        const text = await res.text();
+        let isVerificationRequired = res.status === 403;
+        try {
+          const json = JSON.parse(text);
+          if (json.verificationRequired) {
+            isVerificationRequired = true;
+          }
+        } catch {}
+
+        if (isVerificationRequired && !exportAuthToken) {
+          setPendingExport({ mode, format, ids });
+          setVerifyOpen(true);
+          return;
+        }
+
+        throw new Error(text || "Export failed");
       }
 
       const blob = await res.blob();
@@ -105,7 +119,8 @@ export function ExportDropdown({
 
   const doExport = (mode: string, format: string, ids?: number[]) => {
     // Only Admin users require export OTP verification
-    if (me?.role === "admin") {
+    const role = me?.role || localStorage.getItem("crm_user_role");
+    if (role === "admin") {
       setPendingExport({ mode, format, ids });
       setVerifyOpen(true);
     } else {
