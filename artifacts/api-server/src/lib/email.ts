@@ -156,6 +156,30 @@ export async function sendOtpEmail(email: string, otp: string): Promise<boolean>
 }
 
 /**
+ * Send an Excel export verification OTP email to Admin.
+ */
+export async function sendExportOtpEmail(email: string, otp: string): Promise<boolean> {
+  return sendEmail({
+    to: email,
+    subject: "Excel Export Verification Code — Elham MultiPlast CRM",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2>Excel Export Verification</h2>
+        <p>A request was made to export CRM data to Excel from your Admin account.</p>
+        <p>Use the following 6-digit verification code to authorize the export:</p>
+        <div style="margin: 30px 0; text-align: center;">
+          <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #4f46e5; background: #f3f4f6; padding: 16px 32px; border-radius: 8px; display: inline-block; font-family: monospace;">${otp}</span>
+        </div>
+        <p style="color: #666; font-size: 14px;">This code expires in 5 minutes. If you did not request this export, please secure your account.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+        <p style="color: #999; font-size: 12px;">Elham MultiPlast LLP — CRM System</p>
+      </div>
+    `,
+    text: `Your Excel export verification code is: ${otp}\n\nThis code expires in 5 minutes.\n\nIf you did not request this export, please secure your account.`,
+  });
+}
+
+/**
  * Send a user invitation email.
  */
 export async function sendInvitationEmail(

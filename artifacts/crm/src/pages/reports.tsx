@@ -38,6 +38,7 @@ import { useOwnerFilter } from "@/lib/global-filters";
 import { parseNotesText } from "@/lib/parse-notes";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { ClearFiltersButton } from "@/components/clear-filters-button";
+import { ExportVerificationDialog } from "@/components/export-verification-dialog";
 
 function UnitPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const { units: activeUnits } = useActiveUnits();
@@ -159,6 +160,11 @@ export default function Reports() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
   const [location, navigate] = useLocation();
+  const [exportVerifyOpen, setExportVerifyOpen] = useState(false);
+  const [pendingExportAction, setPendingExportAction] = useState<{
+    type: "quick" | "detailed";
+    format: "xlsx" | "csv";
+  } | null>(null);
 
   // Deep-link support: the Dashboard's "Won Value" card navigates here with
   // `?view=won_deals`. On mount, this auto-opens the Won Deals drill-down
@@ -351,7 +357,7 @@ export default function Reports() {
     }
   };
 
-  const doQuickExport = (format: "xlsx" | "csv") => {
+  const executeQuickExport = (format: "xlsx" | "csv") => {
     const sheet = buildTabSheet(activeTab);
     const fname = buildExportFileName(activeTab, dateFilter, format);
     if (format === "xlsx") {
@@ -364,6 +370,15 @@ export default function Reports() {
       downloadCSV(sheet.headers, sheet.rows, fname);
     }
     toast({ title: "Export completed", description: `Quick ${format.toUpperCase()} downloaded (${sheet.name}).` });
+  };
+
+  const doQuickExport = (format: "xlsx" | "csv") => {
+    if (me?.role === "admin") {
+      setPendingExportAction({ type: "quick", format });
+      setExportVerifyOpen(true);
+    } else {
+      executeQuickExport(format);
+    }
   };
 
   const DETAILED_EXPORT_HEADERS = [
@@ -396,7 +411,7 @@ export default function Reports() {
     "lost-reasons": "Lost Reason",
   };
 
-  const doDetailedExport = async (format: "xlsx" | "csv") => {
+  const executeDetailedExport = async (format: "xlsx" | "csv", exportAuthToken?: string) => {
     try {
       const token = localStorage.getItem("crm_token");
       const params = new URLSearchParams();
@@ -404,7 +419,12 @@ export default function Reports() {
       if (unit !== "All") params.set("unit", unit);
       if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
       if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
-      const res = await fetch(`/api/reports/raw-deals?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (exportAuthToken) params.set("exportToken", exportAuthToken);
+
+      const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+      if (exportAuthToken) headers["X-Export-Token"] = exportAuthToken;
+
+      const res = await fetch(`/api/reports/raw-deals?${params.toString()}`, { headers });
       if (!res.ok) {
         toast({ title: "Export failed", description: "Could not fetch raw deal data.", variant: "destructive" });
         return;
@@ -537,6 +557,24 @@ export default function Reports() {
     } catch {
       toast({ title: "Export failed", description: "Could not fetch raw deal data.", variant: "destructive" });
     }
+  };
+
+  const doDetailedExport = (format: "xlsx" | "csv") => {
+    if (me?.role === "admin") {
+      setPendingExportAction({ type: "detailed", format });
+      setExportVerifyOpen(true);
+    } else {
+      executeDetailedExport(format);
+    }
+  };
+
+  const handleExportVerified = async (exportToken: string) => {
+    if (pendingExportAction?.type === "quick") {
+      executeQuickExport(pendingExportAction.format);
+    } else if (pendingExportAction?.type === "detailed") {
+      await executeDetailedExport(pendingExportAction.format, exportToken);
+    }
+    setPendingExportAction(null);
   };
 
   const fetchLostDetail = useCallback(async (reason: string) => {
@@ -1454,6 +1492,16 @@ export default function Reports() {
           )}
         </SheetContent>
       </Sheet>
+
+      <ExportVerificationDialog
+        open={exportVerifyOpen}
+        onOpenChange={(isOpen) => {
+          setExportVerifyOpen(isOpen);
+          if (!isOpen) setPendingExportAction(null);
+        }}
+        onVerified={handleExportVerified}
+        exportLabel={`Reports — ${TAB_FILE_NAMES[activeTab] || activeTab}`}
+      />
     </div>
   );
 }
