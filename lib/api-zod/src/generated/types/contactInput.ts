@@ -23,6 +23,8 @@ export interface ContactInput {
   /** @nullable */
   city?: string | null;
   /** @nullable */
+  state?: string | null;
+  /** @nullable */
   address?: string | null;
   /** @nullable */
   unit?: string | null;

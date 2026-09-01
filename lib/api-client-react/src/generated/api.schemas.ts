@@ -210,7 +210,7 @@ export interface Contact {
   commentUpdatedAt?: string | null;
   /** @nullable */
   commentUpdatedBy?: number | null;
-  commentUpdatedByUser?: User | null;
+  commentUpdatedByUser?: User;
   isMyClient?: boolean;
   /** @nullable */
   customerCode?: string | null;
@@ -252,6 +252,8 @@ export interface ContactInput {
   leadSource?: string | null;
   /** @nullable */
   city?: string | null;
+  /** @nullable */
+  state?: string | null;
   /** @nullable */
   address?: string | null;
   /** @nullable */
@@ -563,6 +565,9 @@ export interface DealUpdate {
   notes?: string | null;
   /** @nullable */
   salesOwnerId?: number | null;
+  /** @nullable */
+  productionUnit?: string | null;
+  isHiddenFromTimeline?: boolean;
 }
 
 export interface DealProduct {

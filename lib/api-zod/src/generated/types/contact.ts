@@ -57,7 +57,7 @@ export interface Contact {
   commentUpdatedAt?: string | null;
   /** @nullable */
   commentUpdatedBy?: number | null;
-  commentUpdatedByUser?: User | null;
+  commentUpdatedByUser?: User;
   isMyClient?: boolean;
   /** @nullable */
   customerCode?: string | null;

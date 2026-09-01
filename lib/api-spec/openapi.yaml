@@ -455,6 +455,18 @@ paths:
           in: query
           schema:
             type: string
+        - name: completedDealVisibility
+          in: query
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
       responses:
         "200":
           description: List of deals
@@ -1124,6 +1136,52 @@ components:
           type: ["string", "null"]
         nextCallDate:
           type: ["string", "null"]
+        state:
+          type: ["string", "null"]
+        category:
+          type: ["string", "null"]
+        customerSince:
+          type: ["string", "null"]
+        customerStatus:
+          type: ["string", "null"]
+        customerComments:
+          type: ["string", "null"]
+        commentUpdatedAt:
+          type: ["string", "null"]
+        commentUpdatedBy:
+          type: ["integer", "null"]
+        commentUpdatedByUser:
+          $ref: "#/components/schemas/User"
+        isMyClient:
+          type: boolean
+        customerCode:
+          type: ["string", "null"]
+        isRead:
+          type: boolean
+        isRepeatEnquiry:
+          type: boolean
+        isReadByAdmin:
+          type: boolean
+        isReadByAssignee:
+          type: boolean
+        readBy:
+          type: array
+          items:
+            type: integer
+        lostReason:
+          type: ["string", "null"]
+        otherReason:
+          type: ["string", "null"]
+        lostNotes:
+          type: ["string", "null"]
+        lostDate:
+          type: ["string", "null"]
+        totalOrders:
+          type: ["integer", "null"]
+        totalRevenue:
+          type: ["string", "null"]
+        lastPurchaseDate:
+          type: ["string", "null"]
         createdAt:
           type: string
 
@@ -1148,6 +1206,8 @@ components:
         leadSource:
           type: ["string", "null"]
         city:
+          type: ["string", "null"]
+        state:
           type: ["string", "null"]
         address:
           type: ["string", "null"]
@@ -1406,6 +1466,18 @@ components:
           type: ["integer", "null"]
         salesOwner:
           $ref: "#/components/schemas/User"
+        productionUnit:
+          type: ["string", "null"]
+        wonAmount:
+          type: ["number", "null"]
+        wonAt:
+          type: ["string", "null"]
+        lostAt:
+          type: ["string", "null"]
+        completedAt:
+          type: ["string", "null"]
+        isHiddenFromTimeline:
+          type: boolean
         createdAt:
           type: string
         updatedAt:
@@ -1432,6 +1504,8 @@ components:
           type: ["string", "null"]
         salesOwnerId:
           type: ["integer", "null"]
+        productionUnit:
+          type: ["string", "null"]
 
     DealUpdate:
       type: object
@@ -1451,6 +1525,10 @@ components:
           type: ["string", "null"]
         salesOwnerId:
           type: ["integer", "null"]
+        productionUnit:
+          type: ["string", "null"]
+        isHiddenFromTimeline:
+          type: boolean
 
     DealProduct:
       type: object

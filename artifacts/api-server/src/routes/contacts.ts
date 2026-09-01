@@ -880,7 +880,7 @@ router.patch("/contacts/:id", async (req, res) => {
     const newCategory = parsed.data.category;
     if (newCategory !== undefined && newCategory !== oldContact.category) {
       const VALID_CATEGORIES = ["Regular Follow up", "Category A", "Category B", "Category C", "My Client"];
-      if (!VALID_CATEGORIES.includes(newCategory)) {
+      if (!newCategory || !VALID_CATEGORIES.includes(newCategory)) {
         res.status(400).json({ error: `Invalid category. Must be one of: ${VALID_CATEGORIES.join(", ")}` });
         return;
       }
@@ -959,7 +959,7 @@ router.patch("/contacts/:id", async (req, res) => {
     }
 
     // Record category history (guards already passed above)
-    if (newCategory !== undefined && newCategory !== oldContact.category) {
+    if (newCategory && newCategory !== oldContact.category) {
       await db.insert(categoryHistoryTable).values({
         contactId: params.data.id,
         previousCategory: oldContact.category,
@@ -1182,15 +1182,17 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
       .where(eq(dealsTable.contactId, contact.id))
       .limit(1);
 
-    const displayReason = lostReason === "Other" && otherReason ? `Other - ${otherReason}` : lostReason;
-    await db.insert(activitiesTable).values({
-      contactId: contact.id,
-      dealId: existingDeal?.id || null,
-      type: "Note",
-      notes: `Lead marked as Lost\n\nLost Reason: ${displayReason}`,
-      createdBy: user.id,
-      callStatus: "Completed",
-    });
+    if (existingDeal?.id) {
+      const displayReason = lostReason === "Other" && otherReason ? `Other - ${otherReason}` : lostReason;
+      await db.insert(activitiesTable).values({
+        contactId: contact.id,
+        dealId: existingDeal.id,
+        type: "Note",
+        notes: `Lead marked as Lost\n\nLost Reason: ${displayReason}`,
+        createdBy: user.id,
+        callStatus: "Completed",
+      });
+    }
 
     res.json({ success: true });
   } catch (err: any) {
