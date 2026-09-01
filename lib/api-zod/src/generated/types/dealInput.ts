@@ -21,4 +21,6 @@ export interface DealInput {
   notes?: string | null;
   /** @nullable */
   salesOwnerId?: number | null;
+  /** @nullable */
+  productionUnit?: string | null;
 }

@@ -1203,6 +1203,16 @@ components:
           type: ["string", "null"]
         category:
           type: ["string", "null"]
+        customerComments:
+          type: ["string", "null"]
+        unitChangeReason:
+          type: ["string", "null"]
+        customerStatus:
+          type: ["string", "null"]
+        customerSince:
+          type: ["string", "null"]
+        isMyClient:
+          type: boolean
 
     DuplicateGroup:
       type: object

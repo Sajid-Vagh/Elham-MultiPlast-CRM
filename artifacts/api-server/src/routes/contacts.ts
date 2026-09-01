@@ -846,8 +846,11 @@ router.patch("/contacts/:id", async (req, res) => {
     }
 
     // Handle customer comments separately with history tracking
-    const { customerComments, unitChangeReason, ...restUpdate } = parsed.data;
-    const updatePayload = { ...restUpdate } as Record<string, any>;
+    const rawBody = req.body as Record<string, any>;
+    const customerComments = (parsed.data as any).customerComments !== undefined ? (parsed.data as any).customerComments : rawBody?.customerComments;
+    const unitChangeReason = (parsed.data as any).unitChangeReason !== undefined ? (parsed.data as any).unitChangeReason : rawBody?.unitChangeReason;
+    const { customerComments: _c, unitChangeReason: _u, ...restUpdate } = parsed.data as Record<string, any>;
+    const updatePayload = { ...restUpdate, updatedAt: new Date() } as Record<string, any>;
 
     // Standardize city/state (auto-fills state from a known city when missing)
     if (parsed.data.city !== undefined || parsed.data.state !== undefined) {

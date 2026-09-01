@@ -196,6 +196,43 @@ export interface Contact {
   lastCallDate?: string | null;
   /** @nullable */
   nextCallDate?: string | null;
+  /** @nullable */
+  state?: string | null;
+  /** @nullable */
+  category?: string | null;
+  /** @nullable */
+  customerSince?: string | null;
+  /** @nullable */
+  customerStatus?: string | null;
+  /** @nullable */
+  customerComments?: string | null;
+  /** @nullable */
+  commentUpdatedAt?: string | null;
+  /** @nullable */
+  commentUpdatedBy?: number | null;
+  commentUpdatedByUser?: User | null;
+  isMyClient?: boolean;
+  /** @nullable */
+  customerCode?: string | null;
+  isRead?: boolean;
+  isRepeatEnquiry?: boolean;
+  isReadByAdmin?: boolean;
+  isReadByAssignee?: boolean;
+  readBy?: number[];
+  /** @nullable */
+  lostReason?: string | null;
+  /** @nullable */
+  otherReason?: string | null;
+  /** @nullable */
+  lostNotes?: string | null;
+  /** @nullable */
+  lostDate?: string | null;
+  /** @nullable */
+  totalOrders?: number | null;
+  /** @nullable */
+  totalRevenue?: string | null;
+  /** @nullable */
+  lastPurchaseDate?: string | null;
   createdAt: string;
 }
 
@@ -265,6 +302,15 @@ export interface ContactUpdate {
   state?: string | null;
   /** @nullable */
   category?: string | null;
+  /** @nullable */
+  customerComments?: string | null;
+  /** @nullable */
+  unitChangeReason?: string | null;
+  /** @nullable */
+  customerStatus?: string | null;
+  /** @nullable */
+  customerSince?: string | null;
+  isMyClient?: boolean;
 }
 
 export interface DuplicateGroup {
@@ -443,6 +489,17 @@ export interface Deal {
   /** @nullable */
   salesOwnerId?: number | null;
   salesOwner?: User;
+  /** @nullable */
+  productionUnit?: string | null;
+  /** @nullable */
+  wonAmount?: number | null;
+  /** @nullable */
+  wonAt?: string | null;
+  /** @nullable */
+  lostAt?: string | null;
+  /** @nullable */
+  completedAt?: string | null;
+  isHiddenFromTimeline?: boolean;
   createdAt: string;
   updatedAt?: string;
 }
@@ -475,6 +532,8 @@ export interface DealInput {
   notes?: string | null;
   /** @nullable */
   salesOwnerId?: number | null;
+  /** @nullable */
+  productionUnit?: string | null;
 }
 
 export type DealUpdateStage = typeof DealUpdateStage[keyof typeof DealUpdateStage];
@@ -891,6 +950,9 @@ contactId?: number;
 salesOwnerId?: number;
 stage?: string;
 unit?: string;
+completedDealVisibility?: string;
+startDate?: string;
+endDate?: string;
 };
 
 export type ListActivitiesParams = {

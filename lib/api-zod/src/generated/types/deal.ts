@@ -27,6 +27,17 @@ export interface Deal {
   /** @nullable */
   salesOwnerId?: number | null;
   salesOwner?: User;
+  /** @nullable */
+  productionUnit?: string | null;
+  /** @nullable */
+  wonAmount?: number | null;
+  /** @nullable */
+  wonAt?: string | null;
+  /** @nullable */
+  lostAt?: string | null;
+  /** @nullable */
+  completedAt?: string | null;
+  isHiddenFromTimeline?: boolean;
   createdAt: string;
   updatedAt?: string;
 }

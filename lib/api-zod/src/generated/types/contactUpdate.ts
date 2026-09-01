@@ -40,4 +40,13 @@ export interface ContactUpdate {
   state?: string | null;
   /** @nullable */
   category?: string | null;
+  /** @nullable */
+  customerComments?: string | null;
+  /** @nullable */
+  unitChangeReason?: string | null;
+  /** @nullable */
+  customerStatus?: string | null;
+  /** @nullable */
+  customerSince?: string | null;
+  isMyClient?: boolean;
 }
