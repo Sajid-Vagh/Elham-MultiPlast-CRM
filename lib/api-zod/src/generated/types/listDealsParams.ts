@@ -11,4 +11,7 @@ contactId?: number;
 salesOwnerId?: number;
 stage?: string;
 unit?: string;
+completedDealVisibility?: string;
+startDate?: string;
+endDate?: string;
 };

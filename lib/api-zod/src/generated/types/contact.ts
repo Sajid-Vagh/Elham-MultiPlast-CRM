@@ -43,5 +43,42 @@ export interface Contact {
   lastCallDate?: string | null;
   /** @nullable */
   nextCallDate?: string | null;
+  /** @nullable */
+  state?: string | null;
+  /** @nullable */
+  category?: string | null;
+  /** @nullable */
+  customerSince?: string | null;
+  /** @nullable */
+  customerStatus?: string | null;
+  /** @nullable */
+  customerComments?: string | null;
+  /** @nullable */
+  commentUpdatedAt?: string | null;
+  /** @nullable */
+  commentUpdatedBy?: number | null;
+  commentUpdatedByUser?: User;
+  isMyClient?: boolean;
+  /** @nullable */
+  customerCode?: string | null;
+  isRead?: boolean;
+  isRepeatEnquiry?: boolean;
+  isReadByAdmin?: boolean;
+  isReadByAssignee?: boolean;
+  readBy?: number[];
+  /** @nullable */
+  lostReason?: string | null;
+  /** @nullable */
+  otherReason?: string | null;
+  /** @nullable */
+  lostNotes?: string | null;
+  /** @nullable */
+  lostDate?: string | null;
+  /** @nullable */
+  totalOrders?: number | null;
+  /** @nullable */
+  totalRevenue?: string | null;
+  /** @nullable */
+  lastPurchaseDate?: string | null;
   createdAt: string;
 }
