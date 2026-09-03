@@ -614,7 +614,7 @@ export default function LeadDetail() {
               <div className="border-t pt-2 mt-2">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>Created: {new Date(contact.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
-                  {contact.commentUpdatedAt && <span>Updated: {new Date(contact.commentUpdatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>}
+                  {contact.commentUpdatedAt && <span>Updated: {new Date(contact.commentUpdatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>}
                 </div>
               </div>
             </CardContent>

@@ -176,7 +176,7 @@ export default function CustomerProfileDrawer({ contactId, open, onOpenChange }:
                   <div className="flex items-center justify-between border-t pt-1.5 mt-1.5">
                     <span className="text-muted-foreground text-xs">Customer Since</span>
                     <span className="text-xs text-muted-foreground">
-                      {new Date(contact.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                      {new Date(contact.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                     </span>
                   </div>
                 )}
