@@ -1280,7 +1280,7 @@ router.get("/dispatch", async (req, res) => {
           ...unitCond,
         ));
         const allowedOrderIds = new Set(dispatchOrders.map(o => o.id));
-        filtered = filtered.filter(d => d.orderId !== null && allowedOrderIds.has(d.orderId));
+        filtered = filtered.filter(d => d.orderId !== null && allowedOrderIds.has(d.orderId!));
       } else {
         filtered = [];
       }
