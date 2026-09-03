@@ -34,7 +34,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   }, [isLoading, user, setLocation]);
 
   if (isLoading) return (
-    <div className="h-screen flex items-center justify-center bg-background">
+    <div className="h-[100dvh] min-h-[100dvh] flex items-center justify-center bg-background">
       <div className="text-center">
         <img src="/images/logo1.png" alt="Elham MultiPlast LLP" className="max-w-[180px] w-full h-auto mx-auto mb-6" />
         <div className="flex items-center justify-center gap-2">
@@ -414,7 +414,7 @@ const moduleBadges = useModuleBadgeCounts();
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-[100dvh] min-h-[100dvh] overflow-hidden bg-background">
       {/* Desktop sidebar — hidden on mobile, replaced by hamburger drawer */}
       <aside className="crm-sidebar hidden lg:flex w-64 flex-col shrink-0">
         {renderSidebarContent()}
@@ -469,7 +469,7 @@ const moduleBadges = useModuleBadgeCounts();
           </div>
         </header>
 
-        <main className="flex-1 min-w-0 overflow-y-auto" data-scroll-region>
+        <main className="flex-1 min-w-0 overflow-y-auto pb-24 md:pb-0" data-scroll-region>
           {children}
         </main>
       </div>
