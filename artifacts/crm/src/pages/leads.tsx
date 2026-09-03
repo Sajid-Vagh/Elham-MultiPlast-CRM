@@ -627,8 +627,8 @@ export default function Leads() {
                     className={`group transition-colors ${
                       contact.callNotReceived
                         ? isSelected
-                          ? "bg-red-100/90 dark:bg-red-950/50"
-                          : "bg-red-50/80 hover:bg-red-100/60 dark:bg-red-950/30 dark:hover:bg-red-950/50"
+                          ? "bg-red-200 hover:bg-red-200 dark:bg-red-900/80"
+                          : "bg-red-100 hover:bg-red-200/80 dark:bg-red-950/70 dark:hover:bg-red-900/60"
                         : isSelected
                         ? "bg-primary/5"
                         : ""
