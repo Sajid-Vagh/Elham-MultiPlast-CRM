@@ -1081,10 +1081,15 @@ export default function LeadDetail() {
                           <CategoryBadge category={h.previousCategory || undefined} />
                           <ChevronRight className="h-3 w-3 text-muted-foreground" />
                           <CategoryBadge category={h.newCategory} />
+                          {h.reason && (
+                            <span className="text-xs text-muted-foreground font-normal">
+                              — <span className="text-foreground font-medium">{h.reason}</span>
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
                           <span>by {h.changedByName || `User #${h.changedBy}`}</span>
-                          <span>{new Date(h.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                          <span>{h.createdAt ? format(new Date(h.createdAt), "d MMM yyyy, h:mm a") : ""}</span>
                         </div>
                       </div>
                     </div>
