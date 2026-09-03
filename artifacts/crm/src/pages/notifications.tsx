@@ -1,7 +1,9 @@
 import { useState, useMemo } from "react";
-import { Bell, CheckCheck, Loader2, ArrowLeft, Trash2, X, Volume2, VolumeX, Users } from "lucide-react";
-import { isNotificationSoundMuted, setNotificationSoundMuted } from "@/lib/notification-sound";
+import { Bell, CheckCheck, Loader2, ArrowLeft, Trash2, X, Volume, Volume1, Volume2, VolumeX, Users } from "lucide-react";
+import { getNotificationVolume, setNotificationVolume, playNotificationSound } from "@/lib/notification-sound";
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Link, useLocation } from "wouter";
 import { useNotifications, groupConversations, conversationMessageCount } from "@/lib/notification-context";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -77,7 +79,7 @@ export default function NotificationsPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [page, setPage] = useState(0);
   const limit = 50;
-  const [soundMuted, setSoundMuted] = useState<boolean>(() => isNotificationSoundMuted());
+  const [volume, setVolume] = useState<number>(() => getNotificationVolume());
   const [, setLocation] = useLocation();
 
   const { total, unreadCount, loading, error, markAsRead, markAllAsRead, deleteNotification, clearAllNotifications, refetch, openNotificationPanel, ownerFilter, setOwnerFilter, visibleNotifications } = useNotifications();
@@ -101,14 +103,6 @@ export default function NotificationsPage() {
     if (total === 0) return;
     if (!window.confirm(`Delete all ${total} notification${total !== 1 ? "s" : ""}? This cannot be undone.`)) return;
     clearAllNotifications();
-  };
-
-  const toggleSound = () => {
-    setSoundMuted((prev) => {
-      const next = !prev;
-      setNotificationSoundMuted(next);
-      return next;
-    });
   };
 
   const filtered = useMemo(() => {
@@ -169,16 +163,98 @@ export default function NotificationsPage() {
             </SelectContent>
           </Select>
         )}
-        <Button
-          variant={soundMuted ? "outline" : "default"}
-          size="sm"
-          className="h-8 text-xs gap-1"
-          onClick={toggleSound}
-          title={soundMuted ? "Unmute notification sound" : "Mute notification sound"}
-        >
-          {soundMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
-          {soundMuted ? "Unmute Sound" : "Mute Sound"}
-        </Button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant={volume === 0 ? "outline" : "default"}
+              size="sm"
+              className="h-8 text-xs gap-1.5 min-w-[85px]"
+              title={`Notification sound volume: ${volume}%`}
+            >
+              {volume === 0 ? (
+                <VolumeX className="h-3.5 w-3.5 text-muted-foreground" />
+              ) : volume < 50 ? (
+                <Volume1 className="h-3.5 w-3.5" />
+              ) : (
+                <Volume2 className="h-3.5 w-3.5" />
+              )}
+              <span>{volume === 0 ? "Muted" : `${volume}%`}</span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-64 p-3 shadow-lg border">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  {volume === 0 ? (
+                    <VolumeX className="h-3.5 w-3.5 text-muted-foreground" />
+                  ) : (
+                    <Volume2 className="h-3.5 w-3.5 text-primary" />
+                  )}
+                  Sound Volume
+                </span>
+                <span className="text-xs font-mono font-medium text-muted-foreground">
+                  {volume}%
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = volume === 0 ? 50 : 0;
+                    setVolume(next);
+                    setNotificationVolume(next);
+                  }}
+                  className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                  title={volume === 0 ? "Unmute (50%)" : "Mute (0%)"}
+                >
+                  {volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                </button>
+                <Slider
+                  value={[volume]}
+                  min={0}
+                  max={100}
+                  step={1}
+                  onValueChange={(val) => {
+                    const next = val[0] ?? 0;
+                    setVolume(next);
+                    setNotificationVolume(next);
+                  }}
+                  className="flex-1 cursor-pointer"
+                />
+              </div>
+              <div className="flex justify-between items-center pt-1 border-t border-border/50">
+                <button
+                  type="button"
+                  onClick={() => {
+                    playNotificationSound();
+                  }}
+                  className="text-[11px] text-primary hover:underline font-medium"
+                >
+                  Test Sound
+                </button>
+                <div className="flex gap-1">
+                  {[0, 25, 50, 100].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => {
+                        setVolume(preset);
+                        setNotificationVolume(preset);
+                      }}
+                      className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                        volume === preset
+                          ? "bg-primary text-primary-foreground font-semibold"
+                          : "bg-muted text-muted-foreground hover:bg-muted/80"
+                      }`}
+                    >
+                      {preset === 0 ? "Mute" : `${preset}%`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
         {unreadCount > 0 && (
           <Button variant="outline" size="sm" className="h-8 text-xs gap-1" onClick={markAllAsRead}>
             <CheckCheck className="h-3.5 w-3.5" /> Mark All Read
