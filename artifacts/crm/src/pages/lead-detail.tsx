@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { format } from "date-fns";
 import { useParams, useLocation, Link } from "wouter";
 import {
   useGetContact, useListDeals, useListActivities, useCreateDeal,
@@ -613,8 +614,8 @@ export default function LeadDetail() {
               {infield("Customer Status", "customerStatus", (contact as any).customerStatus)}
               <div className="border-t pt-2 mt-2">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Created: {new Date(contact.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
-                  {contact.commentUpdatedAt && <span>Updated: {new Date(contact.commentUpdatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>}
+                  <span>Created: {contact.createdAt ? format(new Date(contact.createdAt), "d MMM yyyy, h:mm a") : "—"}</span>
+                  {contact.commentUpdatedAt && <span>Updated: {format(new Date(contact.commentUpdatedAt), "d MMM yyyy, h:mm a")}</span>}
                 </div>
               </div>
             </CardContent>
