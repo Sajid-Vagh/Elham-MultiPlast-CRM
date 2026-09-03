@@ -150,7 +150,7 @@ export default function CategoriesPage() {
   // "Days Since Last Order" is only meaningful for client categories (My Client /
   // Existing Client, both backed by category = "My Client" server-side).
   const showRetentionColumn = activeCategory === "My Client" || activeCategory === "Existing Client";
-  const columnCount = 10 + (showRetentionColumn ? 1 : 0);
+  const columnCount = 11 + (showRetentionColumn ? 1 : 0);
 
   const toggleSelect = (id: number) => {
     setSelectedIds((prev) =>
@@ -189,7 +189,7 @@ export default function CategoriesPage() {
 
     const baseHeaders = [
       "Name", "Company", "Mobile", "City", "Unit", "Category", "Assigned To",
-      "Latest Deal Stage", "Lost Reason",
+      "Latest Deal Stage", "Lead Lost Reason", "Lost Reason",
       "Latest Comment", "Sales Notes", "Last Updated", "Created Date",
       "Priority", "Lead Source", "Interested Products"
     ];
@@ -252,6 +252,7 @@ export default function CategoriesPage() {
         c.name, c.companyName || "", c.mobile, c.city || "", c.unit || "",
         c.category || "",
         c.salesOwner?.name || "", c.dealStage ?? deals[0]?.stage ?? "",
+        c.leadLostReason || "",
         lostReason,
         latestComment, salesNotes, lastUpdated, createdDate,
         priority, leadSource, interestedProducts
@@ -414,7 +415,7 @@ export default function CategoriesPage() {
               )}
             </div>
 
-            <div className="rounded-md border">
+            <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -432,6 +433,7 @@ export default function CategoriesPage() {
                     <TableHead>Assigned To</TableHead>
                     <TableHead>Category</TableHead>
                     <TableHead>Latest Deal Stage</TableHead>
+                    <TableHead>Lead Lost Reason</TableHead>
                     <TableHead>Lost Reason</TableHead>
                     {showRetentionColumn && <TableHead>Days Since Last Order</TableHead>}
                   </TableRow>
@@ -461,6 +463,9 @@ export default function CategoriesPage() {
                         <TableCell><CategoryBadge category={c.category} /></TableCell>
                         <TableCell>
                           {c.dealStage ?? c.deals?.[0]?.stage ?? "-"}
+                        </TableCell>
+                        <TableCell className="max-w-[200px] truncate" title={c.leadLostReason || ""}>
+                          {c.leadLostReason || "-"}
                         </TableCell>
                         <TableCell>
                           {c.deals?.length > 0
