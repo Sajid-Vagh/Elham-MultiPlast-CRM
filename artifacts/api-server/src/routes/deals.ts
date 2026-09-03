@@ -20,7 +20,7 @@ import { notifyProductionUsers } from "../lib/notification-service";
 import { logActivity, logDealStageActivity, formatTimestamp } from "../lib/activity-logger";
 import { canAccessSalesResource } from "../lib/permission-service";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
-import { emitDealCreated, emitDealUpdated } from "../lib/socket";
+import { emitDealCreated, emitDealUpdated, emitEnquiryUpdated } from "../lib/socket";
 
 const router: IRouter = Router();
 
@@ -1257,18 +1257,35 @@ router.delete("/deals/:id", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-    if (user.role !== "admin") {
-      const [deal] = await db.select({ salesOwnerId: dealsTable.salesOwnerId }).from(dealsTable).where(eq(dealsTable.id, params.data.id));
-      if (!deal || deal.salesOwnerId !== user.id) {
-        res.status(403).json({ error: "Forbidden" });
-        return;
-      }
+
+    const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, params.data.id));
+    if (!deal) {
+      res.status(404).json({ error: "Deal not found" });
+      return;
     }
+
+    if (user.role !== "admin" && deal.salesOwnerId !== user.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    if (deal.stage === "Won" || deal.stage === "Lost") {
+      res.status(400).json({ error: "Cannot delete a deal that is already Won or Lost" });
+      return;
+    }
+
+    // Clean up associated activities and deal products linked to this deal
+    await db.delete(activitiesTable).where(eq(activitiesTable.dealId, params.data.id));
+    await db.delete(dealProductsTable).where(eq(dealProductsTable.dealId, params.data.id));
     await db.delete(dealsTable).where(eq(dealsTable.id, params.data.id));
-    res.status(204).send();
-  } catch (err) {
+
+    emitDealUpdated(deal.id, deal.contactId, deal.salesOwnerId);
+    emitEnquiryUpdated(deal.contactId, deal.salesOwnerId);
+
+    res.status(200).json({ success: true, message: "Deal deleted successfully" });
+  } catch (err: any) {
     req.log.error({ err }, "Delete deal error");
-    res.status(500).json({ success: false, error: "Internal Server Error" });
+    res.status(500).json({ success: false, error: err?.message || "Internal Server Error" });
   }
 });
 

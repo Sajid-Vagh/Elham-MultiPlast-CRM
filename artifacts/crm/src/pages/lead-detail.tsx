@@ -132,6 +132,9 @@ export default function LeadDetail() {
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteActId, setDeleteActId] = useState<number | null>(null);
+  const [deleteDealOpen, setDeleteDealOpen] = useState(false);
+  const [deleteDealId, setDeleteDealId] = useState<number | null>(null);
+  const [deleteDealTitle, setDeleteDealTitle] = useState("");
   const [showMoveCategory, setShowMoveCategory] = useState(false);
   const [uploadDocOpen, setUploadDocOpen] = useState(false);
 
@@ -437,6 +440,45 @@ export default function LeadDetail() {
       },
       onError: () => toast({ title: "Failed to delete lead", variant: "destructive" }),
     });
+  };
+
+  const deleteDealMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const token = localStorage.getItem("crm_token") || "";
+      const res = await fetch(`/api/deals/${id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed to delete deal" }));
+        throw new Error(err.error || "Failed to delete deal");
+      }
+      return res.json().catch(() => ({}));
+    },
+    onSuccess: () => {
+      onDealChange(queryClient, deleteDealId || undefined, contactId);
+      onActivityChange(queryClient, deleteDealId || undefined, contactId);
+      onContactChange(queryClient, contactId);
+      toast({ title: "Deal deleted successfully" });
+      setDeleteDealOpen(false);
+      setDeleteDealId(null);
+      setDeleteDealTitle("");
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Could not delete deal",
+        description: err?.message || "Failed to delete deal",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const confirmDeleteDeal = () => {
+    if (deleteDealId) {
+      deleteDealMutation.mutate(deleteDealId);
+    }
   };
 
   const handleInlineEdit = (field: string, value: string) => {
@@ -899,16 +941,39 @@ export default function LeadDetail() {
 
                     return (
                       <AccordionItem key={accordionVal} value={accordionVal} className="border rounded-lg overflow-hidden relative group/deal">
-                        {/* Hide/unhide this deal card from the timeline (deal itself is untouched) */}
-                        <button
-                          onClick={() => group.deal && setDealTimelineVisibility.mutate({ dealId: group.deal.id, hidden: !group.deal.isHiddenFromTimeline })}
-                          disabled={setDealTimelineVisibility.isPending}
-                          className="absolute right-2 top-1.5 z-10 h-6 w-6 rounded bg-background/90 border flex items-center justify-center text-muted-foreground hover:text-red-600 hover:bg-red-50 opacity-0 group-hover/deal:opacity-100 focus:opacity-100 transition-opacity disabled:opacity-40"
-                          title={group.deal?.isHiddenFromTimeline ? "Show this deal in timeline" : "Hide this deal from timeline"}
-                        >
-                          {group.deal?.isHiddenFromTimeline ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-                        </button>
-                        <AccordionTrigger className="px-3 py-2.5 pr-9 hover:no-underline hover:bg-muted/30 [&[data-state=open]]:bg-muted/20">
+                        {/* Actions on this deal card */}
+                        <div className="absolute right-2 top-1.5 z-10 flex items-center gap-1">
+                          {group.deal && group.deal.stage !== "Won" && group.deal.stage !== "Lost" && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setDeleteDealId(group.deal!.id);
+                                setDeleteDealTitle(group.deal!.title || `Deal ${group.num}`);
+                                setDeleteDealOpen(true);
+                              }}
+                              className="h-6 w-6 rounded bg-background/90 border flex items-center justify-center text-red-500 hover:text-red-700 hover:bg-red-50 opacity-0 group-hover/deal:opacity-100 focus:opacity-100 transition-opacity"
+                              title="Delete deal"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              group.deal && setDealTimelineVisibility.mutate({ dealId: group.deal.id, hidden: !group.deal.isHiddenFromTimeline });
+                            }}
+                            disabled={setDealTimelineVisibility.isPending}
+                            className="h-6 w-6 rounded bg-background/90 border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/80 opacity-0 group-hover/deal:opacity-100 focus:opacity-100 transition-opacity disabled:opacity-40"
+                            title={group.deal?.isHiddenFromTimeline ? "Show this deal in timeline" : "Hide this deal from timeline"}
+                          >
+                            {group.deal?.isHiddenFromTimeline ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                          </button>
+                        </div>
+                        <AccordionTrigger className="px-3 py-2.5 pr-16 hover:no-underline hover:bg-muted/30 [&[data-state=open]]:bg-muted/20">
                           <div className="flex-1 flex items-center justify-between mr-2">
                             <div className="flex items-center gap-2 min-w-0">
                               <FolderTree className="h-4 w-4 text-amber-600 shrink-0" />
@@ -1083,32 +1148,48 @@ export default function LeadDetail() {
             <div className="space-y-2">
               {deals?.length === 0 && <p className="text-sm text-muted-foreground text-center py-4 border rounded-lg bg-card">No deals yet.</p>}
               {deals?.map(d => (
-                <Link key={d.id} href={`/leads/${contactId}`}>
-                  <div className="flex items-center justify-between p-3 border rounded-lg bg-card hover:bg-accent transition-colors cursor-pointer">
+                <div key={d.id} className="flex items-center justify-between p-3 border rounded-lg bg-card hover:bg-accent/40 transition-colors">
+                  <Link href={`/leads/${contactId}`} className="min-w-0 flex-1">
                     <div>
-                      <p className="font-medium text-sm">{d.title || `Deal #${d.id}`}</p>
+                      <p className="font-medium text-sm hover:underline">{d.title || `Deal #${d.id}`}</p>
                       <p className="text-xs text-muted-foreground">{new Date(d.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {d.totalValue && <span className="text-sm font-medium">{formatCurrency(d.totalValue)}</span>}
-                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${STAGE_BADGE_COLORS[d.stage] || "bg-gray-100"}`}>{d.stage}</span>
+                  </Link>
+                  <div className="flex items-center gap-2 shrink-0 ml-2">
+                    {d.totalValue && <span className="text-sm font-medium">{formatCurrency(d.totalValue)}</span>}
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${STAGE_BADGE_COLORS[d.stage] || "bg-gray-100"}`}>{d.stage}</span>
+                    <button
+                      type="button"
+                      className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                      title="Edit deal title"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setEditTitleDealId(d.id);
+                        setEditTitleValue(d.title || "");
+                        setEditTitleOpen(true);
+                      }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    {d.stage !== "Won" && d.stage !== "Lost" && (
                       <button
                         type="button"
-                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                        title="Edit deal title"
+                        className="p-1 rounded hover:bg-red-50 text-red-500 hover:text-red-700 transition-colors"
+                        title="Delete deal"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          setEditTitleDealId(d.id);
-                          setEditTitleValue(d.title || "");
-                          setEditTitleOpen(true);
+                          setDeleteDealId(d.id);
+                          setDeleteDealTitle(d.title || `Deal #${d.id}`);
+                          setDeleteDealOpen(true);
                         }}
                       >
-                        <Pencil className="h-3.5 w-3.5" />
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
-                    </div>
+                    )}
                   </div>
-                </Link>
+                </div>
               ))}
             </div>
           </div>
@@ -1300,6 +1381,30 @@ export default function LeadDetail() {
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setDeleteActId(null)}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteActivity} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Deal Confirmation */}
+      <AlertDialog open={deleteDealOpen} onOpenChange={setDeleteDealOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deleteDealTitle ? `"${deleteDealTitle}"` : "this deal"}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this deal? This will permanently delete the deal and its associated activity records. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteDealOpen(false)} disabled={deleteDealMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteDeal}
+              disabled={deleteDealMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteDealMutation.isPending ? "Deleting..." : "Delete Deal"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
