@@ -776,6 +776,29 @@ router.patch("/contacts/:id/read-status", async (req, res) => {
   }
 });
 
+// PATCH /contacts/:id/call-not-received — Toggle "Call Not Received" flag (row action menu).
+router.patch("/contacts/:id/call-not-received", async (req, res) => {
+  try {
+    const access = await requireContactAccess(req, res);
+    if (!access) return;
+    const { user, contact } = access;
+    const callNotReceived = req.body?.callNotReceived === true;
+
+    const [updated] = await db
+      .update(contactsTable)
+      .set({
+        callNotReceived,
+        updatedAt: new Date(),
+      })
+      .where(eq(contactsTable.id, contact.id))
+      .returning();
+    res.json(await withOwner(updated!, user));
+  } catch (err) {
+    req.log.error({ err }, "Set call-not-received error");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
+
 // POST /contacts/mark-all-read — Bulk mark all leads as read FOR THE REQUESTING
 // USER. Role-based (migration 082): admin sets isReadByAdmin, salesperson sets
 // isReadByAssignee (and isReadByAdmin) across their scoped leads.
@@ -873,6 +896,10 @@ router.patch("/contacts/:id", async (req, res) => {
       const geo = normalizeStateCity({ city: parsed.data.city, state: parsed.data.state });
       if (geo.city !== null || parsed.data.city !== undefined) updatePayload.city = geo.city ?? null;
       if (geo.state !== null || parsed.data.state !== undefined) updatePayload.state = geo.state ?? null;
+    }
+
+    if (rawBody?.callNotReceived !== undefined) {
+      updatePayload.callNotReceived = Boolean(rawBody.callNotReceived);
     }
 
     if (customerComments !== undefined) {

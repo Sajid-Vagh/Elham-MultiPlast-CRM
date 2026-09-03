@@ -49,4 +49,5 @@ export interface ContactUpdate {
   /** @nullable */
   customerSince?: string | null;
   isMyClient?: boolean;
+  callNotReceived?: boolean;
 }

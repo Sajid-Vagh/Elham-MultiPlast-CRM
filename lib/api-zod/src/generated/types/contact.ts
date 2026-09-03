@@ -65,6 +65,7 @@ export interface Contact {
   isRepeatEnquiry?: boolean;
   isReadByAdmin?: boolean;
   isReadByAssignee?: boolean;
+  callNotReceived?: boolean;
   readBy?: number[];
   /** @nullable */
   lostReason?: string | null;

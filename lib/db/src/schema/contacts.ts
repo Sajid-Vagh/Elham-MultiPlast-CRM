@@ -46,6 +46,7 @@ export const contactsTable = pgTable("contacts", {
   // Salesperson opens → isReadByAssignee = true AND isReadByAdmin = true
   isReadByAdmin: boolean("is_read_by_admin").notNull().default(false),
   isReadByAssignee: boolean("is_read_by_assignee").notNull().default(false),
+  callNotReceived: boolean("call_not_received").notNull().default(false),
   lostReason: text("lost_reason"),
   otherReason: text("other_reason"),
   lostNotes: text("lost_notes"),
