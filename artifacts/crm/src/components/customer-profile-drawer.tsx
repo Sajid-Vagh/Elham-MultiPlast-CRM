@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
@@ -176,7 +177,7 @@ export default function CustomerProfileDrawer({ contactId, open, onOpenChange }:
                   <div className="flex items-center justify-between border-t pt-1.5 mt-1.5">
                     <span className="text-muted-foreground text-xs">Customer Since</span>
                     <span className="text-xs text-muted-foreground">
-                      {new Date(contact.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      {format(new Date(contact.createdAt), "d MMM yyyy, h:mm a")}
                     </span>
                   </div>
                 )}
