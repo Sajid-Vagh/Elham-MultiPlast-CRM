@@ -218,6 +218,7 @@ export interface Contact {
   isRepeatEnquiry?: boolean;
   isReadByAdmin?: boolean;
   isReadByAssignee?: boolean;
+  callNotReceived?: boolean;
   readBy?: number[];
   /** @nullable */
   lostReason?: string | null;
@@ -313,6 +314,7 @@ export interface ContactUpdate {
   /** @nullable */
   customerSince?: string | null;
   isMyClient?: boolean;
+  callNotReceived?: boolean;
 }
 
 export interface DuplicateGroup {

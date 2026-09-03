@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Trash2, MessageSquare, MoreVertical, XCircle, CheckCheck, Mail, MailOpen } from "lucide-react";
+import { Plus, Search, Trash2, MessageSquare, MoreVertical, XCircle, CheckCheck, Mail, MailOpen, PhoneOff, PhoneCall } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -119,6 +119,7 @@ export default function Leads() {
   const [unitFilter, setUnitFilter] = useUnitFilter();
   const [dateFilter, setDateFilter] = useDateFilter();
   const [hasDealFilter, setHasDealFilter] = useState<"all" | "yes" | "no">("all");
+  const [callStatusFilter, setCallStatusFilter] = useState<"all" | "not_received" | "normal">("all");
 
   const updateCategoryFilter = (next: string | undefined) => {
     setCategoryFilter(next);
@@ -243,12 +244,20 @@ export default function Leads() {
 
   const unreadCount = contacts?.filter((c: any) => !c.isRead).length ?? 0;
 
-  // Frontend filter: Has Deal
+  // Frontend filters: Has Deal & Call Status
   const filteredContacts = useMemo(() => {
     if (!contacts) return contacts;
-    if (hasDealFilter === "all") return contacts;
-    return contacts.filter((c: any) => hasDealFilter === "yes" ? c.hasDeals : !c.hasDeals);
-  }, [contacts, hasDealFilter]);
+    let result = contacts;
+    if (hasDealFilter !== "all") {
+      result = result.filter((c: any) => hasDealFilter === "yes" ? c.hasDeals : !c.hasDeals);
+    }
+    if (callStatusFilter === "not_received") {
+      result = result.filter((c: any) => c.callNotReceived === true);
+    } else if (callStatusFilter === "normal") {
+      result = result.filter((c: any) => !c.callNotReceived);
+    }
+    return result;
+  }, [contacts, hasDealFilter, callStatusFilter]);
 
   const allIds = filteredContacts?.map(c => c.id) ?? [];
   const allSelected = allIds.length > 0 && allIds.every(id => selectedIds.has(id));
@@ -366,6 +375,33 @@ export default function Leads() {
     },
   });
 
+  // Manual Call Not Received toggle from the row actions menu.
+  const toggleCallNotReceivedMutation = useMutation({
+    mutationFn: async ({ id, callNotReceived }: { id: number; callNotReceived: boolean }) => {
+      const res = await fetch(`/api/contacts/${id}/call-not-received`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("crm_token")}`,
+        },
+        body: JSON.stringify({ callNotReceived }),
+      });
+      if (!res.ok) throw new Error("Failed to update status");
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
+      toast({
+        title: variables.callNotReceived ? "Marked as Call Not Received" : "Cleared Call Not Received",
+      });
+    },
+    onError: (err: any) => {
+      queryClient.invalidateQueries({ queryKey: ["leads-contacts"] });
+      toast({ title: "Failed to update call status", description: err?.message || "Please try again", variant: "destructive" });
+    },
+  });
+
   const handleMarkAllRead = async () => {
     setMarkAllReadSubmitting(true);
     try {
@@ -469,7 +505,17 @@ export default function Leads() {
             <SelectItem value="no">No Deal</SelectItem>
           </SelectContent>
         </Select>
-        <ClearFiltersButton onClear={() => { setSearch(""); setHasDealFilter("all"); }} />
+        <Select value={callStatusFilter} onValueChange={(v) => setCallStatusFilter(v as "all" | "not_received" | "normal")}>
+          <SelectTrigger className="w-[170px]">
+            <SelectValue placeholder="Call Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Call Statuses</SelectItem>
+            <SelectItem value="not_received">Call Not Received</SelectItem>
+            <SelectItem value="normal">Call Normal/Received</SelectItem>
+          </SelectContent>
+        </Select>
+        <ClearFiltersButton onClear={() => { setSearch(""); setHasDealFilter("all"); setCallStatusFilter("all"); }} />
       </div>
 
       {/* Category filter tabs with counts */}
@@ -578,7 +624,15 @@ export default function Leads() {
                 return (
                   <TableRow
                     key={contact.id}
-                    className={`group ${isSelected ? "bg-primary/5" : ""}`}
+                    className={`group transition-colors ${
+                      contact.callNotReceived
+                        ? isSelected
+                          ? "bg-red-100/90 dark:bg-red-950/50"
+                          : "bg-red-50/80 hover:bg-red-100/60 dark:bg-red-950/30 dark:hover:bg-red-950/50"
+                        : isSelected
+                        ? "bg-primary/5"
+                        : ""
+                    }`}
                   >
                     <TableCell className="pl-4" onClick={e => e.stopPropagation()}>
                       <Checkbox
@@ -693,7 +747,7 @@ export default function Leads() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                           <DropdownMenuItem onClick={() => toggleReadMutation.mutate({ id: contact.id, isRead: !contact.isRead })}>
+                          <DropdownMenuItem onClick={() => toggleReadMutation.mutate({ id: contact.id, isRead: !contact.isRead })}>
                             {contact.isRead ? (
                               <>
                                 <Mail className="h-4 w-4 mr-2 text-muted-foreground" />
@@ -706,7 +760,20 @@ export default function Leads() {
                               </>
                             )}
                           </DropdownMenuItem>
-                           <DropdownMenuItem onClick={() => { setLostContactId(contact.id); setLostIsExistingClient(contact.category === "My Client"); setLostOpen(true); }}>
+                          <DropdownMenuItem onClick={() => toggleCallNotReceivedMutation.mutate({ id: contact.id, callNotReceived: !contact.callNotReceived })}>
+                            {contact.callNotReceived ? (
+                              <>
+                                <PhoneCall className="h-4 w-4 mr-2 text-green-600" />
+                                <span>Call Received</span>
+                              </>
+                            ) : (
+                              <>
+                                <PhoneOff className="h-4 w-4 mr-2 text-red-500" />
+                                <span>Call Not Received</span>
+                              </>
+                            )}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => { setLostContactId(contact.id); setLostIsExistingClient(contact.category === "My Client"); setLostOpen(true); }}>
                             <XCircle className="h-4 w-4 mr-2 text-red-500" />
                             <span>Mark Lost</span>
                           </DropdownMenuItem>
