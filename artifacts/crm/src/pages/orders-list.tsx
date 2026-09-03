@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -85,6 +85,8 @@ function toEndIso(dateStr: string): string {
 interface OrderRow {
   id: number;
   orderNumber: string;
+  contactId?: number | null;
+  dealId?: number | null;
   customerName: string;
   companyName: string;
   mobile: string;
@@ -352,7 +354,17 @@ export default function OrdersList() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <p className="font-medium text-sm">{(() => { const n = order.customerName || "-"; const cc = order.customerCode; return cc && !n.includes(cc) ? `${n} (${cc})` : n; })()}</p>
+                          {order.contactId ? (
+                            <Link
+                              href={`/leads/${order.contactId}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="font-medium text-sm text-blue-600 hover:underline cursor-pointer"
+                            >
+                              {(() => { const n = order.customerName || "-"; const cc = order.customerCode; return cc && !n.includes(cc) ? `${n} (${cc})` : n; })()}
+                            </Link>
+                          ) : (
+                            <p className="font-medium text-sm">{(() => { const n = order.customerName || "-"; const cc = order.customerCode; return cc && !n.includes(cc) ? `${n} (${cc})` : n; })()}</p>
+                          )}
                         </TableCell>
                         <TableCell>
                           <p className="text-sm text-muted-foreground">{order.companyName || "-"}</p>

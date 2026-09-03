@@ -423,6 +423,8 @@ router.get("/orders/global", async (req, res) => {
       return {
         id: order.id,
         orderNumber: order.orderNumber,
+        contactId: order.contactId,
+        dealId: order.dealId,
         // Customer = the client/lead identity from the customers table
         // (contacts): company_name first, individual name as fallback.
         // order.customerName is only a last resort for orders with no contact.
