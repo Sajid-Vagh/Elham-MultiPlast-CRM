@@ -277,6 +277,20 @@ router.get("/contacts", async (req, res) => {
       : [];
     const contactIdsWithDeals = new Set(dealsWithContacts.map(d => d.contactId));
 
+    const latestCategoryHistoryByContact = new Map<number, typeof categoryHistoryTable.$inferSelect>();
+    if (contactIds.length > 0) {
+      const categoryHistories = await db
+        .select()
+        .from(categoryHistoryTable)
+        .where(inArray(categoryHistoryTable.contactId, contactIds))
+        .orderBy(desc(categoryHistoryTable.createdAt));
+      for (const ch of categoryHistories) {
+        if (!latestCategoryHistoryByContact.has(ch.contactId)) {
+          latestCategoryHistoryByContact.set(ch.contactId, ch);
+        }
+      }
+    }
+
     const enriched = contacts.map(c => {
       // Role-based read state (migration 082): admin sees dot from isReadByAdmin,
       // salesperson from isReadByAssignee. Legacy fallback for pre-migration rows.
@@ -289,6 +303,7 @@ router.get("/contacts", async (req, res) => {
         isRead,
         isRepeatEnquiry: c.isRepeatEnquiry === true && !isRead,
         hasDeals: contactIdsWithDeals.has(c.id),
+        leadLostReason: latestCategoryHistoryByContact.get(c.id)?.reason || null,
       };
     });
     // Debug: log unit values for every contact returned

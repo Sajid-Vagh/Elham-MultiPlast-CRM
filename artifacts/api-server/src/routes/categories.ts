@@ -233,14 +233,30 @@ router.get("/categories/:category/contacts", async (req, res) => {
       dealProductsByDeal.get(dp.dealId)!.push(dp);
     }
 
+    const latestCategoryHistoryByContact = new Map<number, typeof categoryHistoryTable.$inferSelect>();
+    if (contactIds.length > 0) {
+      const categoryHistories = await db
+        .select()
+        .from(categoryHistoryTable)
+        .where(inArray(categoryHistoryTable.contactId, contactIds))
+        .orderBy(desc(categoryHistoryTable.createdAt));
+      for (const ch of categoryHistories) {
+        if (!latestCategoryHistoryByContact.has(ch.contactId)) {
+          latestCategoryHistoryByContact.set(ch.contactId, ch);
+        }
+      }
+    }
+
     res.json(contacts.map(c => {
       const { dealStage, sortedDeals } = sortDealsByRecent(dealsByContact.get(c.id) ?? []);
       // "My Client" is the DB category behind both "My Client" and "Existing Client" views
       const showRetention = isExistingClient || category === "My Client";
+      const latestCatHistory = latestCategoryHistoryByContact.get(c.id);
       return {
         ...c,
         salesOwner: userMap.get(c.salesOwnerId) ?? null,
         dealStage,
+        leadLostReason: latestCatHistory?.reason || null,
         daysSinceLastOrder: showRetention ? daysSinceLastOrderOfDeals(dealsByContact.get(c.id) ?? []) : null,
         deals: sortedDeals.map(d => ({
           ...d,
@@ -328,12 +344,28 @@ router.get("/categories/:category/contacts/search", async (req, res) => {
       dealsByContact.get(d.contactId)!.push(d);
     }
 
+    const searchContactIds = contacts.map(c => c.id);
+    const searchLatestCatHistoryByContact = new Map<number, typeof categoryHistoryTable.$inferSelect>();
+    if (searchContactIds.length > 0) {
+      const categoryHistories = await db
+        .select()
+        .from(categoryHistoryTable)
+        .where(inArray(categoryHistoryTable.contactId, searchContactIds))
+        .orderBy(desc(categoryHistoryTable.createdAt));
+      for (const ch of categoryHistories) {
+        if (!searchLatestCatHistoryByContact.has(ch.contactId)) {
+          searchLatestCatHistoryByContact.set(ch.contactId, ch);
+        }
+      }
+    }
+
     res.json(contacts.map(c => {
       const { dealStage, sortedDeals } = sortDealsByRecent(dealsByContact.get(c.id) ?? []);
       return {
         ...c,
         salesOwner: userMap.get(c.salesOwnerId) ?? null,
         dealStage,
+        leadLostReason: searchLatestCatHistoryByContact.get(c.id)?.reason || null,
         deals: sortedDeals
       };
     }));
