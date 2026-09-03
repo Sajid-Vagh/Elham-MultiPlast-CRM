@@ -21,7 +21,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
-import { onContactChange } from "@/lib/query-invalidation";
+import { onContactChange, onDealChange } from "@/lib/query-invalidation";
 
 interface MoveCategoryDialogProps {
   open: boolean;
@@ -101,6 +101,11 @@ export function MoveCategoryDialog({
         description: `${data.moved} record(s) moved to ${selectedCategory}`,
       });
       onContactChange(queryClient);
+      onDealChange(queryClient);
+      for (const id of contactIds) {
+        onContactChange(queryClient, id);
+        onDealChange(queryClient, undefined, id);
+      }
       onSuccess?.();
       onOpenChange(false);
     } catch (err) {

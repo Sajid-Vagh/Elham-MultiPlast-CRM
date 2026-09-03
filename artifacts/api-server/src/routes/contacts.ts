@@ -5,6 +5,7 @@ import { CreateContactBody, UpdateContactBody, GetContactParams, UpdateContactPa
 import { getUserFromRequest } from "./auth";
 import { createNotification } from "./notifications";
 import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
+import { deactivateActivePis } from "../lib/proforma-service";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 import { parseEndDate } from "../lib/parse-end-date";
@@ -988,60 +989,22 @@ router.patch("/contacts/:id", async (req, res) => {
     if (newCategory && newCategory !== "Regular Follow up" && oldContact.category === "Regular Follow up") {
       // Auto-close active deals as Lost
       const contactDeals = await db
-        .select({ id: dealsTable.id })
+        .select({ id: dealsTable.id, stage: dealsTable.stage })
         .from(dealsTable)
         .where(and(
           eq(dealsTable.contactId, contact.id),
-          eq(dealsTable.stage, "New"),
+          sql`${dealsTable.stage} NOT IN ('Won', 'Lost')`,
         ));
       if (contactDeals.length > 0) {
+        const now = new Date();
         await db
           .update(dealsTable)
-          .set({ stage: "Lost", lostReason: "Lead moved out of pipeline category", updatedAt: new Date() })
+          .set({ stage: "Lost", lostReason: (req.body as any).lostReason || "Lead moved out of pipeline category", updatedAt: now, completedAt: now })
           .where(inArray(dealsTable.id, contactDeals.map(d => d.id)));
-      }
 
-      // Find and complete pending follow-ups via active deal relation (not Won/Lost)
-      const [existingDeal] = await db
-        .select({ id: dealsTable.id })
-        .from(dealsTable)
-        .where(and(
-          eq(dealsTable.contactId, contact.id),
-          isNull(dealsTable.wonAt),
-          isNull(dealsTable.lostAt),
-        ))
-        .orderBy(desc(dealsTable.updatedAt))
-        .limit(1);
-
-      if (existingDeal) {
-        const pendingFollowUps = await db
-          .select({ id: activitiesTable.id })
-          .from(activitiesTable)
-          .where(
-            and(
-              eq(activitiesTable.dealId, existingDeal.id),
-              eq(activitiesTable.type, "FollowUp"),
-              or(eq(activitiesTable.callStatus, "Pending"), isNull(activitiesTable.callStatus)),
-            )
-          );
-
-        if (pendingFollowUps.length > 0) {
-          const followUpIds = pendingFollowUps.map(f => f.id);
-          await db
-            .update(activitiesTable)
-            .set({ callStatus: "Completed", updatedAt: new Date(), updatedBy: user.id, isEdited: true })
-            .where(inArray(activitiesTable.id, followUpIds));
-
-          await db
-            .update(notificationsTable)
-            .set({ readAt: new Date() })
-            .where(
-              and(
-                inArray(notificationsTable.relatedId, followUpIds),
-                eq(notificationsTable.relatedType, "activity"),
-                isNull(notificationsTable.readAt),
-              )
-            );
+        for (const deal of contactDeals) {
+          await deactivateActivePis(db, deal.id);
+          await completePendingActivitiesForDeal(db, deal.id, contact.id, "Lost", user.id);
         }
       }
     }
@@ -1156,9 +1119,12 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
 
     // Mark all active deals as Lost
     const activeDeals = await db
-      .select({ id: dealsTable.id })
+      .select({ id: dealsTable.id, stage: dealsTable.stage })
       .from(dealsTable)
-      .where(and(eq(dealsTable.contactId, contact.id), eq(dealsTable.stage, "New")));
+      .where(and(
+        eq(dealsTable.contactId, contact.id),
+        sql`${dealsTable.stage} NOT IN ('Won', 'Lost')`,
+      ));
     for (const deal of activeDeals) {
       await db.update(dealsTable).set({
         stage: "Lost",
@@ -1168,10 +1134,8 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
         updatedAt: now,
         completedAt: now,
       }).where(eq(dealsTable.id, deal.id));
-    }
 
-    // Complete pending activities for each affected deal
-    for (const deal of activeDeals) {
+      await deactivateActivePis(db, deal.id);
       await completePendingActivitiesForDeal(db, deal.id, contact.id, "Lost", user.id);
     }
 
