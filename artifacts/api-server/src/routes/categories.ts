@@ -8,6 +8,9 @@ import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
 import { parseEndDate } from "../lib/parse-end-date";
 import { normalizeProfilePhotoUrl } from "../lib/storage";
 import { daysSinceLastOrderOfDeals } from "../lib/retention-service";
+import { logDealStageActivity } from "../lib/activity-logger";
+import { deactivateActivePis } from "../lib/proforma-service";
+import { emitEnquiryUpdated, emitDealUpdated } from "../lib/socket";
 
 const router: IRouter = Router();
 
@@ -371,69 +374,115 @@ router.post("/categories/move", async (req, res) => {
     }
 
     const isAdmin = user.role === "admin";
-    const history: any[] = [];
-    const movedContactIds: number[] = [];
 
-    for (const contactId of contactIds) {
-      const [contact] = await db
-        .select()
-        .from(contactsTable)
-        .where(eq(contactsTable.id, contactId));
+    const result = await db.transaction(async (tx) => {
+      const history: any[] = [];
+      const movedContactIds: number[] = [];
+      const affectedDeals: { id: number; contactId: number; stage: string; salesOwnerId: number | null }[] = [];
 
-      if (!contact) continue;
-      if (!isAdmin && contact.salesOwnerId !== user.id) continue;
+      for (const contactId of contactIds) {
+        const [contact] = await tx
+          .select()
+          .from(contactsTable)
+          .where(eq(contactsTable.id, contactId));
 
-      // EXCEPTION: Permanent My Clients (isMyClient=true) ALWAYS stay in My Clients
-      if (contact.isMyClient) continue;
+        if (!contact) continue;
+        if (!isAdmin && contact.salesOwnerId !== user.id) continue;
 
-      const prevCategory = contact.category;
+        // EXCEPTION: Permanent My Clients (isMyClient=true) ALWAYS stay in My Clients
+        if (contact.isMyClient) continue;
 
-      await db
-        .update(contactsTable)
-        .set({ category: newCategory })
-        .where(eq(contactsTable.id, contactId));
+        const prevCategory = contact.category;
 
-      const [h] = await db
-        .insert(categoryHistoryTable)
-        .values({
-          contactId,
-          previousCategory: prevCategory,
-          newCategory,
-          changedBy: user.id,
-          reason: reason ?? null,
-        })
-        .returning();
+        await tx
+          .update(contactsTable)
+          .set({ category: newCategory, updatedAt: new Date() })
+          .where(eq(contactsTable.id, contactId));
 
-      if (h) {
-        history.push(h);
-        movedContactIds.push(contactId);
-      }
-    }
+        const [h] = await tx
+          .insert(categoryHistoryTable)
+          .values({
+            contactId,
+            previousCategory: prevCategory,
+            newCategory,
+            changedBy: user.id,
+            reason: reason ?? null,
+          })
+          .returning();
 
-    // If moving away from "Regular Follow up" to other categories, complete pending follow-ups and close deals
-    if (newCategory !== "Regular Follow up" && movedContactIds.length > 0) {
-      // Auto-close related deals as Lost
-      const contactDeals = await db
-        .select({ id: dealsTable.id, stage: dealsTable.stage })
-        .from(dealsTable)
-        .where(and(
-          inArray(dealsTable.contactId, movedContactIds),
-          eq(dealsTable.stage, "New"),
-        ));
-      if (contactDeals.length > 0) {
-        await db
-          .update(dealsTable)
-          .set({ stage: "Lost", lostReason: "Lead moved out of pipeline category", updatedAt: new Date() })
-          .where(inArray(dealsTable.id, contactDeals.map(d => d.id)));
-
-        // Auto-complete all pending activities for each affected deal
-        for (const deal of contactDeals) {
-          await completePendingActivitiesForDeal(db, deal.id, null, "Lost", user.id);
+        if (h) {
+          history.push(h);
+          movedContactIds.push(contactId);
         }
       }
+
+      // If moving away from "Regular Follow up" to dead categories ("Category A", "Category B", "Category C"),
+      // check for ANY active deals (stage not in "Won", "Lost") and automatically mark them as Lost with the provided reason.
+      if (newCategory !== "Regular Follow up" && movedContactIds.length > 0) {
+        // Find ALL active deals for moved contacts (any stage except Won and Lost)
+        const activeDeals = await tx
+          .select({
+            id: dealsTable.id,
+            contactId: dealsTable.contactId,
+            stage: dealsTable.stage,
+            salesOwnerId: dealsTable.salesOwnerId,
+          })
+          .from(dealsTable)
+          .where(and(
+            inArray(dealsTable.contactId, movedContactIds),
+            sql`${dealsTable.stage} NOT IN ('Won', 'Lost')`,
+          ));
+
+        if (activeDeals.length > 0) {
+          const now = new Date();
+          const activeDealIds = activeDeals.map((d) => d.id);
+
+          await tx
+            .update(dealsTable)
+            .set({
+              stage: "Lost",
+              lostReason: reason.trim(),
+              updatedAt: now,
+              completedAt: now,
+            })
+            .where(inArray(dealsTable.id, activeDealIds));
+
+          // For each affected deal:
+          for (const deal of activeDeals) {
+            affectedDeals.push(deal);
+
+            // 1. Deactivate active Proforma Invoices for this deal
+            await deactivateActivePis(tx, deal.id);
+
+            // 2. Log deal stage change activity
+            await logDealStageActivity(tx, {
+              dealId: deal.id,
+              contactId: deal.contactId,
+              fromStage: deal.stage,
+              toStage: "Lost",
+              userName: user.name,
+              createdBy: user.id,
+              extraNotes: reason.trim(),
+            });
+
+            // 3. Auto-complete all pending activities for this deal
+            await completePendingActivitiesForDeal(tx, deal.id, deal.contactId, "Lost", user.id);
+          }
+        }
+      }
+
+      return { history, movedContactIds, affectedDeals };
+    });
+
+    // Broadcast real-time socket events after successful transaction commit
+    for (const contactId of result.movedContactIds) {
+      emitEnquiryUpdated(contactId, null);
+    }
+    for (const deal of result.affectedDeals) {
+      emitDealUpdated(deal.id, deal.contactId, deal.salesOwnerId);
     }
 
-    res.json({ success: true, moved: history.length, history });
+    res.json({ success: true, moved: result.history.length, history: result.history });
   } catch (err) {
     req.log.error({ err }, "Move category error");
     res.status(500).json({ success: false, error: "Internal Server Error" });

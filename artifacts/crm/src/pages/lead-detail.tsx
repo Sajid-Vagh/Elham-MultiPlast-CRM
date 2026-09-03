@@ -1276,6 +1276,7 @@ export default function LeadDetail() {
         currentCategory={(contact as any).category}
         onSuccess={() => {
           onContactChange(queryClient, contactId);
+          onDealChange(queryClient, undefined, contactId);
         }}
       />
 
