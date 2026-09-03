@@ -1135,7 +1135,7 @@ export default function LeadDetail() {
                           <span className="text-xs font-medium">{n.title}</span>
                           {!n.readAt && <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
                         </div>
-                        <p className="text-[10px] text-muted-foreground whitespace-pre-wrap">{n.message}</p>
+                        <p className="text-xs text-muted-foreground whitespace-pre-wrap break-words mt-1">{n.message}</p>
                         <span className="text-[10px] text-muted-foreground">
                           {new Date(n.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                         </span>

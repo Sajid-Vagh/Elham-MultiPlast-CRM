@@ -418,13 +418,13 @@ router.post("/import/indiamart", async (req, res) => {
     }).returning();
 
     const assignedByName = currentUser?.name || "Admin";
-    const reqTitle = fields.requirement ? fields.requirement.slice(0, 80) : "";
+    const reqText = fields.requirement ? fields.requirement.trim() : "";
     await createNotification({
       createdById: currentUser?.id ?? null,
       userId: ownerId,
       type: "assignment",
       title: "New IndiaMART Enquiry Assigned",
-      message: `Customer: ${contactName}${reqTitle ? `\nProduct: ${reqTitle}` : ""}\nAssigned By: ${assignedByName}`,
+      message: `Customer: ${contactName}${reqText ? `\nRequirement:\n${reqText}` : ""}\nAssigned By: ${assignedByName}`,
       link: `/leads/${contact!.id}`,
       relatedId: contact!.id,
       relatedType: "contact",

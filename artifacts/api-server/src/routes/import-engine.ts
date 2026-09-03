@@ -217,12 +217,13 @@ router.post("/import/confirm", async (req, res) => {
     }).returning();
 
     // Notification
+    const reqText = fields.finalData.requirement?.trim() ?? "";
     await createNotification({
       createdById: currentUser.id,
       userId: ownerId,
       type: "assignment",
       title: "New IndiaMART Enquiry Assigned",
-      message: `Customer: ${contactName}${fields.finalData.requirement ? `\nProduct: ${fields.finalData.requirement.slice(0, 80)}` : ""}\nAssigned By: ${currentUser.name}`,
+      message: `Customer: ${contactName}${reqText ? `\nRequirement:\n${reqText}` : ""}\nAssigned By: ${currentUser.name}`,
       link: `/leads/${contact!.id}`,
       relatedId: contact!.id,
       relatedType: "contact",
