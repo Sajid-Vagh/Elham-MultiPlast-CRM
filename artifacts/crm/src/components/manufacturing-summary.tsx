@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLocation } from "wouter";
-import { Package, X, AlertTriangle, Settings2, Truck } from "lucide-react";
+import { Package, X, AlertTriangle, Settings2, Truck, Search } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { cleanProductName } from "@/lib/product-name";
 
@@ -121,6 +122,7 @@ interface ManufacturingSummaryProps {
 export function ManufacturingSummary({ unitFilter, originFilter, material = "All", dateFrom, dateTo }: ManufacturingSummaryProps) {
   const [, setLocation] = useLocation();
   const [drawerGroup, setDrawerGroup] = useState<SummaryGroup | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: summary, isLoading } = useQuery({
     queryKey: ["manufacturing-summary", unitFilter, originFilter, material, dateFrom, dateTo],
@@ -153,6 +155,22 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
   const groups = mergeVariantGroups(summary?.groups || []);
   const totalProducts = groups.length;
   const totalPieces = groups.reduce((s, g) => s + g.totalQuantity, 0);
+
+  const filteredGroups = useMemo(() => {
+    if (!searchQuery.trim()) return groups;
+    const q = searchQuery.toLowerCase().trim();
+    return groups.filter(g =>
+      (g.productName && g.productName.toLowerCase().includes(q)) ||
+      (g.productFamily && g.productFamily.toLowerCase().includes(q)) ||
+      (g.materialType && g.materialType.toLowerCase().includes(q)) ||
+      (g.weight && g.weight.toLowerCase().includes(q)) ||
+      (g.colour && g.colour.toLowerCase().includes(q))
+    );
+  }, [groups, searchQuery]);
+
+  const filteredProducts = filteredGroups.length;
+  const filteredPieces = filteredGroups.reduce((s, g) => s + g.totalQuantity, 0);
+
   const materialSummary: Record<string, { productCount: number; totalPending: number }> = {};
   for (const g of groups) {
     const mt = g.materialType || "HDPE";
@@ -209,17 +227,41 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <Package className="h-4 w-4" />
                 Manufacturing Summary
               </CardTitle>
               {groups.length > 0 && (
-                <div className="flex items-center gap-3 text-sm">
-                  <span className="font-semibold text-foreground">{totalProducts} Products</span>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-semibold text-foreground">
+                    {searchQuery.trim() ? `${filteredProducts} of ${totalProducts} Products` : `${totalProducts} Products`}
+                  </span>
                   <span className="text-muted-foreground">·</span>
-                  <span className="font-semibold text-foreground">{totalPieces.toLocaleString()} PCS Pending</span>
+                  <span className="font-semibold text-foreground">
+                    {filteredPieces.toLocaleString()} PCS Pending
+                  </span>
                 </div>
+              )}
+            </div>
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search products, family, color..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-8 pl-8 pr-8 text-xs bg-background"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  title="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
               )}
             </div>
           </div>
@@ -227,11 +269,22 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
         <CardContent>
           {groups.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">No pending manufacturing orders.</div>
+          ) : filteredGroups.length === 0 ? (
+            <div className="py-8 text-center space-y-2">
+              <p className="text-sm text-muted-foreground">No products match &ldquo;{searchQuery}&rdquo;</p>
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="text-xs text-primary hover:underline font-medium"
+              >
+                Clear search
+              </button>
+            </div>
           ) : (
             <div className="space-y-5">
               {(() => {
                 const familyMap = new Map<string, SummaryGroup[]>();
-                for (const g of groups) {
+                for (const g of filteredGroups) {
                   const family = g.productFamily;
                   if (!familyMap.has(family)) familyMap.set(family, []);
                   familyMap.get(family)!.push(g);
