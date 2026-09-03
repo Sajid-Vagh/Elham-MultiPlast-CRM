@@ -1280,7 +1280,7 @@ router.get("/dispatch", async (req, res) => {
           ...unitCond,
         ));
         const allowedOrderIds = new Set(dispatchOrders.map(o => o.id));
-        filtered = filtered.filter(d => allowedOrderIds.has(d.orderId));
+        filtered = filtered.filter(d => d.orderId !== null && allowedOrderIds.has(d.orderId));
       } else {
         filtered = [];
       }
@@ -1316,7 +1316,7 @@ router.get("/dispatch", async (req, res) => {
         `DSP-${d.id}`,
         safeStr(d.dispatchNumber),
         `ORD-${d.orderId}`,
-        safeStr(dispatchOrdersMap.get(d.orderId)?.customerName || ""),
+        safeStr((d.orderId ? dispatchOrdersMap.get(d.orderId)?.customerName : "") || ""),
         safeStr(d.vehicleNumber),
         safeStr(d.transportCompany),
         safeStr(d.lrNumber),
@@ -1352,7 +1352,7 @@ router.get("/dispatch", async (req, res) => {
         `DSP-${d.id}`,
         safeStr(d.dispatchNumber),
         `ORD-${d.orderId}`,
-        safeStr(detailOrdersMap.get(d.orderId)?.customerName || ""),
+        safeStr((d.orderId ? detailOrdersMap.get(d.orderId)?.customerName : "") || ""),
         safeStr(d.status),
         safeStr(d.vehicleNumber),
         safeStr(d.driverName),
