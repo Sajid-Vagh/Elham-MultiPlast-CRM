@@ -10,6 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Search, Trash2, MessageSquare, MoreVertical, XCircle, CheckCheck, Mail, MailOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MarkLostDialog } from "@/components/mark-lost-dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -659,20 +660,27 @@ export default function Leads() {
                     <TableCell>{contact.unit || PENDING_UNIT_ASSIGNMENT}</TableCell>
                     <TableCell className="max-w-[150px]">
                       {commentsText ? (
-                        <div className="group relative">
-                          <span className="text-xs text-muted-foreground cursor-pointer block truncate">
-                            {commentsText.length > 100
-                              ? `${commentsText.slice(0, 100)}...`
-                              : commentsText}
-                          </span>
-                          {commentsText.length > 100 && (
-                            <div className="fixed z-50 hidden group-hover:block">
-                              <div className="absolute bottom-0 left-0 bg-popover border rounded-md shadow-lg p-3 text-xs whitespace-pre-wrap max-w-xs max-h-48 overflow-y-auto">
-                                {commentsText}
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <span
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-xs text-muted-foreground cursor-pointer block truncate hover:text-foreground hover:underline transition-colors"
+                              title="Click to view full comment"
+                            >
+                              {commentsText.length > 100
+                                ? `${commentsText.slice(0, 100)}...`
+                                : commentsText}
+                            </span>
+                          </PopoverTrigger>
+                          <PopoverContent
+                            align="start"
+                            className="w-80 max-h-60 overflow-y-auto p-3 text-xs whitespace-pre-wrap break-words shadow-lg border"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <p className="font-semibold text-xs text-foreground mb-1">Customer Comments</p>
+                            <p className="text-muted-foreground">{commentsText}</p>
+                          </PopoverContent>
+                        </Popover>
                       ) : (
                         <span className="text-xs text-muted-foreground">-</span>
                       )}
