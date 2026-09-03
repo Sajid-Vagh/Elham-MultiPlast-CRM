@@ -105,6 +105,39 @@ export default function LeadDetail() {
     onError: () => toast({ title: "Could not update deal visibility", variant: "destructive" }),
   });
 
+  const deleteDealMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const token = localStorage.getItem("crm_token") || "";
+      const res = await fetch(`/api/deals/${id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed to delete deal" }));
+        throw new Error(err.error || "Failed to delete deal");
+      }
+      return res.json().catch(() => ({}));
+    },
+    onSuccess: () => {
+      onDealChange(queryClient, deleteDealId || undefined, contactId);
+      onActivityChange(queryClient, deleteDealId || undefined, contactId);
+      onContactChange(queryClient, contactId);
+      toast({ title: "Deal deleted successfully" });
+      setDeleteDealOpen(false);
+      setDeleteDealId(null);
+      setDeleteDealTitle("");
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Could not delete deal",
+        description: err?.message || "Failed to delete deal",
+        variant: "destructive",
+      });
+    },
+  });
+
   const [newDealStage, setNewDealStage] = useState("New");
   const [newDealTitle, setNewDealTitle] = useState("");
   const [newDealProductionUnit, setNewDealProductionUnit] = useState("");
@@ -441,39 +474,6 @@ export default function LeadDetail() {
       onError: () => toast({ title: "Failed to delete lead", variant: "destructive" }),
     });
   };
-
-  const deleteDealMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const token = localStorage.getItem("crm_token") || "";
-      const res = await fetch(`/api/deals/${id}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Failed to delete deal" }));
-        throw new Error(err.error || "Failed to delete deal");
-      }
-      return res.json().catch(() => ({}));
-    },
-    onSuccess: () => {
-      onDealChange(queryClient, deleteDealId || undefined, contactId);
-      onActivityChange(queryClient, deleteDealId || undefined, contactId);
-      onContactChange(queryClient, contactId);
-      toast({ title: "Deal deleted successfully" });
-      setDeleteDealOpen(false);
-      setDeleteDealId(null);
-      setDeleteDealTitle("");
-    },
-    onError: (err: any) => {
-      toast({
-        title: "Could not delete deal",
-        description: err?.message || "Failed to delete deal",
-        variant: "destructive",
-      });
-    },
-  });
 
   const confirmDeleteDeal = () => {
     if (deleteDealId) {
