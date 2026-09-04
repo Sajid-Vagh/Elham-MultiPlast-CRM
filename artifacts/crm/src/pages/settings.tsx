@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Pencil, Trash2, SlidersHorizontal, Users, Camera, X as XIcon, CheckCircle2, ArrowLeft, Settings2, Truck, AlertTriangle, BarChart3, Shield, Building2, Package, Key } from "lucide-react";
+import { Plus, Pencil, Trash2, SlidersHorizontal, Users, Camera, X as XIcon, CheckCircle2, ArrowLeft, Settings2, Truck, AlertTriangle, BarChart3, Shield, Building2, Package, Key, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,6 +40,13 @@ const SUPPORT_PERMISSION_CATEGORIES: PermissionCategory[] = [
       { key: "viewCustomerTimeline", label: "View Customer Timeline", desc: "View the full activity timeline for customers" },
       { key: "updateCustomerCommunication", label: "Update Customer Communication", desc: "Log and update customer communication records" },
       { key: "createFollowups", label: "Create Activities", desc: "Schedule and manage follow-up activities" },
+    ],
+  },
+  {
+    id: "proforma", label: "Proforma Invoices",
+    icon: <FileText className="h-4 w-4" />,
+    permissions: [
+      { key: "productionOnlyPIs", label: "View Production PIs Only", desc: "Only show PIs with status Converted to Production, Production On Going, or self-created" },
     ],
   },
   {
@@ -78,6 +85,13 @@ const SUPPORT_PERMISSION_CATEGORIES: PermissionCategory[] = [
 
 const PRODUCTION_PERMISSION_CATEGORIES: PermissionCategory[] = [
   {
+    id: "proforma", label: "Proforma Invoices",
+    icon: <FileText className="h-4 w-4" />,
+    permissions: [
+      { key: "productionOnlyPIs", label: "View Production PIs Only", desc: "Only show PIs with status Converted to Production, Production On Going, or self-created" },
+    ],
+  },
+  {
     id: "production", label: "Production",
     icon: <Settings2 className="h-4 w-4" />,
     permissions: [
@@ -111,7 +125,15 @@ function getDefaultPermissions(role: string): Record<string, boolean> {
   const all: Record<string, boolean> = {};
   if (role === "inventory") return all;
   const cats = role === "production" ? PRODUCTION_PERMISSION_CATEGORIES : SUPPORT_PERMISSION_CATEGORIES;
-  for (const cat of cats) for (const p of cat.permissions) all[p.key] = true;
+  for (const cat of cats) {
+    for (const p of cat.permissions) {
+      if (p.key === "productionOnlyPIs") {
+        all[p.key] = role === "production";
+      } else {
+        all[p.key] = true;
+      }
+    }
+  }
   return all;
 }
 

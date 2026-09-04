@@ -73,9 +73,10 @@ router.post("/users", async (req, res) => {
     return;
   }
   const { password, ...fields } = parsed.data;
+  const permissions = (req.body as any).permissions ?? {};
   try {
     const passwordHash = await bcrypt.hash(password, 10);
-    const [user] = await db.insert(usersTable).values({ ...fields, passwordHash, isActive: true, emailVerified: false }).returning();
+    const [user] = await db.insert(usersTable).values({ ...fields, passwordHash, isActive: true, emailVerified: false, permissions }).returning();
 
     // Notify all admins about new user creation
     const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
@@ -187,7 +188,7 @@ router.patch("/users/:id", async (req, res) => {
   if (fields.unit !== undefined) updateData.unit = fields.unit;
   if ((fields as any).canViewAllReports !== undefined) updateData.canViewAllReports = (fields as any).canViewAllReports;
   if ((fields as any).canAssignLeads !== undefined) updateData.canAssignLeads = (fields as any).canAssignLeads;
-  if ((fields as any).permissions !== undefined) updateData.permissions = (fields as any).permissions;
+  if ((req.body as any).permissions !== undefined) updateData.permissions = (req.body as any).permissions;
   if ((fields as any).profilePhoto !== undefined) updateData.profilePhoto = (fields as any).profilePhoto;
   if (password && isAdmin) {
     updateData.passwordHash = await bcrypt.hash(password, 10);
