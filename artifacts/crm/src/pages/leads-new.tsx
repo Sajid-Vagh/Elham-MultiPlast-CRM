@@ -36,6 +36,7 @@ export default function LeadsNew() {
       address: data.address || null,
       unit: data.unit || null,
       industry: data.industry || null,
+      customerComments: data.requirement?.trim() || null,
     };
     createContact.mutate({
       data: contactInput,

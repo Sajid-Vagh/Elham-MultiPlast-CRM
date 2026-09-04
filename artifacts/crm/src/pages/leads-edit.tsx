@@ -12,6 +12,8 @@ import { onContactChange } from "@/lib/query-invalidation";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 
+import { parseNotesText } from "@/lib/parse-notes";
+
 export default function LeadsEdit() {
   const { id } = useParams<{ id: string }>();
   const contactId = Number(id);
@@ -41,6 +43,7 @@ export default function LeadsEdit() {
         address: data.address || null,
         unit: data.unit || null,
         industry: data.industry || null,
+        customerComments: data.requirement !== undefined ? (data.requirement.trim() || null) : undefined,
       },
     }, {
       onSuccess: () => {
@@ -79,6 +82,7 @@ export default function LeadsEdit() {
           unit: contact.unit || PENDING_UNIT_ASSIGNMENT,
           industry: contact.industry || "",
           address: contact.address || "",
+          requirement: parseNotesText(contact.customerComments) || "",
         }}
         isSubmitting={updateContact.isPending}
         onSubmit={onSubmit}
