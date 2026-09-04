@@ -19,5 +19,6 @@ export interface User {
   profilePhoto?: string | null;
   canViewAllReports?: boolean;
   canAssignLeads?: boolean;
+  permissions?: Record<string, boolean>;
   createdAt?: string;
 }

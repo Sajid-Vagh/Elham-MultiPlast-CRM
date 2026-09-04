@@ -17,4 +17,5 @@ export interface UserUpdate {
   unit?: string;
   canViewAllReports?: boolean;
   canAssignLeads?: boolean;
+  permissions?: Record<string, boolean>;
 }

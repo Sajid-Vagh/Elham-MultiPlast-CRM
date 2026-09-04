@@ -17,4 +17,5 @@ export interface UserInput {
   unit: UserInputUnit;
   canViewAllReports?: boolean;
   canAssignLeads?: boolean;
+  permissions?: Record<string, boolean>;
 }

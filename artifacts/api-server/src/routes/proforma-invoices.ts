@@ -862,6 +862,14 @@ router.get("/proforma-invoices", async (req, res) => {
       conditions.push(eq(proformaInvoicesTable.createdBy, user.id));
     }
 
+    if (user.permissions?.productionOnlyPIs) {
+      conditions.push(or(
+        eq(proformaInvoicesTable.status, "Converted to Production"),
+        eq(proformaInvoicesTable.status, "Production On Going"),
+        eq(proformaInvoicesTable.createdBy, user.id),
+      )!);
+    }
+
     // Unit isolation: non-admin, non-"All" users see only PIs for contacts in their unit
     const accessibleUnits = getAccessibleUnits(user);
     if (accessibleUnits) {
@@ -937,6 +945,14 @@ router.get("/proforma-invoices/all", async (req, res) => {
 
     if (user.role === "sales") {
       conditions.push(eq(proformaInvoicesTable.createdBy, user.id));
+    }
+
+    if (user.permissions?.productionOnlyPIs) {
+      conditions.push(or(
+        eq(proformaInvoicesTable.status, "Converted to Production"),
+        eq(proformaInvoicesTable.status, "Production On Going"),
+        eq(proformaInvoicesTable.createdBy, user.id),
+      )!);
     }
 
     // Unit isolation for /all endpoint
@@ -1256,6 +1272,13 @@ router.get("/proforma-invoices/report/export", async (req, res) => {
     const conditions: SQL[] = [eq(proformaInvoicesTable.isDeleted, false)];
 
     if (user.role === "sales") conditions.push(eq(proformaInvoicesTable.createdBy, user.id));
+    if (user.permissions?.productionOnlyPIs) {
+      conditions.push(or(
+        eq(proformaInvoicesTable.status, "Converted to Production"),
+        eq(proformaInvoicesTable.status, "Production On Going"),
+        eq(proformaInvoicesTable.createdBy, user.id),
+      )!);
+    }
     if (status) conditions.push(eq(proformaInvoicesTable.status, status));
     if (ownerId) conditions.push(eq(proformaInvoicesTable.salesOwnerId, Number(ownerId)));
     if (dateFrom) conditions.push(gte(proformaInvoicesTable.createdAt, new Date(dateFrom)));
