@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { UserAvatar } from "@/components/user-avatar";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
+import { Textarea } from "@/components/ui/textarea";
 import { INDUSTRIES, INDIAN_STATES, CITIES_BY_STATE } from "@/lib/constants";
 import { DuplicateWarningDialog, type DuplicateLeadInfo } from "@/components/duplicate-warning-dialog";
 import { AlertTriangle, ExternalLink } from "lucide-react";
@@ -27,6 +28,7 @@ const schema = z.object({
   unit: z.string().optional(),
   industry: z.string().optional(),
   address: z.string().optional(),
+  requirement: z.string().optional(),
 });
 
 export type LeadFormData = z.infer<typeof schema>;
@@ -168,6 +170,7 @@ export default function LeadForm({
     defaultValues: {
       name: "", mobile: "", email: "", companyName: "", salesOwnerId: "",
       leadSource: "", city: "", state: "", unit: PENDING_UNIT_ASSIGNMENT, industry: "", address: "",
+      requirement: "",
       ...initialData,
     },
   });
@@ -185,6 +188,7 @@ export default function LeadForm({
       form.reset({
         name: "", mobile: "", email: "", companyName: "", salesOwnerId: "",
         leadSource: "", city: "", state: "", unit: PENDING_UNIT_ASSIGNMENT, industry: "", address: "",
+        requirement: "",
         ...initialData,
       });
     }
@@ -400,6 +404,19 @@ export default function LeadForm({
                       ))}
                     </SelectContent>
                   </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="requirement" render={({ field }) => (
+                <FormItem className="col-span-1 md:col-span-2">
+                  <FormLabel>Requirement</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Product requirement, specs…"
+                      rows={3}
+                      {...field}
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
