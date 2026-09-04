@@ -194,8 +194,10 @@ router.get("/reports/by-owner", async (req, res) => {
     }
 
     const users = await db.select().from(usersTable);
-    // Only include sales users
-    let salesUsers = users.filter(u => u.role === "admin" || u.role === "sales" || u.role === "production_and_support");
+    const usersWithDeals = new Set(deals.map(d => d.salesOwnerId).filter((id): id is number => id != null));
+    // Include active team members across all roles AND any user who owns deals
+    const TARGET_ROLES = new Set(["admin", "sales", "production", "production_and_support", "support", "inventory"]);
+    let reportUsers = users.filter(u => (u.isActive !== false && TARGET_ROLES.has(u.role)) || usersWithDeals.has(u.id));
 
     if (params.success) {
       const { startDate, endDate } = getDateRange(req);
@@ -215,10 +217,12 @@ router.get("/reports/by-owner", async (req, res) => {
 
     // Non-admin users without canViewAllReports should only see their own performance
     if (authUser.role !== "admin" && !authUser.canViewAllReports) {
-      salesUsers = salesUsers.filter(u => u.id === authUser.id);
+      reportUsers = reportUsers.filter(u => u.id === authUser.id);
+    } else if (salesOwnerId) {
+      reportUsers = reportUsers.filter(u => u.id === salesOwnerId);
     }
 
-    const result = salesUsers.map(u => {
+    const result = reportUsers.map(u => {
       const userDeals = deals.filter(d => d.salesOwnerId === u.id);
       return {
         userId: u.id,
