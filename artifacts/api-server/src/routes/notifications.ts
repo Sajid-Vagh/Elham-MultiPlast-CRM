@@ -117,6 +117,56 @@ router.get("/notifications/stream", async (req: Request, res: Response) => {
   });
 });
 
+function getUnitNotificationCondition(userUnit: string) {
+  return sql`(
+    ${notificationsTable.relatedId} IS NULL OR ${notificationsTable.relatedType} IS NULL OR (
+      CASE
+        WHEN ${notificationsTable.relatedType} = 'production_order' THEN EXISTS (
+          SELECT 1 FROM production_orders po
+          LEFT JOIN deals d ON d.id = po.deal_id
+          LEFT JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
+          LEFT JOIN contacts c ON c.id = COALESCE(d.contact_id, pi.contact_id)
+          WHERE po.id = ${notificationsTable.relatedId}
+            AND (po.production_unit = ${userUnit} OR (po.production_unit IS NULL AND (d.production_unit = ${userUnit} OR c.unit = ${userUnit})))
+        )
+        WHEN ${notificationsTable.relatedType} = 'deal' THEN EXISTS (
+          SELECT 1 FROM deals d
+          LEFT JOIN contacts c ON c.id = d.contact_id
+          WHERE d.id = ${notificationsTable.relatedId}
+            AND (d.production_unit = ${userUnit} OR c.unit = ${userUnit})
+        )
+        WHEN ${notificationsTable.relatedType} = 'contact' THEN EXISTS (
+          SELECT 1 FROM contacts c
+          WHERE c.id = ${notificationsTable.relatedId}
+            AND c.unit = ${userUnit}
+        )
+        WHEN ${notificationsTable.relatedType} = 'order' THEN EXISTS (
+          SELECT 1 FROM orders o
+          LEFT JOIN deals d ON d.id = o.deal_id
+          LEFT JOIN contacts c ON c.id = o.contact_id
+          WHERE o.id = ${notificationsTable.relatedId}
+            AND (o.production_unit = ${userUnit} OR (o.production_unit IS NULL AND (d.production_unit = ${userUnit} OR c.unit = ${userUnit})))
+        )
+        WHEN ${notificationsTable.relatedType} IN ('invoice', 'proforma_invoice', 'proforma') THEN EXISTS (
+          SELECT 1 FROM proforma_invoices pi
+          LEFT JOIN deals d ON d.id = pi.deal_id
+          LEFT JOIN contacts c ON c.id = pi.contact_id
+          WHERE pi.id = ${notificationsTable.relatedId}
+            AND (c.unit = ${userUnit} OR d.production_unit = ${userUnit})
+        )
+        WHEN ${notificationsTable.relatedType} IN ('activity', 'follow_up', 'followup') THEN EXISTS (
+          SELECT 1 FROM activities a
+          LEFT JOIN deals d ON d.id = a.deal_id
+          LEFT JOIN contacts c ON c.id = a.contact_id
+          WHERE a.id = ${notificationsTable.relatedId}
+            AND (c.unit = ${userUnit} OR d.production_unit = ${userUnit})
+        )
+        ELSE TRUE
+      END
+    )
+  )`;
+}
+
 // Get notification history with filters (all, unread, unseen, today, this_week, older)
 // THIS is the single canonical endpoint for reading notifications
 router.get("/notifications/history", async (req: Request, res: Response) => {
@@ -129,6 +179,10 @@ router.get("/notifications/history", async (req: Request, res: Response) => {
 
   try {
     const conditions: any[] = [eq(notificationsTable.userId, user.id)];
+
+    if (user.role !== "admin" && user.unit && user.unit !== "All") {
+      conditions.push(getUnitNotificationCondition(user.unit));
+    }
 
     // NOTIFICATIONS PERSIST INDEFINITELY. No auto-expiry filter on readAt here:
     // read notifications stay visible in History until the user explicitly deletes
@@ -193,10 +247,20 @@ router.get("/notifications/unread-count", async (req: Request, res: Response) =>
       return;
     }
 
+    const conditions: any[] = [
+      eq(notificationsTable.userId, user.id),
+      eq(notificationsTable.notificationSeen, false),
+      isNull(notificationsTable.readAt),
+    ];
+
+    if (user.role !== "admin" && user.unit && user.unit !== "All") {
+      conditions.push(getUnitNotificationCondition(user.unit));
+    }
+
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)` })
       .from(notificationsTable)
-      .where(and(eq(notificationsTable.userId, user.id), eq(notificationsTable.notificationSeen, false), isNull(notificationsTable.readAt)));
+      .where(and(...conditions));
 
     res.json({ unread: Number(count) });
   } catch (err) {
