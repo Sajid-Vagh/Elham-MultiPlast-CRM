@@ -152,12 +152,29 @@ async function notifySalesOfProductionEvent(params: {
   }
 
   if (createdByRole === "production_and_support") {
+    let orderUnit = "Himatnagar";
+    if (productionOrderId) {
+      const [order] = await db
+        .select({ productionUnit: productionOrdersTable.productionUnit })
+        .from(productionOrdersTable)
+        .where(eq(productionOrdersTable.id, productionOrderId));
+      if (order?.productionUnit) orderUnit = order.productionUnit;
+    }
+
     const supportUsers = await db
-      .select({ id: usersTable.id })
+      .select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role })
       .from(usersTable)
-      .where(eq(usersTable.role, "production_and_support"));
+      .where(or(
+        eq(usersTable.role, "production_and_support"),
+        eq(usersTable.role, "support"),
+        eq(usersTable.role, "admin"),
+      ));
     for (const su of supportUsers) {
-      if (su.id !== excludeUserId) userIds.add(su.id);
+      if (su.id === excludeUserId) continue;
+      const userUnit = su.unit || "All";
+      if (su.role === "admin" || userUnit === "All" || userUnit === orderUnit) {
+        userIds.add(su.id);
+      }
     }
   }
 
@@ -188,14 +205,17 @@ async function notifySalesOfProductionEvent(params: {
     const orderUnit = order?.productionUnit || "Himatnagar";
 
     const prodTeam = await db
-      .select({ id: usersTable.id, unit: usersTable.unit })
+      .select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role })
       .from(usersTable)
-      .where(eq(usersTable.role, "production"));
+      .where(or(
+        eq(usersTable.role, "production"),
+        eq(usersTable.role, "production_manager"),
+      ));
 
     for (const pt of prodTeam) {
       if (pt.id === excludeUserId || userIds.has(pt.id)) continue;
       const userUnit = pt.unit || "All";
-      if (userUnit !== "All" && userUnit !== orderUnit && orderUnit !== "Himatnagar") continue;
+      if (pt.role !== "admin" && userUnit !== "All" && userUnit !== orderUnit) continue;
       const [row] = await db.insert(notificationsTable).values({
         userId: pt.id,
         type: "production_status",
@@ -219,13 +239,28 @@ async function notifySupportOfReadyForDispatch(params: {
 }) {
   const { productionOrderId, title, message, excludeUserId } = params;
 
+  let orderUnit = "Himatnagar";
+  if (productionOrderId) {
+    const [order] = await db
+      .select({ productionUnit: productionOrdersTable.productionUnit })
+      .from(productionOrdersTable)
+      .where(eq(productionOrdersTable.id, productionOrderId));
+    if (order?.productionUnit) orderUnit = order.productionUnit;
+  }
+
   const supportUsers = await db
-    .select({ id: usersTable.id })
+    .select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role })
     .from(usersTable)
-    .where(or(eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
+    .where(or(
+      eq(usersTable.role, "production_and_support"),
+      eq(usersTable.role, "support"),
+      eq(usersTable.role, "admin"),
+    ));
 
   for (const su of supportUsers) {
     if (su.id !== excludeUserId) {
+      const userUnit = su.unit || "All";
+      if (su.role !== "admin" && userUnit !== "All" && userUnit !== orderUnit) continue;
       const [row] = await db.insert(notificationsTable).values({
         userId: su.id,
         type: "production_status",
@@ -805,11 +840,26 @@ export async function updateProductLineStatus(
       excludeUserId: user.id, createdByRole: order.createdByRole,
     });
 
-    const supportUsers = await db.select({ id: usersTable.id })
+    let orderUnit = "Himatnagar";
+    if (orderId) {
+      const [o] = await db
+        .select({ productionUnit: productionOrdersTable.productionUnit })
+        .from(productionOrdersTable)
+        .where(eq(productionOrdersTable.id, orderId));
+      if (o?.productionUnit) orderUnit = o.productionUnit;
+    }
+
+    const supportUsers = await db.select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role })
       .from(usersTable)
-      .where(or(eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
+      .where(or(
+        eq(usersTable.role, "production_and_support"),
+        eq(usersTable.role, "support"),
+        eq(usersTable.role, "admin"),
+      ));
     for (const su of supportUsers) {
       if (su.id !== user.id) {
+        const userUnit = su.unit || "All";
+        if (su.role !== "admin" && userUnit !== "All" && userUnit !== orderUnit) continue;
         const [row] = await db.insert(notificationsTable).values({
           userId: su.id, type: "production_status",
           title: "Product Ready",
@@ -855,18 +905,32 @@ export async function notifyProductionUsersOfProductReady(params: {
   excludeUserId: number;
 }) {
   const { productionOrderId, productName, excludeUserId } = params;
+
+  let orderUnit = "Himatnagar";
+  if (productionOrderId) {
+    const [order] = await db
+      .select({ productionUnit: productionOrdersTable.productionUnit })
+      .from(productionOrdersTable)
+      .where(eq(productionOrdersTable.id, productionOrderId));
+    if (order?.productionUnit) orderUnit = order.productionUnit;
+  }
+
   // The production team is production + support + admin. The pure `production`
   // role MUST be included here (it was previously excluded).
   const supportUsers = await db
-    .select({ id: usersTable.id })
+    .select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role })
     .from(usersTable)
     .where(or(
       eq(usersTable.role, "production"),
+      eq(usersTable.role, "production_manager"),
       eq(usersTable.role, "production_and_support"),
+      eq(usersTable.role, "support"),
       eq(usersTable.role, "admin"),
     ));
   for (const su of supportUsers) {
     if (su.id !== excludeUserId) {
+      const userUnit = su.unit || "All";
+      if (su.role !== "admin" && userUnit !== "All" && userUnit !== orderUnit) continue;
       const [row] = await db.insert(notificationsTable).values({
         userId: su.id, type: "production_status",
         title: "Product Ready",

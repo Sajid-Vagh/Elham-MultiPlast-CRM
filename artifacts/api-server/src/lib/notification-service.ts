@@ -27,12 +27,10 @@ export interface ProductionNotificationParams {
 /**
  * Notify production users based on unit permissions.
  *
- * Rules (single source of truth):
+ * Rules:
  * - admin role: sees ALL units
  * - user.unit === "All": sees ALL units
- * - Himatnagar users: see ALL units (including Surat/Rajkot)
- * - Surat users: see only Surat
- * - Rajkot users: see only Rajkot
+ * - Specific unit user (e.g. Surat, Himatnagar, Rajkot): sees only their assigned unit
  *
  * This function is called by:
  * - mark-won (deal won → production order)
@@ -57,7 +55,9 @@ export async function notifyProductionUsers(params: ProductionNotificationParams
     .from(usersTable)
     .where(or(
       eq(usersTable.role, "production"),
+      eq(usersTable.role, "production_manager"),
       eq(usersTable.role, "production_and_support"),
+      eq(usersTable.role, "support"),
       eq(usersTable.role, "admin"),
     ));
 
@@ -70,8 +70,7 @@ export async function notifyProductionUsers(params: ProductionNotificationParams
     const shouldNotify =
       pu.role === "admin" ||
       userUnit === "All" ||
-      userUnit === orderUnit ||
-      orderUnit === "Himatnagar";
+      userUnit === orderUnit;
 
     if (!shouldNotify) continue;
 

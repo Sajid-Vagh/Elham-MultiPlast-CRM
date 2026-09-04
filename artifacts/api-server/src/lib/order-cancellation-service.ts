@@ -306,11 +306,18 @@ export async function cancelOrder(
   if (order.supportOwnerId && order.supportOwnerId !== user.id) notifyUsers.add(order.supportOwnerId);
   if (order.productionOwnerId && order.productionOwnerId !== user.id) notifyUsers.add(order.productionOwnerId);
 
-  const adminsAndProduction = await db.select({ id: usersTable.id }).from(usersTable).where(
+  const orderUnit = order.productionUnit || "Himatnagar";
+
+  const adminsAndProduction = await db.select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role }).from(usersTable).where(
     sql`${usersTable.role} IN ('admin', 'production', 'production_manager', 'support', 'production_and_support')`
   );
   for (const u of adminsAndProduction) {
-    if (u.id !== user.id) notifyUsers.add(u.id);
+    if (u.id !== user.id) {
+      const userUnit = u.unit || "All";
+      if (u.role === "admin" || userUnit === "All" || userUnit === orderUnit) {
+        notifyUsers.add(u.id);
+      }
+    }
   }
 
   // Deep-link Production/Support straight to the cancelled production order
