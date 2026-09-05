@@ -77,6 +77,7 @@ const DISPATCH_STATUSES = [
 
 export default function ProductionOrders() {
   const { data: user } = useGetMe();
+  const canExport = user?.role === "admin" || (user?.permissions?.canExportData !== false && (user as any)?.canExportData !== false);
   const [, setLocation] = useLocation();
   const params = new URLSearchParams(window.location.search);
   const { units: userUnits, userUnit, locked } = useUserUnits();
@@ -181,36 +182,38 @@ export default function ProductionOrders() {
               search,
             })}
           />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" disabled={sheetDownloading}>
-                <Download className="h-4 w-4 mr-2" /> Production Sheet
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onClick={() => downloadSheet("updated")}>
-                <FileSpreadsheet className="h-4 w-4 mr-2" /> Updated Sheet
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => downloadSheet("today")}>
-                <CalendarDays className="h-4 w-4 mr-2" /> Today
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => downloadSheet("yesterday")}>
-                <Clock className="h-4 w-4 mr-2" /> Yesterday
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => downloadSheet("this-week")}>
-                <CalendarDays className="h-4 w-4 mr-2" /> This Week
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => downloadSheet("last-week")}>
-                <Clock className="h-4 w-4 mr-2" /> Last Week
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => downloadSheet("this-month")}>
-                <CalendarDays className="h-4 w-4 mr-2" /> This Month
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSheetDateDialogOpen(true)}>
-                <CalendarDays className="h-4 w-4 mr-2" /> Custom Range
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {canExport && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" disabled={sheetDownloading}>
+                  <Download className="h-4 w-4 mr-2" /> Production Sheet
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => downloadSheet("updated")}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" /> Updated Sheet
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => downloadSheet("today")}>
+                  <CalendarDays className="h-4 w-4 mr-2" /> Today
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => downloadSheet("yesterday")}>
+                  <Clock className="h-4 w-4 mr-2" /> Yesterday
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => downloadSheet("this-week")}>
+                  <CalendarDays className="h-4 w-4 mr-2" /> This Week
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => downloadSheet("last-week")}>
+                  <Clock className="h-4 w-4 mr-2" /> Last Week
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => downloadSheet("this-month")}>
+                  <CalendarDays className="h-4 w-4 mr-2" /> This Month
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSheetDateDialogOpen(true)}>
+                  <CalendarDays className="h-4 w-4 mr-2" /> Custom Range
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <Button variant="outline" onClick={() => setLocation("/production/dashboard")}>
             <ArrowLeft className="h-4 w-4 mr-1" /> Dashboard
           </Button>

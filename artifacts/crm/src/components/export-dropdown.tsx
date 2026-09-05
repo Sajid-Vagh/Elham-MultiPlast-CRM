@@ -178,6 +178,12 @@ export function ExportDropdown({
 
   const hasSelection = selectedIds && selectedIds.length > 0;
 
+  // Permission check: Hide Export dropdown if user does not have canExportData permission
+  const canExport = me?.role === "admin" || (me?.permissions?.canExportData !== false && (me as any)?.canExportData !== false);
+  if (!canExport) {
+    return null;
+  }
+
   return (
     <>
       <DropdownMenu>

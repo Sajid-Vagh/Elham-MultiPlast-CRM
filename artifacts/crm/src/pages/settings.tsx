@@ -73,6 +73,13 @@ const SUPPORT_PERMISSION_CATEGORIES: PermissionCategory[] = [
     ],
   },
   {
+    id: "security", label: "Data Security",
+    icon: <Shield className="h-4 w-4" />,
+    permissions: [
+      { key: "canExportData", label: "Allow Data Export", desc: "Allow this user to export data to Excel/CSV" },
+    ],
+  },
+  {
     id: "general", label: "General",
     icon: <Shield className="h-4 w-4" />,
     permissions: [
@@ -99,6 +106,13 @@ const PRODUCTION_PERMISSION_CATEGORIES: PermissionCategory[] = [
     ],
   },
   {
+    id: "security", label: "Data Security",
+    icon: <Shield className="h-4 w-4" />,
+    permissions: [
+      { key: "canExportData", label: "Allow Data Export", desc: "Allow this user to export data to Excel/CSV" },
+    ],
+  },
+  {
     id: "general", label: "General",
     icon: <Shield className="h-4 w-4" />,
     permissions: [
@@ -108,9 +122,20 @@ const PRODUCTION_PERMISSION_CATEGORIES: PermissionCategory[] = [
   },
 ];
 
+const INVENTORY_PERMISSION_CATEGORIES: PermissionCategory[] = [
+  {
+    id: "security", label: "Data Security",
+    icon: <Shield className="h-4 w-4" />,
+    permissions: [
+      { key: "canExportData", label: "Allow Data Export", desc: "Allow this user to export data to Excel/CSV" },
+    ],
+  },
+];
+
 const SALES_PERMISSIONS: PermissionDef[] = [
   { key: "canViewAllReports", label: "View all reports", desc: "Allow this user to view reports for all sales owners" },
   { key: "canAssignLeads", label: "Assign leads to others", desc: "Allow this user to assign leads to other sales owners" },
+  { key: "canExportData", label: "Allow Data Export", desc: "Allow this user to export data to Excel/CSV" },
 ];
 
 const ROLE_SUMMARIES: Record<string, { label: string; color: string; icon: React.ReactNode; bullets: string[] }> = {
@@ -122,9 +147,10 @@ const ROLE_SUMMARIES: Record<string, { label: string; color: string; icon: React
 };
 
 function getDefaultPermissions(role: string): Record<string, boolean> {
-  const all: Record<string, boolean> = {};
-  if (role === "inventory") return all;
-  const cats = role === "production" ? PRODUCTION_PERMISSION_CATEGORIES : SUPPORT_PERMISSION_CATEGORIES;
+  const all: Record<string, boolean> = {
+    canExportData: true,
+  };
+  const cats = role === "production" ? PRODUCTION_PERMISSION_CATEGORIES : role === "inventory" ? INVENTORY_PERMISSION_CATEGORIES : SUPPORT_PERMISSION_CATEGORIES;
   for (const cat of cats) {
     for (const p of cat.permissions) {
       if (p.key === "productionOnlyPIs") {
@@ -139,8 +165,7 @@ function getDefaultPermissions(role: string): Record<string, boolean> {
 
 function getAllPermissionKeys(role: string): string[] {
   const keys: string[] = [];
-  if (role === "inventory") return keys;
-  const cats = role === "production" ? PRODUCTION_PERMISSION_CATEGORIES : SUPPORT_PERMISSION_CATEGORIES;
+  const cats = role === "production" ? PRODUCTION_PERMISSION_CATEGORIES : role === "inventory" ? INVENTORY_PERMISSION_CATEGORIES : SUPPORT_PERMISSION_CATEGORIES;
   for (const cat of cats) for (const p of cat.permissions) keys.push(p.key);
   return keys;
 }
@@ -186,6 +211,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
     name: initial?.name || "", username: initial?.username || "", password: "",
     role: initial?.role || "sales", colorCode: initial?.colorCode || COLOR_PALETTE[0], unit: initial?.unit || "All",
     canViewAllReports: initial?.canViewAllReports ?? false, canAssignLeads: initial?.canAssignLeads ?? false,
+    canExportData: (initial as any)?.canExportData ?? initial?.permissions?.canExportData ?? true,
     permissions: initial?.permissions ?? {} as Record<string, boolean>,
     profilePhoto: initial?.profilePhoto ?? null as string | null,
   });
@@ -198,6 +224,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
       name: initial?.name || "", username: initial?.username || "", password: "",
       role: initial?.role || "sales", colorCode: initial?.colorCode || COLOR_PALETTE[0], unit: initial?.unit || "All",
       canViewAllReports: initial?.canViewAllReports ?? false, canAssignLeads: initial?.canAssignLeads ?? false,
+      canExportData: (initial as any)?.canExportData ?? initial?.permissions?.canExportData ?? true,
       permissions: initial?.permissions ?? {} as Record<string, boolean>,
       profilePhoto: initial?.profilePhoto ?? null,
     });
@@ -265,18 +292,22 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
   };
 
   const togglePermission = (key: string, value: boolean) => {
-    setForm(p => ({ ...p, permissions: { ...p.permissions, [key]: value } }));
+    setForm(p => ({
+      ...p,
+      ...(key === "canExportData" ? { canExportData: value } : {}),
+      permissions: { ...p.permissions, [key]: value },
+    }));
   };
 
-  const selectAll = () => setForm(p => ({ ...p, permissions: getDefaultPermissions(p.role) }));
-  const clearAll = () => setForm(p => ({ ...p, permissions: {} }));
-  const resetToDefault = () => setForm(p => ({ ...p, permissions: getDefaultPermissions(p.role) }));
+  const selectAll = () => setForm(p => ({ ...p, canExportData: true, permissions: getDefaultPermissions(p.role) }));
+  const clearAll = () => setForm(p => ({ ...p, canExportData: false, permissions: {} }));
+  const resetToDefault = () => setForm(p => ({ ...p, canExportData: true, permissions: getDefaultPermissions(p.role) }));
 
   const photoFileRef = useRef<HTMLInputElement>(null);
 
-  const hasPermissions = form.role === "production_and_support" || form.role === "production";
+  const hasPermissions = form.role === "production_and_support" || form.role === "production" || form.role === "inventory";
   const hasSalesPerms = form.role === "sales";
-  const categories = form.role === "production" ? PRODUCTION_PERMISSION_CATEGORIES : SUPPORT_PERMISSION_CATEGORIES;
+  const categories = form.role === "production" ? PRODUCTION_PERMISSION_CATEGORIES : form.role === "inventory" ? INVENTORY_PERMISSION_CATEGORIES : SUPPORT_PERMISSION_CATEGORIES;
   const roleSummary = ROLE_SUMMARIES[form.role];
   const totalPerms = getAllPermissionKeys(form.role).length;
   const enabledPerms = getAllPermissionKeys(form.role).filter(k => form.permissions[k]).length;
@@ -297,7 +328,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={onCancel}>Cancel</Button>
           <Button disabled={loading || !form.name || !form.username || (!isEdit && !form.password)}
-            onClick={() => onSave({ ...form, password: form.password || undefined })}>
+            onClick={() => onSave({ ...form, password: form.password || undefined, canExportData: form.canExportData, permissions: { ...form.permissions, canExportData: form.canExportData } })}>
             {loading ? "Saving..." : isEdit ? "Update Member" : "Create Member"}
           </Button>
         </div>
@@ -455,8 +486,26 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
                           <p className="text-[13.5px] font-medium">{p.label}</p>
                           <p className="text-[12.5px] text-muted-foreground/70 mt-0.5">{p.desc}</p>
                         </div>
-                        <Switch checked={p.key === "canViewAllReports" ? form.canViewAllReports : form.canAssignLeads}
-                          onCheckedChange={v => setForm(prev => ({ ...prev, [p.key]: v }))} />
+                        <Switch
+                          checked={
+                            p.key === "canViewAllReports"
+                              ? form.canViewAllReports
+                              : p.key === "canAssignLeads"
+                              ? form.canAssignLeads
+                              : form.canExportData
+                          }
+                          onCheckedChange={v => {
+                            if (p.key === "canExportData") {
+                              setForm(prev => ({
+                                ...prev,
+                                canExportData: v,
+                                permissions: { ...prev.permissions, canExportData: v },
+                              }));
+                            } else {
+                              setForm(prev => ({ ...prev, [p.key]: v }));
+                            }
+                          }}
+                        />
                       </div>
                     ))}
                   </div>

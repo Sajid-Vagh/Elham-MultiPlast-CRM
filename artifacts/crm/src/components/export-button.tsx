@@ -105,6 +105,12 @@ export function ExportButton({
     }
   };
 
+  // Permission check: Hide Export button if user does not have canExportData permission
+  const canExport = me?.role === "admin" || (me?.permissions?.canExportData !== false && (me as any)?.canExportData !== false);
+  if (!canExport) {
+    return null;
+  }
+
   return (
     <>
       <Button variant="outline" size="sm" onClick={handleClick} disabled={disabled || loading}>

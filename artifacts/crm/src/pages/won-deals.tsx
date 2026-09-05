@@ -34,6 +34,7 @@ export default function WonDeals() {
   const { data: users } = useCustomerFacingUsers();
   const { units: activeUnits } = useActiveUnits();
   const canViewAllReports = me?.role === "admin" || me?.canViewAllReports;
+  const canExport = me?.role === "admin" || (me?.permissions?.canExportData !== false && (me as any)?.canExportData !== false);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("crm_token") : null;
 
@@ -191,10 +192,12 @@ export default function WonDeals() {
           />
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={downloadCsv}>
-            <Download className="h-3.5 w-3.5 mr-1" />
-            CSV
-          </Button>
+          {canExport && (
+            <Button variant="outline" size="sm" onClick={downloadCsv}>
+              <Download className="h-3.5 w-3.5 mr-1" />
+              CSV
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => window.print()}>
             <Printer className="h-3.5 w-3.5 mr-1" />
             Print

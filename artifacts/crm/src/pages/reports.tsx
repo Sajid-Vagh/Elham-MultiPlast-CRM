@@ -146,6 +146,8 @@ function buildExportFileName(tab: string, df: DateFilterState, ext: "xlsx" | "cs
 }
 
 export default function Reports() {
+  const { data: me } = useGetMe();
+  const canExport = me?.role === "admin" || (me?.permissions?.canExportData !== false && (me as any)?.canExportData !== false);
   const [unit, setUnit] = useUnitFilter();
   const [dateFilter, setDateFilter] = useDateFilter();
   const [ownerId, setOwnerId] = useOwnerFilter();
@@ -266,7 +268,6 @@ export default function Reports() {
   const { data: byProduct } = useGetReportByProduct({ startDate: dateFilter.startDate || undefined, endDate: dateFilter.endDate || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined });
   const { toast } = useToast();
   const { data: lostReasons } = useGetReportLostReasons({ startDate: dateFilter.startDate || undefined, endDate: dateFilter.endDate || undefined, salesOwnerId: ownerId ? Number(ownerId) : undefined, unit: unit !== "All" ? unit : undefined });
-  const { data: me } = useGetMe();
   const { data: users } = useCustomerFacingUsers();
   const canViewAllReports = me?.role === "admin" || me?.canViewAllReports;
 
@@ -726,46 +727,48 @@ export default function Reports() {
         </div>
 
         {/* Export buttons */}
-        <div className="flex gap-2 flex-wrap mb-4">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Download className="h-4 w-4 mr-2" />
-                Export
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  <FileText className="h-4 w-4 mr-2" />
-                  <span>Quick Export (Current View)</span>
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  <DropdownMenuItem onClick={() => doQuickExport("xlsx")}>
-                    <FileSpreadsheet className="h-4 w-4 mr-2" /> Excel (.xlsx)
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => doQuickExport("csv")}>
-                    <FileText className="h-4 w-4 mr-2" /> CSV (.csv)
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  <FileSpreadsheet className="h-4 w-4 mr-2" />
-                  <span>Detailed Export (Complete Report)</span>
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  <DropdownMenuItem onClick={() => doDetailedExport("xlsx")}>
-                    <FileSpreadsheet className="h-4 w-4 mr-2" /> Excel (.xlsx)
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => doDetailedExport("csv")}>
-                    <FileText className="h-4 w-4 mr-2" /> CSV (.csv)
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        {canExport && (
+          <div className="flex gap-2 flex-wrap mb-4">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Download className="h-4 w-4 mr-2" />
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <FileText className="h-4 w-4 mr-2" />
+                    <span>Quick Export (Current View)</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuItem onClick={() => doQuickExport("xlsx")}>
+                      <FileSpreadsheet className="h-4 w-4 mr-2" /> Excel (.xlsx)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => doQuickExport("csv")}>
+                      <FileText className="h-4 w-4 mr-2" /> CSV (.csv)
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <FileSpreadsheet className="h-4 w-4 mr-2" />
+                    <span>Detailed Export (Complete Report)</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuItem onClick={() => doDetailedExport("xlsx")}>
+                      <FileSpreadsheet className="h-4 w-4 mr-2" /> Excel (.xlsx)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => doDetailedExport("csv")}>
+                      <FileText className="h-4 w-4 mr-2" /> CSV (.csv)
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
 
         {/* ── PIPELINE TAB ── */}
         <TabsContent value="pipeline">
@@ -1270,53 +1273,55 @@ export default function Reports() {
                         />
                       </div>
                       <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => {
-                          if (!filtered.length) return;
-                          const headers = isStageMode
-                            ? (selectedStage === "Won"
-                                ? ["Customer Name","Company Name","Mobile","City","Sales Person","Unit","Product","Type","Won Date","Notes","Deal Value"]
-                                : ["Customer Name","Company Name","Mobile","City","Sales Person","Unit","Product","Type","Lost Date","Lost Reason","Notes","Deal Value"])
-                            : ["Customer Name","Company Name","Mobile","City","Sales Person","Unit","Product","Type","Lost Date","Lost Reason","Notes","Deal Value"];
-                          const key: Record<string, string> = {
-                            "Customer Name": "customerName",
-                            "Company Name": "companyName",
-                            "Mobile": "mobile",
-                            "City": "city",
-                            "Sales Person": "salesPerson",
-                            "Unit": "unit",
-                            "Product": "product",
-                            "Type": "type",
-                            "Lost Date": "lostDate",
-                            "Won Date": "lostDate",
-                            "Lost Reason": "lostReason",
-                            "Notes": "notes",
-                            "Deal Value": "dealValue",
-                          };
-                          const csv = [
-                            headers.join(","),
-                            ...filtered.map((r: any) =>
-                              headers.map(h => {
-                                const val = r[key[h]] ?? "";
-                                const str = String(val);
-                                return str.includes(",") || str.includes('"') || str.includes("\n")
-                                  ? `"${str.replace(/"/g, '""')}"`
-                                  : str;
-                              }).join(",")
-                            ),
-                          ].join("\n");
-                          const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement("a");
-                          a.href = url;
-                          a.download = isStageMode ? `${selectedStage}-deals.csv` : `lost-reason-${selectedReason}.csv`;
-                          document.body.appendChild(a);
-                          a.click();
-                          document.body.removeChild(a);
-                          URL.revokeObjectURL(url);
-                        }}>
-                          <Download className="h-3.5 w-3.5 mr-1" />
-                          CSV
-                        </Button>
+                        {canExport && (
+                          <Button variant="outline" size="sm" onClick={() => {
+                            const isStageMode = detailMode === "stage";
+                            const headers = isStageMode
+                              ? (selectedStage === "Won"
+                                  ? ["Customer Name","Company Name","Mobile","City","Sales Person","Unit","Product","Type","Won Date","Notes","Deal Value"]
+                                  : ["Customer Name","Company Name","Mobile","City","Sales Person","Unit","Product","Type","Lost Date","Lost Reason","Notes","Deal Value"])
+                              : ["Customer Name","Company Name","Mobile","City","Sales Person","Unit","Product","Type","Lost Date","Lost Reason","Notes","Deal Value"];
+                            const key: Record<string, string> = {
+                              "Customer Name": "customerName",
+                              "Company Name": "companyName",
+                              "Mobile": "mobile",
+                              "City": "city",
+                              "Sales Person": "salesPerson",
+                              "Unit": "unit",
+                              "Product": "product",
+                              "Type": "type",
+                              "Lost Date": "lostDate",
+                              "Won Date": "lostDate",
+                              "Lost Reason": "lostReason",
+                              "Notes": "notes",
+                              "Deal Value": "dealValue",
+                            };
+                            const csv = [
+                              headers.join(","),
+                              ...filtered.map((r: any) =>
+                                headers.map(h => {
+                                  const val = r[key[h]] ?? "";
+                                  const str = String(val);
+                                  return str.includes(",") || str.includes('"') || str.includes("\n")
+                                    ? `"${str.replace(/"/g, '""')}"`
+                                    : str;
+                                }).join(",")
+                              ),
+                            ].join("\n");
+                            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement("a");
+                            a.href = url;
+                            a.download = isStageMode ? `${selectedStage}-deals.csv` : `lost-reason-${selectedReason}.csv`;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                          }}>
+                            <Download className="h-3.5 w-3.5 mr-1" />
+                            CSV
+                          </Button>
+                        )}
                         <Button variant="outline" size="sm" onClick={() => window.print()}>
                           <Download className="h-3.5 w-3.5 mr-1" />
                           Print

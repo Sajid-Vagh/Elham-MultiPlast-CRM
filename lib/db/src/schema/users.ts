@@ -13,6 +13,7 @@ export const usersTable = pgTable("users", {
   profilePhoto: text("profile_photo"),
   canViewAllReports: boolean("can_view_all_reports").notNull().default(false),
   canAssignLeads: boolean("can_assign_leads").notNull().default(false),
+  canExportData: boolean("can_export_data").notNull().default(true),
   permissions: jsonb("permissions").$type<Record<string, boolean>>().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   // Auth security upgrade columns

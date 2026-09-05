@@ -64,6 +64,7 @@ export default function CategoriesPage() {
   const { toast } = useToast();
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
+  const canExport = isAdmin || (me?.permissions?.canExportData !== false && (me as any)?.canExportData !== false);
   const activeUnit = unitFilter !== "All" ? unitFilter : undefined;
   const { units: activeUnits } = useActiveUnits();
   const [globalOwner, setGlobalOwner] = useOwnerFilter();
@@ -325,9 +326,11 @@ export default function CategoriesPage() {
         <div className="flex flex-wrap gap-2">
           {activeCategory && (
             <>
-              <Button variant="outline" size="sm" onClick={exportCsv}>
-                <Download className="h-4 w-4 mr-1" /> Export
-              </Button>
+              {canExport && (
+                <Button variant="outline" size="sm" onClick={exportCsv}>
+                  <Download className="h-4 w-4 mr-1" /> Export
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
