@@ -355,12 +355,17 @@ router.post("/contacts", async (req, res) => {
     res.status(409).json(await buildDuplicatePayload(duplicateCheck[0]!));
     return;
   }
+  const rawRequirement = (req.body?.requirement ?? req.body?.customerComments ?? (values as any)?.requirement ?? (values as any)?.customerComments)?.toString()?.trim() || null;
+
   // A lead created for the caller is immediately "read" for them; only cross-owner
   // assignments stay unread so the assignee sees the blue "new lead" dot.
   // customerCode is NOT generated here — it is generated only when the first Deal is Won.
   const isSelfAssigned = values.salesOwnerId === user.id;
   const insertValues: typeof contactsTable.$inferInsert = {
     ...values,
+    customerComments: rawRequirement,
+    commentUpdatedAt: rawRequirement ? new Date() : null,
+    commentUpdatedBy: rawRequirement ? user.id : null,
     isRead: isSelfAssigned,
     isRepeatEnquiry: false,
     readBy: isSelfAssigned ? [user.id] : [],
@@ -369,22 +374,34 @@ router.post("/contacts", async (req, res) => {
   };
   try {
     const [contact] = await db.insert(contactsTable).values(insertValues).returning();
-    if (contact && values.salesOwnerId && values.salesOwnerId !== user.id) {
-      const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, values.salesOwnerId));
-      if (owner) {
-        const assignmentTime = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-        await createNotification({
-          createdById: user.id,
-          userId: values.salesOwnerId,
-          type: "enquiry_assigned",
-          title: "New Lead Assigned",
-          message: `Lead: ${contact.name}\nCompany: ${contact.companyName || "-"}\nAssigned By: ${user.name}\nDate & Time: ${assignmentTime}`,
-          link: `/leads/${contact.id}`,
-          relatedId: contact.id,
-          relatedType: "contact",
-        });
-      }
+
+    if (contact && rawRequirement) {
+      await db.insert(commentHistoryTable).values({
+        contactId: contact.id,
+        comment: rawRequirement,
+        updatedBy: user.id,
+        updatedAt: new Date(),
+      });
     }
+
+    if (contact && values.salesOwnerId) {
+      const assignmentTime = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+      const targetUserId = values.salesOwnerId;
+      const isSelfAssignedLead = targetUserId === user.id;
+      const reqText = rawRequirement || "";
+
+      await createNotification({
+        createdById: user.id,
+        userId: targetUserId,
+        type: "enquiry_assigned",
+        title: isSelfAssignedLead ? "New Lead Created" : "New Lead Assigned",
+        message: `Customer: ${contact.name}${contact.companyName ? `\nCompany: ${contact.companyName}` : ""}${reqText ? `\nRequirement:\n${reqText}` : ""}\n${isSelfAssignedLead ? "Created By" : "Assigned By"}: ${user.name}\nDate & Time: ${assignmentTime}`,
+        link: `/leads/${contact.id}`,
+        relatedId: contact.id,
+        relatedType: "contact",
+      });
+    }
+
     // Emit real-time socket events after successful DB write
     emitEnquiryCreated(contact!.id, contact!.salesOwnerId);
     if (contact && values.salesOwnerId && values.salesOwnerId !== user.id) {
