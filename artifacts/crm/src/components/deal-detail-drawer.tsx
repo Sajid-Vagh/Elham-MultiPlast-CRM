@@ -86,7 +86,6 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
   const contact = deal?.contact;
   const owner = deal?.salesOwner;
   const sortedActivities = activities ? [...activities].reverse() : [];
-  const followUps = sortedActivities.filter(a => a.followUpDate);
   const stageColor = STAGE_BADGE_COLORS[deal?.stage || ""] || "bg-gray-100";
 
   return (
@@ -196,27 +195,6 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
                     </div>
                   )}
                 </div>
-
-                {/* Follow-up History */}
-                {followUps.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wider">Follow-up History</h3>
-                    <div className="space-y-2 max-h-60 overflow-y-auto">
-                      {followUps.slice(0, 10).map(act => (
-                        <div key={act.id} className="flex items-center gap-2 p-2 rounded-lg bg-card border text-sm">
-                          <div className={`w-2 h-2 rounded-full shrink-0 ${act.callStatus === "Completed" ? "bg-green-500" : "bg-amber-500"}`} />
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-medium">{act.followUpDate}{act.followUpTime ? ` ${act.followUpTime}` : ""} via {act.followUpType || act.type}</p>
-                            {(act.notes || (act as any).note || (act as any).notesDisplay) && <NoteList notes={act.notes || (act as any).note || (act as any).notesDisplay} className="text-xs" />}
-                          </div>
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${act.callStatus === "Completed" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
-                            {act.callStatus || "Pending"}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           )}
