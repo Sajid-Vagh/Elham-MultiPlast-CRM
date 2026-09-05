@@ -1223,6 +1223,10 @@ components:
           type: ["string", "null"]
         nextCallDate:
           type: ["string", "null"]
+        customerComments:
+          type: ["string", "null"]
+        requirement:
+          type: ["string", "null"]
 
     ContactUpdate:
       type: object

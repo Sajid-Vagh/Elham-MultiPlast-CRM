@@ -38,4 +38,8 @@ export interface ContactInput {
   lastCallDate?: string | null;
   /** @nullable */
   nextCallDate?: string | null;
+  /** @nullable */
+  customerComments?: string | null;
+  /** @nullable */
+  requirement?: string | null;
 }
