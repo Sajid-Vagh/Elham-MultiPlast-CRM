@@ -191,6 +191,11 @@ paths:
           description: If true, return only contacts whose nextCallDate is today or earlier
           schema:
             type: boolean
+        - name: assignmentType
+          in: query
+          description: Filter leads by assignment type ('self' or 'admin')
+          schema:
+            type: string
       responses:
         "200":
           description: List of contacts

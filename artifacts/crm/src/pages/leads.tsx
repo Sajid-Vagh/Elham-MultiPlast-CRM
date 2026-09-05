@@ -118,6 +118,7 @@ export default function Leads() {
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>(urlCategory);
   const [unitFilter, setUnitFilter] = useUnitFilter();
   const [dateFilter, setDateFilter] = useDateFilter();
+  const [assignmentTypeFilter, setAssignmentTypeFilter] = useState<"all" | "self" | "admin">("all");
   const [hasDealFilter, setHasDealFilter] = useState<"all" | "yes" | "no">("all");
   const [callStatusFilter, setCallStatusFilter] = useState<"all" | "not_received" | "normal">("all");
 
@@ -172,7 +173,7 @@ export default function Leads() {
   // static at database-wide totals while the table shows only that owner's
   // leads. The endpoint applies ?ownerId= for admins (same role gate as here).
   const { data: categoryCounts } = useQuery({
-    queryKey: ["category-counts", unitFilter, dateFilter.startDate, dateFilter.endDate, isAdmin ? salesOwnerId : undefined],
+    queryKey: ["category-counts", unitFilter, dateFilter.startDate, dateFilter.endDate, isAdmin ? salesOwnerId : undefined, assignmentTypeFilter],
     queryFn: async () => {
       const token = localStorage.getItem("crm_token");
       const countParams = new URLSearchParams();
@@ -180,6 +181,7 @@ export default function Leads() {
       if (dateFilter.startDate) countParams.set("startDate", dateFilter.startDate);
       if (dateFilter.endDate) countParams.set("endDate", dateFilter.endDate);
       if (isAdmin && salesOwnerId) countParams.set("ownerId", String(salesOwnerId));
+      if (assignmentTypeFilter !== "all") countParams.set("assignmentType", assignmentTypeFilter);
       const qs = countParams.toString();
       const res = await fetch(`/api/categories/counts${qs ? `?${qs}` : ""}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -199,7 +201,7 @@ export default function Leads() {
   }, [categoryCounts]);
 
   const { data: contacts, isLoading } = useQuery({
-    queryKey: ["leads-contacts", search, salesOwnerId, city, categoryFilter, unitFilter, dateFilter.preset, dateFilter.startDate, dateFilter.endDate],
+    queryKey: ["leads-contacts", search, salesOwnerId, city, categoryFilter, unitFilter, dateFilter.preset, dateFilter.startDate, dateFilter.endDate, assignmentTypeFilter],
     queryFn: async () => {
       const token = localStorage.getItem("crm_token");
       const params = new URLSearchParams();
@@ -210,6 +212,7 @@ export default function Leads() {
       if (unitFilter !== "All") params.set("unit", unitFilter);
       if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
       if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
+      if (assignmentTypeFilter !== "all") params.set("assignmentType", assignmentTypeFilter);
       const res = await fetch(`/api/contacts?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -495,6 +498,16 @@ export default function Leads() {
             {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Select value={assignmentTypeFilter} onValueChange={(v) => setAssignmentTypeFilter(v as "all" | "self" | "admin")}>
+          <SelectTrigger className="w-[170px]">
+            <SelectValue placeholder="All Assignments" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Assignments</SelectItem>
+            <SelectItem value="self">Self Assigned</SelectItem>
+            <SelectItem value="admin">Assigned by Admin</SelectItem>
+          </SelectContent>
+        </Select>
         <Select value={hasDealFilter} onValueChange={(v) => setHasDealFilter(v as "all" | "yes" | "no")}>
           <SelectTrigger className="w-[130px]">
             <SelectValue placeholder="Has Deal" />
@@ -515,7 +528,7 @@ export default function Leads() {
             <SelectItem value="normal">Call Normal/Received</SelectItem>
           </SelectContent>
         </Select>
-        <ClearFiltersButton onClear={() => { setSearch(""); setHasDealFilter("all"); setCallStatusFilter("all"); }} />
+        <ClearFiltersButton onClear={() => { setSearch(""); setAssignmentTypeFilter("all"); setHasDealFilter("all"); setCallStatusFilter("all"); }} />
       </div>
 
       {/* Category filter tabs with counts */}

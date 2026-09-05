@@ -208,6 +208,8 @@ router.post("/import/confirm", async (req, res) => {
       state: geo.state,
       address: fields.finalData.address?.trim() ?? null,
       salesOwnerId: ownerId,
+      createdById: currentUser.id,
+      assignedById: currentUser.id,
       leadSource: "IndiaMart",
       inquiryDate: new Date().toISOString().split("T")[0]!,
       unit: effectiveUnit,

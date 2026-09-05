@@ -60,6 +60,17 @@ router.get("/categories/counts", async (req, res) => {
     if (startDate) conditions.push(gte(contactsTable.createdAt, new Date(startDate)));
     if (endDate) conditions.push(lte(contactsTable.createdAt, parseEndDate(endDate)));
 
+    const assignmentType = (req.query.assignmentType as string | undefined)?.toLowerCase();
+    if (assignmentType === "self") {
+      conditions.push(
+        sql`COALESCE(${contactsTable.assignedById}, ${contactsTable.createdById}, ${contactsTable.salesOwnerId}) = ${contactsTable.salesOwnerId}`
+      );
+    } else if (assignmentType === "admin") {
+      conditions.push(
+        sql`COALESCE(${contactsTable.assignedById}, ${contactsTable.createdById}) IS NOT NULL AND COALESCE(${contactsTable.assignedById}, ${contactsTable.createdById}) <> ${contactsTable.salesOwnerId}`
+      );
+    }
+
     // Fetch contacts and deals once for virtual "Regular Follow up" counting
     const allContacts = await db.select().from(contactsTable).where(and(...conditions));
     const allDeals = await db.select().from(dealsTable);

@@ -230,6 +230,17 @@ router.get("/contacts", async (req, res) => {
       }
     }
 
+    const assignmentType = (req.query.assignmentType as string | undefined || (params.success ? params.data.assignmentType : undefined))?.toLowerCase();
+    if (assignmentType === "self") {
+      conditions.push(
+        sql`COALESCE(${contactsTable.assignedById}, ${contactsTable.createdById}, ${contactsTable.salesOwnerId}) = ${contactsTable.salesOwnerId}`
+      );
+    } else if (assignmentType === "admin") {
+      conditions.push(
+        sql`COALESCE(${contactsTable.assignedById}, ${contactsTable.createdById}) IS NOT NULL AND COALESCE(${contactsTable.assignedById}, ${contactsTable.createdById}) <> ${contactsTable.salesOwnerId}`
+      );
+    }
+
     const { startDate, endDate } = req.query as Record<string, string>;
     if (startDate) conditions.push(gte(contactsTable.createdAt, new Date(startDate)));
     if (endDate) conditions.push(lte(contactsTable.createdAt, parseEndDate(endDate)));
@@ -366,6 +377,8 @@ router.post("/contacts", async (req, res) => {
     customerComments: rawRequirement,
     commentUpdatedAt: rawRequirement ? new Date() : null,
     commentUpdatedBy: rawRequirement ? user.id : null,
+    createdById: user.id,
+    assignedById: user.id,
     isRead: isSelfAssigned,
     isRepeatEnquiry: false,
     readBy: isSelfAssigned ? [user.id] : [],
@@ -964,6 +977,7 @@ router.patch("/contacts/:id", async (req, res) => {
     // Reset the unread state whenever the lead is reassigned to a different owner.
     // Both role-based flags are cleared so the NEW owner sees the blue "new lead" dot.
     if (parsed.data.salesOwnerId !== undefined && parsed.data.salesOwnerId !== oldContact.salesOwnerId) {
+      updatePayload.assignedById = user.id;
       updatePayload.isRead = false;
       updatePayload.isRepeatEnquiry = false;
       updatePayload.readBy = [];

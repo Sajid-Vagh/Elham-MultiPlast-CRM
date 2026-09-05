@@ -178,7 +178,8 @@ export const ListContactsQueryParams = zod.object({
   "unit": zod.coerce.string().optional(),
   "industry": zod.coerce.string().optional(),
   "search": zod.coerce.string().optional(),
-  "followUpDue": zod.coerce.boolean().optional().describe('If true, return only contacts whose nextCallDate is today or earlier')
+  "followUpDue": zod.coerce.boolean().optional().describe('If true, return only contacts whose nextCallDate is today or earlier'),
+  "assignmentType": zod.coerce.string().optional().describe('Filter leads by assignment type (\'self\' or \'admin\')')
 })
 
 export const ListContactsResponseItem = zod.object({

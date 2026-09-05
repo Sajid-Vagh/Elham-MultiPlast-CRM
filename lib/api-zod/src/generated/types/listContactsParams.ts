@@ -16,4 +16,8 @@ search?: string;
  * If true, return only contacts whose nextCallDate is today or earlier
  */
 followUpDue?: boolean;
+/**
+ * Filter leads by assignment type ('self' or 'admin')
+ */
+assignmentType?: string;
 };

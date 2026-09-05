@@ -410,6 +410,8 @@ router.post("/import/indiamart", async (req, res) => {
       city: geo.city,
       state: geo.state,
       salesOwnerId: ownerId,
+      createdById: currentUser?.id ?? ownerId,
+      assignedById: currentUser?.id ?? ownerId,
       leadSource: "IndiaMart",
       inquiryDate: new Date().toISOString().split("T")[0]!,
       unit: effectiveUnit,
