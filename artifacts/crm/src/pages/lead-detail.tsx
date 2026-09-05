@@ -176,6 +176,7 @@ export default function LeadDetail() {
   const [commentDialogOpen, setCommentDialogOpen] = useState(false);
   const [editComment, setEditComment] = useState("");
   const [showFullComment, setShowFullComment] = useState(false);
+  const [deleteCommentId, setDeleteCommentId] = useState<number | null>(null);
 
   const { data: commentHistory } = useQuery({
     queryKey: ["comment-history", contactId],
@@ -189,6 +190,30 @@ export default function LeadDetail() {
     },
     enabled: !!contactId,
     staleTime: 10_000,
+  });
+
+  const deleteCommentMutation = useMutation({
+    mutationFn: async (commentId: number) => {
+      const token = localStorage.getItem("crm_token");
+      const res = await fetch(`/api/contacts/${contactId}/comments/${commentId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to delete comment");
+      }
+      return res.json().catch(() => ({ success: true }));
+    },
+    onSuccess: () => {
+      onContactChange(queryClient, contactId);
+      toast({ title: "Comment deleted" });
+      setDeleteCommentId(null);
+    },
+    onError: (err: any) => {
+      toast({ title: err.message || "Failed to delete comment", variant: "destructive" });
+      setDeleteCommentId(null);
+    },
   });
 
   // Category History
@@ -1264,10 +1289,21 @@ export default function LeadDetail() {
                 <Label className="text-xs text-muted-foreground">Comment History</Label>
                 <div className="max-h-48 overflow-y-auto space-y-2 mt-1 border rounded-md p-2 bg-muted/30">
                   {commentHistory.map((h) => (
-                    <div key={h.id} className="text-xs border-b border-muted pb-2 last:border-0">
-                      <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                        <span className="font-medium text-foreground">{h.updatedByName || `User #${h.updatedBy}`}</span>
-                        <span>{new Date(h.updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                    <div key={h.id} className="text-xs border-b border-muted pb-2 last:border-0 group/comment">
+                      <div className="flex items-center justify-between gap-2 text-muted-foreground mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-foreground">{h.updatedByName || `User #${h.updatedBy}`}</span>
+                          <span>{new Date(h.updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteCommentId(h.id)}
+                          className="h-5 w-5 rounded hover:bg-red-50 flex items-center justify-center text-muted-foreground hover:text-red-600 transition-colors"
+                          title="Delete comment"
+                          disabled={deleteCommentMutation.isPending}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
                       </div>
                       <p className="whitespace-pre-wrap">{parseNotesText(h.comment) || "—"}</p>
                     </div>
@@ -1291,6 +1327,29 @@ export default function LeadDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Comment Confirmation Dialog */}
+      <AlertDialog open={deleteCommentId !== null} onOpenChange={(open) => { if (!open) setDeleteCommentId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Comment?</AlertDialogTitle>
+            <AlertDialogDescription>Are you sure you want to delete this comment from history? This action cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteCommentId(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteCommentId) {
+                  deleteCommentMutation.mutate(deleteCommentId);
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Inline Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>

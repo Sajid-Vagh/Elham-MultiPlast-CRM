@@ -900,6 +900,59 @@ router.get("/contacts/:id/comments", async (req, res) => {
   }
 });
 
+// Delete an individual comment from history
+const deleteCommentHandler = async (req: any, res: any) => {
+  try {
+    const access = await requireContactAccess(req, res);
+    if (!access) return;
+    const commentId = Number(req.params.commentId);
+    if (!commentId || isNaN(commentId)) {
+      res.status(400).json({ error: "Invalid comment id" });
+      return;
+    }
+
+    const [existing] = await db
+      .select()
+      .from(commentHistoryTable)
+      .where(and(eq(commentHistoryTable.id, commentId), eq(commentHistoryTable.contactId, access.contact.id)));
+
+    if (!existing) {
+      res.status(404).json({ error: "Comment not found" });
+      return;
+    }
+
+    await db
+      .delete(commentHistoryTable)
+      .where(and(eq(commentHistoryTable.id, commentId), eq(commentHistoryTable.contactId, access.contact.id)));
+
+    // Refresh contact's latest customerComments if this was the latest comment or matches
+    const [latestRemaining] = await db
+      .select()
+      .from(commentHistoryTable)
+      .where(eq(commentHistoryTable.contactId, access.contact.id))
+      .orderBy(desc(commentHistoryTable.updatedAt))
+      .limit(1);
+
+    await db
+      .update(contactsTable)
+      .set({
+        customerComments: latestRemaining ? latestRemaining.comment : null,
+        commentUpdatedAt: latestRemaining ? latestRemaining.updatedAt : null,
+        commentUpdatedBy: latestRemaining ? latestRemaining.updatedBy : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(contactsTable.id, access.contact.id));
+
+    res.json({ success: true, message: "Comment deleted" });
+  } catch (err) {
+    req.log.error({ err }, "Delete comment history error");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+};
+
+router.delete("/contacts/:id/comments/:commentId", deleteCommentHandler);
+router.delete("/contacts/:id/comment-history/:commentId", deleteCommentHandler);
+
 router.patch("/contacts/:id", async (req, res) => {
   const params = UpdateContactParams.safeParse({ id: Number(req.params.id) });
   if (!params.success) { res.status(400).json({ error: "Invalid id" }); return; }
