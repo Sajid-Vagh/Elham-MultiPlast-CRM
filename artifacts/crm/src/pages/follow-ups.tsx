@@ -16,7 +16,7 @@ import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { onActivityChange } from "@/lib/query-invalidation";
-import { dedupeById } from "@/lib/parse-notes";
+import { dedupeById, parseNotesText } from "@/lib/parse-notes";
 import { CategoryBadge } from "@/components/category-badge";
 import { ExportButton } from "@/components/export-button";
 import { useActiveUnits } from "@/lib/use-active-units";
@@ -67,18 +67,7 @@ function getStatusBadge(status: string | null | undefined, followUpDate?: string
 
 function parseNotes(notes: string | null | undefined): string {
   if (!notes) return "";
-  try {
-    const parsed = JSON.parse(notes);
-    if (Array.isArray(parsed)) {
-      return parsed.map((item: any) => item.text || item.note || item.content || JSON.stringify(item)).filter(Boolean).join("\n");
-    }
-    if (typeof parsed === "object" && parsed !== null) {
-      return parsed.text || parsed.note || parsed.content || notes;
-    }
-    return notes;
-  } catch {
-    return notes;
-  }
+  return parseNotesText(notes) || "";
 }
 
 const STATUS_OPTIONS = [

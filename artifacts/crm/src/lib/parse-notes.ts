@@ -1,75 +1,82 @@
-// Shared utility to safely render activity notes.
+// Shared utility to safely parse and render activity & follow-up notes.
+//
+// Notes may be stored as a JSON stringified array of { text, date, time, userName, userId }
+// entries (edit history), as a JSON object, or as plain text.
+// These helpers extract ONLY the clean human-readable text values — hiding raw JSON syntax,
+// brackets, timestamps, and usernames from raw dumps.
 
-// Notes may be stored as a JSON stringified array of
-// { text, date, time, userName, userId } entries (edit history) OR as plain
-// text. This helper returns ONLY the clean human-readable `text` values —
-// the raw brackets, timestamps and usernames are hidden from the UI.
-// If parsing fails, the string is returned as-is so the app never crashes.
-export function parseNotesText(notes: string | null | undefined): string | null {
-  if (!notes) return null;
-  const trimmed = notes.trim();
-  if (!trimmed.startsWith("[") && !trimmed.startsWith("{") && !trimmed.startsWith("\"")) {
-    return notes;
+function cleanExtract(item: unknown): string {
+  if (item == null) return "";
+  if (typeof item === "string") {
+    const trimmed = item.trim();
+    if (!trimmed) return "";
+    if (trimmed.startsWith("[") || trimmed.startsWith("{") || trimmed.startsWith("\"")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        return cleanExtract(parsed);
+      } catch {
+        return trimmed;
+      }
+    }
+    return trimmed;
   }
-  try {
-    const parsed = JSON.parse(trimmed);
-    // Double-stringified JSON ('"[{\"text\":...}]"') parses to a string — recurse once more.
-    if (typeof parsed === "string") {
-      return parseNotesText(parsed);
-    }
-    if (Array.isArray(parsed)) {
-      const texts = parsed
-        .map((item: any) => {
-          if (item == null) return "";
-          if (typeof item === "string") return item;
-          return item.text ?? item.note ?? item.content ?? "";
-        })
-        .filter(Boolean);
-      return texts.join("\n");
-    }
-    if (parsed && typeof parsed === "object") {
-      const t = parsed.text ?? parsed.note ?? parsed.content;
-      if (t != null) return String(t);
-    }
-    return notes;
-  } catch {
-    return notes;
+  if (Array.isArray(item)) {
+    return item.map(cleanExtract).filter(Boolean).join("\n");
   }
+  if (typeof item === "object") {
+    const o = item as Record<string, unknown>;
+    const val = o.text ?? o.note ?? o.content ?? o.message ?? o.notes ?? o.description ?? o.comment ?? o.msg;
+    if (val != null) {
+      return cleanExtract(val);
+    }
+  }
+  return String(item);
 }
 
-// Alias for callers that want a descriptive name for the activity/comments feed
-// formatting helper. Returns clean text only; never the raw JSON string.
+export function parseNotesText(notes: unknown): string | null {
+  if (notes == null) return null;
+  const result = cleanExtract(notes);
+  return result.trim() ? result.trim() : null;
+}
+
 export const formatActivityNotes = parseNotesText;
 
-// Prefer the raw notes (clean text only) and fall back to the backend-formatted
-// display string (which may include timestamps/usernames) only when raw notes
-// are absent.
-export function parseNotesDisplay(notes: string | null | undefined, notesDisplay: string | null | undefined): string | null {
+export function parseNotesDisplay(notes: unknown, notesDisplay: unknown): string | null {
   return parseNotesText(notes) ?? parseNotesText(notesDisplay) ?? null;
 }
 
-// Extract ONLY the clean text entries from a notes field. Plain text returns as
-// a single-entry array; stringified JSON arrays of { text, date, time, userName,
-// userId } entries are parsed (handles double-encoded JSON too) and each
-// history entry's `text` is returned in stored order.
-export function parseNotesEntries(notes: string | null | undefined): string[] {
-  if (!notes) return [];
+export function parseNotesEntries(notes: unknown): string[] {
+  if (notes == null) return [];
   let value: unknown = notes;
-  for (let pass = 0; pass < 2 && typeof value === "string"; pass++) {
-    const t = value.trim();
-    if (!t.startsWith("[") && !t.startsWith("{") && !t.startsWith("\"")) break;
-    try {
-      value = JSON.parse(t);
-    } catch {
-      break;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    for (let pass = 0; pass < 3 && typeof value === "string"; pass++) {
+      const t = (value as string).trim();
+      if (!t.startsWith("[") && !t.startsWith("{") && !t.startsWith("\"")) break;
+      try {
+        value = JSON.parse(t);
+      } catch {
+        break;
+      }
     }
   }
+
   const out: string[] = [];
   const collect = (v: unknown) => {
     if (v == null) return;
     if (typeof v === "string") {
       const s = v.trim();
-      if (s) out.push(s);
+      if (s) {
+        if (s.startsWith("[") || s.startsWith("{") || s.startsWith("\"")) {
+          try {
+            const parsed = JSON.parse(s);
+            collect(parsed);
+            return;
+          } catch {}
+        }
+        out.push(s);
+      }
       return;
     }
     if (Array.isArray(v)) {
@@ -78,33 +85,29 @@ export function parseNotesEntries(notes: string | null | undefined): string[] {
     }
     if (typeof v === "object") {
       const o = v as Record<string, unknown>;
-      collect(o.text ?? o.note ?? o.content ?? null);
+      const t = o.text ?? o.note ?? o.content ?? o.message ?? o.notes ?? o.description ?? o.comment ?? o.msg;
+      if (t != null) {
+        collect(t);
+      }
     }
   };
+
   collect(value);
   return out;
 }
 
-// Deal/follow-up note rendering with sequential numbering: every entry parsed
-// from a JSON-array notes field is prefixed with its position ("Note 1: ...",
-// "Note 2: ..."), so a deal's progression reads in order and a brand-new deal's
-// first note starts from 1. Plain-text notes are returned unchanged.
-export function formatDealNotes(notes: string | null | undefined): string | null {
-  if (!notes) return null;
-  const trimmed = notes.trim();
-  const looksLikeJson = trimmed.startsWith("[") || trimmed.startsWith("{") || trimmed.startsWith("\"");
-  if (!looksLikeJson) {
-    return parseNotesText(notes);
-  }
+export function formatDealNotes(notes: unknown): string | null {
+  if (notes == null) return null;
   const entries = parseNotesEntries(notes);
   if (entries.length === 0) {
     return parseNotesText(notes);
   }
+  if (entries.length === 1) {
+    return entries[0]!;
+  }
   return entries.map((text, index) => `Note ${index + 1}: ${text}`).join("\n");
 }
 
-// Strict ID-based uniqueness filter — guarantees each item is rendered exactly
-// once, regardless of React StrictMode double-effects or duplicated payloads.
 export function dedupeById<T extends { id?: number | string | null }>(items: T[]): T[] {
   const seen = new Set<number | string>();
   const out: T[] = [];

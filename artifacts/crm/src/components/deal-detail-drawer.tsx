@@ -187,7 +187,7 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
                                 {isCompleted && <span className="text-xs text-green-700">✓ Completed</span>}
                                 <span className="text-xs text-muted-foreground ml-auto">{new Date(act.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
                               </div>
-                              {act.notes && <NoteList notes={act.notes} className="text-xs mt-0.5" />}
+                              {(act.notes || (act as any).note || (act as any).notesDisplay) && <NoteList notes={act.notes || (act as any).note || (act as any).notesDisplay} className="text-xs mt-0.5" />}
                               {act.followUpDate && <p className="text-xs text-primary mt-0.5">Follow-up: {act.followUpDate}{act.followUpTime ? ` ${act.followUpTime}` : ""}</p>}
                             </div>
                           </div>
@@ -207,7 +207,7 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
                           <div className={`w-2 h-2 rounded-full shrink-0 ${act.callStatus === "Completed" ? "bg-green-500" : "bg-amber-500"}`} />
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-medium">{act.followUpDate}{act.followUpTime ? ` ${act.followUpTime}` : ""} via {act.followUpType || act.type}</p>
-                            {act.notes && <NoteList notes={act.notes} className="text-xs" />}
+                            {(act.notes || (act as any).note || (act as any).notesDisplay) && <NoteList notes={act.notes || (act as any).note || (act as any).notesDisplay} className="text-xs" />}
                           </div>
                           <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${act.callStatus === "Completed" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
                             {act.callStatus || "Pending"}

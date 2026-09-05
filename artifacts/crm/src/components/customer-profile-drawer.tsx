@@ -237,8 +237,8 @@ export default function CustomerProfileDrawer({ contactId, open, onOpenChange }:
                               {formatDate(ev.createdAt)} • {formatTime(ev.createdAt)}
                             </span>
                           </div>
-                          {ev.notes && (
-                            <NoteList notes={ev.notes} className="text-[10px] mt-0.5" />
+                          {(ev.notes || (ev as any).note || (ev as any).notesDisplay) && (
+                            <NoteList notes={ev.notes || (ev as any).note || (ev as any).notesDisplay} className="text-[10px] mt-0.5" />
                           )}
                           {ev.user?.name && (
                             <p className="text-[10px] text-muted-foreground">by {ev.user.name}</p>

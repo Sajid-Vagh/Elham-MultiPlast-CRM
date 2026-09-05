@@ -346,16 +346,12 @@ export default function LeadDetail() {
       for (const act of dealActs) {
         if (!dateOk(act.createdAt)) continue;
         followUpNum++;
-        // Structured notes: JSON-array history entries render as individually
-        // styled "Note N" rows (bold, tinted); plain-text notes keep the
-        // legacy unprefixed paragraph rendering via `detail`.
-        const trimmedNotes = (act.notes || "").trim();
-        const looksLikeJson = trimmedNotes.startsWith("[") || trimmedNotes.startsWith("{") || trimmedNotes.startsWith("\"");
-        const noteEntries = looksLikeJson ? parseNotesEntries(act.notes) : [];
+        const rawNote = act.notes || (act as any).note || (act as any).notesDisplay;
+        const noteEntries = parseNotesEntries(rawNote);
         events.push({
           key: `act-${act.id}`, date: act.createdAt, kind: "followup",
           label: `Follow-up ${followUpNum}`,
-          detail: formatDealNotes(act.notes) || parseNotesText((act as any).notesDisplay) || null,
+          detail: parseNotesText(rawNote) || null,
           noteEntries: noteEntries.length > 0 ? noteEntries : undefined,
           meta: act.callStatus || null,
           activityId: act.id,
@@ -707,8 +703,8 @@ export default function LeadDetail() {
                       Assigned to: <span className="font-medium">{upcomingFollowUp.user.name}</span>
                     </div>
                   )}
-                  {upcomingFollowUp.notes && (
-                    <p className="text-xs text-muted-foreground whitespace-pre-wrap bg-muted/30 p-2.5 rounded-md">{parseNotesDisplay(upcomingFollowUp.notes, upcomingFollowUp.notesDisplay)}</p>
+                  {(upcomingFollowUp.notes || (upcomingFollowUp as any).notesDisplay) && (
+                    <p className="text-xs text-muted-foreground whitespace-pre-wrap bg-muted/30 p-2.5 rounded-md">{parseNotesDisplay(upcomingFollowUp.notes, (upcomingFollowUp as any).notesDisplay)}</p>
                   )}
                   <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                     <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => { setActDealId(deal?.id?.toString() || ""); setCompletingActivity(upcomingFollowUp); setActivityModalOpen(true); }}>

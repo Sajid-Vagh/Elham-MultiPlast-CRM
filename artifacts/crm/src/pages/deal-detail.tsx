@@ -776,7 +776,7 @@ export default function DealDetail() {
                           )}
                         </div>
                       </div>
-                      {act.notes && <NoteList notes={act.notes} className="text-sm mt-1.5" />}
+                      {(act.notes || (act as any).note || (act as any).notesDisplay) && <NoteList notes={act.notes || (act as any).note || (act as any).notesDisplay} className="text-sm mt-1.5" />}
                       {act.followUpDate && (
                         <div className="flex items-center gap-2 mt-1">
                           <p className="text-xs text-primary">Follow-up: {act.followUpDate}{act.followUpTime ? ` ${act.followUpTime}` : ""} via {act.followUpType}</p>
