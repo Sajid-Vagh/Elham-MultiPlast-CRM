@@ -47,11 +47,53 @@ async function seedUsers() {
   logger.info("Navigate to /admin-setup to create the first Admin account.");
 }
 
+async function ensureDatabaseSchema() {
+  try {
+    // Migration 085: created_by_id and assigned_by_id on contacts
+    await db.execute(sql`
+      ALTER TABLE contacts ADD COLUMN IF NOT EXISTS created_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE contacts ADD COLUMN IF NOT EXISTS assigned_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+      CREATE INDEX IF NOT EXISTS idx_contacts_created_by_id ON contacts(created_by_id);
+      CREATE INDEX IF NOT EXISTS idx_contacts_assigned_by_id ON contacts(assigned_by_id);
+    `);
+
+    // Backfill from notifications where available
+    await db.execute(sql`
+      UPDATE contacts c
+      SET created_by_id = n.created_by_id,
+          assigned_by_id = n.created_by_id
+      FROM notifications n
+      WHERE n.related_id = c.id
+        AND n.related_type = 'contact'
+        AND n.type IN ('assignment', 'enquiry_assigned')
+        AND n.created_by_id IS NOT NULL
+        AND c.created_by_id IS NULL;
+
+      UPDATE contacts
+      SET created_by_id = sales_owner_id,
+          assigned_by_id = sales_owner_id
+      WHERE created_by_id IS NULL;
+    `);
+
+    // Migration 084: is_hidden_from_timeline on deals
+    await db.execute(sql`
+      ALTER TABLE deals ADD COLUMN IF NOT EXISTS is_hidden_from_timeline BOOLEAN NOT NULL DEFAULT FALSE;
+    `);
+
+    logger.info("Database schema verified and up to date");
+  } catch (err) {
+    logger.warn({ err }, "Database schema self-heal check failed (non-critical)");
+  }
+}
+
 async function main() {
   try {
     logger.info("Connecting to database...");
     await waitForDb(30, 2000);
     logger.info("Database connected");
+
+    // Automatically ensure required database columns and migrations are applied on startup
+    await ensureDatabaseSchema();
 
     // Ensure the storage.objects RLS public-read policy exists — boot-time
     // self-heal for the Supabase Storage 403 / profile-photo initials fallback.
