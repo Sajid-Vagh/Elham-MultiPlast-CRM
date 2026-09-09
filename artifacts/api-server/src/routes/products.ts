@@ -10,6 +10,12 @@ const router: IRouter = Router();
 const DUPLICATE_MSG = "Product Code already exists. Please use a different Product Code.";
 const PRODUCT_MGMT_ROLES = ["admin", "production_and_support"];
 
+function canUserEditProducts(user: { role: string; canEditProducts?: boolean; permissions?: any }) {
+  if (user.role === "admin") return true;
+  if (!PRODUCT_MGMT_ROLES.includes(user.role)) return false;
+  return user.canEditProducts !== false && user.permissions?.canEditProducts !== false;
+}
+
 type VariantInput = { weight?: string | null; defaultColor?: string | null; isActive?: boolean | null };
 
 async function attachVariants<T extends { id: number }>(rows: T[]) {
@@ -90,7 +96,7 @@ router.get("/products", async (req, res) => {
 router.post("/products", async (req, res) => {
   const user = await getUserFromRequest(req);
   if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-  if (!PRODUCT_MGMT_ROLES.includes(user.role)) {
+  if (!canUserEditProducts(user)) {
     res.status(403).json({ error: "Permission Denied" }); return;
   }
   const parsed = CreateProductBody.safeParse(req.body);
@@ -177,7 +183,7 @@ router.get("/products/:id", async (req, res) => {
 router.patch("/products/:id", async (req, res) => {
   const user = await getUserFromRequest(req);
   if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-  if (!PRODUCT_MGMT_ROLES.includes(user.role)) {
+  if (!canUserEditProducts(user)) {
     res.status(403).json({ error: "Permission Denied" }); return;
   }
   const params = UpdateProductParams.safeParse({ id: Number(req.params.id) });
@@ -232,7 +238,7 @@ router.patch("/products/:id", async (req, res) => {
 router.delete("/products/:id", async (req, res) => {
   const user = await getUserFromRequest(req);
   if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-  if (!PRODUCT_MGMT_ROLES.includes(user.role)) {
+  if (!canUserEditProducts(user)) {
     res.status(403).json({ error: "Permission Denied" }); return;
   }
   const params = DeleteProductParams.safeParse({ id: Number(req.params.id) });

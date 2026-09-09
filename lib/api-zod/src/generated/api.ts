@@ -94,6 +94,8 @@ export const CreateUserBody = zod.object({
   "unit": zod.enum(['Himatnagar', 'Surat', 'Rajkot', 'All']),
   "canViewAllReports": zod.boolean().optional(),
   "canAssignLeads": zod.boolean().optional(),
+  "canExportData": zod.boolean().optional(),
+  "canEditProducts": zod.boolean().optional(),
   "permissions": zod.record(zod.string(), zod.boolean()).optional()
 })
 
@@ -107,6 +109,8 @@ export const CreateUserResponse = zod.object({
   "profilePhoto": zod.string().nullish(),
   "canViewAllReports": zod.boolean().optional(),
   "canAssignLeads": zod.boolean().optional(),
+  "canExportData": zod.boolean().optional(),
+  "canEditProducts": zod.boolean().optional(),
   "permissions": zod.record(zod.string(), zod.boolean()).optional(),
   "createdAt": zod.string().optional()
 })
@@ -126,6 +130,8 @@ export const GetUserResponse = zod.object({
   "profilePhoto": zod.string().nullish(),
   "canViewAllReports": zod.boolean().optional(),
   "canAssignLeads": zod.boolean().optional(),
+  "canExportData": zod.boolean().optional(),
+  "canEditProducts": zod.boolean().optional(),
   "permissions": zod.record(zod.string(), zod.boolean()).optional(),
   "createdAt": zod.string().optional()
 })
@@ -144,6 +150,8 @@ export const UpdateUserBody = zod.object({
   "unit": zod.string().optional(),
   "canViewAllReports": zod.boolean().optional(),
   "canAssignLeads": zod.boolean().optional(),
+  "canExportData": zod.boolean().optional(),
+  "canEditProducts": zod.boolean().optional(),
   "permissions": zod.record(zod.string(), zod.boolean()).optional()
 })
 
@@ -157,6 +165,8 @@ export const UpdateUserResponse = zod.object({
   "profilePhoto": zod.string().nullish(),
   "canViewAllReports": zod.boolean().optional(),
   "canAssignLeads": zod.boolean().optional(),
+  "canExportData": zod.boolean().optional(),
+  "canEditProducts": zod.boolean().optional(),
   "permissions": zod.record(zod.string(), zod.boolean()).optional(),
   "createdAt": zod.string().optional()
 })

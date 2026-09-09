@@ -20,7 +20,7 @@ import { useAllMachines } from "@/lib/use-machines";
 
 const COLOR_PALETTE = ["#6366f1","#ec4899","#f59e0b","#10b981","#3b82f6","#ef4444","#8b5cf6","#14b8a6","#f97316","#84cc16"];
 
-type User = { id: number; name: string; username: string; role: string; colorCode: string; unit: string; profilePhoto?: string | null; canViewAllReports?: boolean; canAssignLeads?: boolean; permissions?: Record<string, boolean> };
+type User = { id: number; name: string; username: string; role: string; colorCode: string; unit: string; profilePhoto?: string | null; canViewAllReports?: boolean; canAssignLeads?: boolean; canExportData?: boolean; canEditProducts?: boolean; permissions?: Record<string, boolean> };
 
 type PermissionDef = { key: string; label: string; desc: string };
 
@@ -55,6 +55,7 @@ const SUPPORT_PERMISSION_CATEGORIES: PermissionCategory[] = [
     permissions: [
       { key: "coordinateProduction", label: "Coordinate Production", desc: "Communicate with production team on order requirements" },
       { key: "viewProductAvailability", label: "View Product Availability", desc: "Check current product stock and availability" },
+      { key: "canEditProducts", label: "Allow Add/Edit Products", desc: "Allow this user to add new products and edit existing ones." },
     ],
   },
   {
@@ -103,6 +104,7 @@ const PRODUCTION_PERMISSION_CATEGORIES: PermissionCategory[] = [
     icon: <Settings2 className="h-4 w-4" />,
     permissions: [
       { key: "viewProductAvailability", label: "View Product Availability", desc: "Check current product stock and availability" },
+      { key: "canEditProducts", label: "Allow Add/Edit Products", desc: "Allow this user to add new products and edit existing ones." },
     ],
   },
   {
@@ -124,6 +126,13 @@ const PRODUCTION_PERMISSION_CATEGORIES: PermissionCategory[] = [
 
 const INVENTORY_PERMISSION_CATEGORIES: PermissionCategory[] = [
   {
+    id: "products", label: "Product Catalog",
+    icon: <Package className="h-4 w-4" />,
+    permissions: [
+      { key: "canEditProducts", label: "Allow Add/Edit Products", desc: "Allow this user to add new products and edit existing ones." },
+    ],
+  },
+  {
     id: "security", label: "Data Security",
     icon: <Shield className="h-4 w-4" />,
     permissions: [
@@ -136,6 +145,7 @@ const SALES_PERMISSIONS: PermissionDef[] = [
   { key: "canViewAllReports", label: "View all reports", desc: "Allow this user to view reports for all sales owners" },
   { key: "canAssignLeads", label: "Assign leads to others", desc: "Allow this user to assign leads to other sales owners" },
   { key: "canExportData", label: "Allow Data Export", desc: "Allow this user to export data to Excel/CSV" },
+  { key: "canEditProducts", label: "Allow Add/Edit Products", desc: "Allow this user to add new products and edit existing ones." },
 ];
 
 const ROLE_SUMMARIES: Record<string, { label: string; color: string; icon: React.ReactNode; bullets: string[] }> = {
@@ -149,6 +159,7 @@ const ROLE_SUMMARIES: Record<string, { label: string; color: string; icon: React
 function getDefaultPermissions(role: string): Record<string, boolean> {
   const all: Record<string, boolean> = {
     canExportData: true,
+    canEditProducts: true,
   };
   const cats = role === "production" ? PRODUCTION_PERMISSION_CATEGORIES : role === "inventory" ? INVENTORY_PERMISSION_CATEGORIES : SUPPORT_PERMISSION_CATEGORIES;
   for (const cat of cats) {
@@ -212,6 +223,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
     role: initial?.role || "sales", colorCode: initial?.colorCode || COLOR_PALETTE[0], unit: initial?.unit || "All",
     canViewAllReports: initial?.canViewAllReports ?? false, canAssignLeads: initial?.canAssignLeads ?? false,
     canExportData: (initial as any)?.canExportData ?? initial?.permissions?.canExportData ?? true,
+    canEditProducts: (initial as any)?.canEditProducts ?? initial?.permissions?.canEditProducts ?? true,
     permissions: initial?.permissions ?? {} as Record<string, boolean>,
     profilePhoto: initial?.profilePhoto ?? null as string | null,
   });
@@ -225,6 +237,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
       role: initial?.role || "sales", colorCode: initial?.colorCode || COLOR_PALETTE[0], unit: initial?.unit || "All",
       canViewAllReports: initial?.canViewAllReports ?? false, canAssignLeads: initial?.canAssignLeads ?? false,
       canExportData: (initial as any)?.canExportData ?? initial?.permissions?.canExportData ?? true,
+      canEditProducts: (initial as any)?.canEditProducts ?? initial?.permissions?.canEditProducts ?? true,
       permissions: initial?.permissions ?? {} as Record<string, boolean>,
       profilePhoto: initial?.profilePhoto ?? null,
     });
@@ -295,13 +308,14 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
     setForm(p => ({
       ...p,
       ...(key === "canExportData" ? { canExportData: value } : {}),
+      ...(key === "canEditProducts" ? { canEditProducts: value } : {}),
       permissions: { ...p.permissions, [key]: value },
     }));
   };
 
-  const selectAll = () => setForm(p => ({ ...p, canExportData: true, permissions: getDefaultPermissions(p.role) }));
-  const clearAll = () => setForm(p => ({ ...p, canExportData: false, permissions: {} }));
-  const resetToDefault = () => setForm(p => ({ ...p, canExportData: true, permissions: getDefaultPermissions(p.role) }));
+  const selectAll = () => setForm(p => ({ ...p, canExportData: true, canEditProducts: true, permissions: getDefaultPermissions(p.role) }));
+  const clearAll = () => setForm(p => ({ ...p, canExportData: false, canEditProducts: false, permissions: {} }));
+  const resetToDefault = () => setForm(p => ({ ...p, canExportData: true, canEditProducts: true, permissions: getDefaultPermissions(p.role) }));
 
   const photoFileRef = useRef<HTMLInputElement>(null);
 
@@ -328,7 +342,7 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={onCancel}>Cancel</Button>
           <Button disabled={loading || !form.name || !form.username || (!isEdit && !form.password)}
-            onClick={() => onSave({ ...form, password: form.password || undefined, canExportData: form.canExportData, permissions: { ...form.permissions, canExportData: form.canExportData } })}>
+            onClick={() => onSave({ ...form, password: form.password || undefined, canExportData: form.canExportData, canEditProducts: form.canEditProducts, permissions: { ...form.permissions, canExportData: form.canExportData, canEditProducts: form.canEditProducts } })}>
             {loading ? "Saving..." : isEdit ? "Update Member" : "Create Member"}
           </Button>
         </div>
@@ -492,7 +506,9 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
                               ? form.canViewAllReports
                               : p.key === "canAssignLeads"
                               ? form.canAssignLeads
-                              : form.canExportData
+                              : p.key === "canExportData"
+                              ? form.canExportData
+                              : form.canEditProducts
                           }
                           onCheckedChange={v => {
                             if (p.key === "canExportData") {
@@ -500,6 +516,12 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
                                 ...prev,
                                 canExportData: v,
                                 permissions: { ...prev.permissions, canExportData: v },
+                              }));
+                            } else if (p.key === "canEditProducts") {
+                              setForm(prev => ({
+                                ...prev,
+                                canEditProducts: v,
+                                permissions: { ...prev.permissions, canEditProducts: v },
                               }));
                             } else {
                               setForm(prev => ({ ...prev, [p.key]: v }));

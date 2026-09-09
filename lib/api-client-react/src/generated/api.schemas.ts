@@ -46,6 +46,8 @@ export interface User {
   profilePhoto?: string | null;
   canViewAllReports?: boolean;
   canAssignLeads?: boolean;
+  canExportData?: boolean;
+  canEditProducts?: boolean;
   permissions?: Record<string, boolean>;
   createdAt?: string;
 }
@@ -85,6 +87,8 @@ export interface UserInput {
   unit: UserInputUnit;
   canViewAllReports?: boolean;
   canAssignLeads?: boolean;
+  canExportData?: boolean;
+  canEditProducts?: boolean;
   permissions?: Record<string, boolean>;
 }
 
@@ -109,6 +113,8 @@ export interface UserUpdate {
   unit?: string;
   canViewAllReports?: boolean;
   canAssignLeads?: boolean;
+  canExportData?: boolean;
+  canEditProducts?: boolean;
   permissions?: Record<string, boolean>;
 }
 

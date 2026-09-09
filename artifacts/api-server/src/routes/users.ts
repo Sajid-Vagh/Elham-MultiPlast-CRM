@@ -75,9 +75,10 @@ router.post("/users", async (req, res) => {
   const { password, ...fields } = parsed.data;
   const permissions = (req.body as any).permissions ?? {};
   const canExportData = (req.body as any).canExportData ?? (permissions as any).canExportData ?? true;
+  const canEditProducts = (req.body as any).canEditProducts ?? (permissions as any).canEditProducts ?? true;
   try {
     const passwordHash = await bcrypt.hash(password, 10);
-    const [user] = await db.insert(usersTable).values({ ...fields, passwordHash, isActive: true, emailVerified: false, permissions, canExportData }).returning();
+    const [user] = await db.insert(usersTable).values({ ...fields, passwordHash, isActive: true, emailVerified: false, permissions, canExportData, canEditProducts }).returning();
 
     // Notify all admins about new user creation
     const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
@@ -161,7 +162,7 @@ router.patch("/users/:id", async (req, res) => {
   // Graceful handling: ignore restricted fields that arrive UNCHANGED (no-op), and only
   // reject when they actually try to change restricted fields to different values.
   if (!isAdmin) {
-    const restrictedFields = ["name", "username", "role", "colorCode", "unit", "canViewAllReports", "canAssignLeads", "canExportData", "permissions"];
+    const restrictedFields = ["name", "username", "role", "colorCode", "unit", "canViewAllReports", "canAssignLeads", "canExportData", "canEditProducts", "permissions"];
     const [currentUser] = await db.select().from(usersTable).where(eq(usersTable.id, params.data.id));
     if (!currentUser) { res.status(404).json({ error: "Not found" }); return; }
     const attemptedChanges: string[] = [];
@@ -191,6 +192,9 @@ router.patch("/users/:id", async (req, res) => {
   if ((fields as any).canAssignLeads !== undefined) updateData.canAssignLeads = (fields as any).canAssignLeads;
   if ((fields as any).canExportData !== undefined || (req.body as any).canExportData !== undefined) {
     updateData.canExportData = (fields as any).canExportData ?? (req.body as any).canExportData;
+  }
+  if ((fields as any).canEditProducts !== undefined || (req.body as any).canEditProducts !== undefined) {
+    updateData.canEditProducts = (fields as any).canEditProducts ?? (req.body as any).canEditProducts;
   }
   if ((req.body as any).permissions !== undefined) updateData.permissions = (req.body as any).permissions;
   if ((fields as any).profilePhoto !== undefined) updateData.profilePhoto = (fields as any).profilePhoto;

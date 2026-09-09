@@ -208,7 +208,11 @@ export default function Products() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const canManage = currentUser?.role === "admin" || currentUser?.role === "production_and_support";
+  const canManage = currentUser?.role?.toLowerCase() === "admin" || (
+    currentUser?.role === "production_and_support" &&
+    (currentUser as any)?.canEditProducts !== false &&
+    (currentUser as any)?.permissions?.canEditProducts !== false
+  );
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
