@@ -743,12 +743,19 @@ router.patch("/deals/:id", async (req, res) => {
         if (otherActiveDeals.length === 0) {
           const prevCategory = contact.category;
           await db.update(contactsTable).set({ category: newCategory }).where(eq(contactsTable.id, contact.id));
+
+          const lostReasonVal = deal.lostReason || rawBody.lostReason;
+          const otherReasonVal = deal.otherReason || rawBody.otherReason;
+          const reasonText = (lostReasonVal === "Other" && otherReasonVal)
+            ? otherReasonVal.trim()
+            : (lostReasonVal || (deal.stage === "Lost" ? "Deal Lost" : `Deal ${deal.stage} - Categorized as ${newCategory}`));
+
           await db.insert(categoryHistoryTable).values({
             contactId: contact.id,
             previousCategory: prevCategory,
             newCategory,
             changedBy: user.id,
-            reason: `Deal ${deal.stage} - Categorized as ${newCategory}`,
+            reason: reasonText,
           });
         }
         // If other active deals exist, the category stays unchanged so those

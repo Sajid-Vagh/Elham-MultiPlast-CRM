@@ -1233,12 +1233,16 @@ router.post("/contacts/:id/mark-lost", async (req, res) => {
       if (prevCategory !== newCategory) {
         await db.update(contactsTable).set({ category: newCategory }).where(eq(contactsTable.id, contact.id));
 
+        const historyReason = lostReason === "Other" && otherReason
+          ? otherReason.trim()
+          : (lostReason || null);
+
         await db.insert(categoryHistoryTable).values({
           contactId: contact.id,
           previousCategory: prevCategory,
           newCategory,
           changedBy: user.id,
-          reason: `Deal Lost - Categorized as ${newCategory}`,
+          reason: historyReason,
         });
       }
     }
