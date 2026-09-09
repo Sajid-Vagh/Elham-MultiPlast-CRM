@@ -398,16 +398,12 @@ router.get("/reports/lost-reasons", async (req, res) => {
     const user = await restrictToOwnDeals(req, params.data ?? {});
     if (!user) { res.status(403).json({ error: "Unauthorized" }); return; }
 
-    // Collect lost reasons from both deals and contacts
+    // Strictly collect lost reasons from deals table where stage is 'Lost'
     let deals = await db.select().from(dealsTable).where(eq(dealsTable.stage, "Lost"));
-    let lostContacts = await db.select().from(contactsTable).where(
-      sql`${contactsTable.lostReason} IS NOT NULL`
-    );
 
     if (params.success) {
       if (params.data.salesOwnerId) {
         deals = deals.filter(d => d.salesOwnerId === params.data.salesOwnerId);
-        lostContacts = lostContacts.filter(c => c.salesOwnerId === params.data.salesOwnerId);
       }
       const { startDate, endDate } = getDateRange(req);
       if (startDate || endDate) {
@@ -417,34 +413,18 @@ router.get("/reports/lost-reasons", async (req, res) => {
           if (endDate && created > endDate) return false;
           return true;
         });
-        lostContacts = lostContacts.filter(c => {
-          if (!c.lostDate) return false;
-          const lost = new Date(c.lostDate);
-          if (startDate && lost < startDate) return false;
-          if (endDate && lost > endDate) return false;
-          return true;
-        });
       }
       if (params.data.unit) {
         const unitContactIds = await getUnitContactIds(params.data.unit);
         deals = deals.filter(d => unitContactIds.has(d.contactId));
-        lostContacts = lostContacts.filter(c => unitContactIds.has(c.id));
       }
     }
 
     const reasonMap = new Map<string, { count: number }>();
 
-    // Count from lost deals
+    // Count strictly from lost deals
     for (const deal of deals) {
       const reason = normalizeLostReason(deal.lostReason);
-      if (!reasonMap.has(reason)) reasonMap.set(reason, { count: 0 });
-      const s = reasonMap.get(reason)!;
-      s.count++;
-    }
-
-    // Count from lost leads (contacts)
-    for (const c of lostContacts) {
-      const reason = normalizeLostReason(c.lostReason);
       if (!reasonMap.has(reason)) reasonMap.set(reason, { count: 0 });
       const s = reasonMap.get(reason)!;
       s.count++;
@@ -474,11 +454,10 @@ router.get("/reports/lost-reasons/detail", async (req, res) => {
     const allUsers = await db.select().from(usersTable);
     const userMap = new Map(allUsers.map(u => [u.id, u]));
 
-    // Fetch data
+    // Fetch deals
     let deals = await db.select().from(dealsTable).where(eq(dealsTable.stage, "Lost"));
-    let allContacts = await db.select().from(contactsTable);
+    const allContacts = await db.select().from(contactsTable);
     const contactMap = new Map(allContacts.map(c => [c.id, c]));
-    let lostContacts = allContacts.filter(c => c.lostReason !== null);
 
     // Fetch deal products for product info
     const dealIds = deals.map(d => d.id);
@@ -499,7 +478,6 @@ router.get("/reports/lost-reasons/detail", async (req, res) => {
     if (params.success) {
       if (params.data.salesOwnerId) {
         deals = deals.filter(d => d.salesOwnerId === params.data.salesOwnerId);
-        lostContacts = lostContacts.filter(c => c.salesOwnerId === params.data.salesOwnerId);
       }
       const { startDate, endDate } = getDateRange(req);
       if (startDate || endDate) {
@@ -507,13 +485,6 @@ router.get("/reports/lost-reasons/detail", async (req, res) => {
           const created = new Date(d.createdAt);
           if (startDate && created < startDate) return false;
           if (endDate && created > endDate) return false;
-          return true;
-        });
-        lostContacts = lostContacts.filter(c => {
-          if (!c.lostDate) return false;
-          const lost = new Date(c.lostDate);
-          if (startDate && lost < startDate) return false;
-          if (endDate && lost > endDate) return false;
           return true;
         });
       }
@@ -525,12 +496,11 @@ router.get("/reports/lost-reasons/detail", async (req, res) => {
           unitContactIds = new Set(allContacts.filter(c => c.unit === params.data.unit).map(c => c.id));
         }
         deals = deals.filter(d => unitContactIds.has(d.contactId));
-        lostContacts = lostContacts.filter(c => unitContactIds.has(c.id));
       }
     }
 
-    // Build records
-    const dealRecords = deals
+    // Build records strictly from lost deals
+    let records = deals
       .filter(d => normalizeLostReason(d.lostReason) === reason)
       .map(d => {
         const contact = contactMap.get(d.contactId);
@@ -553,31 +523,6 @@ router.get("/reports/lost-reasons/detail", async (req, res) => {
           dealValue: Number(d.totalValue ?? 0),
         };
       });
-
-    const contactRecords = lostContacts
-      .filter(c => normalizeLostReason(c.lostReason) === reason)
-      .map(c => {
-        const owner = c.salesOwnerId ? userMap.get(c.salesOwnerId) : undefined;
-        return {
-          id: c.id,
-          type: "lead" as const,
-          customerName: c.name,
-          companyName: c.companyName ?? "",
-          mobile: c.mobile,
-          city: c.city ?? "",
-          salesPerson: owner?.name ?? "",
-          unit: c.unit ?? "",
-          product: "",
-          lostDate: c.lostDate ? new Date(c.lostDate).toISOString() : "",
-          lostReason: c.lostReason ?? "",
-          notes: c.otherReason ?? c.lostNotes ?? "",
-          contactId: c.id,
-          dealId: null,
-          dealValue: null,
-        };
-      });
-
-    let records: any[] = [...dealRecords, ...contactRecords];
 
     if (search) {
       records = records.filter(r =>
