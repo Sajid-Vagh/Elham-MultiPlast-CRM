@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
@@ -65,6 +66,24 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+function PageTitleManager() {
+  const { data: user } = useGetMe();
+  const role = user?.role ?? (typeof window !== "undefined" ? localStorage.getItem("crm_user_role") : null);
+
+  useEffect(() => {
+    const normalizedRole = role ? role.trim().toLowerCase() : "";
+    if (normalizedRole === "admin") {
+      document.title = "Elham CRM (Admin)";
+    } else if (normalizedRole) {
+      document.title = "Elham CRM (User)";
+    } else {
+      document.title = "Elham CRM";
+    }
+  }, [role, user?.role]);
+
+  return null;
+}
 
 function ProtectedLayout({ children }: { children: React.ReactNode }) {
   return <ErrorBoundary><Layout>{children}</Layout></ErrorBoundary>;
@@ -329,6 +348,7 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <PageTitleManager />
       <SocketProvider>
         <GlobalFilterProvider>
           <ProductionFilterProvider>
