@@ -52,7 +52,7 @@ COPY tsconfig.base.json     ./
 
 # pnpm deploy resolves workspace: deps and creates a self-contained
 # /api-deploy/node_modules with a flat structure Node.js can resolve normally
-RUN pnpm --filter @workspace/api-server deploy --prod --legacy /api-deploy
+RUN pnpm --filter @workspace/api-server deploy --prod /api-deploy
 
 
 # =============================================================================
