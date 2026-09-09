@@ -449,7 +449,7 @@ router.get("/orders/global", async (req, res) => {
         totalQuantity,
         hasUnreadMessages: unread > 0,
         unreadMessageCount: unread,
-        products: items.slice(0, 5).map(i => ({
+        products: items.map(i => ({
           productName: i.productName,
           bottleWeight: (i as any).bottleWeight || null,
           bottleColour: (i as any).colour || null,

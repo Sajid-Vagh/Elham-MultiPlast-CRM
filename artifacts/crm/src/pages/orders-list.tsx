@@ -403,7 +403,7 @@ export default function OrdersList() {
                           <TableCell colSpan={13} className="bg-muted/20 p-4">
                             <div className="space-y-3">
                               <div className="flex items-center gap-3 flex-wrap">
-                                <p className="text-xs font-semibold uppercase text-muted-foreground">Products ({order.products?.length || 0})</p>
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">Products ({order.products?.length ?? order.itemsCount ?? 0})</p>
                                 <Button variant="link" size="sm" className="text-xs h-6" onClick={(e) => { e.stopPropagation(); setLocation(`/orders/${order.id}`); }}>
                                   View Full Details
                                 </Button>
@@ -414,10 +414,10 @@ export default function OrdersList() {
                                 )}
                               </div>
                               {order.products && order.products.length > 0 ? (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                <div className="flex flex-wrap gap-3">
                                   {order.products.map((p, idx) => (
-                                    <div key={idx} className="border rounded-md p-2.5 text-xs space-y-1 bg-white">
-                                      <p className="font-semibold">{p.productName}</p>
+                                    <div key={idx} className="border rounded-md p-2.5 text-xs space-y-1 bg-white shadow-xs min-w-[200px] max-w-[280px] flex-1">
+                                      <p className="font-semibold text-foreground truncate" title={p.productName}>{p.productName}</p>
                                       {p.bottleWeight && <p className="text-muted-foreground">Weight: <span className="font-medium text-foreground">{p.bottleWeight}</span></p>}
                                       {p.bottleColour && (
                                         <p className="text-muted-foreground">Color: <span className="font-medium text-foreground flex items-center gap-1 inline-flex">
