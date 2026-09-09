@@ -166,17 +166,33 @@ async function refreshExistingCustomerStats(contactId: number) {
 }
 
 // ── Helper: enrich existing customer ──
-async function enrichExistingCustomer(ec: any) {
+async function enrichExistingCustomer(ec: any, preloadedOrders?: any[]) {
   const contact = ec.contactId ? await db.select().from(contactsTable).where(eq(contactsTable.id, ec.contactId)).then(r => r[0]) : null;
   const salesOwner = ec.salesOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, ec.salesOwnerId)).then(r => r[0]) : null;
   const supportOwner = ec.supportOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, ec.supportOwnerId)).then(r => r[0]) : null;
-  const lastOrder = ec.lastOrderId ? await db.select().from(ordersTable).where(eq(ordersTable.id, ec.lastOrderId)).then(r => r[0]) : null;
-  const firstOrder = ec.firstOrderId ? await db.select().from(ordersTable).where(eq(ordersTable.id, ec.firstOrderId)).then(r => r[0]) : null;
+
+  // Real-time aggregation from ordersTable
+  const orders = preloadedOrders ?? (ec.contactId
+    ? await db.select().from(ordersTable)
+        .where(and(eq(ordersTable.contactId, ec.contactId), eq(ordersTable.isDeleted, false)))
+        .orderBy(desc(ordersTable.createdAt))
+    : []);
+
+  const totalOrders = orders.length;
+  const totalRevenue = orders.reduce((sum, o) => sum + Number(o.grandTotal || 0), 0);
+  const repeatOrderCount = orders.filter(o => o.isRepeatOrder).length;
+  const lastOrder = orders[0] || null;
+  const firstOrder = orders.length > 0 ? orders[orders.length - 1] : null;
+  const lastOrderDate = lastOrder?.createdAt ? new Date(lastOrder.createdAt).toISOString().split("T")[0] : ec.lastOrderDate;
 
   const safe = (u: any) => u ? (({ passwordHash: _, ...rest }) => rest)(u) : null;
 
   return {
     ...ec,
+    totalOrders,
+    totalRevenue: String(totalRevenue),
+    repeatOrderCount,
+    lastOrderDate,
     contact: contact ? { id: contact.id, name: contact.name, customerCode: contact.customerCode || null, mobile: contact.mobile, email: contact.email, companyName: contact.companyName, city: contact.city, state: contact.state, address: contact.address, gstNumber: (contact as any).gstNumber || null } : null,
     salesOwner: safe(salesOwner),
     supportOwner: safe(supportOwner),
@@ -288,8 +304,23 @@ router.get("/existing-customers", async (req, res) => {
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(existingCustomersTable.createdAt)).limit(limitNum).offset(offset);
 
+    // Preload all orders for this batch of customers
+    const contactIds = customers.map(c => c.contactId).filter((id): id is number => !!id);
+    const ordersByContactId = new Map<number, any[]>();
+    if (contactIds.length > 0) {
+      const allOrders = await db.select().from(ordersTable)
+        .where(and(inArray(ordersTable.contactId, contactIds), eq(ordersTable.isDeleted, false)))
+        .orderBy(desc(ordersTable.createdAt));
+      for (const ord of allOrders) {
+        if (!ordersByContactId.has(ord.contactId)) {
+          ordersByContactId.set(ord.contactId, []);
+        }
+        ordersByContactId.get(ord.contactId)!.push(ord);
+      }
+    }
+
     // Enrich all customers
-    let enriched = await Promise.all(customers.map(enrichExistingCustomer));
+    let enriched = await Promise.all(customers.map(c => enrichExistingCustomer(c, ordersByContactId.get(c.contactId))));
 
     // Post-enrichment filters (contact fields)
     if (search) {

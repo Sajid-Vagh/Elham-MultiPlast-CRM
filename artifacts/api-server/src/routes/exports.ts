@@ -999,31 +999,48 @@ router.get("/existing-customers", async (req, res) => {
     const users = await db.select().from(usersTable);
     const userMap = new Map(users.map(u => [u.id, u]));
 
+    // Preload live orders for all filtered existing customers
+    const contactIds = nonNullIds(filtered.map(ec => ec.contactId));
+    const ordersByContactId = new Map<number, any[]>();
+    if (contactIds.length > 0) {
+      const allOrders = await db.select().from(ordersTable)
+        .where(and(inArray(ordersTable.contactId, contactIds), eq(ordersTable.isDeleted, false)))
+        .orderBy(desc(ordersTable.createdAt));
+      for (const ord of allOrders) {
+        if (!ordersByContactId.has(ord.contactId)) {
+          ordersByContactId.set(ord.contactId, []);
+        }
+        ordersByContactId.get(ord.contactId)!.push(ord);
+      }
+    }
+
     // ── Quick ───────────────────────────────────────────────────────────
     if (mode === "quick") {
       const headers = [
-        "ID", "Name", "Company", "Mobile", "City", "Status",
-        "Total Orders", "Total Revenue", "Repeat Orders", "Sales Owner",
-        "Support Owner", "Last Order Date", "Created",
+        "ID", "Name", "Company", "Mobile", "Email", "City", "Status",
+        "Total Orders", "Total Revenue", "Last Order Date", "Sales Owner",
       ];
       const rows = filtered.map(ec => {
         const c = ecContactMap.get(ec.contactId);
         const salesOwner = ec.salesOwnerId ? userMap.get(ec.salesOwnerId) : null;
-        const supportOwner = ec.supportOwnerId ? userMap.get(ec.supportOwnerId) : null;
+        const custOrders = ordersByContactId.get(ec.contactId) || [];
+        const totalOrders = custOrders.length;
+        const totalRevenue = custOrders.reduce((sum, o) => sum + Number(o.grandTotal || 0), 0);
+        const lastOrder = custOrders[0] || null;
+        const lastOrderDate = lastOrder?.createdAt ? new Date(lastOrder.createdAt).toISOString().split("T")[0] : (ec.lastOrderDate || "");
+
         return [
           `EC-${ec.id}`,
           safeStr(c?.name),
           safeStr(c?.companyName),
           safeStr(c?.mobile),
+          safeStr(c?.email),
           safeStr(c?.city),
           safeStr(ec.status),
-          safeNum(ec.totalOrders),
-          safeNum(ec.totalRevenue),
-          safeNum(ec.repeatOrderCount),
+          safeNum(totalOrders),
+          safeNum(totalRevenue),
+          safeStr(lastOrderDate),
           safeStr(salesOwner?.name),
-          safeStr(supportOwner?.name),
-          safeStr(ec.lastOrderDate),
-          safeDate(ec.createdAt),
         ];
       });
 
@@ -1036,15 +1053,18 @@ router.get("/existing-customers", async (req, res) => {
     // ── Detailed: 5 sheets ──────────────────────────────────────────────
     const profileHeaders = [
       "ID", "Name", "Company", "Mobile", "Email", "City",
-      "Status", "Total Orders", "Total Revenue", "Repeat Orders",
-      "First Order Date", "Last Order Date", "Last Product",
-      "Production Status", "Dispatch Status",
-      "Sales Owner", "Support Owner", "Created",
+      "Status", "Total Orders", "Total Revenue", "Last Order Date",
+      "Sales Owner",
     ];
     const profileRows = filtered.map(ec => {
       const c = ecContactMap.get(ec.contactId);
       const salesOwner = ec.salesOwnerId ? userMap.get(ec.salesOwnerId) : null;
-      const supportOwner = ec.supportOwnerId ? userMap.get(ec.supportOwnerId) : null;
+      const custOrders = ordersByContactId.get(ec.contactId) || [];
+      const totalOrders = custOrders.length;
+      const totalRevenue = custOrders.reduce((sum, o) => sum + Number(o.grandTotal || 0), 0);
+      const lastOrder = custOrders[0] || null;
+      const lastOrderDate = lastOrder?.createdAt ? new Date(lastOrder.createdAt).toISOString().split("T")[0] : (ec.lastOrderDate || "");
+
       return [
         `EC-${ec.id}`,
         safeStr(c?.name),
@@ -1053,17 +1073,10 @@ router.get("/existing-customers", async (req, res) => {
         safeStr(c?.email),
         safeStr(c?.city),
         safeStr(ec.status),
-        safeNum(ec.totalOrders),
-        safeNum(ec.totalRevenue),
-        safeNum(ec.repeatOrderCount),
-        safeStr(ec.firstOrderDate),
-        safeStr(ec.lastOrderDate),
-        safeStr(ec.lastProductName),
-        safeStr(ec.currentProductionStatus),
-        safeStr(ec.currentDispatchStatus),
+        safeNum(totalOrders),
+        safeNum(totalRevenue),
+        safeStr(lastOrderDate),
         safeStr(salesOwner?.name),
-        safeStr(supportOwner?.name),
-        safeDate(ec.createdAt),
       ];
     });
 

@@ -156,14 +156,13 @@ export default function ExistingCustomers() {
                 <TableHead>Total Revenue</TableHead>
                 <TableHead>Last Order</TableHead>
                 <TableHead>Sales Owner</TableHead>
-                <TableHead>Support Owner</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center py-8">Loading...</TableCell></TableRow>
               ) : data?.data?.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No customers found</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No customers found</TableCell></TableRow>
               ) : (
                 data?.data?.map((ec: any) => (
                   <TableRow
@@ -195,20 +194,22 @@ export default function ExistingCustomers() {
                         {ec.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-center font-medium">{ec.totalOrders}</TableCell>
+                    <TableCell className="text-center font-medium">{ec.totalOrders ?? 0}</TableCell>
                     <TableCell className="font-medium">₹{Number(ec.totalRevenue || 0).toLocaleString("en-IN")}</TableCell>
                     <TableCell className="text-sm">
                       {ec.lastOrder ? (
                         <div>
                           <p className="font-medium">{ec.lastOrder.orderNumber}</p>
                           <p className="text-xs text-muted-foreground">
-                            ₹{Number(ec.lastOrder.grandTotal || 0).toLocaleString("en-IN")}
+                            {ec.lastOrder.createdAt ? new Date(ec.lastOrder.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : (ec.lastOrderDate || "")}
+                            {ec.lastOrder.grandTotal ? ` • ₹${Number(ec.lastOrder.grandTotal).toLocaleString("en-IN")}` : ""}
                           </p>
                         </div>
+                      ) : ec.lastOrderDate ? (
+                        <p className="text-xs text-muted-foreground">{new Date(ec.lastOrderDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
                       ) : "-"}
                     </TableCell>
                     <TableCell className="text-sm">{ec.salesOwner?.name || "-"}</TableCell>
-                    <TableCell className="text-sm">{ec.supportOwner?.name || "-"}</TableCell>
                   </TableRow>
                 ))
               )}
