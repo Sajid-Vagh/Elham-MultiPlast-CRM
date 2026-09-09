@@ -136,8 +136,6 @@ export default function DealDetail() {
   const [wonProductionUnit, setWonProductionUnit] = useState("");
   const [wonPriority, setWonPriority] = useState("Medium");
   const [wonProductionNotes, setWonProductionNotes] = useState("");
-  const [wonSalesNotes, setWonSalesNotes] = useState("");
-  const [wonUnitReason, setWonUnitReason] = useState("");
   const [wonSubmitting, setWonSubmitting] = useState(false);
   const [wonDealForCelebration, setWonDealForCelebration] = useState<any>(null);
   const [wonTodayCount, setWonTodayCount] = useState(1);
@@ -160,6 +158,10 @@ export default function DealDetail() {
   const [actQuick, setActQuick] = useState<string>("all");
   const [actFromDate, setActFromDate] = useState("");
   const [actToDate, setActToDate] = useState("");
+
+  const [actCustomFrom, setActCustomFrom] = useState("");
+  const [actCustomTo, setActCustomTo] = useState("");
+  const [actCustomApplied, setActCustomApplied] = useState(false);
 
   const applyQuick = (key: string) => {
     setActQuick(key);
@@ -221,8 +223,6 @@ export default function DealDetail() {
     setWonProductionUnit("");
     setWonPriority("Medium");
     setWonProductionNotes("");
-    setWonSalesNotes("");
-    setWonUnitReason("");
   };
 
   const handleMarkWonSubmit = async () => {
@@ -244,8 +244,6 @@ export default function DealDetail() {
           productionUnit: wonProductionUnit || deal.productionUnit,
           priority: wonPriority,
           productionNotes: wonProductionNotes || null,
-          salesNotes: wonSalesNotes || null,
-          unitChangeReason: wonUnitReason || null,
         }),
       });
       setWonSubmitting(false);
@@ -950,18 +948,6 @@ export default function DealDetail() {
               </Select>
             </div>
             <div>
-              <Label className="text-sm font-medium">Unit Assignment Reason (Optional)</Label>
-              <Input
-                value={wonUnitReason}
-                onChange={(e) => setWonUnitReason(e.target.value)}
-                placeholder="e.g. Customer requested Surat factory"
-                className="mt-1"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Logged in unit change history for audit trail
-              </p>
-            </div>
-            <div>
               <Label className="text-sm font-medium">Production Notes (Optional)</Label>
               <Textarea
                 value={wonProductionNotes}
@@ -973,16 +959,6 @@ export default function DealDetail() {
               <p className="text-xs text-muted-foreground mt-1">
                 Examples: Blue Cap, Customer Logo, Urgent Production, Transparent Bottle, Special Packing
               </p>
-            </div>
-            <div>
-              <Label className="text-sm font-medium">Sales Notes (Optional)</Label>
-              <Textarea
-                value={wonSalesNotes}
-                onChange={(e) => setWonSalesNotes(e.target.value)}
-                placeholder="Internal sales notes (visible to Sales Team & Admin only)"
-                rows={2}
-                className="mt-1"
-              />
             </div>
           </div>
           <DialogFooter className="gap-2 px-6 py-4 border-t bg-background sticky bottom-0">
