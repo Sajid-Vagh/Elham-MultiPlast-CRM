@@ -185,7 +185,9 @@ export default function Reports() {
   const [drill, setDrill] = useState<{ open: boolean; kind: DrillKind; title: string; value: string }>(
     { open: false, kind: "city", title: "", value: "" }
   );
+  const [drillFilter, setDrillFilter] = useState<"all" | "won" | "lost">("all");
   const openDrill = (kind: DrillKind, title: string, value: string) => {
+    setDrillFilter("all");
     setDrill({ open: true, kind, title, value });
   };
 
@@ -232,6 +234,12 @@ export default function Reports() {
         return [];
     }
   }, [drillSource, drill.kind, drill.value]);
+
+  const filteredDrillDeals = useMemo(() => {
+    if (drillFilter === "won") return drillDeals.filter(d => d.stage === "Won");
+    if (drillFilter === "lost") return drillDeals.filter(d => d.stage === "Lost");
+    return drillDeals;
+  }, [drillDeals, drillFilter]);
 
   const drillSummary = useMemo(() => {
     const won = drillDeals.filter(d => d.stage === "Won");
@@ -1455,15 +1463,75 @@ export default function Reports() {
             <div className="flex items-center justify-center py-20"><p className="text-muted-foreground">No deals found for the selected filters.</p></div>
           ) : (
             <div className="mt-4 space-y-4">
-              {/* Won / Lost summary */}
+              {/* Won / Lost summary with interactive filters */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Total Deals</p><p className="text-xl font-bold">{drillSummary.total}</p></CardContent></Card>
-                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Won</p><p className="text-xl font-bold text-green-600">{drillSummary.won}</p></CardContent></Card>
-                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Lost</p><p className="text-xl font-bold text-red-500">{drillSummary.lost}</p></CardContent></Card>
-                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Won Value</p><p className="text-lg font-bold">₹{drillSummary.wonValue.toLocaleString()}</p></CardContent></Card>
+                <Card
+                  className={`cursor-pointer transition-all hover:shadow-md ${
+                    drillFilter === "all"
+                      ? "ring-2 ring-primary border-primary shadow-sm bg-primary/5 scale-[1.02]"
+                      : "hover:border-primary/50"
+                  }`}
+                  onClick={() => setDrillFilter("all")}
+                >
+                  <CardContent className="p-3">
+                    <p className="text-xs text-muted-foreground">Total Deals</p>
+                    <p className="text-xl font-bold">{drillSummary.total}</p>
+                  </CardContent>
+                </Card>
+
+                <Card
+                  className={`cursor-pointer transition-all hover:shadow-md ${
+                    drillFilter === "won"
+                      ? "ring-2 ring-green-500 border-green-500 shadow-sm bg-green-50/50 dark:bg-green-950/30 scale-[1.02]"
+                      : "hover:border-green-500/50"
+                  }`}
+                  onClick={() => setDrillFilter("won")}
+                >
+                  <CardContent className="p-3">
+                    <p className="text-xs text-muted-foreground">Won</p>
+                    <p className="text-xl font-bold text-green-600">{drillSummary.won}</p>
+                  </CardContent>
+                </Card>
+
+                <Card
+                  className={`cursor-pointer transition-all hover:shadow-md ${
+                    drillFilter === "lost"
+                      ? "ring-2 ring-red-500 border-red-500 shadow-sm bg-red-50/50 dark:bg-red-950/30 scale-[1.02]"
+                      : "hover:border-red-500/50"
+                  }`}
+                  onClick={() => setDrillFilter("lost")}
+                >
+                  <CardContent className="p-3">
+                    <p className="text-xs text-muted-foreground">Lost</p>
+                    <p className="text-xl font-bold text-red-500">{drillSummary.lost}</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-3">
+                    <p className="text-xs text-muted-foreground">Won Value</p>
+                    <p className="text-lg font-bold">₹{drillSummary.wonValue.toLocaleString()}</p>
+                  </CardContent>
+                </Card>
               </div>
 
-              <p className="text-xs text-muted-foreground">{drillDeals.length} deal{drillDeals.length !== 1 ? "s" : ""} in this {drill.kind}</p>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <p>
+                  Showing {filteredDrillDeals.length} of {drillDeals.length} deal{drillDeals.length !== 1 ? "s" : ""}
+                  {drillFilter !== "all" ? ` (${drillFilter})` : ""} in this {drill.kind}
+                </p>
+                {drillFilter !== "all" && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs px-2 text-primary"
+                    onClick={() => setDrillFilter("all")}
+                  >
+                    Show all deals
+                  </Button>
+                )}
+              </div>
+
               <div className="border rounded-lg overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -1476,27 +1544,35 @@ export default function Reports() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {drillDeals.map((r: any, i: number) => (
-                      <TableRow key={`${r.dealId ?? "d"}-${r.contactId ?? "c"}-${i}`}>
-                        <TableCell className="font-medium whitespace-nowrap max-w-[220px] truncate" title={r.dealName}>
-                          {r.dealName || "—"}
+                    {filteredDrillDeals.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                          No {drillFilter !== "all" ? drillFilter : ""} deals found in this {drill.kind}.
                         </TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          <Link to={`/leads/${r.contactId}`} className="hover:underline text-primary">
-                            {r.clientName}
-                          </Link>
-                        </TableCell>
-                        <TableCell>
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STAGE_BADGE_COLORS[r.stage] || "bg-slate-100 text-slate-700"}`}>
-                            {r.stage}
-                          </span>
-                        </TableCell>
-                        <TableCell className={`text-right whitespace-nowrap font-medium ${r.stage === "Won" ? "text-green-600" : r.stage === "Lost" ? "text-red-500" : ""}`}>
-                          {r.value ? `₹${Number(r.value).toLocaleString()}` : "—"}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap">{r.salesPerson || "—"}</TableCell>
                       </TableRow>
-                    ))}
+                    ) : (
+                      filteredDrillDeals.map((r: any, i: number) => (
+                        <TableRow key={`${r.dealId ?? "d"}-${r.contactId ?? "c"}-${i}`}>
+                          <TableCell className="font-medium whitespace-nowrap max-w-[220px] truncate" title={r.dealName}>
+                            {r.dealName || "—"}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            <Link to={`/leads/${r.contactId}`} className="hover:underline text-primary">
+                              {r.clientName}
+                            </Link>
+                          </TableCell>
+                          <TableCell>
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STAGE_BADGE_COLORS[r.stage] || "bg-slate-100 text-slate-700"}`}>
+                              {r.stage}
+                            </span>
+                          </TableCell>
+                          <TableCell className={`text-right whitespace-nowrap font-medium ${r.stage === "Won" ? "text-green-600" : r.stage === "Lost" ? "text-red-500" : ""}`}>
+                            {r.value ? `₹${Number(r.value).toLocaleString()}` : "—"}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">{r.salesPerson || "—"}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </div>
