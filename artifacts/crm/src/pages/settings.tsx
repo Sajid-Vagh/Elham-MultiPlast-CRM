@@ -754,7 +754,7 @@ export default function Settings() {
   };
 
   const isAdmin = me?.role === "admin";
-  const isSalesOrAdmin = me?.role === "sales" || me?.role === "admin";
+  const showDealPreferences = ["admin", "sales", "production", "production_and_support", "support"].includes(me?.role || "");
   const [profileEditOpen, setProfileEditOpen] = useState(false);
 
   // ── Full-page overlay for Add/Edit ──
@@ -852,7 +852,7 @@ export default function Settings() {
             </div>
             <Switch checked={autoCap} onCheckedChange={handleAutoCapToggle} />
           </div>
-          {isSalesOrAdmin && (
+          {showDealPreferences && (
             <>
               <div className="flex items-center justify-between py-2 border-b">
                 <div>
