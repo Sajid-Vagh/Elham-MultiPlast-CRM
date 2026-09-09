@@ -365,6 +365,33 @@ router.get("/reports/by-product", async (req, res) => {
   }
 });
 
+export const STANDARD_LOST_REASONS = [
+  "Price High",
+  "Low Quantity",
+  "Qty Issue",
+  "Need Different Shape",
+  "No Requirement Now",
+  "Quality Problem",
+  "Transport Concern",
+  "Need in Future",
+  "Not Responded",
+  "Other",
+  "Not Specified",
+] as const;
+
+export function normalizeLostReason(reason?: string | null): string {
+  if (!reason || !reason.trim()) return "Not Specified";
+  const trimmed = reason.trim();
+  const lower = trimmed.toLowerCase();
+  for (const std of STANDARD_LOST_REASONS) {
+    if (std.toLowerCase() === lower) {
+      if (std === "Qty Issue") return "Low Quantity";
+      return std;
+    }
+  }
+  return "Other";
+}
+
 router.get("/reports/lost-reasons", async (req, res) => {
   try {
     const params = GetPipelineReportQueryParams.safeParse(req.query);
@@ -409,7 +436,7 @@ router.get("/reports/lost-reasons", async (req, res) => {
 
     // Count from lost deals
     for (const deal of deals) {
-      const reason = deal.lostReason ?? "Not Specified";
+      const reason = normalizeLostReason(deal.lostReason);
       if (!reasonMap.has(reason)) reasonMap.set(reason, { count: 0 });
       const s = reasonMap.get(reason)!;
       s.count++;
@@ -417,7 +444,7 @@ router.get("/reports/lost-reasons", async (req, res) => {
 
     // Count from lost leads (contacts)
     for (const c of lostContacts) {
-      const reason = c.lostReason ?? "Not Specified";
+      const reason = normalizeLostReason(c.lostReason);
       if (!reasonMap.has(reason)) reasonMap.set(reason, { count: 0 });
       const s = reasonMap.get(reason)!;
       s.count++;
@@ -504,7 +531,7 @@ router.get("/reports/lost-reasons/detail", async (req, res) => {
 
     // Build records
     const dealRecords = deals
-      .filter(d => (d.lostReason ?? "Not Specified") === reason)
+      .filter(d => normalizeLostReason(d.lostReason) === reason)
       .map(d => {
         const contact = contactMap.get(d.contactId);
         const owner = d.salesOwnerId ? userMap.get(d.salesOwnerId) : undefined;
@@ -523,11 +550,12 @@ router.get("/reports/lost-reasons/detail", async (req, res) => {
           notes: d.otherReason ?? d.lostNotes ?? "",
           contactId: d.contactId,
           dealId: d.id,
+          dealValue: Number(d.totalValue ?? 0),
         };
       });
 
     const contactRecords = lostContacts
-      .filter(c => c.lostReason === reason)
+      .filter(c => normalizeLostReason(c.lostReason) === reason)
       .map(c => {
         const owner = c.salesOwnerId ? userMap.get(c.salesOwnerId) : undefined;
         return {
@@ -545,6 +573,7 @@ router.get("/reports/lost-reasons/detail", async (req, res) => {
           notes: c.otherReason ?? c.lostNotes ?? "",
           contactId: c.id,
           dealId: null,
+          dealValue: null,
         };
       });
 

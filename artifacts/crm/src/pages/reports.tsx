@@ -18,7 +18,7 @@ import { TrendingUp, Users, Briefcase, DollarSign, XCircle, Download, Search, Ph
 import * as XLSX from "xlsx";
 import { useToast } from "@/hooks/use-toast";
 import { UserAvatar } from "@/components/user-avatar";
-import { STAGE_CHART_COLORS, STAGE_BADGE_COLORS } from "@/lib/deal-stages";
+import { STAGE_CHART_COLORS, STAGE_BADGE_COLORS, normalizeLostReason } from "@/lib/deal-stages";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useUnitFilter } from "@/lib/use-unit-filter";
 import {
@@ -474,7 +474,7 @@ export default function Reports() {
           case "by-state":
             return [{ key: r.state || "Unknown", qty: r.totalQuantity ?? "" }];
           case "lost-reasons":
-            return [{ key: r.lostReason || "Not Specified", qty: r.totalQuantity ?? "" }];
+            return [{ key: normalizeLostReason(r.lostReason), qty: r.totalQuantity ?? "" }];
           case "by-product": {
             // By Product export lists ONLY deals that actually have products —
             // product-less deals and unnamed products are excluded entirely.

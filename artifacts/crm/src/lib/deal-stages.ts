@@ -43,3 +43,31 @@ export const MOVE_REASONS = [
   "Not Responded",
   "Other",
 ] as const;
+
+export const STANDARD_LOST_REASONS = [
+  "Price High",
+  "Low Quantity",
+  "Qty Issue",
+  "Need Different Shape",
+  "No Requirement Now",
+  "Quality Problem",
+  "Transport Concern",
+  "Need in Future",
+  "Not Responded",
+  "Other",
+  "Not Specified",
+] as const;
+
+export function normalizeLostReason(reason?: string | null): string {
+  if (!reason || !reason.trim()) return "Not Specified";
+  const trimmed = reason.trim();
+  const lower = trimmed.toLowerCase();
+  for (const std of STANDARD_LOST_REASONS) {
+    if (std.toLowerCase() === lower) {
+      if (std === "Qty Issue") return "Low Quantity";
+      return std;
+    }
+  }
+  return "Other";
+}
+
