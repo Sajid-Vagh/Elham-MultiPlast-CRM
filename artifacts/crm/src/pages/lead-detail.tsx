@@ -161,12 +161,6 @@ export default function LeadDetail() {
 
   const [expandedDeals, setExpandedDeals] = useState<string[]>([]);
   const [dealsExpandedInitialized, setDealsExpandedInitialized] = useState(false);
-  useEffect(() => {
-    if (!dealsExpandedInitialized && dealTimeline.length > 0) {
-      setExpandedDeals(dealTimeline.map((g) => `deal-${g.deal?.id}`));
-      setDealsExpandedInitialized(true);
-    }
-  }, [dealTimeline, dealsExpandedInitialized]);
   const [timelineSearch, setTimelineSearch] = useState("");
   // "Show hidden deals" reveal toggle for the Activity Timeline (Issue: cluttered timeline)
   const [showHiddenDeals, setShowHiddenDeals] = useState(false);
@@ -535,6 +529,14 @@ export default function LeadDetail() {
     withEvents.sort((a, b) => new Date(b.lastActivity || 0).getTime() - new Date(a.lastActivity || 0).getTime());
     return withEvents;
   }, [contact, deals, activities, contactProformas, actFromDate, actToDate, timelineSearch, showHiddenDeals]);
+
+  // Auto-expand all deals by default when loaded
+  useEffect(() => {
+    if (!dealsExpandedInitialized && dealTimeline.length > 0) {
+      setExpandedDeals(dealTimeline.map((g) => `deal-${g.deal?.id}`));
+      setDealsExpandedInitialized(true);
+    }
+  }, [dealTimeline, dealsExpandedInitialized]);
 
   const hiddenDealsCount = (deals || []).filter(d => d.isHiddenFromTimeline).length;
 
