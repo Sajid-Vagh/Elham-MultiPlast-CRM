@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText, Search, Tag, EyeOff, Eye, StickyNote, Clock } from "lucide-react";
+import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Users, Building, ListOrdered, FileText, Search, Tag, EyeOff, Eye, StickyNote, Clock } from "lucide-react";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -307,6 +307,37 @@ export default function LeadDetail() {
 
   // Deal-centric timeline: structured date-grouped chronological timeline per deal
   const dealTimeline = useMemo(() => {
+    type ParsedNote = {
+      text: string;
+      date?: string;
+      time?: string;
+      userName?: string;
+    };
+
+    const parseDetailedNotes = (raw: unknown): ParsedNote[] => {
+      if (!raw) return [];
+      if (typeof raw === "string" && raw.trim().startsWith("[")) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            return parsed
+              .map((p: any) => ({
+                text: p.text || p.note || (typeof p === "string" ? p : ""),
+                date: p.date,
+                time: p.time,
+                userName: p.userName || p.user,
+              }))
+              .filter((p) => Boolean(p.text));
+          }
+        } catch {}
+      }
+      const plainText = parseNotesText(raw);
+      if (plainText) {
+        return [{ text: plainText }];
+      }
+      return [];
+    };
+
     type TimelineEvent = {
       key: string;
       date: string;
@@ -314,9 +345,12 @@ export default function LeadDetail() {
       dayKey: string;
       dayFormatted: string;
       kind: "lead" | "deal" | "followup" | "pi" | "won" | "lost";
+      channel?: "call" | "meeting" | "whatsapp" | "followup";
       title: string;
+      subtitle?: string | null;
       detail?: string | null;
-      noteEntries?: string[];
+      notesList?: ParsedNote[];
+      metaItems?: Array<{ label: string; value: string; isHighlight?: boolean }>;
       stageBadge?: { label: string; className?: string };
       dotColor: string;
       activityId?: number;
@@ -351,9 +385,11 @@ export default function LeadDetail() {
     const matchesSearch = (e: TimelineEvent) =>
       !timelineSearch ||
       e.title.toLowerCase().includes(searchLower) ||
+      (e.subtitle || "").toLowerCase().includes(searchLower) ||
       (e.detail || "").toLowerCase().includes(searchLower) ||
       (e.stageBadge?.label || "").toLowerCase().includes(searchLower) ||
-      (e.noteEntries || []).some((n) => n.toLowerCase().includes(searchLower));
+      (e.metaItems || []).some((m) => m.value.toLowerCase().includes(searchLower)) ||
+      (e.notesList || []).some((n) => n.text.toLowerCase().includes(searchLower) || (n.userName || "").toLowerCase().includes(searchLower));
 
     const groups: Array<{
       deal: (typeof deals extends (infer D)[] | undefined ? D : never) | null;
@@ -379,6 +415,12 @@ export default function LeadDetail() {
       const events: TimelineEvent[] = [];
 
       if (leadDate && dateOk(leadDate)) {
+        const leadMeta: Array<{ label: string; value: string }> = [];
+        if (contact?.mobile) leadMeta.push({ label: "Mobile", value: contact.mobile });
+        if (contact?.salesOwner?.name) leadMeta.push({ label: "Owner", value: contact.salesOwner.name });
+        if (contact?.unit) leadMeta.push({ label: "Unit", value: contact.unit });
+        if (contact?.leadSource) leadMeta.push({ label: "Source", value: contact.leadSource });
+
         events.push({
           key: `lead-${deal.id}`,
           date: leadDate,
@@ -387,14 +429,20 @@ export default function LeadDetail() {
           dayFormatted: formatDay(leadDate),
           kind: "lead",
           title: "Lead created",
-          detail: `Lead registered for ${contact?.name || "Contact"}${contact?.companyName ? ` (${contact.companyName})` : ""}`,
-          stageBadge: { label: "New", className: STAGE_BADGE_COLORS["New"] || "bg-slate-100 text-slate-700" },
+          subtitle: contact?.name ? `${contact.name}${contact.companyName ? ` (${contact.companyName})` : ""}` : null,
+          metaItems: leadMeta.length > 0 ? leadMeta : undefined,
+          stageBadge: { label: "New Lead", className: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800" },
           dotColor: "bg-blue-500",
         });
       }
 
       const dealCreated = deal.createdAt;
       if (dateOk(dealCreated)) {
+        const dealMeta: Array<{ label: string; value: string }> = [];
+        if (deal.totalValue) dealMeta.push({ label: "Value", value: formatCurrency(deal.totalValue) });
+        if (contact?.salesOwner?.name) dealMeta.push({ label: "Owner", value: contact.salesOwner.name });
+        if (deal.productionUnit || contact?.unit) dealMeta.push({ label: "Unit", value: deal.productionUnit || contact?.unit || "" });
+
         events.push({
           key: `deal-created-${deal.id}`,
           date: dealCreated,
@@ -403,7 +451,8 @@ export default function LeadDetail() {
           dayFormatted: formatDay(dealCreated),
           kind: "deal",
           title: "Deal created",
-          detail: deal.title ? `Deal "${deal.title}" created` : "Deal created",
+          subtitle: deal.title || "Untitled Deal",
+          metaItems: dealMeta.length > 0 ? dealMeta : undefined,
           stageBadge: { label: deal.stage || "New", className: STAGE_BADGE_COLORS[deal.stage || "New"] || "bg-slate-100 text-slate-700" },
           dotColor: "bg-purple-500",
         });
@@ -411,7 +460,7 @@ export default function LeadDetail() {
 
       // Human follow-up activities
       const dealActs = dedupeById(activities || [])
-        .filter((a) => a.dealId === deal.id && (a.type === "Call" || a.type === "Meeting" || a.type === "FollowUp"))
+        .filter((a) => a.dealId === deal.id && (a.type === "Call" || a.type === "Meeting" || a.type === "FollowUp" || a.type === "WhatsApp"))
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
       let followUpNum = 0;
@@ -419,8 +468,7 @@ export default function LeadDetail() {
         if (!dateOk(act.createdAt)) continue;
         followUpNum++;
         const rawNote = act.notes || (act as any).note || (act as any).notesDisplay;
-        const noteEntries = parseNotesEntries(rawNote);
-        const parsedDetail = parseNotesText(rawNote) || null;
+        const notesList = parseDetailedNotes(rawNote);
         const callStatus = act.callStatus || "Pending";
         const statusBadge =
           callStatus === "Completed"
@@ -430,7 +478,27 @@ export default function LeadDetail() {
             : { label: "Pending", className: "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300 dark:border-amber-800" };
 
         const dotColor = callStatus === "Completed" ? "bg-emerald-500" : callStatus === "Cancelled" ? "bg-red-500" : "bg-amber-500";
-        const typeLabel = act.type === "Call" ? "Call" : act.type === "Meeting" ? "Meeting" : "Follow-up";
+        const isCall = act.type === "Call" || act.followUpType === "Call";
+        const isMeeting = act.type === "Meeting" || act.followUpType === "Meeting";
+        const isWhatsapp = act.type === "WhatsApp" || act.followUpType === "WhatsApp";
+        const typeLabel = isCall ? "Call" : isMeeting ? "Meeting" : isWhatsapp ? "WhatsApp" : "Follow-up";
+        const channel = isCall ? "call" : isMeeting ? "meeting" : isWhatsapp ? "whatsapp" : "followup";
+
+        const metaItems: Array<{ label: string; value: string; isHighlight?: boolean }> = [];
+        if (act.followUpDate) {
+          metaItems.push({
+            label: "Next Follow-up",
+            value: `${formatDay(act.followUpDate)}${act.followUpTime ? ` at ${act.followUpTime}` : ""}`,
+            isHighlight: true,
+          });
+        }
+        const actorName = (act as any).user?.name || (act as any).createdByName;
+        if (actorName) {
+          metaItems.push({ label: "Logged By", value: actorName });
+        }
+        if (act.priority && act.priority !== "Medium") {
+          metaItems.push({ label: "Priority", value: act.priority });
+        }
 
         events.push({
           key: `act-${act.id}`,
@@ -439,9 +507,10 @@ export default function LeadDetail() {
           dayKey: new Date(act.createdAt).toISOString().slice(0, 10),
           dayFormatted: formatDay(act.createdAt),
           kind: "followup",
+          channel,
           title: `${typeLabel} ${followUpNum}`,
-          detail: parsedDetail,
-          noteEntries: noteEntries.length > 0 ? noteEntries : undefined,
+          notesList: notesList.length > 0 ? notesList : undefined,
+          metaItems: metaItems.length > 0 ? metaItems : undefined,
           stageBadge: statusBadge,
           dotColor,
           activityId: act.id,
@@ -453,6 +522,10 @@ export default function LeadDetail() {
         const piDealId = (pi as any).dealId;
         if (piDealId !== deal.id || !dateOk(pi.createdAt || "")) continue;
         const piDate = pi.createdAt || dealCreated;
+        const piMeta: Array<{ label: string; value: string }> = [];
+        if (pi.totalAmount) piMeta.push({ label: "Amount", value: formatCurrency(pi.totalAmount) });
+        if (pi.status) piMeta.push({ label: "Status", value: pi.status });
+
         events.push({
           key: `pi-${pi.id}`,
           date: piDate,
@@ -461,7 +534,8 @@ export default function LeadDetail() {
           dayFormatted: formatDay(piDate),
           kind: "pi",
           title: "PI Sent",
-          detail: `Proforma Invoice #${pi.invoiceNumber || ""}${pi.totalAmount ? ` • ${formatCurrency(pi.totalAmount)}` : ""}`,
+          subtitle: `Proforma Invoice #${pi.invoiceNumber || ""}`,
+          metaItems: piMeta.length > 0 ? piMeta : undefined,
           stageBadge: { label: "PI Sent", className: STAGE_BADGE_COLORS["PI Sent"] || "bg-indigo-100 text-indigo-700" },
           dotColor: "bg-indigo-500",
         });
@@ -469,6 +543,9 @@ export default function LeadDetail() {
 
       // Won / Lost
       if (deal.stage === "Won" && deal.completedAt && dateOk(deal.completedAt)) {
+        const wonMeta: Array<{ label: string; value: string }> = [];
+        if (deal.totalValue) wonMeta.push({ label: "Won Value", value: formatCurrency(deal.totalValue) });
+
         events.push({
           key: `won-${deal.id}`,
           date: deal.completedAt,
@@ -477,11 +554,15 @@ export default function LeadDetail() {
           dayFormatted: formatDay(deal.completedAt),
           kind: "won",
           title: "Deal Won",
-          detail: deal.totalValue ? `Won value: ${formatCurrency(deal.totalValue)}` : "Deal closed successfully",
+          subtitle: "Deal closed successfully",
+          metaItems: wonMeta.length > 0 ? wonMeta : undefined,
           stageBadge: { label: "Won", className: STAGE_BADGE_COLORS["Won"] || "bg-green-100 text-green-700" },
           dotColor: "bg-emerald-600",
         });
       } else if (deal.stage === "Lost" && deal.completedAt && dateOk(deal.completedAt)) {
+        const lostMeta: Array<{ label: string; value: string }> = [];
+        if (deal.lostReason) lostMeta.push({ label: "Reason", value: deal.lostReason });
+
         events.push({
           key: `lost-${deal.id}`,
           date: deal.completedAt,
@@ -490,7 +571,9 @@ export default function LeadDetail() {
           dayFormatted: formatDay(deal.completedAt),
           kind: "lost",
           title: "Deal Lost",
-          detail: `Reason: ${deal.lostReason || "Not specified"}${deal.lostNotes ? ` — ${deal.lostNotes}` : ""}`,
+          subtitle: `Reason: ${deal.lostReason || "Not specified"}`,
+          detail: deal.lostNotes ? deal.lostNotes : null,
+          metaItems: lostMeta.length > 0 ? lostMeta : undefined,
           stageBadge: { label: "Lost", className: STAGE_BADGE_COLORS["Lost"] || "bg-red-100 text-red-700" },
           dotColor: "bg-red-500",
         });
@@ -1057,7 +1140,7 @@ export default function LeadDetail() {
                       : "No deals yet. Create a deal to see its timeline."}
                 </p>
               ) : (
-                <Accordion type="multiple" value={expandedDeals} onValueChange={setExpandedDeals} className="space-y-2">
+                <Accordion type="multiple" value={expandedDeals} onValueChange={setExpandedDeals} className="space-y-3">
                   {dealTimeline.map((group) => {
                     const accordionVal = `deal-${group.deal?.id}`;
                     const formatDate = (d: string) => {
@@ -1070,9 +1153,9 @@ export default function LeadDetail() {
                     };
 
                     return (
-                      <AccordionItem key={accordionVal} value={accordionVal} className="border rounded-lg overflow-hidden relative group/deal bg-card">
+                      <AccordionItem key={accordionVal} value={accordionVal} className="border border-border/80 rounded-xl overflow-hidden relative group/deal bg-card shadow-xs">
                         {/* Actions on this deal card */}
-                        <div className="absolute right-2 top-1.5 z-10 flex items-center gap-1">
+                        <div className="absolute right-3 top-2.5 z-10 flex items-center gap-1.5">
                           {group.deal && group.deal.stage !== "Won" && group.deal.stage !== "Lost" && (
                             <button
                               type="button"
@@ -1086,7 +1169,7 @@ export default function LeadDetail() {
                               className="h-6 w-6 rounded bg-background/90 border flex items-center justify-center text-red-500 hover:text-red-700 hover:bg-red-50 opacity-0 group-hover/deal:opacity-100 focus:opacity-100 transition-opacity"
                               title="Delete deal"
                             >
-                              <Trash2 className="h-3 w-3" />
+                              <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           )}
                           <button
@@ -1100,132 +1183,188 @@ export default function LeadDetail() {
                             className="h-6 w-6 rounded bg-background/90 border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/80 opacity-0 group-hover/deal:opacity-100 focus:opacity-100 transition-opacity disabled:opacity-40"
                             title={group.deal?.isHiddenFromTimeline ? "Show this deal in timeline" : "Hide this deal from timeline"}
                           >
-                            {group.deal?.isHiddenFromTimeline ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                            {group.deal?.isHiddenFromTimeline ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                           </button>
                         </div>
-                        <AccordionTrigger className="px-3 py-2.5 pr-16 hover:no-underline hover:bg-muted/30 [&[data-state=open]]:bg-muted/20">
+                        <AccordionTrigger className="px-4 py-3 pr-20 hover:no-underline hover:bg-muted/40 [&[data-state=open]]:bg-muted/20">
                           <div className="flex-1 flex items-center justify-between mr-2">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 text-primary">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 text-primary">
                                 <FolderTree className="h-4 w-4" />
                               </div>
                               {group.deal && (
                                 <div className="min-w-0 text-left">
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-sm font-semibold truncate block">
+                                    <span className="text-sm font-bold text-foreground truncate block">
                                       Deal {group.num} {group.deal.title ? `(${group.deal.title})` : ""}
                                     </span>
-                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${STAGE_BADGE_COLORS[group.deal.stage] || "bg-muted text-muted-foreground border-border"}`}>
+                                    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${STAGE_BADGE_COLORS[group.deal.stage] || "bg-muted text-muted-foreground border-border"}`}>
                                       {group.deal.stage}
                                     </span>
                                   </div>
-                                  <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5">
+                                  <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5 flex-wrap">
                                     <span className="flex items-center gap-1">
-                                      <Calendar className="h-3 w-3" />
-                                      {formatDate(group.deal.createdAt)}
+                                      <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                                      <span>Created: {formatDate(group.deal.createdAt)}</span>
                                     </span>
                                     {group.deal.totalValue && (
-                                      <span className="font-medium text-foreground">
-                                        {formatCurrency(group.deal.totalValue)}
+                                      <span className="font-semibold text-foreground">
+                                        💰 {formatCurrency(group.deal.totalValue)}
+                                      </span>
+                                    )}
+                                    {contact?.salesOwner?.name && (
+                                      <span className="flex items-center gap-1">
+                                        <User className="h-3.5 w-3.5 text-muted-foreground" />
+                                        <span>{contact.salesOwner.name}</span>
                                       </span>
                                     )}
                                   </div>
                                 </div>
                               )}
                             </div>
-                            <div className="flex items-center gap-3 text-[10px] text-muted-foreground shrink-0">
-                              {group.lastActivity && <span>Last: {formatDate(group.lastActivity)}</span>}
-                              <Badge variant="outline" className="text-[10px]">{group.totalEventsCount} events</Badge>
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
+                              {group.lastActivity && <span className="hidden md:inline">Last: {formatDate(group.lastActivity)}</span>}
+                              <Badge variant="outline" className="text-[11px] font-medium bg-background">{group.totalEventsCount} events</Badge>
                             </div>
                           </div>
                         </AccordionTrigger>
-                        <AccordionContent className="px-3 pb-3 pt-0">
-                          <div className="space-y-4 pt-1">
+                        <AccordionContent className="px-4 pb-4 pt-1">
+                          <div className="space-y-4">
                             {group.dateGroups.map((dGroup) => (
                               <div key={dGroup.dayKey} className="relative">
                                 {/* Date Header Chip */}
-                                <div className="flex items-center gap-2.5 my-2.5">
-                                  <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-muted/80 border border-border/80 text-[11px] font-medium text-muted-foreground shadow-xs">
-                                    <Calendar className="h-3 w-3 text-muted-foreground" />
+                                <div className="flex items-center gap-3 my-4 first:mt-1">
+                                  <div className="flex-1 h-px bg-border/60" />
+                                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted/80 border border-border/80 text-xs font-semibold text-muted-foreground shadow-xs">
+                                    <Calendar className="h-3.5 w-3.5 text-primary" />
                                     <span>{dGroup.dayFormatted}</span>
                                   </div>
                                   <div className="flex-1 h-px bg-border/60" />
                                 </div>
 
                                 {/* Timeline Events for this Date */}
-                                <div className="relative pl-6 sm:pl-20 space-y-3">
+                                <div className="relative pl-6 sm:pl-24 space-y-3.5 pb-2">
                                   {/* Vertical Timeline Line */}
-                                  <div className="absolute left-[11px] sm:left-[67px] top-3 bottom-3 w-0.5 bg-border/70" />
+                                  <div className="absolute left-[11px] sm:left-[83px] top-4 bottom-4 w-0.5 bg-border/80" />
 
-                                  {dGroup.events.map((ev) => (
-                                    <div key={ev.key} className="relative flex flex-col sm:flex-row items-start gap-2 sm:gap-3 group/event">
-                                      {/* Desktop Time */}
-                                      <div className="hidden sm:block w-14 text-right pt-2.5 shrink-0">
-                                        <span className="text-[11px] font-medium text-muted-foreground">{ev.timeStr}</span>
-                                      </div>
+                                  {dGroup.events.map((ev) => {
+                                    const EventIcon =
+                                      ev.channel === "call" ? Phone :
+                                      ev.channel === "whatsapp" ? MessageSquare :
+                                      ev.channel === "meeting" ? Users :
+                                      ev.kind === "lead" ? User :
+                                      ev.kind === "deal" ? FolderTree :
+                                      ev.kind === "pi" ? FileText :
+                                      ev.kind === "won" ? CheckCircle :
+                                      ev.kind === "lost" ? XCircle : Calendar;
 
-                                      {/* Connected Dot on vertical line */}
-                                      <div className="absolute sm:relative left-0 sm:left-auto top-3 sm:top-2.5 -translate-x-[5px] sm:translate-x-0 z-10 shrink-0">
-                                        <span className={`block w-3 h-3 rounded-full ring-4 ring-card ${ev.dotColor}`} />
-                                      </div>
-
-                                      {/* Mobile Time */}
-                                      <div className="sm:hidden pl-2 text-[10px] font-medium text-muted-foreground pt-0.5">
-                                        {ev.timeStr}
-                                      </div>
-
-                                      {/* Event Content Card */}
-                                      <div className="flex-1 w-full bg-card/80 hover:bg-muted/20 border border-border/70 rounded-lg p-3 shadow-xs transition-colors">
-                                        <div className="flex items-center justify-between gap-2">
-                                          <span className="text-xs sm:text-sm font-semibold text-foreground">
-                                            {ev.title}
-                                          </span>
-                                          <div className="flex items-center gap-1.5 shrink-0">
-                                            {ev.stageBadge && (
-                                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${ev.stageBadge.className || "bg-muted text-muted-foreground border-border"}`}>
-                                                {ev.stageBadge.label}
-                                              </span>
-                                            )}
-                                            {ev.activityId && (
-                                              <button
-                                                type="button"
-                                                onClick={() => setDeleteActId(ev.activityId!)}
-                                                className="h-5 w-5 rounded hover:bg-red-50 dark:hover:bg-red-950/50 flex items-center justify-center text-muted-foreground hover:text-red-600 opacity-0 group-hover/event:opacity-100 transition-opacity ml-1"
-                                                title="Delete activity"
-                                              >
-                                                <Trash2 className="h-3 w-3" />
-                                              </button>
-                                            )}
-                                          </div>
+                                    return (
+                                      <div key={ev.key} className="relative flex flex-col sm:flex-row items-start gap-2.5 sm:gap-4 group/event">
+                                        {/* Desktop Time */}
+                                        <div className="hidden sm:block w-16 text-right pt-3 shrink-0">
+                                          <span className="text-xs font-semibold text-muted-foreground">{ev.timeStr}</span>
                                         </div>
 
-                                        {/* Notes or Details */}
-                                        {ev.noteEntries && ev.noteEntries.length > 0 ? (
-                                          <div className="mt-2 space-y-1.5">
-                                            {ev.noteEntries.map((entry, i) => (
-                                              <div
-                                                key={i}
-                                                className="text-xs text-foreground whitespace-pre-wrap bg-amber-500/10 border-l-2 border-amber-500 rounded-r-md px-2.5 py-1.5 flex items-start gap-2"
-                                              >
-                                                <StickyNote className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                                                <div className="flex-1">
-                                                  {ev.noteEntries!.length > 1 && (
-                                                    <span className="font-semibold text-amber-800 dark:text-amber-300 mr-1">Note {i + 1}:</span>
-                                                  )}
-                                                  <span>{entry}</span>
-                                                </div>
+                                        {/* Connected Dot on vertical line */}
+                                        <div className="absolute sm:relative left-0 sm:left-auto top-3.5 sm:top-3.5 -translate-x-[5px] sm:translate-x-0 z-10 shrink-0">
+                                          <span className={`block w-3.5 h-3.5 rounded-full ring-4 ring-card ${ev.dotColor}`} />
+                                        </div>
+
+                                        {/* Mobile Time */}
+                                        <div className="sm:hidden pl-2 text-[10px] font-semibold text-muted-foreground pt-0.5">
+                                          {ev.timeStr}
+                                        </div>
+
+                                        {/* Event Content Card */}
+                                        <div className="flex-1 w-full bg-card hover:bg-muted/20 border border-border/80 rounded-xl p-3.5 shadow-xs transition-colors">
+                                          {/* Header row */}
+                                          <div className="flex items-start justify-between gap-2">
+                                            <div className="min-w-0 flex items-start gap-2.5">
+                                              <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${ev.kind === "lead" ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300" : ev.kind === "deal" ? "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300" : ev.kind === "pi" ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" : ev.kind === "won" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : ev.kind === "lost" ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"}`}>
+                                                <EventIcon className="h-3.5 w-3.5" />
                                               </div>
-                                            ))}
+                                              <div className="min-w-0">
+                                                <span className="text-sm font-bold text-foreground block">
+                                                  {ev.title}
+                                                </span>
+                                                {ev.subtitle && (
+                                                  <p className="text-xs text-muted-foreground truncate">
+                                                    {ev.subtitle}
+                                                  </p>
+                                                )}
+                                              </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                              {ev.stageBadge && (
+                                                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${ev.stageBadge.className || "bg-muted text-muted-foreground border-border"}`}>
+                                                  {ev.stageBadge.label}
+                                                </span>
+                                              )}
+                                              {ev.activityId && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setDeleteActId(ev.activityId!)}
+                                                  className="h-6 w-6 rounded hover:bg-red-50 dark:hover:bg-red-950/50 flex items-center justify-center text-muted-foreground hover:text-red-600 opacity-0 group-hover/event:opacity-100 transition-opacity ml-1"
+                                                  title="Delete activity"
+                                                >
+                                                  <Trash2 className="h-3.5 w-3.5" />
+                                                </button>
+                                              )}
+                                            </div>
                                           </div>
-                                        ) : ev.detail ? (
-                                          <div className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap bg-muted/30 border border-border/40 rounded-md px-2.5 py-1.5 flex items-start gap-2">
-                                            <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                                            <span className="flex-1">{ev.detail}</span>
-                                          </div>
-                                        ) : null}
+
+                                          {/* Meta tags */}
+                                          {ev.metaItems && ev.metaItems.length > 0 && (
+                                            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                                              {ev.metaItems.map((meta, mi) => (
+                                                <div
+                                                  key={mi}
+                                                  className={`px-2.5 py-0.5 rounded-md border text-xs font-medium flex items-center gap-1.5 ${meta.isHighlight ? "bg-amber-500/15 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200" : "bg-muted/60 border-border/80 text-muted-foreground"}`}
+                                                >
+                                                  {meta.label === "Next Follow-up" && <Calendar className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />}
+                                                  {meta.label === "Logged By" && <User className="h-3.5 w-3.5 text-muted-foreground" />}
+                                                  {meta.label === "Owner" && <User className="h-3.5 w-3.5 text-muted-foreground" />}
+                                                  {meta.label === "Mobile" && <Phone className="h-3.5 w-3.5 text-muted-foreground" />}
+                                                  <span className="text-foreground/70">{meta.label}:</span>
+                                                  <span className="font-semibold text-foreground">{meta.value}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+
+                                          {/* Structured Notes */}
+                                          {ev.notesList && ev.notesList.length > 0 && (
+                                            <div className="mt-2.5 space-y-1.5">
+                                              {ev.notesList.map((n, ni) => (
+                                                <div
+                                                  key={ni}
+                                                  className="rounded-lg bg-amber-500/10 border border-amber-200/80 dark:border-amber-900/60 p-2.5 text-xs text-foreground"
+                                                >
+                                                  <div className="flex items-center justify-between text-[11px] font-semibold text-amber-900 dark:text-amber-300 mb-1">
+                                                    <div className="flex items-center gap-1.5">
+                                                      <StickyNote className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                                                      <span>{n.userName ? `Note by ${n.userName}` : `Note ${ni + 1}`}</span>
+                                                    </div>
+                                                    {n.date && <span className="text-muted-foreground font-normal text-[10px]">{n.date} {n.time || ""}</span>}
+                                                  </div>
+                                                  <p className="whitespace-pre-wrap font-normal leading-relaxed text-foreground/90 pl-5">{n.text}</p>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+
+                                          {/* Detail text */}
+                                          {ev.detail && (
+                                            <div className="mt-2.5 text-xs text-muted-foreground whitespace-pre-wrap bg-muted/40 border border-border/60 rounded-md p-2 flex items-start gap-2">
+                                              <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                                              <span className="flex-1">{ev.detail}</span>
+                                            </div>
+                                          )}
+                                        </div>
                                       </div>
-                                    </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               </div>
                             ))}
