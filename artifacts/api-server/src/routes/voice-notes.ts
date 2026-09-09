@@ -135,60 +135,93 @@ router.post("/voice-notes", upload.single("file"), async (req: Request, res: Res
       res.status(500).json({ error: error || "Failed to upload voice note" }); return;
     }
 
-    // ── Notify the other side ──
-    // Sales/Admin → Production side: notify all production managers, Support
-    // (production_and_support) and admins whenever a production order is linked
-    // and the uploader is NOT on the production side. This covers both a
-    // deal-targeted upload AND a production-order-targeted upload (the Sales
-    // Order Detail page records against the production order directly).
-    if (crossLinkedProductionOrderId && user.role !== "production" && user.role !== "production_and_support") {
-      const [po] = await db.select({ productionUnit: productionOrdersTable.productionUnit })
-        .from(productionOrdersTable)
-        .where(eq(productionOrdersTable.id, crossLinkedProductionOrderId));
+    // ── Notify recipients for production order voice notes ──
+    const targetProdOrderId = crossLinkedProductionOrderId || productionOrderId;
+    if (targetProdOrderId) {
+      const [po] = await db.select().from(productionOrdersTable).where(eq(productionOrdersTable.id, targetProdOrderId));
       const [uploader] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, user.id));
-      const prodUsers = await db.select({ id: usersTable.id, unit: usersTable.unit, role: usersTable.role })
-        .from(usersTable)
-        .where(or(eq(usersTable.role, "production"), eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
-      const orderUnit = po?.productionUnit || "Himatnagar";
-      for (const pu of prodUsers) {
-        if (pu.id === user.id) continue;
-        const userUnit = pu.unit || "All";
-        if (pu.role === "admin" || userUnit === "All" || userUnit === orderUnit || orderUnit === "Himatnagar") {
-          await createNotification({
-            createdById: user.id,
-            userId: pu.id,
-            type: "voice_note",
-            title: "Voice Note from Sales",
-            message: `${uploader?.name || "Sales"} recorded a voice note for this order`,
-            link: `/production/orders/${crossLinkedProductionOrderId}`,
-            relatedId: crossLinkedProductionOrderId,
-            relatedType: "production_order",
-          });
+      const uploaderName = uploader?.name || user.name || "Team";
+
+      const senderDept =
+        user.role === "production" || user.role === "production_manager" ? "Production"
+          : user.role === "production_and_support" || user.role === "support" ? "Support"
+            : user.role === "sales" ? "Sales"
+              : user.role === "admin" ? "Admin"
+                : user.role || "Team";
+
+      const voiceTitle = `Voice Note from ${senderDept}`;
+
+      // Resolve linked Sales Order and Sales Owner
+      let salesOrderId: number | null = null;
+      let salesOwnerId: number | null = null;
+
+      const effectiveDealId = po?.dealId || crossLinkedDealId;
+      if (effectiveDealId) {
+        const [deal] = await db.select({ salesOwnerId: dealsTable.salesOwnerId })
+          .from(dealsTable)
+          .where(eq(dealsTable.id, effectiveDealId));
+        if (deal?.salesOwnerId) salesOwnerId = deal.salesOwnerId;
+
+        const [salesOrder] = await db.select({ id: ordersTable.id, salesOwnerId: ordersTable.salesOwnerId })
+          .from(ordersTable)
+          .where(and(eq(ordersTable.dealId, effectiveDealId), eq(ordersTable.isDeleted, false)))
+          .limit(1);
+        if (salesOrder) {
+          salesOrderId = salesOrder.id;
+          if (salesOrder.salesOwnerId) salesOwnerId = salesOrder.salesOwnerId;
         }
       }
-    }
 
-    if (crossLinkedDealId && productionOrderId && !dealId) {
-      const [deal] = await db.select({ salesOwnerId: dealsTable.salesOwnerId, title: dealsTable.title })
-        .from(dealsTable)
-        .where(eq(dealsTable.id, crossLinkedDealId));
-      const [uploader] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, user.id));
-      if (deal?.salesOwnerId && String(deal.salesOwnerId) !== String(user.id)) {
-        // Route the Sales user to the Sales Order Detail page — the dedicated
-        // order communication surface. Falls back to the lead if no order exists.
-        const [salesOrder] = await db.select({ id: ordersTable.id })
-          .from(ordersTable)
-          .where(and(eq(ordersTable.dealId, crossLinkedDealId), eq(ordersTable.isDeleted, false)))
-          .limit(1);
+      if (po?.proformaInvoiceId && !salesOwnerId) {
+        const [inv] = await db.select({ contactId: proformaInvoicesTable.contactId })
+          .from(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, po.proformaInvoiceId));
+        if (inv?.contactId) {
+          const [contact] = await db.select({ salesOwnerId: contactsTable.salesOwnerId })
+            .from(contactsTable).where(eq(contactsTable.id, inv.contactId));
+          if (contact?.salesOwnerId) salesOwnerId = contact.salesOwnerId;
+        }
+      }
+
+      const notifyUserIds: number[] = [];
+      const pushRecipient = (id?: number | null) => {
+        if (id && id !== user.id && !notifyUserIds.includes(id)) notifyUserIds.push(id);
+      };
+
+      // 1. Sales Owner
+      pushRecipient(salesOwnerId);
+
+      // 2. All Admins and Support users
+      const adminAndSupportUsers = await db.select({ id: usersTable.id }).from(usersTable)
+        .where(or(eq(usersTable.role, "admin"), eq(usersTable.role, "support"), eq(usersTable.role, "production_and_support")));
+      for (const u of adminAndSupportUsers) pushRecipient(u.id);
+
+      // 3. If sender is NOT on the production side (e.g. Sales/Admin/Support), also notify production managers/users
+      if (user.role !== "production" && user.role !== "production_manager") {
+        pushRecipient(po?.assignedProductionManagerId);
+        pushRecipient(po?.createdById);
+        const prodUsers = await db.select({ id: usersTable.id }).from(usersTable)
+          .where(or(eq(usersTable.role, "production"), eq(usersTable.role, "production_manager")));
+        for (const u of prodUsers) pushRecipient(u.id);
+      }
+
+      const recipientRows = notifyUserIds.length
+        ? await db.select({ id: usersTable.id, role: usersTable.role }).from(usersTable).where(inArray(usersTable.id, notifyUserIds))
+        : [];
+      const roleById = new Map(recipientRows.map((u) => [u.id, u.role]));
+
+      for (const uid of notifyUserIds) {
+        const link = roleById.get(uid) === "sales" && salesOrderId
+          ? `/orders/${salesOrderId}`
+          : `/production/orders/${targetProdOrderId}`;
         await createNotification({
           createdById: user.id,
-          userId: deal.salesOwnerId,
+          userId: uid,
           type: "voice_note",
-          title: "Voice Note from Production",
-          message: `${uploader?.name || "Production"} recorded a voice note for order #${productionOrderId}`,
-          link: salesOrder ? `/orders/${salesOrder.id}` : `/leads/${crossLinkedDealId}`,
-          relatedId: crossLinkedDealId,
-          relatedType: "deal",
+          title: voiceTitle,
+          message: `${uploaderName} recorded a voice note for order #${targetProdOrderId}`,
+          link,
+          relatedId: targetProdOrderId,
+          relatedType: "production_order",
         });
       }
     }

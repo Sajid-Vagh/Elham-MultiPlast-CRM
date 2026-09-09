@@ -2669,13 +2669,15 @@ export async function sendMessage(
     }
   }
 
-  if (user.role !== "production") {
-    // Sales/Support/Admin → notify the full production-side team: production
-    // managers, production_and_support (Support) users and admins. Without the
-    // production_and_support role here, Support users never saw chat messages
-    // sent from the Sales workspace.
+  // 3. Always explicitly notify all users with Admin and Support roles
+  const adminAndSupportUsers = await db.select({ id: usersTable.id }).from(usersTable)
+    .where(or(eq(usersTable.role, "admin"), eq(usersTable.role, "support"), eq(usersTable.role, "production_and_support")));
+  for (const u of adminAndSupportUsers) pushRecipient(u.id);
+
+  // 4. If sender is NOT on the production side (e.g. Sales/Admin/Support), also notify production managers/users
+  if (user.role !== "production" && user.role !== "production_manager") {
     const productionUsers = await db.select({ id: usersTable.id }).from(usersTable)
-      .where(or(eq(usersTable.role, "production"), eq(usersTable.role, "production_and_support"), eq(usersTable.role, "admin")));
+      .where(or(eq(usersTable.role, "production"), eq(usersTable.role, "production_manager")));
     for (const u of productionUsers) pushRecipient(u.id);
   }
 
@@ -2689,8 +2691,8 @@ export async function sendMessage(
   // Use createNotification for SSE emission; use message ID as relatedId to avoid dedup suppression
   // Heading explicitly states the department the message came from; body holds the snippet.
   const senderDept =
-    user.role === "production" ? "Production"
-      : user.role === "production_and_support" ? "Support"
+    user.role === "production" || user.role === "production_manager" ? "Production"
+      : user.role === "production_and_support" || user.role === "support" ? "Support"
         : user.role === "sales" ? "Sales"
           : user.role === "admin" ? "Admin"
             : user.role || "Team";
