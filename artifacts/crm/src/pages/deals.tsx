@@ -19,7 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { X, GripVertical, Loader2 } from "lucide-react";
+import { X, GripVertical, Loader2, Search, Phone } from "lucide-react";
 import { CategoryBadge } from "@/components/category-badge";
 import { useToast } from "@/hooks/use-toast";
 import { DEAL_STAGES, STAGE_PROBS } from "@/lib/deal-stages";
@@ -94,6 +94,7 @@ export default function Deals() {
   const [globalUnit, setGlobalUnit] = useUnitFilter();
   const [globalOwner, setGlobalOwner] = useOwnerFilter();
   const [globalStatus, setGlobalStatus] = useStatusFilter();
+  const [searchQuery, setSearchQuery] = useState("");
   const { clearAllFilters } = useGlobalFilters();
 
   // Seed global filters from URL params (deep links) on first mount only.
@@ -201,10 +202,28 @@ export default function Deals() {
       ...deal,
       stage: (optimisticStages[deal.id] ?? deal.stage) as DealStage,
     }));
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      d = d.filter(deal => {
+        const title = (deal.title || (deal as any).name || "").toLowerCase();
+        const clientName = (deal.contact?.name || "").toLowerCase();
+        const companyName = (deal.contact?.companyName || "").toLowerCase();
+        const mobile = (deal.contact?.mobile || "").toLowerCase();
+        const dealId = String(deal.id);
+        return (
+          title.includes(q) ||
+          clientName.includes(q) ||
+          companyName.includes(q) ||
+          mobile.includes(q) ||
+          dealId.includes(q)
+        );
+      });
+    }
     return d;
   })();
 
   const clearFilters = () => {
+    setSearchQuery("");
     clearAllFilters();
     navigate("/deals");
   };
@@ -511,6 +530,16 @@ export default function Deals() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3 shrink-0">
+        <div className="relative flex-1 min-w-[200px] sm:min-w-[240px] max-w-sm">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search deals, clients, mobile..."
+            className="pl-8 h-9"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            data-no-cap="1"
+          />
+        </div>
         <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
         {isAdmin && (
           <Select value={ownerFilter || "all"} onValueChange={(v) => {
@@ -549,9 +578,10 @@ export default function Deals() {
         </Select>
       </div>
 
-      {(stageFilter || (isAdmin && ownerFilter) || unitFilter !== "All") && (
+      {(searchQuery || stageFilter || (isAdmin && ownerFilter) || unitFilter !== "All") && (
         <div className="flex items-center gap-2 bg-primary/5 border border-primary/20 px-4 py-2 rounded-lg shrink-0">
           <span className="text-sm font-medium text-muted-foreground">Showing:</span>
+          {searchQuery && <Badge variant="secondary" className="text-xs">Search: {searchQuery}</Badge>}
           {stageFilter && <Badge variant="secondary" className="text-xs">Stage: {stageFilter}</Badge>}
           {isAdmin && ownerFilter && ownerName && <Badge variant="secondary" className="text-xs">Owner: {ownerName}</Badge>}
           {unitFilter !== "All" && <Badge variant="secondary" className="text-xs">Unit: {unitFilter}</Badge>}
@@ -592,11 +622,17 @@ export default function Deals() {
                             {customerLabel(deal.contact?.name, deal.contact?.customerCode) || 'Unknown Customer'}
                           </div>
                           {deal.contact?.companyName && (
-                            <div className="text-xs text-muted-foreground line-clamp-1 mb-1.5" title={deal.contact.companyName}>
+                            <div className="text-xs text-muted-foreground line-clamp-1 mb-0.5" title={deal.contact.companyName}>
                               {deal.contact.companyName}
                             </div>
                           )}
-                          {!deal.contact?.companyName && <div className="mb-1.5" />}
+                          {deal.contact?.mobile && (
+                            <div className="text-[11px] text-muted-foreground flex items-center gap-1 mb-1.5 font-mono" title={deal.contact.mobile}>
+                              <Phone className="h-3 w-3 text-muted-foreground/70 shrink-0" />
+                              <span>{deal.contact.mobile}</span>
+                            </div>
+                          )}
+                          {!deal.contact?.mobile && <div className="mb-1.5" />}
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <CategoryBadge category={deal.contact?.category} />
                             {(deal.productionUnit || deal.contact?.unit) && (
@@ -631,11 +667,17 @@ export default function Deals() {
                   {customerLabel(ad.contact?.name, ad.contact?.customerCode) || 'Unknown Customer'}
                 </div>
                 {ad.contact?.companyName && (
-                  <div className="text-xs text-muted-foreground line-clamp-1 mb-1.5" title={ad.contact.companyName}>
+                  <div className="text-xs text-muted-foreground line-clamp-1 mb-0.5" title={ad.contact.companyName}>
                     {ad.contact.companyName}
                   </div>
                 )}
-                {!ad.contact?.companyName && <div className="mb-1.5" />}
+                {ad.contact?.mobile && (
+                  <div className="text-[11px] text-muted-foreground flex items-center gap-1 mb-1.5 font-mono" title={ad.contact.mobile}>
+                    <Phone className="h-3 w-3 text-muted-foreground/70 shrink-0" />
+                    <span>{ad.contact.mobile}</span>
+                  </div>
+                )}
+                {!ad.contact?.mobile && <div className="mb-1.5" />}
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <CategoryBadge category={ad.contact?.category} />
                   {(ad.productionUnit || ad.contact?.unit) && (
