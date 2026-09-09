@@ -185,9 +185,9 @@ export default function Reports() {
   const [drill, setDrill] = useState<{ open: boolean; kind: DrillKind; title: string; value: string }>(
     { open: false, kind: "city", title: "", value: "" }
   );
-  const [drillFilter, setDrillFilter] = useState<"all" | "won" | "lost">("all");
+  const [dealFilter, setDealFilter] = useState<"all" | "won" | "lost">("all");
   const openDrill = (kind: DrillKind, title: string, value: string) => {
-    setDrillFilter("all");
+    setDealFilter("all");
     setDrill({ open: true, kind, title, value });
   };
 
@@ -236,10 +236,10 @@ export default function Reports() {
   }, [drillSource, drill.kind, drill.value]);
 
   const filteredDrillDeals = useMemo(() => {
-    if (drillFilter === "won") return drillDeals.filter(d => d.stage === "Won");
-    if (drillFilter === "lost") return drillDeals.filter(d => d.stage === "Lost");
+    if (dealFilter === "won") return drillDeals.filter(d => d.stage === "Won");
+    if (dealFilter === "lost") return drillDeals.filter(d => d.stage === "Lost");
     return drillDeals;
-  }, [drillDeals, drillFilter]);
+  }, [drillDeals, dealFilter]);
 
   const drillSummary = useMemo(() => {
     const won = drillDeals.filter(d => d.stage === "Won");
@@ -1466,12 +1466,12 @@ export default function Reports() {
               {/* Won / Lost summary with interactive filters */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <Card
-                  className={`cursor-pointer transition-all hover:shadow-md ${
-                    drillFilter === "all"
-                      ? "ring-2 ring-primary border-primary shadow-sm bg-primary/5 scale-[1.02]"
-                      : "hover:border-primary/50"
+                  className={`cursor-pointer transition-all ${
+                    dealFilter === "all"
+                      ? "scale-105 ring-2 ring-primary border-primary shadow-md bg-primary/5"
+                      : "hover:border-primary/50 hover:shadow-sm"
                   }`}
-                  onClick={() => setDrillFilter("all")}
+                  onClick={() => setDealFilter("all")}
                 >
                   <CardContent className="p-3">
                     <p className="text-xs text-muted-foreground">Total Deals</p>
@@ -1480,12 +1480,12 @@ export default function Reports() {
                 </Card>
 
                 <Card
-                  className={`cursor-pointer transition-all hover:shadow-md ${
-                    drillFilter === "won"
-                      ? "ring-2 ring-green-500 border-green-500 shadow-sm bg-green-50/50 dark:bg-green-950/30 scale-[1.02]"
-                      : "hover:border-green-500/50"
+                  className={`cursor-pointer transition-all ${
+                    dealFilter === "won"
+                      ? "scale-105 ring-2 ring-green-500 border-green-500 shadow-md bg-green-50/50 dark:bg-green-950/30"
+                      : "hover:border-green-500/50 hover:shadow-sm"
                   }`}
-                  onClick={() => setDrillFilter("won")}
+                  onClick={() => setDealFilter("won")}
                 >
                   <CardContent className="p-3">
                     <p className="text-xs text-muted-foreground">Won</p>
@@ -1494,12 +1494,12 @@ export default function Reports() {
                 </Card>
 
                 <Card
-                  className={`cursor-pointer transition-all hover:shadow-md ${
-                    drillFilter === "lost"
-                      ? "ring-2 ring-red-500 border-red-500 shadow-sm bg-red-50/50 dark:bg-red-950/30 scale-[1.02]"
-                      : "hover:border-red-500/50"
+                  className={`cursor-pointer transition-all ${
+                    dealFilter === "lost"
+                      ? "scale-105 ring-2 ring-red-500 border-red-500 shadow-md bg-red-50/50 dark:bg-red-950/30"
+                      : "hover:border-red-500/50 hover:shadow-sm"
                   }`}
-                  onClick={() => setDrillFilter("lost")}
+                  onClick={() => setDealFilter("lost")}
                 >
                   <CardContent className="p-3">
                     <p className="text-xs text-muted-foreground">Lost</p>
@@ -1518,14 +1518,14 @@ export default function Reports() {
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <p>
                   Showing {filteredDrillDeals.length} of {drillDeals.length} deal{drillDeals.length !== 1 ? "s" : ""}
-                  {drillFilter !== "all" ? ` (${drillFilter})` : ""} in this {drill.kind}
+                  {dealFilter !== "all" ? ` (${dealFilter})` : ""} in this {drill.kind}
                 </p>
-                {drillFilter !== "all" && (
+                {dealFilter !== "all" && (
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-6 text-xs px-2 text-primary"
-                    onClick={() => setDrillFilter("all")}
+                    onClick={() => setDealFilter("all")}
                   >
                     Show all deals
                   </Button>
@@ -1547,7 +1547,7 @@ export default function Reports() {
                     {filteredDrillDeals.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                          No {drillFilter !== "all" ? drillFilter : ""} deals found in this {drill.kind}.
+                          No {dealFilter !== "all" ? dealFilter : ""} deals found in this {drill.kind}.
                         </TableCell>
                       </TableRow>
                     ) : (
