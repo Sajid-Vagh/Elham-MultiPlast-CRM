@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText, Search, Tag, EyeOff, Eye } from "lucide-react";
+import { ArrowLeft, Phone, Plus, Trash2, FolderTree, MessageSquare, Pencil, Calendar, ChevronRight, Bell, Paperclip, Copy, ExternalLink, CheckCircle, XCircle, RotateCcw, User, Building, ListOrdered, FileText, Search, Tag, EyeOff, Eye, StickyNote, Clock } from "lucide-react";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -160,6 +160,13 @@ export default function LeadDetail() {
   const [completingActivity, setCompletingActivity] = useState<any>(null);
 
   const [expandedDeals, setExpandedDeals] = useState<string[]>([]);
+  const [dealsExpandedInitialized, setDealsExpandedInitialized] = useState(false);
+  useEffect(() => {
+    if (!dealsExpandedInitialized && dealTimeline.length > 0) {
+      setExpandedDeals(dealTimeline.map((g) => `deal-${g.deal?.id}`));
+      setDealsExpandedInitialized(true);
+    }
+  }, [dealTimeline, dealsExpandedInitialized]);
   const [timelineSearch, setTimelineSearch] = useState("");
   // "Show hidden deals" reveal toggle for the Activity Timeline (Issue: cluttered timeline)
   const [showHiddenDeals, setShowHiddenDeals] = useState(false);
@@ -304,109 +311,194 @@ export default function LeadDetail() {
     else { setActFromDate(""); setActToDate(""); }
   };
 
-  // Deal-centric timeline: flat chronological list per deal (no General group, no nested drawers)
+  // Deal-centric timeline: structured date-grouped chronological timeline per deal
   const dealTimeline = useMemo(() => {
-    type FlatEvent = {
-      key: string; date: string; kind: "lead" | "deal" | "followup" | "pi" | "won" | "lost";
-      label: string; detail?: string | null; noteEntries?: string[]; meta?: string | null; activityId?: number; dateInLabel?: boolean;
+    type TimelineEvent = {
+      key: string;
+      date: string;
+      timeStr: string;
+      dayKey: string;
+      dayFormatted: string;
+      kind: "lead" | "deal" | "followup" | "pi" | "won" | "lost";
+      title: string;
+      detail?: string | null;
+      noteEntries?: string[];
+      stageBadge?: { label: string; className?: string };
+      dotColor: string;
+      activityId?: number;
     };
-    const formatDay = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+
+    const formatDay = (d: string) => {
+      try {
+        const dt = new Date(d);
+        return isNaN(dt.getTime()) ? d : dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+      } catch {
+        return d;
+      }
+    };
+
+    const formatTime = (d: string) => {
+      try {
+        const dt = new Date(d);
+        return isNaN(dt.getTime()) ? "" : dt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+      } catch {
+        return "";
+      }
+    };
+
     const dateOk = (d: string) => {
       const day = d.slice(0, 10);
       if (actFromDate && day < actFromDate) return false;
       if (actToDate && day > actToDate) return false;
       return true;
     };
-    const searchLower = timelineSearch.toLowerCase();
-    const matchesSearch = (e: FlatEvent) =>
-      !timelineSearch ||
-      e.label.toLowerCase().includes(searchLower) ||
-      (e.detail || "").toLowerCase().includes(searchLower) ||
-      (e.meta || "").toLowerCase().includes(searchLower);
 
-    const groups: Array<{ deal: (typeof deals extends (infer D)[] | undefined ? D : never) | null; num: number; events: FlatEvent[]; lastActivity: string | null }> = [];
+    const searchLower = timelineSearch.toLowerCase();
+    const matchesSearch = (e: TimelineEvent) =>
+      !timelineSearch ||
+      e.title.toLowerCase().includes(searchLower) ||
+      (e.detail || "").toLowerCase().includes(searchLower) ||
+      (e.stageBadge?.label || "").toLowerCase().includes(searchLower) ||
+      (e.noteEntries || []).some((n) => n.toLowerCase().includes(searchLower));
+
+    const groups: Array<{
+      deal: (typeof deals extends (infer D)[] | undefined ? D : never) | null;
+      num: number;
+      events: TimelineEvent[];
+      dateGroups: Array<{ dayKey: string; dayFormatted: string; events: TimelineEvent[] }>;
+      totalEventsCount: number;
+      lastActivity: string | null;
+    }> = [];
 
     const existing = [...(deals || [])].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
-    // Static chronological numbers over ALL deals (hidden ones included): the
-    // oldest deal is always Deal 1, the second oldest Deal 2, ... Numbers never
-    // shift when a new deal is created or when deals are hidden/unhidden.
+    // Static chronological numbers over ALL deals (hidden ones included)
     const dealNumbers = new Map<number, number>();
     existing.forEach((d, idx) => dealNumbers.set(d.id, idx + 1));
 
     // Hidden-from-timeline deals are skipped unless the user opted to reveal them.
-    const visibleDeals = showHiddenDeals ? existing : existing.filter(d => !d.isHiddenFromTimeline);
+    const visibleDeals = showHiddenDeals ? existing : existing.filter((d) => !d.isHiddenFromTimeline);
 
-    // Always open with a lead-created marker so the lead's origin is visible
     const leadDate = contact?.createdAt;
 
     for (const deal of visibleDeals) {
-      const events: FlatEvent[] = [];
+      const events: TimelineEvent[] = [];
 
       if (leadDate && dateOk(leadDate)) {
         events.push({
-          key: `lead-${deal.id}`, date: leadDate, kind: "lead",
-          label: `Lead created on ${formatDay(leadDate)}`,
-          dateInLabel: true,
+          key: `lead-${deal.id}`,
+          date: leadDate,
+          timeStr: formatTime(leadDate),
+          dayKey: new Date(leadDate).toISOString().slice(0, 10),
+          dayFormatted: formatDay(leadDate),
+          kind: "lead",
+          title: "Lead created",
+          detail: `Lead registered for ${contact?.name || "Contact"}${contact?.companyName ? ` (${contact.companyName})` : ""}`,
+          stageBadge: { label: "New", className: STAGE_BADGE_COLORS["New"] || "bg-slate-100 text-slate-700" },
+          dotColor: "bg-blue-500",
         });
       }
 
       const dealCreated = deal.createdAt;
       if (dateOk(dealCreated)) {
         events.push({
-          key: `deal-created-${deal.id}`, date: dealCreated, kind: "deal",
-          label: `Deal created: ${deal.title || "Untitled Deal"} on ${formatDay(dealCreated)}`,
-          dateInLabel: true,
+          key: `deal-created-${deal.id}`,
+          date: dealCreated,
+          timeStr: formatTime(dealCreated),
+          dayKey: new Date(dealCreated).toISOString().slice(0, 10),
+          dayFormatted: formatDay(dealCreated),
+          kind: "deal",
+          title: "Deal created",
+          detail: deal.title ? `Deal "${deal.title}" created` : "Deal created",
+          stageBadge: { label: deal.stage || "New", className: STAGE_BADGE_COLORS[deal.stage || "New"] || "bg-slate-100 text-slate-700" },
+          dotColor: "bg-purple-500",
         });
       }
 
-      // Only human-input follow-up activities (Call/Meeting/FollowUp) with the
-      // user's actual comment/notes. System audit logs (Note rows auto-generated
-      // for "changed Follow-up Date/Status", "PI Sent", "Deal Stage Changed", etc.)
-      // are hidden entirely so the timeline stays a clean story.
+      // Human follow-up activities
       const dealActs = dedupeById(activities || [])
-        .filter(a => a.dealId === deal.id && (a.type === "Call" || a.type === "Meeting" || a.type === "FollowUp"))
+        .filter((a) => a.dealId === deal.id && (a.type === "Call" || a.type === "Meeting" || a.type === "FollowUp"))
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
       let followUpNum = 0;
       for (const act of dealActs) {
         if (!dateOk(act.createdAt)) continue;
         followUpNum++;
         const rawNote = act.notes || (act as any).note || (act as any).notesDisplay;
         const noteEntries = parseNotesEntries(rawNote);
+        const parsedDetail = parseNotesText(rawNote) || null;
+        const callStatus = act.callStatus || "Pending";
+        const statusBadge =
+          callStatus === "Completed"
+            ? { label: "Completed", className: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800" }
+            : callStatus === "Cancelled"
+            ? { label: "Cancelled", className: "bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300 border-red-300 dark:border-red-800" }
+            : { label: "Pending", className: "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300 dark:border-amber-800" };
+
+        const dotColor = callStatus === "Completed" ? "bg-emerald-500" : callStatus === "Cancelled" ? "bg-red-500" : "bg-amber-500";
+        const typeLabel = act.type === "Call" ? "Call" : act.type === "Meeting" ? "Meeting" : "Follow-up";
+
         events.push({
-          key: `act-${act.id}`, date: act.createdAt, kind: "followup",
-          label: `Follow-up ${followUpNum}`,
-          detail: parseNotesText(rawNote) || null,
+          key: `act-${act.id}`,
+          date: act.createdAt,
+          timeStr: formatTime(act.createdAt),
+          dayKey: new Date(act.createdAt).toISOString().slice(0, 10),
+          dayFormatted: formatDay(act.createdAt),
+          kind: "followup",
+          title: `${typeLabel} ${followUpNum}`,
+          detail: parsedDetail,
           noteEntries: noteEntries.length > 0 ? noteEntries : undefined,
-          meta: act.callStatus || null,
+          stageBadge: statusBadge,
+          dotColor,
           activityId: act.id,
         });
       }
 
-      // Proforma invoices for this deal
-      for (const pi of (contactProformas || [])) {
+      // Proforma invoices
+      for (const pi of contactProformas || []) {
         const piDealId = (pi as any).dealId;
         if (piDealId !== deal.id || !dateOk(pi.createdAt || "")) continue;
+        const piDate = pi.createdAt || dealCreated;
         events.push({
-          key: `pi-${pi.id}`, date: pi.createdAt || dealCreated, kind: "pi",
-          label: "Proforma Invoice sent",
-          detail: pi.invoiceNumber || null,
-          meta: pi.status || null,
+          key: `pi-${pi.id}`,
+          date: piDate,
+          timeStr: formatTime(piDate),
+          dayKey: new Date(piDate).toISOString().slice(0, 10),
+          dayFormatted: formatDay(piDate),
+          kind: "pi",
+          title: "PI Sent",
+          detail: `Proforma Invoice #${pi.invoiceNumber || ""}${pi.totalAmount ? ` • ${formatCurrency(pi.totalAmount)}` : ""}`,
+          stageBadge: { label: "PI Sent", className: STAGE_BADGE_COLORS["PI Sent"] || "bg-indigo-100 text-indigo-700" },
+          dotColor: "bg-indigo-500",
         });
       }
 
-      // Won / Lost terminal events
-      if (deal.stage === "Won" && deal.completedAt) {
+      // Won / Lost
+      if (deal.stage === "Won" && deal.completedAt && dateOk(deal.completedAt)) {
         events.push({
-          key: `won-${deal.id}`, date: deal.completedAt, kind: "won",
-          label: "Deal Won",
-          meta: deal.totalValue ? formatCurrency(deal.totalValue) : null,
+          key: `won-${deal.id}`,
+          date: deal.completedAt,
+          timeStr: formatTime(deal.completedAt),
+          dayKey: new Date(deal.completedAt).toISOString().slice(0, 10),
+          dayFormatted: formatDay(deal.completedAt),
+          kind: "won",
+          title: "Deal Won",
+          detail: deal.totalValue ? `Won value: ${formatCurrency(deal.totalValue)}` : "Deal closed successfully",
+          stageBadge: { label: "Won", className: STAGE_BADGE_COLORS["Won"] || "bg-green-100 text-green-700" },
+          dotColor: "bg-emerald-600",
         });
-      } else if (deal.stage === "Lost" && deal.completedAt) {
+      } else if (deal.stage === "Lost" && deal.completedAt && dateOk(deal.completedAt)) {
         events.push({
-          key: `lost-${deal.id}`, date: deal.completedAt, kind: "lost",
-          label: "Deal Lost",
-          meta: deal.lostReason || null,
+          key: `lost-${deal.id}`,
+          date: deal.completedAt,
+          timeStr: formatTime(deal.completedAt),
+          dayKey: new Date(deal.completedAt).toISOString().slice(0, 10),
+          dayFormatted: formatDay(deal.completedAt),
+          kind: "lost",
+          title: "Deal Lost",
+          detail: `Reason: ${deal.lostReason || "Not specified"}${deal.lostNotes ? ` — ${deal.lostNotes}` : ""}`,
+          stageBadge: { label: "Lost", className: STAGE_BADGE_COLORS["Lost"] || "bg-red-100 text-red-700" },
+          dotColor: "bg-red-500",
         });
       }
 
@@ -414,16 +506,32 @@ export default function LeadDetail() {
         .filter(matchesSearch)
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
+      // Group events by date
+      const dateGroupMap = new Map<string, { dayKey: string; dayFormatted: string; events: TimelineEvent[] }>();
+      for (const ev of filtered) {
+        if (!dateGroupMap.has(ev.dayKey)) {
+          dateGroupMap.set(ev.dayKey, {
+            dayKey: ev.dayKey,
+            dayFormatted: ev.dayFormatted,
+            events: [],
+          });
+        }
+        dateGroupMap.get(ev.dayKey)!.events.push(ev);
+      }
+      const dateGroups = Array.from(dateGroupMap.values());
+
       groups.push({
         deal,
         num: dealNumbers.get(deal.id) ?? 0,
         events: filtered,
+        dateGroups,
+        totalEventsCount: filtered.length,
         lastActivity: filtered.length > 0 ? filtered[filtered.length - 1].date : null,
       });
     }
 
     // Sort deal groups newest-first by their most recent event; groups with no events drop out
-    const withEvents = groups.filter(g => g.events.length > 0);
+    const withEvents = groups.filter((g) => g.events.length > 0);
     withEvents.sort((a, b) => new Date(b.lastActivity || 0).getTime() - new Date(a.lastActivity || 0).getTime());
     return withEvents;
   }, [contact, deals, activities, contactProformas, actFromDate, actToDate, timelineSearch, showHiddenDeals]);
@@ -950,19 +1058,17 @@ export default function LeadDetail() {
                 <Accordion type="multiple" value={expandedDeals} onValueChange={setExpandedDeals} className="space-y-2">
                   {dealTimeline.map((group) => {
                     const accordionVal = `deal-${group.deal?.id}`;
-                    const formatDate = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-
-                    const KIND_STYLE: Record<string, { dot: string; text: string; badge?: string }> = {
-                      lead:     { dot: "bg-blue-500", text: "text-blue-700" },
-                      deal:     { dot: "bg-emerald-500", text: "text-emerald-700" },
-                      followup: { dot: "bg-orange-500", text: "text-orange-700" },
-                      pi:       { dot: "bg-indigo-500", text: "text-indigo-700" },
-                      won:      { dot: "bg-green-600", text: "text-green-700" },
-                      lost:     { dot: "bg-red-500", text: "text-red-700" },
+                    const formatDate = (d: string) => {
+                      try {
+                        const dt = new Date(d);
+                        return isNaN(dt.getTime()) ? d : dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+                      } catch {
+                        return d;
+                      }
                     };
 
                     return (
-                      <AccordionItem key={accordionVal} value={accordionVal} className="border rounded-lg overflow-hidden relative group/deal">
+                      <AccordionItem key={accordionVal} value={accordionVal} className="border rounded-lg overflow-hidden relative group/deal bg-card">
                         {/* Actions on this deal card */}
                         <div className="absolute right-2 top-1.5 z-10 flex items-center gap-1">
                           {group.deal && group.deal.stage !== "Won" && group.deal.stage !== "Lost" && (
@@ -997,71 +1103,130 @@ export default function LeadDetail() {
                         </div>
                         <AccordionTrigger className="px-3 py-2.5 pr-16 hover:no-underline hover:bg-muted/30 [&[data-state=open]]:bg-muted/20">
                           <div className="flex-1 flex items-center justify-between mr-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <FolderTree className="h-4 w-4 text-amber-600 shrink-0" />
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 text-primary">
+                                <FolderTree className="h-4 w-4" />
+                              </div>
                               {group.deal && (
-                                <div className="min-w-0">
-                                  <span className="text-sm font-semibold truncate block">Deal {group.num} {group.deal.title ? `(${group.deal.title})` : ""}</span>
-                                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                                    <span>{formatDate(group.deal.createdAt)}</span>
-                                    {group.deal.totalValue && <span className="font-medium text-foreground">{formatCurrency(group.deal.totalValue)}</span>}
-                                    <span className={`px-1.5 py-0 rounded-full font-medium ${STAGE_BADGE_COLORS[group.deal.stage] || "bg-gray-100"}`}>{group.deal.stage}</span>
+                                <div className="min-w-0 text-left">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-sm font-semibold truncate block">
+                                      Deal {group.num} {group.deal.title ? `(${group.deal.title})` : ""}
+                                    </span>
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${STAGE_BADGE_COLORS[group.deal.stage] || "bg-muted text-muted-foreground border-border"}`}>
+                                      {group.deal.stage}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5">
+                                    <span className="flex items-center gap-1">
+                                      <Calendar className="h-3 w-3" />
+                                      {formatDate(group.deal.createdAt)}
+                                    </span>
+                                    {group.deal.totalValue && (
+                                      <span className="font-medium text-foreground">
+                                        {formatCurrency(group.deal.totalValue)}
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               )}
                             </div>
                             <div className="flex items-center gap-3 text-[10px] text-muted-foreground shrink-0">
                               {group.lastActivity && <span>Last: {formatDate(group.lastActivity)}</span>}
-                              <Badge variant="outline" className="text-[10px]">{group.events.length} events</Badge>
+                              <Badge variant="outline" className="text-[10px]">{group.totalEventsCount} events</Badge>
                             </div>
                           </div>
                         </AccordionTrigger>
                         <AccordionContent className="px-3 pb-3 pt-0">
-                          <div className="mt-1">
-                            {group.events.map((ev) => {
-                              const st = KIND_STYLE[ev.kind] || KIND_STYLE.lead;
-                              return (
-                                <div key={ev.key} className="flex items-start gap-2 py-1.5 group/event">
-                                  <div className="flex flex-col items-center pt-1.5">
-                                    <span className={`w-2.5 h-2.5 rounded-full ring-2 ring-background ${st.dot}`} />
+                          <div className="space-y-4 pt-1">
+                            {group.dateGroups.map((dGroup) => (
+                              <div key={dGroup.dayKey} className="relative">
+                                {/* Date Header Chip */}
+                                <div className="flex items-center gap-2.5 my-2.5">
+                                  <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-muted/80 border border-border/80 text-[11px] font-medium text-muted-foreground shadow-xs">
+                                    <Calendar className="h-3 w-3 text-muted-foreground" />
+                                    <span>{dGroup.dayFormatted}</span>
                                   </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                      <span className={`text-[11px] font-medium ${st.text}`}>{ev.label}</span>
-                                      {!ev.dateInLabel && <span className="text-[10px] text-muted-foreground">{formatDate(ev.date)}</span>}
-                                      {ev.meta && (
-                                        <Badge variant="outline" className={`text-[9px] px-1 py-0 ${ev.kind === "followup" && ev.meta === "Completed" ? "border-green-300 text-green-700" : ev.kind === "followup" && ev.meta === "Cancelled" ? "border-red-300 text-red-700" : ev.kind === "followup" ? "border-orange-300 text-orange-700" : "border-gray-300 text-gray-600"}`}>
-                                          {ev.meta}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    {ev.noteEntries && ev.noteEntries.length > 0 ? (
-                                      <div className="mt-1 space-y-1">
-                                        {ev.noteEntries.map((entry, i) => (
-                                          <div
-                                            key={i}
-                                            className="text-[11px] font-medium text-foreground whitespace-pre-wrap bg-orange-50 border-l-2 border-orange-300 rounded-r-md pl-2 pr-1.5 py-1"
-                                          >
-                                            <span className="text-orange-700 font-semibold">Note {i + 1}:</span> {entry}
-                                          </div>
-                                        ))}
-                                      </div>
-                                    ) : ev.detail ? (
-                                      <p className="text-[11px] text-muted-foreground whitespace-pre-wrap mt-0.5">{ev.detail}</p>
-                                    ) : null}
-                                  </div>
-                                  {ev.activityId && (
-                                    <button
-                                      onClick={() => setDeleteActId(ev.activityId!)}
-                                      className="h-5 w-5 rounded hover:bg-red-50 flex items-center justify-center text-muted-foreground hover:text-red-600 opacity-0 group-hover/event:opacity-100 transition-opacity shrink-0 mt-1"
-                                      title="Delete activity"
-                                    >
-                                      <Trash2 className="h-3 w-3" />
-                                    </button>
-                                  )}
+                                  <div className="flex-1 h-px bg-border/60" />
                                 </div>
-                              );
-                            })}
+
+                                {/* Timeline Events for this Date */}
+                                <div className="relative pl-6 sm:pl-20 space-y-3">
+                                  {/* Vertical Timeline Line */}
+                                  <div className="absolute left-[11px] sm:left-[67px] top-3 bottom-3 w-0.5 bg-border/70" />
+
+                                  {dGroup.events.map((ev) => (
+                                    <div key={ev.key} className="relative flex flex-col sm:flex-row items-start gap-2 sm:gap-3 group/event">
+                                      {/* Desktop Time */}
+                                      <div className="hidden sm:block w-14 text-right pt-2.5 shrink-0">
+                                        <span className="text-[11px] font-medium text-muted-foreground">{ev.timeStr}</span>
+                                      </div>
+
+                                      {/* Connected Dot on vertical line */}
+                                      <div className="absolute sm:relative left-0 sm:left-auto top-3 sm:top-2.5 -translate-x-[5px] sm:translate-x-0 z-10 shrink-0">
+                                        <span className={`block w-3 h-3 rounded-full ring-4 ring-card ${ev.dotColor}`} />
+                                      </div>
+
+                                      {/* Mobile Time */}
+                                      <div className="sm:hidden pl-2 text-[10px] font-medium text-muted-foreground pt-0.5">
+                                        {ev.timeStr}
+                                      </div>
+
+                                      {/* Event Content Card */}
+                                      <div className="flex-1 w-full bg-card/80 hover:bg-muted/20 border border-border/70 rounded-lg p-3 shadow-xs transition-colors">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <span className="text-xs sm:text-sm font-semibold text-foreground">
+                                            {ev.title}
+                                          </span>
+                                          <div className="flex items-center gap-1.5 shrink-0">
+                                            {ev.stageBadge && (
+                                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${ev.stageBadge.className || "bg-muted text-muted-foreground border-border"}`}>
+                                                {ev.stageBadge.label}
+                                              </span>
+                                            )}
+                                            {ev.activityId && (
+                                              <button
+                                                type="button"
+                                                onClick={() => setDeleteActId(ev.activityId!)}
+                                                className="h-5 w-5 rounded hover:bg-red-50 dark:hover:bg-red-950/50 flex items-center justify-center text-muted-foreground hover:text-red-600 opacity-0 group-hover/event:opacity-100 transition-opacity ml-1"
+                                                title="Delete activity"
+                                              >
+                                                <Trash2 className="h-3 w-3" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {/* Notes or Details */}
+                                        {ev.noteEntries && ev.noteEntries.length > 0 ? (
+                                          <div className="mt-2 space-y-1.5">
+                                            {ev.noteEntries.map((entry, i) => (
+                                              <div
+                                                key={i}
+                                                className="text-xs text-foreground whitespace-pre-wrap bg-amber-500/10 border-l-2 border-amber-500 rounded-r-md px-2.5 py-1.5 flex items-start gap-2"
+                                              >
+                                                <StickyNote className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                                <div className="flex-1">
+                                                  {ev.noteEntries!.length > 1 && (
+                                                    <span className="font-semibold text-amber-800 dark:text-amber-300 mr-1">Note {i + 1}:</span>
+                                                  )}
+                                                  <span>{entry}</span>
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : ev.detail ? (
+                                          <div className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap bg-muted/30 border border-border/40 rounded-md px-2.5 py-1.5 flex items-start gap-2">
+                                            <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                                            <span className="flex-1">{ev.detail}</span>
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </AccordionContent>
                       </AccordionItem>
