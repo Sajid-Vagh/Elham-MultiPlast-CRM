@@ -3775,6 +3775,8 @@ export async function getManufacturingSummaryDetail(
       )
       SELECT DISTINCT
         po.id AS "orderId",
+        po.formatted_order_id AS "poFormattedOrderId",
+        po.deal_id AS "dealId",
         po.status,
         po.production_unit AS "productionUnit",
         po.created_by_role AS "createdByRole",
@@ -3787,6 +3789,8 @@ export async function getManufacturingSummaryDetail(
         COALESCE(pi.invoice_number, '') AS "piNumber",
         COALESCE(pi.sales_owner_id::text, '') AS "salesOwnerId",
         (SELECT u.name FROM users u WHERE u.id = pi.sales_owner_id) AS "salesPerson",
+        COALESCE(c.customer_code, '') AS "customerCode",
+        COALESCE(o.order_number, o.formatted_order_id, po.formatted_order_id, '') AS "masterOrderNumber",
         pii.quantity::numeric AS "quantity",
         pii.unit AS "unit"
       FROM active_orders ao
@@ -3794,6 +3798,8 @@ export async function getManufacturingSummaryDetail(
       JOIN production_order_items poi ON poi.production_order_id = po.id
       JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
       JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
+      LEFT JOIN contacts c ON c.id = pi.contact_id
+      LEFT JOIN orders o ON o.deal_id = po.deal_id
       LEFT JOIN products p ON p.id = COALESCE(pii.product_id, (
         SELECT p2.id FROM products p2 WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(pii.product_name)) LIMIT 1
       ))
@@ -3807,6 +3813,8 @@ export async function getManufacturingSummaryDetail(
     results = await db.execute(sql`
       SELECT DISTINCT
         po.id AS "orderId",
+        po.formatted_order_id AS "poFormattedOrderId",
+        po.deal_id AS "dealId",
         po.status,
         po.production_unit AS "productionUnit",
         po.created_by_role AS "createdByRole",
@@ -3819,11 +3827,15 @@ export async function getManufacturingSummaryDetail(
         COALESCE(pi.invoice_number, '') AS "piNumber",
         COALESCE(pi.sales_owner_id::text, '') AS "salesOwnerId",
         (SELECT u.name FROM users u WHERE u.id = pi.sales_owner_id) AS "salesPerson",
+        COALESCE(c.customer_code, '') AS "customerCode",
+        COALESCE(o.order_number, o.formatted_order_id, po.formatted_order_id, '') AS "masterOrderNumber",
         pii.quantity::numeric AS "quantity",
         pii.unit AS "unit"
       FROM production_orders po
       JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
       JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
+      LEFT JOIN contacts c ON c.id = pi.contact_id
+      LEFT JOIN orders o ON o.deal_id = po.deal_id
       LEFT JOIN products p ON p.id = COALESCE(pii.product_id, (
         SELECT p2.id FROM products p2 WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(pii.product_name)) LIMIT 1
       ))
@@ -3833,40 +3845,47 @@ export async function getManufacturingSummaryDetail(
     `);
   }
 
-  const items = (results.rows || []).map((r: any) => ({
-    orderId: Number(r.orderId),
-    customerName: r.customerName || "-",
-    companyName: r.companyName || "-",
-    piNumber: r.piNumber || "-",
-    salesPerson: r.salesPerson || "-",
-    quantity: Number(r.quantity),
-    unit: r.unit || "Pcs",
-    status: r.status,
-    productionUnit: r.productionUnit || "-",
-    createdByRole: r.createdByRole,
-    isDelayed: r.isDelayed,
-    createdAt: r.createdAt,
-    expectedDispatchDate: r.expectedDispatchDate,
-    priority: r.priority,
-  }));
+  const items = (results.rows || []).map((r: any) => {
+    const rawOrderNumber = r.masterOrderNumber || r.poFormattedOrderId;
+    const orderNumber = rawOrderNumber || (r.createdAt ? `EML_${getFinancialYear(new Date(r.createdAt))}_${r.orderId}` : `#${r.orderId}`);
+    return {
+      orderId: Number(r.orderId),
+      orderNumber,
+      customerCode: r.customerCode || "",
+      customerName: r.customerName || "-",
+      companyName: r.companyName || "-",
+      piNumber: r.piNumber || "-",
+      salesPerson: r.salesPerson || "-",
+      quantity: Number(r.quantity),
+      unit: r.unit || "Pcs",
+      status: r.status,
+      productionUnit: r.productionUnit || "-",
+      createdByRole: r.createdByRole,
+      isDelayed: r.isDelayed,
+      createdAt: r.createdAt,
+      expectedDispatchDate: r.expectedDispatchDate,
+      priority: r.priority,
+    };
+  });
 
   // Mask customer identity for production-only users
   if (isProductionOnlyRole(user.role)) {
     for (const item of items) {
-      // Look up customer code from contacts via PI
-      const [pi] = await db.select({ contactId: proformaInvoicesTable.contactId })
-        .from(proformaInvoicesTable)
-        .where(eq(proformaInvoicesTable.invoiceNumber, item.piNumber === "-" ? "" : item.piNumber))
-        .limit(1);
-      if (pi?.contactId) {
-        const [contact] = await db.select({ customerCode: contactsTable.customerCode })
-          .from(contactsTable)
-          .where(eq(contactsTable.id, pi.contactId))
+      if (!item.customerCode) {
+        // Look up customer code from contacts via PI
+        const [pi] = await db.select({ contactId: proformaInvoicesTable.contactId })
+          .from(proformaInvoicesTable)
+          .where(eq(proformaInvoicesTable.invoiceNumber, item.piNumber === "-" ? "" : item.piNumber))
           .limit(1);
-        item.customerName = contact?.customerCode || "[No Code]";
-      } else {
-        item.customerName = "[No Code]";
+        if (pi?.contactId) {
+          const [contact] = await db.select({ customerCode: contactsTable.customerCode })
+            .from(contactsTable)
+            .where(eq(contactsTable.id, pi.contactId))
+            .limit(1);
+          item.customerCode = contact?.customerCode || "";
+        }
       }
+      item.customerName = item.customerCode || "[No Code]";
       item.companyName = "";
     }
   }

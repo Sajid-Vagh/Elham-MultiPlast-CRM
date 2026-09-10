@@ -96,6 +96,8 @@ type SummaryGroup = {
 
 type DetailItem = {
   orderId: number;
+  orderNumber?: string;
+  customerCode?: string;
   customerName: string;
   companyName: string;
   piNumber: string;
@@ -410,9 +412,16 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div>
-                          <p className="font-semibold text-sm">{item.customerName}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold text-sm">{item.customerName}</p>
+                            {item.customerCode && (
+                              <Badge variant="secondary" className="text-[10px] font-mono font-semibold px-1.5 py-0">
+                                {item.customerCode}
+                              </Badge>
+                            )}
+                          </div>
                           {item.companyName && item.companyName !== item.customerName && (
-                            <p className="text-xs text-muted-foreground">{item.companyName}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{item.companyName}</p>
                           )}
                         </div>
                         <div className="flex items-center gap-2">
@@ -422,7 +431,11 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                           </Badge>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-xs">
+                        <div>
+                          <p className="text-muted-foreground">Order #</p>
+                          <p className="font-semibold text-primary font-mono">{item.orderNumber || `#${item.orderId}`}</p>
+                        </div>
                         <div>
                           <p className="text-muted-foreground">Sales</p>
                           <p className="font-medium">{item.salesPerson}</p>
@@ -435,6 +448,12 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                           <p className="text-muted-foreground">Qty</p>
                           <p className="font-medium">{item.quantity.toLocaleString()} {item.unit}</p>
                         </div>
+                        {item.customerCode && (
+                          <div>
+                            <p className="text-muted-foreground">Customer Code</p>
+                            <p className="font-medium font-mono">{item.customerCode}</p>
+                          </div>
+                        )}
                         {item.createdByRole && (
                           <div>
                             <p className="text-muted-foreground">Origin</p>
