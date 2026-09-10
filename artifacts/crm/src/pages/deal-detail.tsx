@@ -266,7 +266,7 @@ export default function DealDetail() {
       }
     } catch (err: any) {
       setWonSubmitting(false);
-      toast({ title: "Error", description: err?.message || "Failed to mark deal as Won", variant: "destructive" });
+      toast({ title: "Error", description: err?.data?.error || err?.message || "Failed to mark deal as Won", variant: "destructive" });
     }
   };
 

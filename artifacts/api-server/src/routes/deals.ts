@@ -14,7 +14,7 @@ import { generateId } from "../lib/id-generator";
 import { generateOrderNumber } from "../lib/order-id-generator";
 import { normalizeProfilePhotoUrl } from "../lib/storage";
 import { completePendingActivitiesForDeal } from "../lib/activity-helpers";
-import { getActivePiForDeal, getActivePiSummary, validateActivePiForPiSent, deactivateActivePis } from "../lib/proforma-service";
+import { getActivePiForDeal, getActivePiSummary, validateActivePiForPiSent, deactivateActivePis, isValidPiStatusForWon } from "../lib/proforma-service";
 import { convertContactToMyClient, checkNoExistingOrder, getTodayWonCount, validateWonPrerequisites, validateProductionUnit, isPermanentClient } from "../lib/won-service";
 import { notifyProductionUsers } from "../lib/notification-service";
 import { logActivity, logDealStageActivity, formatTimestamp } from "../lib/activity-logger";
@@ -513,12 +513,12 @@ router.get("/deals/:id/validate-won", async (req, res) => {
 
     const activePi = await getActivePiForDeal(db, parsed.data.id);
     if (!activePi) {
-      res.json({ valid: false, error: "This Deal requires an Active Sent/Approved Proforma Invoice before it can be marked Won." });
+      res.json({ valid: false, error: "This Deal requires a Sent or Approved Proforma Invoice before it can be marked Won." });
       return;
     }
 
-    if (activePi.status !== "Sent" && activePi.status !== "Approved") {
-      res.json({ valid: false, error: `This Deal requires an Active Sent/Approved Proforma Invoice before it can be marked Won. Current PI status: "${activePi.status}".` });
+    if (!isValidPiStatusForWon(activePi.status)) {
+      res.json({ valid: false, error: `This Deal requires a Sent or Approved Proforma Invoice before it can be marked Won. Current PI status: "${activePi.status}".` });
       return;
     }
 

@@ -338,7 +338,7 @@ export default function Deals() {
   } catch (err: any) {
     setWonSubmitting(false);
     setVoiceNoteUploading(false);
-    toast({ title: "Error", description: err?.message || "Failed to mark deal as Won", variant: "destructive" });
+    toast({ title: "Error", description: err?.data?.error || err?.message || "Failed to mark deal as Won", variant: "destructive" });
   }
   };
 
@@ -393,11 +393,17 @@ export default function Deals() {
       fetch(`/api/deals/${dealId}/validate-won`, {
         headers: { Authorization: `Bearer ${token}` },
       })
-        .then(res => res.json())
+        .then(async (res) => {
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(data?.error || `Server responded with ${res.status}`);
+          }
+          return data;
+        })
         .then((result: any) => {
           if (!result.valid) {
             setOptimisticStages(prev => { const n = { ...prev }; delete n[dealId]; return n; });
-            toast({ title: "Action Denied", description: result.error || "This Deal requires an Active Sent/Approved Proforma Invoice before it can be marked Won.", variant: "destructive" });
+            toast({ title: "Action Denied", description: result.error || "This Deal requires a Sent or Approved Proforma Invoice before it can be marked Won.", variant: "destructive" });
             return;
           }
           setMarkWonDeal({ deal, oldStage });
@@ -407,9 +413,9 @@ export default function Deals() {
           setWonProductionNotes("");
           setWonSalesNotes("");
         })
-        .catch(() => {
+        .catch((err: any) => {
           setOptimisticStages(prev => { const n = { ...prev }; delete n[dealId]; return n; });
-          toast({ title: "Error", description: "Could not verify Proforma Invoice.", variant: "destructive" });
+          toast({ title: "Error", description: err?.message || "Could not verify Proforma Invoice.", variant: "destructive" });
         });
       return;
     }

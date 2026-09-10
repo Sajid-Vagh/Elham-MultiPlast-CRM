@@ -3,7 +3,7 @@ import {
   usersTable, ordersTable, proformaInvoicesTable,
 } from "@workspace/db";
 import { eq, and, ne, sql } from "drizzle-orm";
-import { getActivePiForDeal } from "./proforma-service";
+import { getActivePiForDeal, isValidPiStatusForWon } from "./proforma-service";
 import { generateCustomerCode } from "./customer-code-generator";
 import { unitsTable } from "@workspace/db";
 import { PENDING_UNIT_ASSIGNMENT, isPendingUnit } from "./unit-constants";
@@ -91,13 +91,17 @@ async function validateWonPrerequisitesFromPi(
 ): Promise<{ valid: true; piTaxableAmount: number } | { valid: false; status: number; error: string }> {
   const pi = await getActivePiForDeal(exec, dealId);
   if (!pi) {
-    return { valid: false, status: 400, error: "No active Proforma Invoice found. Create and send a PI before marking as Won." };
+    return { valid: false, status: 400, error: "No Proforma Invoice found for this Deal. Create and send a PI before marking as Won." };
   }
-  if (pi.status !== "Sent" && pi.status !== "Approved") {
+  if (!isValidPiStatusForWon(pi.status)) {
     return { valid: false, status: 400, error: `Proforma Invoice must be "Sent" or "Approved" before marking as Won. Current status: "${pi.status}". Send the PI to the customer first.` };
   }
   const taxableAmount = Number(pi.taxableAmount || 0);
   if (taxableAmount <= 0) {
+    const grandTotal = Number(pi.grandTotal || 0);
+    if (grandTotal > 0) {
+      return { valid: true, piTaxableAmount: grandTotal };
+    }
     return { valid: false, status: 400, error: "Proforma Invoice has no subtotal (taxable amount). Update the PI before marking as Won." };
   }
   return { valid: true, piTaxableAmount: taxableAmount };
