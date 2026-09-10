@@ -108,6 +108,99 @@ export function formatDealNotes(notes: unknown): string | null {
   return entries.map((text, index) => `Note ${index + 1}: ${text}`).join("\n");
 }
 
+export type DetailedNote = {
+  text: string;
+  date?: string;
+  time?: string;
+  userName?: string;
+  userId?: number;
+};
+
+/**
+ * Parses raw notes (plain text, JSON arrays, nested JSON strings) into a clean list
+ * of structured note entries — unwrapping any double-encoded JSON and deduplicating
+ * redundant items.
+ */
+export function parseDetailedNotes(raw: unknown): DetailedNote[] {
+  if (raw == null) return [];
+  const result: DetailedNote[] = [];
+
+  const processItem = (item: any, fallbackDate?: string, fallbackTime?: string, fallbackUser?: string, fallbackUserId?: number) => {
+    if (item == null) return;
+
+    if (typeof item === "string") {
+      const trimmed = item.trim();
+      if (!trimmed) return;
+      if (trimmed.startsWith("[") || trimmed.startsWith("{") || (trimmed.startsWith("\"") && trimmed.endsWith("\""))) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          processItem(parsed, fallbackDate, fallbackTime, fallbackUser, fallbackUserId);
+          return;
+        } catch {}
+      }
+      const clean = parseNotesText(trimmed);
+      if (clean) {
+        result.push({
+          text: clean,
+          date: fallbackDate,
+          time: fallbackTime,
+          userName: fallbackUser,
+          userId: fallbackUserId,
+        });
+      }
+      return;
+    }
+
+    if (Array.isArray(item)) {
+      for (const el of item) {
+        processItem(el, fallbackDate, fallbackTime, fallbackUser, fallbackUserId);
+      }
+      return;
+    }
+
+    if (typeof item === "object") {
+      const textVal = item.text ?? item.note ?? item.content ?? item.message ?? item.notes;
+      const entryDate = item.date || fallbackDate;
+      const entryTime = item.time || fallbackTime;
+      const entryUser = item.userName || item.user || fallbackUser;
+      const entryUserId = item.userId ?? fallbackUserId;
+
+      if (typeof textVal === "string" && (textVal.trim().startsWith("[") || textVal.trim().startsWith("{"))) {
+        try {
+          const nested = JSON.parse(textVal.trim());
+          processItem(nested, entryDate, entryTime, entryUser, entryUserId);
+          return;
+        } catch {}
+      }
+
+      const cleanText = parseNotesText(textVal);
+      if (cleanText) {
+        result.push({
+          text: cleanText,
+          date: entryDate,
+          time: entryTime,
+          userName: entryUser,
+          userId: entryUserId,
+        });
+      }
+    }
+  };
+
+  processItem(raw);
+
+  // Deduplicate consecutive notes with identical text and date
+  const deduped: DetailedNote[] = [];
+  for (const n of result) {
+    const last = deduped[deduped.length - 1];
+    if (last && last.text.trim() === n.text.trim() && (!n.date || last.date === n.date)) {
+      continue;
+    }
+    deduped.push(n);
+  }
+
+  return deduped;
+}
+
 export function dedupeById<T extends { id?: number | string | null }>(items: T[]): T[] {
   const seen = new Set<number | string>();
   const out: T[] = [];

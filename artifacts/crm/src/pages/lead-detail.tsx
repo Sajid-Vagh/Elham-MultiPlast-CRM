@@ -34,7 +34,7 @@ import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { INDUSTRIES } from "@/lib/constants";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { onContactChange, onDealChange, onActivityChange } from "@/lib/query-invalidation";
-import { parseNotesText, parseNotesDisplay, parseNotesEntries, formatDealNotes, dedupeById } from "@/lib/parse-notes";
+import { parseNotesText, parseNotesDisplay, parseNotesEntries, formatDealNotes, dedupeById, parseDetailedNotes, type DetailedNote } from "@/lib/parse-notes";
 import { formatCurrency } from "@/lib/currency";
 import { deriveFollowUpStatus } from "@/lib/follow-up-status";
 
@@ -307,37 +307,6 @@ export default function LeadDetail() {
 
   // Deal-centric timeline: structured date-grouped chronological timeline per deal
   const dealTimeline = useMemo(() => {
-    type ParsedNote = {
-      text: string;
-      date?: string;
-      time?: string;
-      userName?: string;
-    };
-
-    const parseDetailedNotes = (raw: unknown): ParsedNote[] => {
-      if (!raw) return [];
-      if (typeof raw === "string" && raw.trim().startsWith("[")) {
-        try {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            return parsed
-              .map((p: any) => ({
-                text: p.text || p.note || (typeof p === "string" ? p : ""),
-                date: p.date,
-                time: p.time,
-                userName: p.userName || p.user,
-              }))
-              .filter((p) => Boolean(p.text));
-          }
-        } catch {}
-      }
-      const plainText = parseNotesText(raw);
-      if (plainText) {
-        return [{ text: plainText }];
-      }
-      return [];
-    };
-
     type TimelineEvent = {
       key: string;
       date: string;
@@ -349,7 +318,7 @@ export default function LeadDetail() {
       title: string;
       subtitle?: string | null;
       detail?: string | null;
-      notesList?: ParsedNote[];
+      notesList?: DetailedNote[];
       metaItems?: Array<{ label: string; value: string; isHighlight?: boolean }>;
       stageBadge?: { label: string; className?: string };
       dotColor: string;

@@ -21,17 +21,56 @@ type NoteEntry = {
 function isJsonNotes(n: string | null | undefined): boolean {
   if (!n) return false;
   const t = n.trim();
-  if (!t.startsWith("[")) return false;
+  if (!t.startsWith("[") && !t.startsWith("{")) return false;
   try { JSON.parse(t); return true; } catch { return false; }
 }
 
 function parseNotes(notes: string | null | undefined): NoteEntry[] {
   if (!notes) return [];
-  if (isJsonNotes(notes)) {
-    try { return JSON.parse(notes!) as NoteEntry[]; } catch { return []; }
-  }
-  // Legacy plain text: convert to single entry
-  return [{ text: notes, date: "", time: "", userName: "", userId: 0 }];
+  const result: NoteEntry[] = [];
+
+  const extract = (raw: unknown) => {
+    if (!raw) return;
+    if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      if (!trimmed) return;
+      if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+        try {
+          extract(JSON.parse(trimmed));
+          return;
+        } catch {}
+      }
+      result.push({ text: trimmed, date: "", time: "", userName: "", userId: 0 });
+      return;
+    }
+    if (Array.isArray(raw)) {
+      for (const item of raw) extract(item);
+      return;
+    }
+    if (typeof raw === "object") {
+      const o = raw as any;
+      let text = o.text ?? o.note ?? o.content ?? o.message ?? "";
+      if (typeof text === "string" && (text.trim().startsWith("[") || text.trim().startsWith("{"))) {
+        try {
+          const parsed = JSON.parse(text.trim());
+          extract(parsed);
+          return;
+        } catch {}
+      }
+      if (text) {
+        result.push({
+          text: String(text).trim(),
+          date: o.date || "",
+          time: o.time || "",
+          userName: o.userName || o.user || "",
+          userId: o.userId || 0,
+        });
+      }
+    }
+  };
+
+  extract(notes);
+  return result;
 }
 
 function notesToDisplay(notes: string | null | undefined): string {
@@ -50,18 +89,28 @@ function appendNotesHistory(
   user: { id: number; name: string }
 ): string {
   const entries = parseNotes(existingNotes);
-  if (newNotes) {
-    const now = new Date();
-    const dateStr = now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-    const timeStr = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+  if (!newNotes) return JSON.stringify(entries);
+
+  const newEntries = parseNotes(newNotes);
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  const timeStr = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+
+  for (const ne of newEntries) {
+    if (!ne.text) continue;
+    // Prevent adding identical consecutive entry
+    const last = entries[entries.length - 1];
+    if (last && last.text.trim() === ne.text.trim()) continue;
+
     entries.push({
-      text: newNotes,
-      date: dateStr,
-      time: timeStr,
-      userName: user.name,
-      userId: user.id,
+      text: ne.text,
+      date: ne.date || dateStr,
+      time: ne.time || timeStr,
+      userName: ne.userName || user.name,
+      userId: ne.userId || user.id,
     });
   }
+
   return JSON.stringify(entries);
 }
 
