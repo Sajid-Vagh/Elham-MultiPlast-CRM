@@ -734,7 +734,7 @@ export default function LeadDetail() {
   return (
     <div className="p-4 max-w-7xl mx-auto space-y-4">
       {/* ===== SUMMARY CARD ===== */}
-      <Card className="sticky top-0 z-10 shadow-sm border-b">
+      <Card className="sticky top-0 z-20 shadow-xs border-b bg-card">
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
             <Button variant="ghost" size="sm" className="shrink-0 -ml-2" onClick={() => { if (window.history.length > 1) window.history.back(); else setLocation("/leads"); }}>
@@ -1222,9 +1222,9 @@ export default function LeadDetail() {
                                 </div>
 
                                 {/* Timeline Events for this Date */}
-                                <div className="relative pl-9 sm:pl-32 space-y-3.5 pb-2 ml-1 sm:ml-2">
+                                <div className="relative space-y-3.5 pb-2">
                                   {/* Vertical Timeline Line */}
-                                  <div className="absolute left-[17px] sm:left-[103px] -translate-x-1/2 top-4 bottom-4 w-0.5 bg-border/80 z-0" />
+                                  <div className="absolute left-[18px] sm:left-[83px] -translate-x-1/2 top-4 bottom-4 w-0.5 bg-border/80 z-0" />
 
                                   {dGroup.events.map((ev) => {
                                     const EventIcon =
@@ -1238,24 +1238,23 @@ export default function LeadDetail() {
                                       ev.kind === "lost" ? XCircle : Calendar;
 
                                     return (
-                                      <div key={ev.key} className="relative flex flex-col sm:flex-row items-start gap-2.5 sm:gap-4 group/event">
+                                      <div key={ev.key} className="relative flex items-start gap-3 group/event">
                                         {/* Desktop Time */}
-                                        <div className="hidden sm:block w-20 text-right pt-3 shrink-0">
+                                        <div className="hidden sm:block w-16 text-right pt-3.5 shrink-0">
                                           <span className="text-xs font-semibold text-muted-foreground">{ev.timeStr}</span>
                                         </div>
 
                                         {/* Connected Dot on vertical line */}
-                                        <div className="absolute sm:relative left-[17px] sm:left-auto top-3.5 sm:top-3.5 -translate-x-1/2 sm:translate-x-0 shrink-0 z-0">
+                                        <div className="absolute sm:relative left-[18px] sm:left-auto top-4 sm:top-3.5 -translate-x-1/2 sm:translate-x-0 shrink-0 z-10">
                                           <span className={`block w-3.5 h-3.5 rounded-full ring-4 ring-card ${ev.dotColor}`} />
                                         </div>
 
-                                        {/* Mobile Time */}
-                                        <div className="sm:hidden pl-2 text-[10px] font-semibold text-muted-foreground pt-0.5">
-                                          {ev.timeStr}
-                                        </div>
-
                                         {/* Event Content Card */}
-                                        <div className="flex-1 w-full bg-card hover:bg-muted/20 border border-border/80 rounded-xl p-3.5 shadow-xs transition-colors">
+                                        <div className="flex-1 min-w-0 ml-8 sm:ml-0 bg-card hover:bg-muted/20 border border-border/80 rounded-xl p-3.5 shadow-xs transition-colors">
+                                          {/* Mobile Time */}
+                                          <div className="sm:hidden text-[10px] font-semibold text-muted-foreground mb-1">
+                                            {ev.timeStr}
+                                          </div>
                                           {/* Header row */}
                                           <div className="flex items-start justify-between gap-2">
                                             <div className="min-w-0 flex items-start gap-2.5">
