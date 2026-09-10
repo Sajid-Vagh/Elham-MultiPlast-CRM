@@ -951,7 +951,7 @@ router.get("/existing-customers", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { format, mode, dateFrom, dateTo, ownerId, status, search } = parseQueryParams(req);
+    const { format, mode, dateFrom, dateTo, ownerId, status, search, unit } = parseQueryParams(req);
 
     const accessibleUnits = getAccessibleUnits(user);
     const contactUnitCond = accessibleUnits ? inArray(contactsTable.unit, accessibleUnits) : undefined;
@@ -999,12 +999,16 @@ router.get("/existing-customers", async (req, res) => {
     const users = await db.select().from(usersTable);
     const userMap = new Map(users.map(u => [u.id, u]));
 
-    // Preload live orders for all filtered existing customers
+    // Preload live orders for all filtered existing customers (filtered by unit if specified)
     const contactIds = nonNullIds(filtered.map(ec => ec.contactId));
     const ordersByContactId = new Map<number, any[]>();
     if (contactIds.length > 0) {
+      const orderConds: SQL[] = [inArray(ordersTable.contactId, contactIds), eq(ordersTable.isDeleted, false)];
+      if (unit && unit !== "All" && unit !== "all") {
+        orderConds.push(eq(ordersTable.productionUnit, unit));
+      }
       const allOrders = await db.select().from(ordersTable)
-        .where(and(inArray(ordersTable.contactId, contactIds), eq(ordersTable.isDeleted, false)))
+        .where(and(...orderConds))
         .orderBy(desc(ordersTable.createdAt));
       for (const ord of allOrders) {
         if (!ordersByContactId.has(ord.contactId)) {
@@ -1012,6 +1016,14 @@ router.get("/existing-customers", async (req, res) => {
         }
         ordersByContactId.get(ord.contactId)!.push(ord);
       }
+    }
+
+    if (unit && unit !== "All" && unit !== "all") {
+      filtered = filtered.filter(ec => {
+        const c = ecContactMap.get(ec.contactId);
+        const custOrders = ordersByContactId.get(ec.contactId) || [];
+        return c?.unit === unit || custOrders.length > 0;
+      });
     }
 
     // ── Quick ───────────────────────────────────────────────────────────

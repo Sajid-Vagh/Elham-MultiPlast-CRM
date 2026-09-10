@@ -12,6 +12,9 @@ import { ExportButton } from "@/components/export-button";
 import { Search, Users, Factory, Truck, AlertTriangle, Clock, CheckCircle2, XCircle, Phone } from "lucide-react";
 import { useDateFilter } from "@/lib/use-date-filter";
 import { useStatusFilter } from "@/lib/global-filters";
+import { useUnitFilter } from "@/lib/use-unit-filter";
+import { useActiveUnits } from "@/lib/use-active-units";
+import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { ClearFiltersButton } from "@/components/clear-filters-button";
 
@@ -41,13 +44,17 @@ export default function ExistingCustomers() {
   const [globalStatus, setGlobalStatus] = useStatusFilter();
   const statusFilter = EXISTING_CUSTOMER_STATUSES.includes(globalStatus) ? globalStatus : "All";
   const setStatusFilter = (v: string) => setGlobalStatus(v);
+  const [unitFilter, setUnitFilter] = useUnitFilter();
+  const { units: activeUnits } = useActiveUnits();
   const [page, setPage] = useState(1);
   const [dateFilter, setDateFilter] = useDateFilter();
 
   const { data: kpi, isLoading: kpiLoading } = useQuery({
-    queryKey: ["existing-customers-dashboard"],
+    queryKey: ["existing-customers-dashboard", unitFilter],
     queryFn: async () => {
-      const res = await fetch("/api/existing-customers/dashboard", {
+      const params = new URLSearchParams();
+      if (unitFilter && unitFilter !== "All") params.set("unit", unitFilter);
+      const res = await fetch(`/api/existing-customers/dashboard?${params.toString()}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
       });
       if (!res.ok) throw new Error("Failed to fetch dashboard");
@@ -56,15 +63,16 @@ export default function ExistingCustomers() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["existing-customers", { search, status: statusFilter, page, preset: dateFilter.preset }],
+    queryKey: ["existing-customers", { search, status: statusFilter, unit: unitFilter, page, preset: dateFilter.preset, startDate: dateFilter.startDate, endDate: dateFilter.endDate }],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
       if (statusFilter !== "All") params.set("status", statusFilter);
+      if (unitFilter && unitFilter !== "All") params.set("unit", unitFilter);
       if (dateFilter.startDate) params.set("startDate", dateFilter.startDate);
       if (dateFilter.endDate) params.set("endDate", dateFilter.endDate);
       params.set("page", String(page));
-      const res = await fetch(`/api/existing-customers?${params}`, {
+      const res = await fetch(`/api/existing-customers?${params.toString()}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
       });
       if (!res.ok) throw new Error("Failed to fetch");
@@ -85,6 +93,7 @@ export default function ExistingCustomers() {
           onBeforeExport={() => ({
             status: statusFilter === "All" ? "" : statusFilter,
             search,
+            unit: unitFilter && unitFilter !== "All" ? unitFilter : "",
             dateFrom: dateFilter.startDate || "",
             dateTo: dateFilter.endDate || "",
           })}
@@ -119,9 +128,9 @@ export default function ExistingCustomers() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
-        <div className="relative flex-1 max-w-sm">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search by name, code, company, mobile..."
@@ -140,7 +149,19 @@ export default function ExistingCustomers() {
             ))}
           </SelectContent>
         </Select>
-        <ClearFiltersButton onClear={() => setSearch("")} />
+        <Select value={unitFilter} onValueChange={v => { setUnitFilter(v); setPage(1); }}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="All Units" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="All">All Units</SelectItem>
+            <SelectItem value={PENDING_UNIT_ASSIGNMENT}>Pending Unit</SelectItem>
+            {activeUnits.filter(u => u !== PENDING_UNIT_ASSIGNMENT).map(u => (
+              <SelectItem key={u} value={u}>{u}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <ClearFiltersButton onClear={() => { setSearch(""); setPage(1); }} />
       </div>
 
       {/* Table */}

@@ -166,24 +166,33 @@ async function refreshExistingCustomerStats(contactId: number) {
 }
 
 // ── Helper: enrich existing customer ──
-async function enrichExistingCustomer(ec: any, preloadedOrders?: any[]) {
+async function enrichExistingCustomer(ec: any, preloadedOrders?: any[], unitFilter?: string) {
   const contact = ec.contactId ? await db.select().from(contactsTable).where(eq(contactsTable.id, ec.contactId)).then(r => r[0]) : null;
   const salesOwner = ec.salesOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, ec.salesOwnerId)).then(r => r[0]) : null;
   const supportOwner = ec.supportOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, ec.supportOwnerId)).then(r => r[0]) : null;
 
   // Real-time aggregation from ordersTable
-  const orders = preloadedOrders ?? (ec.contactId
-    ? await db.select().from(ordersTable)
-        .where(and(eq(ordersTable.contactId, ec.contactId), eq(ordersTable.isDeleted, false)))
-        .orderBy(desc(ordersTable.createdAt))
-    : []);
+  let orders: any[];
+  if (preloadedOrders !== undefined) {
+    orders = preloadedOrders;
+  } else if (ec.contactId) {
+    const orderConditions: any[] = [eq(ordersTable.contactId, ec.contactId), eq(ordersTable.isDeleted, false)];
+    if (unitFilter && unitFilter !== "All" && unitFilter !== "all") {
+      orderConditions.push(eq(ordersTable.productionUnit, unitFilter));
+    }
+    orders = await db.select().from(ordersTable)
+      .where(and(...orderConditions))
+      .orderBy(desc(ordersTable.createdAt));
+  } else {
+    orders = [];
+  }
 
   const totalOrders = orders.length;
   const totalRevenue = orders.reduce((sum, o) => sum + Number(o.grandTotal || 0), 0);
   const repeatOrderCount = orders.filter(o => o.isRepeatOrder).length;
   const lastOrder = orders[0] || null;
   const firstOrder = orders.length > 0 ? orders[orders.length - 1] : null;
-  const lastOrderDate = lastOrder?.createdAt ? new Date(lastOrder.createdAt).toISOString().split("T")[0] : ec.lastOrderDate;
+  const lastOrderDate = lastOrder?.createdAt ? new Date(lastOrder.createdAt).toISOString().split("T")[0] : (unitFilter && unitFilter !== "All" && unitFilter !== "all" ? null : ec.lastOrderDate);
 
   const safe = (u: any) => u ? (({ passwordHash: _, ...rest }) => rest)(u) : null;
 
@@ -207,6 +216,8 @@ router.get("/existing-customers/dashboard", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
+    const { unit } = req.query as Record<string, string>;
+
     const conditions: any[] = [eq(existingCustomersTable.isActive, true)];
     if (user.role === "sales") conditions.push(eq(existingCustomersTable.salesOwnerId, user.id));
 
@@ -214,6 +225,16 @@ router.get("/existing-customers/dashboard", async (req, res) => {
     if (accessibleUnits) {
       conditions.push(sql`EXISTS (
         SELECT 1 FROM contacts c WHERE c.id = ${existingCustomersTable.contactId} AND c.unit IN (${sql.join(accessibleUnits.map(u => sql`${u}`), sql`, `)})
+      )`);
+    }
+
+    if (unit && unit !== "All" && unit !== "all") {
+      conditions.push(sql`(
+        EXISTS (
+          SELECT 1 FROM contacts c WHERE c.id = ${existingCustomersTable.contactId} AND c.unit = ${unit}
+        ) OR EXISTS (
+          SELECT 1 FROM orders o WHERE o.contact_id = ${existingCustomersTable.contactId} AND o.production_unit = ${unit} AND o.is_deleted = false
+        )
       )`);
     }
 
@@ -263,7 +284,7 @@ router.get("/existing-customers", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { search, status, salesOwner, city, productionStatus, dispatchStatus, lastOrderBefore, lastOrderAfter, repeatOrderDue, page = "1", limit = "50" } = req.query as Record<string, string>;
+    const { search, status, salesOwner, city, productionStatus, dispatchStatus, lastOrderBefore, lastOrderAfter, repeatOrderDue, page = "1", limit = "50", unit } = req.query as Record<string, string>;
     const conditions: any[] = [];
 
     if (user.role === "sales") conditions.push(eq(existingCustomersTable.salesOwnerId, user.id));
@@ -290,6 +311,23 @@ router.get("/existing-customers", async (req, res) => {
       ));
     }
 
+    if (unit && unit !== "All" && unit !== "all") {
+      conditions.push(or(
+        inArray(
+          existingCustomersTable.contactId,
+          db.select({ contactId: contactsTable.id })
+            .from(contactsTable)
+            .where(eq(contactsTable.unit, unit))
+        ),
+        inArray(
+          existingCustomersTable.contactId,
+          db.select({ contactId: ordersTable.contactId })
+            .from(ordersTable)
+            .where(and(eq(ordersTable.productionUnit, unit), eq(ordersTable.isDeleted, false)))
+        )
+      )!);
+    }
+
     const { startDate, endDate } = req.query as Record<string, string>;
     if (startDate) conditions.push(gte(existingCustomersTable.createdAt, new Date(startDate)));
     if (endDate) conditions.push(lte(existingCustomersTable.createdAt, parseEndDate(endDate)));
@@ -304,12 +342,16 @@ router.get("/existing-customers", async (req, res) => {
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(existingCustomersTable.createdAt)).limit(limitNum).offset(offset);
 
-    // Preload all orders for this batch of customers
+    // Preload all orders for this batch of customers (filtered by unit if specified)
     const contactIds = customers.map(c => c.contactId).filter((id): id is number => !!id);
     const ordersByContactId = new Map<number, any[]>();
     if (contactIds.length > 0) {
+      const orderConditions: any[] = [inArray(ordersTable.contactId, contactIds), eq(ordersTable.isDeleted, false)];
+      if (unit && unit !== "All" && unit !== "all") {
+        orderConditions.push(eq(ordersTable.productionUnit, unit));
+      }
       const allOrders = await db.select().from(ordersTable)
-        .where(and(inArray(ordersTable.contactId, contactIds), eq(ordersTable.isDeleted, false)))
+        .where(and(...orderConditions))
         .orderBy(desc(ordersTable.createdAt));
       for (const ord of allOrders) {
         if (!ordersByContactId.has(ord.contactId)) {
@@ -320,7 +362,7 @@ router.get("/existing-customers", async (req, res) => {
     }
 
     // Enrich all customers
-    let enriched = await Promise.all(customers.map(c => enrichExistingCustomer(c, ordersByContactId.get(c.contactId))));
+    let enriched = await Promise.all(customers.map(c => enrichExistingCustomer(c, ordersByContactId.get(c.contactId) || [], unit)));
 
     // Post-enrichment filters (contact fields)
     if (search) {
