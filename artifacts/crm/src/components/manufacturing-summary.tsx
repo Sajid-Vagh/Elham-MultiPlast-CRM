@@ -73,6 +73,8 @@ function mergeVariantGroups(groups: SummaryGroup[]): SummaryGroup[] {
     const existing = map.get(key);
     if (existing) {
       existing.totalQuantity += g.totalQuantity;
+      existing.pendingQuantity = (existing.pendingQuantity || 0) + (g.pendingQuantity || 0);
+      existing.inProductionQuantity = (existing.inProductionQuantity || 0) + (g.inProductionQuantity || 0);
       existing.orderCount += g.orderCount;
       existing.orderIds = Array.from(new Set([...existing.orderIds, ...(g.orderIds || [])]));
     } else {
@@ -89,6 +91,8 @@ type SummaryGroup = {
   colour: string;
   colourCode: string | null;
   materialType: string;
+  pendingQuantity?: number;
+  inProductionQuantity?: number;
   totalQuantity: number;
   orderCount: number;
   orderIds: number[];
@@ -103,8 +107,11 @@ type DetailItem = {
   piNumber: string;
   salesPerson: string;
   quantity: number;
+  readyQuantity?: number;
+  remainingQuantity?: number;
   unit: string;
   status: string;
+  lineProductionStatus?: string;
   productionUnit: string;
   createdByRole: string | null;
   isDelayed: boolean;
@@ -194,6 +201,23 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
 
   const detailItems: DetailItem[] = detail?.items || [];
 
+  const inProdItems = detailItems.filter(item =>
+    item.status === "Production On Going" ||
+    item.status === "In Production" ||
+    item.lineProductionStatus === "Production On Going" ||
+    item.lineProductionStatus === "In Production"
+  );
+  const pendingItems = detailItems.filter(item =>
+    !inProdItems.includes(item) &&
+    item.status !== "Completed" &&
+    item.status !== "Delivered" &&
+    item.status !== "Cancelled"
+  );
+  const otherItems = detailItems.filter(item =>
+    !inProdItems.includes(item) &&
+    !pendingItems.includes(item)
+  );
+
   return (
     <>
       {/* Material Summary Cards */}
@@ -208,7 +232,7 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                   <div>
                     <p className={`text-xs font-semibold uppercase tracking-wider ${colors.text}`}>{mt}</p>
                     <p className="text-lg font-bold mt-0.5">{data.productCount} Products</p>
-                    <p className="text-xs text-muted-foreground">{data.totalPending.toLocaleString()} PCS Pending</p>
+                    <p className="text-xs text-muted-foreground">{data.totalPending.toLocaleString()} PCS Active</p>
                   </div>
                   {mt === "PET" ? (
                     <Truck className={`h-6 w-6 ${colors.icon}`} />
@@ -241,7 +265,7 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                   </span>
                   <span className="text-muted-foreground">·</span>
                   <span className="font-semibold text-foreground">
-                    {filteredPieces.toLocaleString()} PCS Pending
+                    {filteredPieces.toLocaleString()} PCS Total
                   </span>
                 </div>
               )}
@@ -270,7 +294,7 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
         </CardHeader>
         <CardContent>
           {groups.length === 0 ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">No pending manufacturing orders.</div>
+            <div className="py-8 text-center text-sm text-muted-foreground">No active manufacturing orders.</div>
           ) : filteredGroups.length === 0 ? (
             <div className="py-8 text-center space-y-2">
               <p className="text-sm text-muted-foreground">No products match &ldquo;{searchQuery}&rdquo;</p>
@@ -305,6 +329,8 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                         {items.map((g, idx) => {
                           const isPET = g.materialType === "PET";
                           const colors = MATERIAL_COLORS[g.materialType] || MATERIAL_COLORS["HDPE"];
+                          const pendingQty = g.pendingQuantity ?? g.totalQuantity;
+                          const inProdQty = g.inProductionQuantity ?? 0;
                           return (
                             <div
                               key={`${g.productName}-${g.weight}-${g.colour}-${idx}`}
@@ -319,31 +345,35 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                               </div>
 
                               <p className="text-xs text-muted-foreground mt-0.5">
-                                    Weight: <span className="font-semibold text-foreground">{formatWeight(g.weight)}</span>
-                                  </p>
-                                  <div className="flex items-center gap-1.5 mt-0.5 text-xs text-muted-foreground">
-                                    Color:
-                                    <span
-                                      className="w-2.5 h-2.5 rounded-full border shrink-0"
-                                      style={{ backgroundColor: colourBg(g.colour, g.colourCode), borderColor: g.colour === "White" ? "#d1d5db" : undefined }}
-                                    />
-                                    <span className="font-semibold text-foreground">{g.colour}</span>
-                                  </div>
-                                  {isPET && (
-                                    <div className="flex items-center gap-1.5 mt-1 text-xs text-amber-600 font-medium">
-                                      <Truck className="h-3 w-3" />
-                                      Outsourced Production
-                                    </div>
-                                  )}
+                                Weight: <span className="font-semibold text-foreground">{formatWeight(g.weight)}</span>
+                              </p>
+                              <div className="flex items-center gap-1.5 mt-0.5 text-xs text-muted-foreground">
+                                Color:
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full border shrink-0"
+                                  style={{ backgroundColor: colourBg(g.colour, g.colourCode), borderColor: g.colour === "White" ? "#d1d5db" : undefined }}
+                                />
+                                <span className="font-semibold text-foreground">{g.colour}</span>
+                              </div>
+                              {isPET && (
+                                <div className="flex items-center gap-1.5 mt-1 text-xs text-amber-600 font-medium">
+                                  <Truck className="h-3 w-3" />
+                                  Outsourced Production
+                                </div>
+                              )}
 
-                              <div className="border-t mt-3 pt-2.5 flex items-center justify-between">
+                              <div className="border-t mt-3 pt-2.5 grid grid-cols-3 gap-1.5 items-end">
                                 <div>
-                                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Total Pending</p>
-                                  <p className="text-base font-bold">{g.totalQuantity.toLocaleString()} PCS</p>
+                                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Pending</p>
+                                  <p className="text-sm font-bold text-foreground">{pendingQty.toLocaleString()} <span className="text-[10px] font-normal text-muted-foreground">PCS</span></p>
+                                </div>
+                                <div>
+                                  <p className="text-[10px] uppercase tracking-wider text-orange-600 dark:text-orange-400 font-medium">In Production</p>
+                                  <p className="text-sm font-bold text-orange-600 dark:text-orange-400">{inProdQty.toLocaleString()} <span className="text-[10px] font-normal text-muted-foreground">PCS</span></p>
                                 </div>
                                 <div className="text-right">
                                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Orders</p>
-                                  <p className="text-base font-bold">{g.orderCount}</p>
+                                  <p className="text-sm font-bold text-foreground">{g.orderCount}</p>
                                 </div>
                               </div>
                             </div>
@@ -385,8 +415,10 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                   {drawerGroup.materialType === "PET" && (
                     <p className="text-sm text-amber-600 font-medium mt-0.5">Outsourced Production</p>
                   )}
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-                    <span className="font-semibold text-foreground">Total Pending : {drawerGroup.totalQuantity.toLocaleString()} PCS</span>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1.5 flex-wrap">
+                    <span className="font-semibold text-foreground">Pending: {(drawerGroup.pendingQuantity ?? drawerGroup.totalQuantity).toLocaleString()} PCS</span>
+                    <span>·</span>
+                    <span className="font-semibold text-orange-600 dark:text-orange-400">In Production: {(drawerGroup.inProductionQuantity ?? 0).toLocaleString()} PCS</span>
                     <span>·</span>
                     <span className="font-semibold text-foreground">{drawerGroup.orderCount} Orders</span>
                   </div>
@@ -396,7 +428,7 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
                 {detailLoading ? (
                   <div className="space-y-3">
                     {[1, 2, 3].map(i => <Skeleton key={i} className="h-28 w-full" />)}
@@ -404,77 +436,295 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                 ) : detailItems.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-8">No production orders found for this product.</p>
                 ) : (
-                  detailItems.map((item) => (
-                    <div
-                      key={item.orderId}
-                      className="border rounded-lg p-4 bg-card hover:bg-accent transition-colors cursor-pointer"
-                      onClick={() => { setDrawerGroup(null); setLocation(`/production/orders/${item.orderId}`); }}
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="font-semibold text-sm">{item.customerName}</p>
-                            {item.customerCode && (
-                              <Badge variant="secondary" className="text-[10px] font-mono font-semibold px-1.5 py-0">
-                                {item.customerCode}
-                              </Badge>
-                            )}
+                  <>
+                    {/* Section 1: In Production / Production On Going */}
+                    {inProdItems.length > 0 && (
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse" />
+                            <h3 className="text-xs font-bold uppercase tracking-wider text-orange-700 dark:text-orange-400">
+                              In Production ({inProdItems.length})
+                            </h3>
                           </div>
-                          {item.companyName && item.companyName !== item.customerName && (
-                            <p className="text-xs text-muted-foreground mt-0.5">{item.companyName}</p>
-                          )}
+                          <span className="text-xs font-semibold text-orange-600 dark:text-orange-400">
+                            {inProdItems.reduce((s, i) => s + (i.remainingQuantity ?? (i.quantity - (i.readyQuantity || 0))), 0).toLocaleString()} PCS Remaining
+                          </span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {item.isDelayed && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
-                          <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[item.status] || "bg-gray-100"} border`}>
-                            {item.status}
-                          </Badge>
+                        <div className="space-y-2.5">
+                          {inProdItems.map((item) => {
+                            const ready = item.readyQuantity || 0;
+                            const remaining = item.remainingQuantity ?? Math.max(0, item.quantity - ready);
+                            const percent = item.quantity > 0 ? Math.min(100, Math.round((ready / item.quantity) * 100)) : 0;
+                            return (
+                              <div
+                                key={item.orderId}
+                                className="border border-orange-200 dark:border-orange-900/60 rounded-lg p-3.5 bg-orange-50/30 dark:bg-orange-950/10 hover:bg-orange-50/60 dark:hover:bg-orange-950/20 transition-colors cursor-pointer"
+                                onClick={() => { setDrawerGroup(null); setLocation(`/production/orders/${item.orderId}`); }}
+                              >
+                                <div className="flex items-start justify-between mb-2">
+                                  <div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className="font-semibold text-sm">{item.customerName}</p>
+                                      {item.customerCode && (
+                                        <Badge variant="secondary" className="text-[10px] font-mono font-semibold px-1.5 py-0">
+                                          {item.customerCode}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    {item.companyName && item.companyName !== item.customerName && (
+                                      <p className="text-xs text-muted-foreground mt-0.5">{item.companyName}</p>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {item.isDelayed && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
+                                    <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[item.status] || "bg-orange-100 text-orange-700 border-orange-300"} border`}>
+                                      {item.status}
+                                    </Badge>
+                                  </div>
+                                </div>
+
+                                {/* Progress Bar for In-Production */}
+                                <div className="bg-background/80 rounded-md p-2 border border-orange-100 dark:border-orange-950/50 mb-2.5">
+                                  <div className="flex items-center justify-between text-xs mb-1">
+                                    <span className="font-semibold text-orange-700 dark:text-orange-300">
+                                      {remaining.toLocaleString()} {item.unit} (Remaining)
+                                    </span>
+                                    <span className="text-[11px] text-muted-foreground">
+                                      {ready.toLocaleString()} of {item.quantity.toLocaleString()} {item.unit} ({percent}%)
+                                    </span>
+                                  </div>
+                                  <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                                    <div className="bg-orange-500 h-1.5 rounded-full transition-all" style={{ width: `${percent}%` }} />
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
+                                  <div>
+                                    <p className="text-muted-foreground">Order #</p>
+                                    <p className="font-semibold text-primary font-mono">{item.orderNumber || `#${item.orderId}`}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-muted-foreground">Sales</p>
+                                    <p className="font-medium">{item.salesPerson}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-muted-foreground">PI</p>
+                                    <p className="font-medium">{item.piNumber}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-muted-foreground">Total Qty</p>
+                                    <p className="font-medium">{item.quantity.toLocaleString()} {item.unit}</p>
+                                  </div>
+                                  {item.customerCode && (
+                                    <div>
+                                      <p className="text-muted-foreground">Customer Code</p>
+                                      <p className="font-medium font-mono">{item.customerCode}</p>
+                                    </div>
+                                  )}
+                                  {item.createdByRole && (
+                                    <div>
+                                      <p className="text-muted-foreground">Origin</p>
+                                      <Badge variant="outline" className={`text-[10px] ${item.createdByRole === "production_and_support" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-blue-50 text-blue-700 border-blue-200"} border`}>
+                                        {item.createdByRole === "production_and_support" ? "SUPPORT" : "SALES"}
+                                      </Badge>
+                                    </div>
+                                  )}
+                                  {item.expectedDispatchDate && (
+                                    <div>
+                                      <p className="text-muted-foreground">Expected Dispatch</p>
+                                      <p className="font-medium">{new Date(item.expectedDispatchDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</p>
+                                    </div>
+                                  )}
+                                  <div>
+                                    <p className="text-muted-foreground">Unit</p>
+                                    <p className="font-medium">{item.productionUnit}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-xs">
-                        <div>
-                          <p className="text-muted-foreground">Order #</p>
-                          <p className="font-semibold text-primary font-mono">{item.orderNumber || `#${item.orderId}`}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Sales</p>
-                          <p className="font-medium">{item.salesPerson}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">PI</p>
-                          <p className="font-medium">{item.piNumber}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Qty</p>
-                          <p className="font-medium">{item.quantity.toLocaleString()} {item.unit}</p>
-                        </div>
-                        {item.customerCode && (
-                          <div>
-                            <p className="text-muted-foreground">Customer Code</p>
-                            <p className="font-medium font-mono">{item.customerCode}</p>
+                    )}
+
+                    {/* Section 2: Pending Orders */}
+                    {pendingItems.length > 0 && (
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-gray-400" />
+                            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                              Pending ({pendingItems.length})
+                            </h3>
                           </div>
-                        )}
-                        {item.createdByRole && (
-                          <div>
-                            <p className="text-muted-foreground">Origin</p>
-                            <Badge variant="outline" className={`text-[10px] ${item.createdByRole === "production_and_support" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-blue-50 text-blue-700 border-blue-200"} border`}>
-                              {item.createdByRole === "production_and_support" ? "SUPPORT" : "SALES"}
-                            </Badge>
-                          </div>
-                        )}
-                        {item.expectedDispatchDate && (
-                          <div>
-                            <p className="text-muted-foreground">Expected Dispatch</p>
-                            <p className="font-medium">{new Date(item.expectedDispatchDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</p>
-                          </div>
-                        )}
-                        <div>
-                          <p className="text-muted-foreground">Unit</p>
-                          <p className="font-medium">{item.productionUnit}</p>
+                          <span className="text-xs font-semibold text-foreground">
+                            {pendingItems.reduce((s, i) => s + (i.remainingQuantity ?? i.quantity), 0).toLocaleString()} PCS
+                          </span>
+                        </div>
+                        <div className="space-y-2.5">
+                          {pendingItems.map((item) => (
+                            <div
+                              key={item.orderId}
+                              className="border rounded-lg p-3.5 bg-card hover:bg-accent transition-colors cursor-pointer"
+                              onClick={() => { setDrawerGroup(null); setLocation(`/production/orders/${item.orderId}`); }}
+                            >
+                              <div className="flex items-start justify-between mb-2">
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="font-semibold text-sm">{item.customerName}</p>
+                                    {item.customerCode && (
+                                      <Badge variant="secondary" className="text-[10px] font-mono font-semibold px-1.5 py-0">
+                                        {item.customerCode}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  {item.companyName && item.companyName !== item.customerName && (
+                                    <p className="text-xs text-muted-foreground mt-0.5">{item.companyName}</p>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {item.isDelayed && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
+                                  <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[item.status] || "bg-gray-100"} border`}>
+                                    {item.status}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-xs">
+                                <div>
+                                  <p className="text-muted-foreground">Order #</p>
+                                  <p className="font-semibold text-primary font-mono">{item.orderNumber || `#${item.orderId}`}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">Sales</p>
+                                  <p className="font-medium">{item.salesPerson}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">PI</p>
+                                  <p className="font-medium">{item.piNumber}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">Qty</p>
+                                  <p className="font-medium">{item.quantity.toLocaleString()} {item.unit}</p>
+                                </div>
+                                {item.customerCode && (
+                                  <div>
+                                    <p className="text-muted-foreground">Customer Code</p>
+                                    <p className="font-medium font-mono">{item.customerCode}</p>
+                                  </div>
+                                )}
+                                {item.createdByRole && (
+                                  <div>
+                                    <p className="text-muted-foreground">Origin</p>
+                                    <Badge variant="outline" className={`text-[10px] ${item.createdByRole === "production_and_support" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-blue-50 text-blue-700 border-blue-200"} border`}>
+                                      {item.createdByRole === "production_and_support" ? "SUPPORT" : "SALES"}
+                                    </Badge>
+                                  </div>
+                                )}
+                                {item.expectedDispatchDate && (
+                                  <div>
+                                    <p className="text-muted-foreground">Expected Dispatch</p>
+                                    <p className="font-medium">{new Date(item.expectedDispatchDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</p>
+                                  </div>
+                                )}
+                                <div>
+                                  <p className="text-muted-foreground">Unit</p>
+                                  <p className="font-medium">{item.productionUnit}</p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                    </div>
-                  ))
+                    )}
+
+                    {/* Section 3: Other / Ready */}
+                    {otherItems.length > 0 && (
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                              Ready / Other ({otherItems.length})
+                            </h3>
+                          </div>
+                        </div>
+                        <div className="space-y-2.5">
+                          {otherItems.map((item) => (
+                            <div
+                              key={item.orderId}
+                              className="border rounded-lg p-3.5 bg-card hover:bg-accent transition-colors cursor-pointer"
+                              onClick={() => { setDrawerGroup(null); setLocation(`/production/orders/${item.orderId}`); }}
+                            >
+                              <div className="flex items-start justify-between mb-2">
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="font-semibold text-sm">{item.customerName}</p>
+                                    {item.customerCode && (
+                                      <Badge variant="secondary" className="text-[10px] font-mono font-semibold px-1.5 py-0">
+                                        {item.customerCode}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  {item.companyName && item.companyName !== item.customerName && (
+                                    <p className="text-xs text-muted-foreground mt-0.5">{item.companyName}</p>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {item.isDelayed && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
+                                  <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[item.status] || "bg-gray-100"} border`}>
+                                    {item.status}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-xs">
+                                <div>
+                                  <p className="text-muted-foreground">Order #</p>
+                                  <p className="font-semibold text-primary font-mono">{item.orderNumber || `#${item.orderId}`}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">Sales</p>
+                                  <p className="font-medium">{item.salesPerson}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">PI</p>
+                                  <p className="font-medium">{item.piNumber}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">Qty</p>
+                                  <p className="font-medium">{item.quantity.toLocaleString()} {item.unit}</p>
+                                </div>
+                                {item.customerCode && (
+                                  <div>
+                                    <p className="text-muted-foreground">Customer Code</p>
+                                    <p className="font-medium font-mono">{item.customerCode}</p>
+                                  </div>
+                                )}
+                                {item.createdByRole && (
+                                  <div>
+                                    <p className="text-muted-foreground">Origin</p>
+                                    <Badge variant="outline" className={`text-[10px] ${item.createdByRole === "production_and_support" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-blue-50 text-blue-700 border-blue-200"} border`}>
+                                      {item.createdByRole === "production_and_support" ? "SUPPORT" : "SALES"}
+                                    </Badge>
+                                  </div>
+                                )}
+                                {item.expectedDispatchDate && (
+                                  <div>
+                                    <p className="text-muted-foreground">Expected Dispatch</p>
+                                    <p className="font-medium">{new Date(item.expectedDispatchDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</p>
+                                  </div>
+                                )}
+                                <div>
+                                  <p className="text-muted-foreground">Unit</p>
+                                  <p className="font-medium">{item.productionUnit}</p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
