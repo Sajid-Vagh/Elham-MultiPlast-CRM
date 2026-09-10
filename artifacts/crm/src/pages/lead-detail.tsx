@@ -38,12 +38,16 @@ import { parseNotesText, parseNotesDisplay, parseNotesEntries, formatDealNotes, 
 import { formatCurrency } from "@/lib/currency";
 import { deriveFollowUpStatus } from "@/lib/follow-up-status";
 
-function localDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function formatCustomerSince(val: string | null | undefined): string {
+  if (!val) return "-";
+  try {
+    const dt = new Date(val);
+    if (isNaN(dt.getTime())) return val;
+    return format(dt, "yyyy-MM-dd, h:mm a");
+  } catch {
+    return val;
+  }
 }
-function todayStr() { return localDateStr(new Date()); }
-function daysAgoStr(n: number) { const d = new Date(); d.setDate(d.getDate() - n); return localDateStr(d); }
-function monthStartStr() { const d = new Date(); d.setDate(1); return localDateStr(d); }
 
 const QUICK_BTNS = [
   { key: "today", label: "Today" },
@@ -755,7 +759,7 @@ export default function LeadDetail() {
                   <Badge
                     className="text-[11px] font-medium border-0"
                     style={{ backgroundColor: `${CATEGORY_COLORS["My Client"]}20`, color: CATEGORY_COLORS["My Client"] }}
-                    title={`Customer since ${(contact as any).customerSince}`}
+                    title={`Customer since ${formatCustomerSince((contact as any).customerSince)}`}
                   >
                     My Client
                   </Badge>
@@ -767,7 +771,7 @@ export default function LeadDetail() {
                 <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{contact.mobile}</span>
                 {deal && <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${STAGE_BADGE_COLORS[deal.stage] || "bg-gray-100"}`}>{deal.stage}</span>}
                 {upcomingFollowUp && <span className="flex items-center gap-1 text-primary"><Calendar className="h-3 w-3" />{upcomingFollowUp.followUpDate}</span>}
-                {(contact as any).customerSince && <span>Customer since {(contact as any).customerSince}</span>}
+                {(contact as any).customerSince && <span>Customer since {formatCustomerSince((contact as any).customerSince)}</span>}
               </div>
             </div>
             <div className="flex items-center gap-1.5 flex-wrap shrink-0">
@@ -803,7 +807,7 @@ export default function LeadDetail() {
               {infield("Industry", "industry", contact.industry)}
               {infield("Unit", "unit", contact.unit || PENDING_UNIT_ASSIGNMENT)}
               {infield("Inquiry Date", "inquiryDate", contact.inquiryDate)}
-              {infield("Customer Since", "customerSince", (contact as any).customerSince)}
+              {infield("Customer Since", "customerSince", (contact as any).customerSince ? formatCustomerSince((contact as any).customerSince) : "-")}
               {infield("Customer Status", "customerStatus", (contact as any).customerStatus)}
               <div className="border-t pt-2 mt-2">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">

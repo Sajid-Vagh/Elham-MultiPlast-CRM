@@ -27,6 +27,18 @@ import { ClearFiltersButton } from "@/components/clear-filters-button";
 import { useCustomerFacingUsers } from "@/lib/use-customer-facing-users";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { parseNotesText } from "@/lib/parse-notes";
+import { format } from "date-fns";
+
+function formatCustomerSince(val: string | null | undefined): string {
+  if (!val) return "-";
+  try {
+    const dt = new Date(val);
+    if (isNaN(dt.getTime())) return val;
+    return format(dt, "yyyy-MM-dd, h:mm a");
+  } catch {
+    return val;
+  }
+}
 
 const LEAD_FLAGS_KEY = "crm_lead_flags";
 
@@ -717,7 +729,7 @@ export default function Leads() {
                           <span
                             className="text-[10px] font-medium px-1.5 py-0.5 rounded"
                             style={{ backgroundColor: `${CATEGORY_COLORS["My Client"]}20`, color: CATEGORY_COLORS["My Client"] }}
-                            title={`Customer since ${(contact as any).customerSince}`}
+                            title={`Customer since ${formatCustomerSince((contact as any).customerSince)}`}
                           >
                             My Client
                           </span>

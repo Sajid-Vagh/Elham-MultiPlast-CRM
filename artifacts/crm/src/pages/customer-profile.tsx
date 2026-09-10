@@ -7,6 +7,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowLeft, Phone, Mail, MapPin, Building, Calendar, Package, ShoppingCart, AlertTriangle } from "lucide-react";
 import { parseNotesText } from "@/lib/parse-notes";
+import { format } from "date-fns";
+
+function formatCustomerSince(val: string | null | undefined): string {
+  if (!val) return "-";
+  try {
+    const dt = new Date(val);
+    if (isNaN(dt.getTime())) return val;
+    return format(dt, "yyyy-MM-dd, h:mm a");
+  } catch {
+    return val;
+  }
+}
 
 export default function CustomerProfile() {
   const [, params] = useRoute("/customers/:id");
@@ -99,7 +111,7 @@ export default function CustomerProfile() {
         </Card>
         <Card className="p-3">
           <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1"><Calendar className="h-3 w-3" />Since</div>
-          <p className="font-medium">{contact.customerSince || new Date(contact.createdAt).toLocaleDateString("en-IN")}</p>
+          <p className="font-medium">{formatCustomerSince(contact.customerSince || contact.createdAt)}</p>
         </Card>
       </div>
 
