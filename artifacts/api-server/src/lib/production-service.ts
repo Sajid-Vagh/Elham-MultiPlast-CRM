@@ -3808,8 +3808,8 @@ export async function getManufacturingSummaryDetail(
         po.created_at AS "createdAt",
         po.expected_dispatch_date AS "expectedDispatchDate",
         po.priority,
-        COALESCE(pi.customer_name, '') AS "customerName",
-        COALESCE(pi.company_name, '') AS "companyName",
+        COALESCE(NULLIF(c.company_name, ''), NULLIF(c.name, ''), NULLIF(pi.customer_name, ''), NULLIF(o.customer_name, ''), '') AS "customerName",
+        COALESCE(NULLIF(pi.trade_name, ''), NULLIF(pi.company_name, ''), NULLIF(c.company_name, ''), '') AS "companyName",
         COALESCE(pi.invoice_number, '') AS "piNumber",
         COALESCE(pi.sales_owner_id::text, '') AS "salesOwnerId",
         (SELECT u.name FROM users u WHERE u.id = pi.sales_owner_id) AS "salesPerson",
@@ -3823,8 +3823,9 @@ export async function getManufacturingSummaryDetail(
       JOIN production_order_items poi ON poi.production_order_id = po.id
       LEFT JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
       LEFT JOIN proforma_invoice_items pii ON pii.id = poi.pi_item_id
-      LEFT JOIN contacts c ON c.id = pi.contact_id
+      LEFT JOIN deals d ON d.id = po.deal_id
       LEFT JOIN orders o ON o.deal_id = po.deal_id
+      LEFT JOIN contacts c ON c.id = COALESCE(pi.contact_id, d.contact_id, o.contact_id)
       LEFT JOIN products p ON p.id = COALESCE(pii.product_id, (
         SELECT p2.id FROM products p2 WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(poi.product_name)) LIMIT 1
       ))
@@ -3849,8 +3850,8 @@ export async function getManufacturingSummaryDetail(
         po.created_at AS "createdAt",
         po.expected_dispatch_date AS "expectedDispatchDate",
         po.priority,
-        COALESCE(pi.customer_name, '') AS "customerName",
-        COALESCE(pi.company_name, '') AS "companyName",
+        COALESCE(NULLIF(c.company_name, ''), NULLIF(c.name, ''), NULLIF(pi.customer_name, ''), NULLIF(o.customer_name, ''), '') AS "customerName",
+        COALESCE(NULLIF(pi.trade_name, ''), NULLIF(pi.company_name, ''), NULLIF(c.company_name, ''), '') AS "companyName",
         COALESCE(pi.invoice_number, '') AS "piNumber",
         COALESCE(pi.sales_owner_id::text, '') AS "salesOwnerId",
         (SELECT u.name FROM users u WHERE u.id = pi.sales_owner_id) AS "salesPerson",
@@ -3863,8 +3864,9 @@ export async function getManufacturingSummaryDetail(
       JOIN production_order_items poi ON poi.production_order_id = po.id
       LEFT JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
       LEFT JOIN proforma_invoice_items pii ON pii.id = poi.pi_item_id
-      LEFT JOIN contacts c ON c.id = pi.contact_id
+      LEFT JOIN deals d ON d.id = po.deal_id
       LEFT JOIN orders o ON o.deal_id = po.deal_id
+      LEFT JOIN contacts c ON c.id = COALESCE(pi.contact_id, d.contact_id, o.contact_id)
       LEFT JOIN products p ON p.id = COALESCE(pii.product_id, (
         SELECT p2.id FROM products p2 WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(poi.product_name)) LIMIT 1
       ))
@@ -3903,28 +3905,6 @@ export async function getManufacturingSummaryDetail(
       priority: r.priority,
     };
   });
-
-  // Mask customer identity for production-only users
-  if (isProductionOnlyRole(user.role)) {
-    for (const item of items) {
-      if (!item.customerCode) {
-        // Look up customer code from contacts via PI
-        const [pi] = await db.select({ contactId: proformaInvoicesTable.contactId })
-          .from(proformaInvoicesTable)
-          .where(eq(proformaInvoicesTable.invoiceNumber, item.piNumber === "-" ? "" : item.piNumber))
-          .limit(1);
-        if (pi?.contactId) {
-          const [contact] = await db.select({ customerCode: contactsTable.customerCode })
-            .from(contactsTable)
-            .where(eq(contactsTable.id, pi.contactId))
-            .limit(1);
-          item.customerCode = contact?.customerCode || "";
-        }
-      }
-      item.customerName = item.customerCode || "[No Code]";
-      item.companyName = "";
-    }
-  }
 
   return { items };
 }
