@@ -3669,7 +3669,7 @@ export async function getManufacturingSummary(
       SELECT
         poi.production_order_id AS po_id,
         poi.product_name,
-        COALESCE(poi.production_status, ao.status, 'Pending') AS production_status,
+        COALESCE(NULLIF(poi.production_status, ''), 'Pending') AS production_status,
         poi.ordered_quantity,
         poi.ready_quantity,
         COALESCE(NULLIF(poi.bottle_weight, ''), NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, ''), '-') AS weight,
@@ -3701,12 +3701,9 @@ export async function getManufacturingSummary(
       JOIN production_order_items poi ON poi.production_order_id = ao.po_id
       LEFT JOIN proforma_invoice_items pii ON pii.id = poi.pi_item_id
       LEFT JOIN products p ON p.id = COALESCE(pii.product_id, (
-        SELECT p2.id FROM products p2 WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(pii.product_name)) LIMIT 1
+        SELECT p2.id FROM products p2 WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(poi.product_name)) LIMIT 1
       ))
-      WHERE (
-        COALESCE(poi.production_status, 'Pending') IN (${activeStatusIn})
-        OR ao.status IN (${activeStatusIn})
-      )
+      WHERE COALESCE(NULLIF(poi.production_status, ''), 'Pending') IN (${activeStatusIn})
         AND (poi.ordered_quantity::numeric - poi.ready_quantity::numeric) > 0
         ${materialCondition}
     )
@@ -3787,7 +3784,7 @@ export async function getManufacturingSummaryDetail(
         po.formatted_order_id AS "poFormattedOrderId",
         po.deal_id AS "dealId",
         po.status,
-        poi.production_status AS "lineProductionStatus",
+        COALESCE(NULLIF(poi.production_status, ''), 'Pending') AS "lineProductionStatus",
         po.production_unit AS "productionUnit",
         po.created_by_role AS "createdByRole",
         po.is_delayed AS "isDelayed",
@@ -3803,21 +3800,22 @@ export async function getManufacturingSummaryDetail(
         COALESCE(o.order_number, o.formatted_order_id, po.formatted_order_id, '') AS "masterOrderNumber",
         COALESCE(poi.ordered_quantity, pii.quantity, 0)::numeric AS "quantity",
         COALESCE(poi.ready_quantity, 0)::numeric AS "readyQuantity",
-        pii.unit AS "unit"
+        COALESCE(pii.unit, 'Pcs') AS "unit"
       FROM active_orders ao
       JOIN production_orders po ON po.id = ao.po_id
       JOIN production_order_items poi ON poi.production_order_id = po.id
-      JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
-      JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
+      LEFT JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
+      LEFT JOIN proforma_invoice_items pii ON pii.id = poi.pi_item_id
       LEFT JOIN contacts c ON c.id = pi.contact_id
       LEFT JOIN orders o ON o.deal_id = po.deal_id
       LEFT JOIN products p ON p.id = COALESCE(pii.product_id, (
-        SELECT p2.id FROM products p2 WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(pii.product_name)) LIMIT 1
+        SELECT p2.id FROM products p2 WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(poi.product_name)) LIMIT 1
       ))
-      WHERE TRIM(LOWER(pii.product_name)) = TRIM(LOWER(${filter.productName}))
+      WHERE TRIM(LOWER(poi.product_name)) = TRIM(LOWER(${filter.productName}))
         AND ${weightFilter}
         AND ${colourFilter}
-        AND pi.is_deleted = false
+        AND (pi.is_deleted = false OR pi.is_deleted IS NULL)
+        AND (poi.ordered_quantity::numeric - poi.ready_quantity::numeric) > 0
       ORDER BY po.created_at DESC
     `);
   } else {
@@ -3827,7 +3825,7 @@ export async function getManufacturingSummaryDetail(
         po.formatted_order_id AS "poFormattedOrderId",
         po.deal_id AS "dealId",
         po.status,
-        poi.production_status AS "lineProductionStatus",
+        COALESCE(NULLIF(poi.production_status, ''), 'Pending') AS "lineProductionStatus",
         po.production_unit AS "productionUnit",
         po.created_by_role AS "createdByRole",
         po.is_delayed AS "isDelayed",
@@ -3843,18 +3841,19 @@ export async function getManufacturingSummaryDetail(
         COALESCE(o.order_number, o.formatted_order_id, po.formatted_order_id, '') AS "masterOrderNumber",
         COALESCE(poi.ordered_quantity, pii.quantity, 0)::numeric AS "quantity",
         COALESCE(poi.ready_quantity, 0)::numeric AS "readyQuantity",
-        pii.unit AS "unit"
+        COALESCE(pii.unit, 'Pcs') AS "unit"
       FROM production_orders po
-      JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
       JOIN production_order_items poi ON poi.production_order_id = po.id
-      JOIN proforma_invoice_items pii ON pii.invoice_id = pi.id
+      LEFT JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
+      LEFT JOIN proforma_invoice_items pii ON pii.id = poi.pi_item_id
       LEFT JOIN contacts c ON c.id = pi.contact_id
       LEFT JOIN orders o ON o.deal_id = po.deal_id
       LEFT JOIN products p ON p.id = COALESCE(pii.product_id, (
-        SELECT p2.id FROM products p2 WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(pii.product_name)) LIMIT 1
+        SELECT p2.id FROM products p2 WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(poi.product_name)) LIMIT 1
       ))
       WHERE po.id = ANY(${filter.orderIds}::int[])
-        AND pi.is_deleted = false
+        AND (pi.is_deleted = false OR pi.is_deleted IS NULL)
+        AND (poi.ordered_quantity::numeric - poi.ready_quantity::numeric) > 0
       ORDER BY po.created_at DESC
     `);
   }

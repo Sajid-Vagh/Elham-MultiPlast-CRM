@@ -201,18 +201,20 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
 
   const detailItems: DetailItem[] = detail?.items || [];
 
-  const inProdItems = detailItems.filter(item =>
-    item.status === "Production On Going" ||
-    item.status === "In Production" ||
-    item.lineProductionStatus === "Production On Going" ||
-    item.lineProductionStatus === "In Production"
-  );
-  const pendingItems = detailItems.filter(item =>
-    !inProdItems.includes(item) &&
-    item.status !== "Completed" &&
-    item.status !== "Delivered" &&
-    item.status !== "Cancelled"
-  );
+  const IN_PROD_STATUS_LIST = ["In Production", "Production On Going", "Production Started", "Production Running"];
+  const inProdItems = detailItems.filter(item => {
+    const s = item.lineProductionStatus || "Pending";
+    return IN_PROD_STATUS_LIST.includes(s);
+  });
+  const pendingItems = detailItems.filter(item => {
+    const s = item.lineProductionStatus || "Pending";
+    return !inProdItems.includes(item) &&
+      s !== "Ready" &&
+      s !== "Completed" &&
+      item.status !== "Completed" &&
+      item.status !== "Delivered" &&
+      item.status !== "Cancelled";
+  });
   const otherItems = detailItems.filter(item =>
     !inProdItems.includes(item) &&
     !pendingItems.includes(item)
@@ -478,8 +480,8 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                                   </div>
                                   <div className="flex items-center gap-2">
                                     {item.isDelayed && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
-                                    <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[item.status] || "bg-orange-100 text-orange-700 border-orange-300"} border`}>
-                                      {item.status}
+                                    <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[item.lineProductionStatus || item.status] || "bg-orange-100 text-orange-700 border-orange-300"} border`}>
+                                      {item.lineProductionStatus || item.status}
                                     </Badge>
                                   </div>
                                 </div>
@@ -585,8 +587,8 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                                 </div>
                                 <div className="flex items-center gap-2">
                                   {item.isDelayed && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
-                                  <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[item.status] || "bg-gray-100"} border`}>
-                                    {item.status}
+                                  <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[item.lineProductionStatus || item.status] || "bg-gray-100"} border`}>
+                                    {item.lineProductionStatus || item.status}
                                   </Badge>
                                 </div>
                               </div>
