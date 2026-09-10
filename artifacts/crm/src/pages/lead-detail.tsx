@@ -582,10 +582,20 @@ export default function LeadDetail() {
     return withEvents;
   }, [contact, deals, activities, contactProformas, actFromDate, actToDate, timelineSearch, showHiddenDeals]);
 
-  // Auto-expand all deals by default when loaded
+  // By default, expand ONLY the most recently created deal; keep older deals collapsed
   useEffect(() => {
     if (!dealsExpandedInitialized && dealTimeline.length > 0) {
-      setExpandedDeals(dealTimeline.map((g) => `deal-${g.deal?.id}`));
+      const mostRecent = [...dealTimeline].sort((a, b) => {
+        const timeA = a.deal?.createdAt ? new Date(a.deal.createdAt).getTime() : 0;
+        const timeB = b.deal?.createdAt ? new Date(b.deal.createdAt).getTime() : 0;
+        return timeB - timeA;
+      })[0];
+
+      if (mostRecent?.deal?.id) {
+        setExpandedDeals([`deal-${mostRecent.deal.id}`]);
+      } else if (dealTimeline[0]?.deal?.id) {
+        setExpandedDeals([`deal-${dealTimeline[0].deal.id}`]);
+      }
       setDealsExpandedInitialized(true);
     }
   }, [dealTimeline, dealsExpandedInitialized]);
@@ -1068,7 +1078,7 @@ export default function LeadDetail() {
         {/* ========== RIGHT CONTENT ========== */}
         <div className="lg:col-span-2 space-y-4">
           {/* ===== GROUPED ACTIVITY TIMELINE ===== */}
-          <Card>
+          <Card className="overflow-hidden">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
@@ -1155,7 +1165,7 @@ export default function LeadDetail() {
                             {group.deal?.isHiddenFromTimeline ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                           </button>
                         </div>
-                        <AccordionTrigger className="px-4 py-3 pr-20 hover:no-underline hover:bg-muted/40 [&[data-state=open]]:bg-muted/20">
+                        <AccordionTrigger className="px-4 py-3 pr-20 hover:no-underline hover:bg-muted/40 [&[data-state=open]]:bg-muted/20 relative z-10">
                           <div className="flex-1 flex items-center justify-between mr-2">
                             <div className="flex items-center gap-3 min-w-0">
                               <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 text-primary">
@@ -1197,12 +1207,12 @@ export default function LeadDetail() {
                             </div>
                           </div>
                         </AccordionTrigger>
-                        <AccordionContent className="px-4 pb-4 pt-1">
+                        <AccordionContent className="px-3 sm:px-6 pb-4 pt-1 overflow-hidden">
                           <div className="space-y-4">
                             {group.dateGroups.map((dGroup) => (
                               <div key={dGroup.dayKey} className="relative">
                                 {/* Date Header Chip */}
-                                <div className="flex items-center gap-3 my-4 first:mt-1">
+                                <div className="flex items-center gap-3 my-4 first:mt-1 px-1 sm:px-2">
                                   <div className="flex-1 h-px bg-border/60" />
                                   <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted/80 border border-border/80 text-xs font-semibold text-muted-foreground shadow-xs">
                                     <Calendar className="h-3.5 w-3.5 text-primary" />
@@ -1212,9 +1222,9 @@ export default function LeadDetail() {
                                 </div>
 
                                 {/* Timeline Events for this Date */}
-                                <div className="relative pl-6 sm:pl-24 space-y-3.5 pb-2">
+                                <div className="relative pl-9 sm:pl-32 space-y-3.5 pb-2 ml-1 sm:ml-2">
                                   {/* Vertical Timeline Line */}
-                                  <div className="absolute left-[11px] sm:left-[83px] top-4 bottom-4 w-0.5 bg-border/80" />
+                                  <div className="absolute left-[17px] sm:left-[103px] -translate-x-1/2 top-4 bottom-4 w-0.5 bg-border/80 z-0" />
 
                                   {dGroup.events.map((ev) => {
                                     const EventIcon =
@@ -1230,12 +1240,12 @@ export default function LeadDetail() {
                                     return (
                                       <div key={ev.key} className="relative flex flex-col sm:flex-row items-start gap-2.5 sm:gap-4 group/event">
                                         {/* Desktop Time */}
-                                        <div className="hidden sm:block w-16 text-right pt-3 shrink-0">
+                                        <div className="hidden sm:block w-20 text-right pt-3 shrink-0">
                                           <span className="text-xs font-semibold text-muted-foreground">{ev.timeStr}</span>
                                         </div>
 
                                         {/* Connected Dot on vertical line */}
-                                        <div className="absolute sm:relative left-0 sm:left-auto top-3.5 sm:top-3.5 -translate-x-[5px] sm:translate-x-0 z-10 shrink-0">
+                                        <div className="absolute sm:relative left-[17px] sm:left-auto top-3.5 sm:top-3.5 -translate-x-1/2 sm:translate-x-0 shrink-0 z-0">
                                           <span className={`block w-3.5 h-3.5 rounded-full ring-4 ring-card ${ev.dotColor}`} />
                                         </div>
 
