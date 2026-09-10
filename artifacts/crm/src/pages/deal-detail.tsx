@@ -200,7 +200,6 @@ export default function DealDetail() {
       setWonAmount(piSubtotal ? String(piSubtotal) : deal.totalValue ? String(deal.totalValue) : "");
       setWonProductionUnit(deal.productionUnit || "");
       setWonProductionNotes("");
-      setWonSalesNotes("");
       setMarkWonOpen(true);
       return;
     }

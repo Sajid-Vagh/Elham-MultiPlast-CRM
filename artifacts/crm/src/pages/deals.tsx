@@ -411,7 +411,6 @@ export default function Deals() {
           setWonAmount(piTaxable ? String(Math.round(Number(piTaxable))) : deal.totalValue ? String(Math.round(Number(deal.totalValue))) : "");
           setWonProductionUnit(deal.productionUnit || "");
           setWonProductionNotes("");
-          setWonSalesNotes("");
         })
         .catch((err: any) => {
           setOptimisticStages(prev => { const n = { ...prev }; delete n[dealId]; return n; });
