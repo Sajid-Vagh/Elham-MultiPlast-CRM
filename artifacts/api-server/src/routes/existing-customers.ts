@@ -424,7 +424,8 @@ router.get("/existing-customers/:id", async (req, res) => {
       }
     }
 
-    res.json(await enrichExistingCustomer(ec));
+    const { unit } = req.query as Record<string, string | undefined>;
+    res.json(await enrichExistingCustomer(ec, undefined, unit));
   } catch (err) {
     console.error("Get existing customer error:", err);
     res.status(500).json({ success: false, error: "Internal Server Error" });
@@ -436,11 +437,18 @@ router.get("/existing-customers/:id/orders", async (req, res) => {
   try {
     const id = Number(req.params.id);
     const access = await enforceExistingCustomerAccess(req, res, id);
-    if (!access) return;
-    const { ec } = access;
+    const { unit } = req.query as Record<string, string | undefined>;
+
+    const orderConditions: any[] = [
+      eq(ordersTable.contactId, ec.contactId),
+      eq(ordersTable.isDeleted, false),
+    ];
+    if (unit && unit !== "All" && unit !== "all") {
+      orderConditions.push(eq(ordersTable.productionUnit, unit));
+    }
 
     const orders = await db.select().from(ordersTable)
-      .where(and(eq(ordersTable.contactId, ec.contactId), eq(ordersTable.isDeleted, false)))
+      .where(and(...orderConditions))
       .orderBy(desc(ordersTable.createdAt));
 
     const enriched = await Promise.all(orders.map(async (order) => {
@@ -594,9 +602,19 @@ router.get("/existing-customers/:id/repeat-orders", async (req, res) => {
     const access = await enforceExistingCustomerAccess(req, res, id);
     if (!access) return;
     const { ec } = access;
+    const { unit } = req.query as Record<string, string | undefined>;
+
+    const repeatOrderConditions: any[] = [
+      eq(ordersTable.contactId, ec.contactId),
+      eq(ordersTable.isDeleted, false),
+      eq(ordersTable.isRepeatOrder, true),
+    ];
+    if (unit && unit !== "All" && unit !== "all") {
+      repeatOrderConditions.push(eq(ordersTable.productionUnit, unit));
+    }
 
     const repeatOrders = await db.select().from(ordersTable)
-      .where(and(eq(ordersTable.contactId, ec.contactId), eq(ordersTable.isDeleted, false), eq(ordersTable.isRepeatOrder, true)))
+      .where(and(...repeatOrderConditions))
       .orderBy(desc(ordersTable.createdAt));
 
     const enriched = await Promise.all(repeatOrders.map(async (order) => {

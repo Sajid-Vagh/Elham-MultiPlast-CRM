@@ -16,8 +16,8 @@ import { ArrowLeft, Phone, Mail, MapPin, Building, Calendar, Package, ShoppingCa
 import { VoiceNoteSection } from "@/components/voice-note-player";
 import { VoiceNoteUploader } from "@/components/voice-note-uploader";
 import { useToast } from "@/hooks/use-toast";
-import { FlexibleTimeInput } from "@/components/flexible-time-input";
 import { parseNotesText } from "@/lib/parse-notes";
+import { useUnitFilter } from "@/lib/use-unit-filter";
 
 const STATUS_COLORS: Record<string, string> = {
   "Active": "bg-green-100 text-green-700",
@@ -75,10 +75,15 @@ export default function ExistingCustomerDetail() {
   const [followUpForm, setFollowUpForm] = useState({ type: "FollowUp", notes: "", followUpDate: "", followUpTime: "", followUpType: "General Customer Follow-up", priority: "Medium", assignedTo: "" });
   const [repeatOrderRemarks, setRepeatOrderRemarks] = useState("");
 
+  const [unitFilter] = useUnitFilter();
+
   const { data: customer, isLoading } = useQuery({
-    queryKey: ["existing-customer", id],
+    queryKey: ["existing-customer", id, unitFilter],
     queryFn: async () => {
-      const res = await fetch(`/api/existing-customers/${id}`, {
+      const params = new URLSearchParams();
+      if (unitFilter && unitFilter !== "All" && unitFilter !== "all") params.set("unit", unitFilter);
+      const qs = params.toString();
+      const res = await fetch(`/api/existing-customers/${id}${qs ? `?${qs}` : ""}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
       });
       if (!res.ok) throw new Error("Failed to fetch");
@@ -88,9 +93,12 @@ export default function ExistingCustomerDetail() {
   });
 
   const { data: orders = [] } = useQuery({
-    queryKey: ["existing-customer-orders", id],
+    queryKey: ["existing-customer-orders", id, unitFilter],
     queryFn: async () => {
-      const res = await fetch(`/api/existing-customers/${id}/orders`, {
+      const params = new URLSearchParams();
+      if (unitFilter && unitFilter !== "All" && unitFilter !== "all") params.set("unit", unitFilter);
+      const qs = params.toString();
+      const res = await fetch(`/api/existing-customers/${id}/orders${qs ? `?${qs}` : ""}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
       });
       if (!res.ok) throw new Error("Failed to fetch");
@@ -136,9 +144,12 @@ export default function ExistingCustomerDetail() {
   });
 
   const { data: repeatOrders = [] } = useQuery({
-    queryKey: ["existing-customer-repeat-orders", id],
+    queryKey: ["existing-customer-repeat-orders", id, unitFilter],
     queryFn: async () => {
-      const res = await fetch(`/api/existing-customers/${id}/repeat-orders`, {
+      const params = new URLSearchParams();
+      if (unitFilter && unitFilter !== "All" && unitFilter !== "all") params.set("unit", unitFilter);
+      const qs = params.toString();
+      const res = await fetch(`/api/existing-customers/${id}/repeat-orders${qs ? `?${qs}` : ""}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("crm_token")}` },
       });
       if (!res.ok) throw new Error("Failed to fetch");
