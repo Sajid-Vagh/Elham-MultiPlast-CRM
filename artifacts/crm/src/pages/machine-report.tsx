@@ -23,7 +23,7 @@ interface ReportData {
     materialType: string;
     machines: { machineType: string; productCount: number; orderCount: number; totalBottles: number; pendingQty: number; inProductionQty: number; completedQty: number }[];
   }[];
-  orders: { orderId: number; orderNumber: string | null; status: string; productionUnit: string; createdAt: string; productName: string; machineType: string | null; materialType: string | null; quantity: number; readyQuantity: number; bottleColour: string | null; bottleWeight: string | null; productCode: string | null }[];
+  orders: { orderId: number; orderNumber: string | null; status: string; productionStatus?: string; productionUnit: string; createdAt: string; productName: string; machineType: string | null; materialType: string | null; quantity: number; readyQuantity: number; bottleColour: string | null; bottleWeight: string | null; productCode: string | null }[];
 }
 
 export default function MachineReport() {
@@ -233,7 +233,7 @@ export default function MachineReport() {
                       <TableCell>{o.quantity.toLocaleString()}</TableCell>
                       <TableCell className="text-green-700">{o.readyQuantity?.toLocaleString() || "0"}</TableCell>
                       <TableCell className="text-orange-700">{(o.quantity - (o.readyQuantity || 0)).toLocaleString()}</TableCell>
-                      <TableCell><Badge variant="outline" className={`text-xs ${statusColor(o.status)}`}>{o.status}</Badge></TableCell>
+                      <TableCell><Badge variant="outline" className={`text-xs ${statusColor(o.productionStatus || o.status)}`}>{o.productionStatus || o.status}</Badge></TableCell>
                       <TableCell className="text-sm text-muted-foreground">{o.createdAt ? new Date(o.createdAt).toLocaleDateString("en-IN") : "-"}</TableCell>
                     </TableRow>
                   ))

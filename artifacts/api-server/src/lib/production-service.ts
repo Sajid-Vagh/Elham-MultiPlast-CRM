@@ -2765,18 +2765,22 @@ async function buildMachineReportRows(
   filters: { unit?: string; status?: string; dateFrom?: string; dateTo?: string; origin?: string; material?: string }
 ): Promise<MachineReportRow[]> {
   const conditions = buildOrderConditions(user, {
-    status: filters.status,
+    // Note: status filter is applied at the item/product-line level below, NOT on the parent order
     unit: filters.unit,
     dateFrom: filters.dateFrom,
     dateTo: filters.dateTo,
     origin: filters.origin,
   });
 
-  // Default: exclude completed/cancelled/delivered orders unless explicit status filter is set
-  if (!filters.status || filters.status === "All") {
+  // Default: exclude completed/cancelled/delivered orders unless an explicit terminal status filter is requested
+  const terminalStatuses = ["Completed", "Delivered", "Cancelled"];
+  const isTerminalStatus = filters.status && terminalStatuses.includes(filters.status);
+  if (!isTerminalStatus) {
     conditions.push(
-      notInArray(productionOrdersTable.status, ["Completed", "Delivered", "Cancelled"])
+      notInArray(productionOrdersTable.status, terminalStatuses)
     );
+  } else if (filters.status) {
+    conditions.push(eq(productionOrdersTable.status, filters.status));
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -2821,7 +2825,7 @@ async function buildMachineReportRows(
       productCode: null,
       quantity: Number(line.orderedQuantity),
       readyQuantity: Number(line.readyQuantity),
-      productionStatus: line.productionStatus,
+      productionStatus: line.productionStatus || "Pending",
     });
   }
 
@@ -2839,13 +2843,26 @@ async function buildMachineReportRows(
     }
   }
 
+  let result = productRows;
+
+  // Status filter — applied at the item/product-line level so each item appears in its true status category
+  if (filters.status && filters.status !== "All" && filters.status !== "all") {
+    result = result.filter(r => {
+      const bucket = statusBucket(r);
+      if (PENDING_ST.includes(filters.status!)) return bucket === "pending";
+      if (IN_PROD_ST.includes(filters.status!)) return bucket === "inProduction";
+      if (DORMANT_ST.includes(filters.status!)) return bucket === "dormant";
+      return r.productionStatus === filters.status || r.status === filters.status;
+    });
+  }
+
   // Material filter — applied on production_order_items.material_type (the exact
   // source the Machine Report page filters client-side on), keeping both pages
   // consistent for HDPE / PET / PP.
   if (filters.material && filters.material !== "All" && filters.material !== "all") {
-    return productRows.filter(r => r.materialType === filters.material);
+    return result.filter(r => r.materialType === filters.material);
   }
-  return productRows;
+  return result;
 }
 
 export async function getDashboard(user: PermissionUser, unitFilter?: string, originFilter?: string, startDate?: string, endDate?: string, materialFilter?: string) {
