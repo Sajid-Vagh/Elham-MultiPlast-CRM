@@ -24,15 +24,27 @@ export function getLastEmailError(): string | null {
   return _lastEmailError;
 }
 
+function cleanEnv(val: string | undefined): string {
+  if (!val) return "";
+  let s = val.trim();
+  if (s.includes(" #")) {
+    s = s.split(" #")[0].trim();
+  }
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    s = s.slice(1, -1).trim();
+  }
+  return s;
+}
+
 function getSmtpConfig() {
-  const host = (process.env.SMTP_HOST || process.env.EMAIL_HOST || process.env.MAIL_HOST || "").trim();
-  const rawPort = (process.env.SMTP_PORT || process.env.EMAIL_PORT || process.env.MAIL_PORT || "587").trim();
+  const host = cleanEnv(process.env.SMTP_HOST || process.env.EMAIL_HOST || process.env.MAIL_HOST);
+  const rawPort = cleanEnv(process.env.SMTP_PORT || process.env.EMAIL_PORT || process.env.MAIL_PORT || "587");
   const port = Number(rawPort) || 587;
-  const user = (process.env.SMTP_USER || process.env.SMTP_USERNAME || process.env.EMAIL_USER || process.env.MAIL_USER || process.env.MAIL_USERNAME || "").trim();
-  let pass = (process.env.SMTP_PASS || process.env.SMTP_PASSWORD || process.env.EMAIL_PASS || process.env.EMAIL_PASSWORD || process.env.MAIL_PASSWORD || "").trim();
-  const explicitSecure = process.env.SMTP_SECURE || process.env.EMAIL_SECURE;
-  const secure = explicitSecure !== undefined ? explicitSecure === "true" : port === 465;
-  const service = (process.env.SMTP_SERVICE || process.env.EMAIL_SERVICE || "").trim();
+  const user = cleanEnv(process.env.SMTP_USER || process.env.SMTP_USERNAME || process.env.EMAIL_USER || process.env.MAIL_USER || process.env.MAIL_USERNAME);
+  let pass = cleanEnv(process.env.SMTP_PASS || process.env.SMTP_PASSWORD || process.env.EMAIL_PASS || process.env.EMAIL_PASSWORD || process.env.MAIL_PASSWORD);
+  const explicitSecure = cleanEnv(process.env.SMTP_SECURE || process.env.EMAIL_SECURE);
+  const secure = explicitSecure !== "" ? explicitSecure === "true" : port === 465;
+  const service = cleanEnv(process.env.SMTP_SERVICE || process.env.EMAIL_SERVICE);
 
   // If host is Google/Gmail or service is gmail, strip spaces commonly copied from 16-char Google App Passwords (e.g. "abcd efgh ijkl mnop")
   if (host.toLowerCase().includes("gmail") || host.toLowerCase().includes("google") || service.toLowerCase() === "gmail") {
@@ -49,26 +61,27 @@ function getTransporter(): nodemailer.Transporter | null {
   if (!host && !service) return null;
 
   try {
-    const transportOptions: any = {
-      family: 4, // Force IPv4 to prevent hanging on cloud IPv6 timeouts
-      secure,
-      auth: user ? { user, pass } : undefined,
-      tls: {
-        rejectUnauthorized: process.env.SMTP_REJECT_UNAUTHORIZED === "true" ? true : false,
-      },
-      connectionTimeout: 15_000,
-      greetingTimeout: 10_000,
-      socketTimeout: 15_000,
-    };
+    let transportOptions: any;
 
     if (service) {
-      transportOptions.service = service;
-    } else if (host.toLowerCase().includes("gmail")) {
-      transportOptions.service = "gmail";
-      transportOptions.auth = user ? { user, pass } : undefined;
+      transportOptions = {
+        service,
+        auth: user ? { user, pass } : undefined,
+      };
     } else {
-      transportOptions.host = host;
-      transportOptions.port = port;
+      transportOptions = {
+        host,
+        port,
+        secure,
+        auth: user ? { user, pass } : undefined,
+        family: 4, // Force IPv4 to prevent hanging on cloud IPv6 timeouts
+        tls: {
+          rejectUnauthorized: process.env.SMTP_REJECT_UNAUTHORIZED === "true" ? true : false,
+        },
+        connectionTimeout: 15_000,
+        greetingTimeout: 10_000,
+        socketTimeout: 15_000,
+      };
     }
 
     _transporter = nodemailer.createTransport(transportOptions);
