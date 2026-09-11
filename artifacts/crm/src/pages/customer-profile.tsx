@@ -1,5 +1,6 @@
 import { useRoute, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { useGetMe } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +22,8 @@ function formatCustomerSince(val: string | null | undefined): string {
 }
 
 export default function CustomerProfile() {
+  const { data: me } = useGetMe();
+  const canViewRevenue = me?.role === "admin" || (me?.permissions?.allowViewCustomerRevenue !== false && (me as any)?.allowViewCustomerRevenue !== false);
   const [, params] = useRoute("/customers/:id");
   const [, setLocation] = useLocation();
   const contactId = Number(params?.id);
@@ -146,10 +149,12 @@ export default function CustomerProfile() {
           <p className="text-2xl font-bold">{contact.totalOrders || 0}</p>
           <p className="text-xs text-muted-foreground">Total Orders</p>
         </Card>
-        <Card className="p-3 text-center">
-          <p className="text-2xl font-bold">₹{Number(contact.totalRevenue || 0).toLocaleString("en-IN")}</p>
-          <p className="text-xs text-muted-foreground">Total Revenue</p>
-        </Card>
+        {canViewRevenue && (
+          <Card className="p-3 text-center">
+            <p className="text-2xl font-bold">₹{Number(contact.totalRevenue || 0).toLocaleString("en-IN")}</p>
+            <p className="text-xs text-muted-foreground">Total Revenue</p>
+          </Card>
+        )}
         <Card className="p-3 text-center">
           <p className="text-2xl font-bold">{invoices.length}</p>
           <p className="text-xs text-muted-foreground">Proforma Invoices</p>
@@ -189,12 +194,21 @@ export default function CustomerProfile() {
           <Card><CardContent className="p-0">
             {invoices.length === 0 ? <p className="text-center py-8 text-muted-foreground">No invoices</p> : (
               <Table>
-                <TableHeader><TableRow><TableHead>Invoice #</TableHead><TableHead>Amount</TableHead><TableHead>Status</TableHead><TableHead>Date</TableHead></TableRow></TableHeader>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Invoice #</TableHead>
+                    {canViewRevenue && <TableHead>Amount</TableHead>}
+                    <TableHead>Status</TableHead>
+                    <TableHead>Date</TableHead>
+                  </TableRow>
+                </TableHeader>
                 <TableBody>
                   {invoices.map((inv: any) => (
                     <TableRow key={inv.id}>
                       <TableCell className="font-medium">{inv.invoiceNumber}</TableCell>
-                      <TableCell>₹{Number(inv.grandTotal).toLocaleString("en-IN")}</TableCell>
+                      {canViewRevenue && (
+                        <TableCell>₹{Number(inv.grandTotal).toLocaleString("en-IN")}</TableCell>
+                      )}
                       <TableCell><Badge>{inv.status}</Badge></TableCell>
                       <TableCell>{new Date(inv.createdAt).toLocaleDateString("en-IN")}</TableCell>
                     </TableRow>

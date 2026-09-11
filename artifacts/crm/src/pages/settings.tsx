@@ -37,6 +37,7 @@ const SUPPORT_PERMISSION_CATEGORIES: PermissionCategory[] = [
     icon: <Users className="h-4 w-4" />,
     permissions: [
       { key: "manageExistingCustomers", label: "Manage Existing Customers", desc: "View and edit existing customer profiles and details" },
+      { key: "allowViewCustomerRevenue", label: "View Customer Revenue", desc: "Allow viewing total revenue and order amount columns on customer pages" },
       { key: "viewCustomerTimeline", label: "View Customer Timeline", desc: "View the full activity timeline for customers" },
       { key: "updateCustomerCommunication", label: "Update Customer Communication", desc: "Log and update customer communication records" },
       { key: "createFollowups", label: "Create Activities", desc: "Schedule and manage follow-up activities" },
@@ -118,6 +119,7 @@ const PRODUCTION_PERMISSION_CATEGORIES: PermissionCategory[] = [
     id: "general", label: "General",
     icon: <Shield className="h-4 w-4" />,
     permissions: [
+      { key: "allowViewCustomerRevenue", label: "View Customer Revenue", desc: "Allow viewing total revenue and order amount columns on customer pages" },
       { key: "receiveNotifications", label: "Receive Notifications", desc: "Get notified about order and production updates" },
       { key: "createQuickNotes", label: "Create Quick Notes", desc: "Add internal notes to production orders" },
     ],
@@ -137,6 +139,7 @@ const INVENTORY_PERMISSION_CATEGORIES: PermissionCategory[] = [
     icon: <Shield className="h-4 w-4" />,
     permissions: [
       { key: "canExportData", label: "Allow Data Export", desc: "Allow this user to export data to Excel/CSV" },
+      { key: "allowViewCustomerRevenue", label: "View Customer Revenue", desc: "Allow viewing total revenue and order amount columns on customer pages" },
     ],
   },
 ];
@@ -146,6 +149,7 @@ const SALES_PERMISSIONS: PermissionDef[] = [
   { key: "canAssignLeads", label: "Assign leads to others", desc: "Allow this user to assign leads to other sales owners" },
   { key: "canExportData", label: "Allow Data Export", desc: "Allow this user to export data to Excel/CSV" },
   { key: "canEditProducts", label: "Allow Add/Edit Products", desc: "Allow this user to add new products and edit existing ones." },
+  { key: "allowViewCustomerRevenue", label: "View Customer Revenue", desc: "Allow viewing total revenue and order amount columns on customer pages" },
 ];
 
 const ROLE_SUMMARIES: Record<string, { label: string; color: string; icon: React.ReactNode; bullets: string[] }> = {
@@ -160,6 +164,7 @@ function getDefaultPermissions(role: string): Record<string, boolean> {
   const all: Record<string, boolean> = {
     canExportData: true,
     canEditProducts: true,
+    allowViewCustomerRevenue: true,
   };
   const cats = role === "production" ? PRODUCTION_PERMISSION_CATEGORIES : role === "inventory" ? INVENTORY_PERMISSION_CATEGORIES : SUPPORT_PERMISSION_CATEGORIES;
   for (const cat of cats) {
@@ -508,7 +513,11 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
                               ? form.canAssignLeads
                               : p.key === "canExportData"
                               ? form.canExportData
-                              : form.canEditProducts
+                              : p.key === "canEditProducts"
+                              ? form.canEditProducts
+                              : p.key === "allowViewCustomerRevenue"
+                              ? (form.permissions?.allowViewCustomerRevenue ?? true)
+                              : !!form.permissions?.[p.key]
                           }
                           onCheckedChange={v => {
                             if (p.key === "canExportData") {
@@ -522,6 +531,11 @@ function UserForm({ initial, onSave, onCancel, loading, isEdit, me, activeUnitNa
                                 ...prev,
                                 canEditProducts: v,
                                 permissions: { ...prev.permissions, canEditProducts: v },
+                              }));
+                            } else if (p.key === "allowViewCustomerRevenue") {
+                              setForm(prev => ({
+                                ...prev,
+                                permissions: { ...prev.permissions, allowViewCustomerRevenue: v },
                               }));
                             } else {
                               setForm(prev => ({ ...prev, [p.key]: v }));

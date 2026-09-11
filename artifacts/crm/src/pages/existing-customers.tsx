@@ -42,6 +42,7 @@ const KPI_CARDS = [
 export default function ExistingCustomers() {
   const { data: me } = useGetMe();
   const isAdmin = me?.role === "admin";
+  const canViewRevenue = isAdmin || (me?.permissions?.allowViewCustomerRevenue !== false && (me as any)?.allowViewCustomerRevenue !== false);
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [globalStatus, setGlobalStatus] = useStatusFilter();
@@ -228,16 +229,16 @@ export default function ExistingCustomers() {
                 <TableHead>Contact</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Total Orders</TableHead>
-                <TableHead>Total Revenue</TableHead>
+                {canViewRevenue && <TableHead>Total Revenue</TableHead>}
                 <TableHead>Last Order</TableHead>
                 <TableHead>Sales Owner</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={canViewRevenue ? 7 : 6} className="text-center py-8">Loading...</TableCell></TableRow>
               ) : data?.data?.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No customers found</TableCell></TableRow>
+                <TableRow><TableCell colSpan={canViewRevenue ? 7 : 6} className="text-center py-8 text-muted-foreground">No customers found</TableCell></TableRow>
               ) : (
                 data?.data?.map((ec: any) => (
                   <TableRow
@@ -270,14 +271,16 @@ export default function ExistingCustomers() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-center font-medium">{ec.totalOrders ?? 0}</TableCell>
-                    <TableCell className="font-medium">₹{Number(ec.totalRevenue || 0).toLocaleString("en-IN")}</TableCell>
+                    {canViewRevenue && (
+                      <TableCell className="font-medium">₹{Number(ec.totalRevenue || 0).toLocaleString("en-IN")}</TableCell>
+                    )}
                     <TableCell className="text-sm">
                       {ec.lastOrder ? (
                         <div>
                           <p className="font-medium">{ec.lastOrder.orderNumber}</p>
                           <p className="text-xs text-muted-foreground">
                             {ec.lastOrder.createdAt ? new Date(ec.lastOrder.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : (ec.lastOrderDate || "")}
-                            {ec.lastOrder.grandTotal ? ` • ₹${Number(ec.lastOrder.grandTotal).toLocaleString("en-IN")}` : ""}
+                            {canViewRevenue && ec.lastOrder.grandTotal ? ` • ₹${Number(ec.lastOrder.grandTotal).toLocaleString("en-IN")}` : ""}
                           </p>
                         </div>
                       ) : ec.lastOrderDate ? (

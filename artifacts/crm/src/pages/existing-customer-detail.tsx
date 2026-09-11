@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useGetMe } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,6 +60,8 @@ const PROD_STATUS_COLORS: Record<string, string> = {
 };
 
 export default function ExistingCustomerDetail() {
+  const { data: me } = useGetMe();
+  const canViewRevenue = me?.role === "admin" || (me?.permissions?.allowViewCustomerRevenue !== false && (me as any)?.allowViewCustomerRevenue !== false);
   const [, params] = useRoute("/existing-customers/:id");
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
@@ -421,14 +424,18 @@ export default function ExistingCustomerDetail() {
                 <p className="text-xl font-bold text-amber-700">{oh.repeatOrders}</p>
                 <p className="text-[10px] text-muted-foreground uppercase">Repeat</p>
               </div>
-              <div className="text-center p-2 bg-blue-50 rounded-lg">
-                <p className="text-xl font-bold text-blue-700">₹{Number(oh.totalRevenue || 0).toLocaleString("en-IN")}</p>
-                <p className="text-[10px] text-muted-foreground uppercase">Revenue</p>
-              </div>
-              <div className="text-center p-2 bg-purple-50 rounded-lg">
-                <p className="text-xl font-bold text-purple-700">₹{Number(oh.avgOrderValue || 0).toLocaleString("en-IN")}</p>
-                <p className="text-[10px] text-muted-foreground uppercase">Avg Value</p>
-              </div>
+              {canViewRevenue && (
+                <div className="text-center p-2 bg-blue-50 rounded-lg">
+                  <p className="text-xl font-bold text-blue-700">₹{Number(oh.totalRevenue || 0).toLocaleString("en-IN")}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase">Revenue</p>
+                </div>
+              )}
+              {canViewRevenue && (
+                <div className="text-center p-2 bg-purple-50 rounded-lg">
+                  <p className="text-xl font-bold text-purple-700">₹{Number(oh.avgOrderValue || 0).toLocaleString("en-IN")}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase">Avg Value</p>
+                </div>
+              )}
               <div className="text-center p-2 bg-cyan-50 rounded-lg">
                 <p className="text-sm font-bold text-cyan-700">{oh.firstOrderDate ? new Date(oh.firstOrderDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "-"}</p>
                 <p className="text-[10px] text-muted-foreground uppercase">First Order</p>
@@ -458,10 +465,12 @@ export default function ExistingCustomerDetail() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
               <div><span className="text-muted-foreground">Order #:</span> <span className="font-medium">{lastOrd.orderNumber}</span></div>
               <div><span className="text-muted-foreground">Date:</span> <span className="font-medium">{new Date(lastOrd.createdAt).toLocaleDateString("en-IN")}</span></div>
-              <div><span className="text-muted-foreground">Amount:</span> <span className="font-bold">₹{Number(lastOrd.grandTotal || 0).toLocaleString("en-IN")}</span></div>
+              {canViewRevenue && (
+                <div><span className="text-muted-foreground">Amount:</span> <span className="font-bold">₹{Number(lastOrd.grandTotal || 0).toLocaleString("en-IN")}</span></div>
+              )}
               <div><span className="text-muted-foreground">Status:</span> <Badge variant="outline" className={`ml-1 ${ORDER_STATUS_COLORS[lastOrd.status] || ""}`}>{lastOrd.status}</Badge></div>
               {lastOrd.salesOwner && <div><span className="text-muted-foreground">Sales Owner:</span> <span className="font-medium">{lastOrd.salesOwner.name}</span></div>}
-              {lastOrd.freight && <div><span className="text-muted-foreground">Freight:</span> <span className="font-medium">₹{Number(lastOrd.freight).toLocaleString("en-IN")}</span></div>}
+              {canViewRevenue && lastOrd.freight && <div><span className="text-muted-foreground">Freight:</span> <span className="font-medium">₹{Number(lastOrd.freight).toLocaleString("en-IN")}</span></div>}
               {lastOrd.paymentTerms && <div><span className="text-muted-foreground">Payment:</span> <span className="font-medium">{lastOrd.paymentTerms}</span></div>}
               {lastOrd.deliveryTerms && <div><span className="text-muted-foreground">Delivery:</span> <span className="font-medium">{lastOrd.deliveryTerms}</span></div>}
               {lastOrd.dispatchAddress && <div className="col-span-2"><span className="text-muted-foreground">Dispatch Address:</span> <span className="font-medium">{lastOrd.dispatchAddress}</span></div>}
@@ -484,8 +493,8 @@ export default function ExistingCustomerDetail() {
                         <TableHead className="text-xs">Machine</TableHead>
                         <TableHead className="text-xs">HSN</TableHead>
                         <TableHead className="text-xs text-right">Qty</TableHead>
-                        <TableHead className="text-xs text-right">Rate</TableHead>
-                        <TableHead className="text-xs text-right">Amount</TableHead>
+                        {canViewRevenue && <TableHead className="text-xs text-right">Rate</TableHead>}
+                        {canViewRevenue && <TableHead className="text-xs text-right">Amount</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -505,8 +514,8 @@ export default function ExistingCustomerDetail() {
                           <TableCell className="text-xs">{p.machineType || "-"}</TableCell>
                           <TableCell className="text-xs">{p.hsnCode || "-"}</TableCell>
                           <TableCell className="text-xs text-right">{Number(p.quantity || 0).toLocaleString()}</TableCell>
-                          <TableCell className="text-xs text-right">₹{Number(p.rate || 0).toLocaleString("en-IN")}</TableCell>
-                          <TableCell className="text-xs text-right font-medium">₹{Number(p.amount || 0).toLocaleString("en-IN")}</TableCell>
+                          {canViewRevenue && <TableCell className="text-xs text-right">₹{Number(p.rate || 0).toLocaleString("en-IN")}</TableCell>}
+                          {canViewRevenue && <TableCell className="text-xs text-right font-medium">₹{Number(p.amount || 0).toLocaleString("en-IN")}</TableCell>}
                         </TableRow>
                       ))}
                     </TableBody>
@@ -628,7 +637,7 @@ export default function ExistingCustomerDetail() {
                   <TableHead className="text-xs">Order No</TableHead>
                   <TableHead className="text-xs">Date</TableHead>
                   <TableHead className="text-xs">Status</TableHead>
-                  <TableHead className="text-xs">Amount</TableHead>
+                  {canViewRevenue && <TableHead className="text-xs">Amount</TableHead>}
                   <TableHead className="text-xs">Production</TableHead>
                   <TableHead className="text-xs">Dispatch</TableHead>
                   <TableHead className="text-xs">Sales Owner</TableHead>
@@ -640,7 +649,9 @@ export default function ExistingCustomerDetail() {
                     <TableCell className="font-medium text-sm">{order.orderNumber}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{new Date(order.createdAt).toLocaleDateString("en-IN")}</TableCell>
                     <TableCell><Badge variant="outline" className={`text-xs ${ORDER_STATUS_COLORS[order.status] || ""}`}>{order.status}</Badge></TableCell>
-                    <TableCell className="font-medium text-sm">₹{Number(order.grandTotal || 0).toLocaleString("en-IN")}</TableCell>
+                    {canViewRevenue && (
+                      <TableCell className="font-medium text-sm">₹{Number(order.grandTotal || 0).toLocaleString("en-IN")}</TableCell>
+                    )}
                     <TableCell>{order.productionStatus && <Badge className={`text-xs ${PROD_STATUS_COLORS[order.productionStatus] || "bg-gray-100"}`}>{order.productionStatus}</Badge>}</TableCell>
                     <TableCell>{order.dispatchStatus && <Badge className="text-xs bg-cyan-100 text-cyan-700">{order.dispatchStatus}</Badge>}</TableCell>
                     <TableCell className="text-sm">{order.salesOwner?.name || "-"}</TableCell>
@@ -675,7 +686,7 @@ export default function ExistingCustomerDetail() {
                       <TableHead>Order #</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Items</TableHead>
-                      <TableHead>Grand Total</TableHead>
+                      {canViewRevenue && <TableHead>Grand Total</TableHead>}
                       <TableHead>Repeat</TableHead>
                       <TableHead>Date</TableHead>
                       <TableHead>Sales Owner</TableHead>
@@ -687,7 +698,9 @@ export default function ExistingCustomerDetail() {
                         <TableCell className="font-medium">{order.orderNumber}</TableCell>
                         <TableCell><Badge variant="outline">{order.status}</Badge></TableCell>
                         <TableCell>{order.items?.length || 0}</TableCell>
-                        <TableCell className="font-medium">₹{Number(order.grandTotal || 0).toLocaleString("en-IN")}</TableCell>
+                        {canViewRevenue && (
+                          <TableCell className="font-medium">₹{Number(order.grandTotal || 0).toLocaleString("en-IN")}</TableCell>
+                        )}
                         <TableCell>{order.isRepeatOrder ? <Badge className="bg-amber-100 text-amber-700">Yes</Badge> : "-"}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{new Date(order.createdAt).toLocaleDateString("en-IN")}</TableCell>
                         <TableCell className="text-sm">{order.salesOwner?.name || "-"}</TableCell>
@@ -712,7 +725,7 @@ export default function ExistingCustomerDetail() {
                       <TableHead>Order #</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Items</TableHead>
-                      <TableHead>Grand Total</TableHead>
+                      {canViewRevenue && <TableHead>Grand Total</TableHead>}
                       <TableHead>Date</TableHead>
                       <TableHead>Sales Owner</TableHead>
                     </TableRow>
@@ -723,7 +736,9 @@ export default function ExistingCustomerDetail() {
                         <TableCell className="font-medium">{order.orderNumber}</TableCell>
                         <TableCell><Badge variant="outline">{order.status}</Badge></TableCell>
                         <TableCell>{order.items?.length || 0}</TableCell>
-                        <TableCell className="font-medium">₹{Number(order.grandTotal || 0).toLocaleString("en-IN")}</TableCell>
+                        {canViewRevenue && (
+                          <TableCell className="font-medium">₹{Number(order.grandTotal || 0).toLocaleString("en-IN")}</TableCell>
+                        )}
                         <TableCell className="text-sm text-muted-foreground">{new Date(order.createdAt).toLocaleDateString("en-IN")}</TableCell>
                         <TableCell className="text-sm">{order.salesOwner?.name || "-"}</TableCell>
                       </TableRow>

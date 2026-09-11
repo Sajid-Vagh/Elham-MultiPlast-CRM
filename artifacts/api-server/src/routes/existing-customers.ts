@@ -22,6 +22,14 @@ function getExistingCustomerUnits(user: { role: string; unit?: string | null }):
   return getAccessibleUnits(user);
 }
 
+function canViewCustomerRevenue(user: { role: string; permissions?: Record<string, boolean> | null }): boolean {
+  if (user.role === "admin") return true;
+  if (user.permissions && typeof user.permissions === "object") {
+    if (user.permissions.allowViewCustomerRevenue === false) return false;
+  }
+  return true;
+}
+
 // ── Helper: enforce unit-based access on existing customer ──
 async function enforceExistingCustomerAccess(
   req: any,
@@ -166,7 +174,7 @@ async function refreshExistingCustomerStats(contactId: number) {
 }
 
 // ── Helper: enrich existing customer ──
-async function enrichExistingCustomer(ec: any, preloadedOrders?: any[], unitFilter?: string) {
+async function enrichExistingCustomer(ec: any, preloadedOrders?: any[], unitFilter?: string, maskRevenue = false) {
   const contact = ec.contactId ? await db.select().from(contactsTable).where(eq(contactsTable.id, ec.contactId)).then(r => r[0]) : null;
   const salesOwner = ec.salesOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, ec.salesOwnerId)).then(r => r[0]) : null;
   const supportOwner = ec.supportOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, ec.supportOwnerId)).then(r => r[0]) : null;
@@ -206,7 +214,7 @@ async function enrichExistingCustomer(ec: any, preloadedOrders?: any[], unitFilt
   return {
     ...ec,
     totalOrders,
-    totalRevenue: String(totalRevenue),
+    totalRevenue: maskRevenue ? null : String(totalRevenue),
     repeatOrderCount,
     lastOrderDate,
     firstOrderDate,
@@ -214,7 +222,7 @@ async function enrichExistingCustomer(ec: any, preloadedOrders?: any[], unitFilt
     contact: contact ? { id: contact.id, name: contact.name, customerCode: contact.customerCode || null, mobile: contact.mobile, email: contact.email, companyName: contact.companyName, city: contact.city, state: contact.state, address: contact.address, gstNumber: (contact as any).gstNumber || null } : null,
     salesOwner: safe(salesOwner),
     supportOwner: safe(supportOwner),
-    lastOrder: lastOrder ? { id: lastOrder.id, orderNumber: lastOrder.orderNumber, grandTotal: lastOrder.grandTotal, status: lastOrder.status, createdAt: lastOrder.createdAt, freight: lastOrder.freight, paymentTerms: lastOrder.paymentTerms, deliveryTerms: lastOrder.deliveryTerms, dispatchAddress: lastOrder.dispatchAddress, transportDetails: lastOrder.transportDetails } : null,
+    lastOrder: lastOrder ? { id: lastOrder.id, orderNumber: lastOrder.orderNumber, grandTotal: maskRevenue ? null : lastOrder.grandTotal, status: lastOrder.status, createdAt: lastOrder.createdAt, freight: maskRevenue ? null : lastOrder.freight, paymentTerms: lastOrder.paymentTerms, deliveryTerms: lastOrder.deliveryTerms, dispatchAddress: lastOrder.dispatchAddress, transportDetails: lastOrder.transportDetails } : null,
     firstOrder: firstOrder ? { id: firstOrder.id, orderNumber: firstOrder.orderNumber, createdAt: firstOrder.createdAt } : null,
   };
 }
@@ -450,8 +458,10 @@ router.get("/existing-customers", async (req, res) => {
       }
     }
 
+    const allowRevenue = canViewCustomerRevenue(user);
+
     // Enrich page customers
-    const enriched = await Promise.all(pageCustomers.map(c => enrichExistingCustomer(c, ordersByContactId.get(c.contactId) || [], unit)));
+    const enriched = await Promise.all(pageCustomers.map(c => enrichExistingCustomer(c, ordersByContactId.get(c.contactId) || [], unit, !allowRevenue)));
 
     res.json({
       data: enriched,
@@ -463,11 +473,11 @@ router.get("/existing-customers", async (req, res) => {
       },
       summary: {
         totalOrders: totalFilteredOrders,
-        totalRevenue: totalFilteredRevenue,
+        totalRevenue: allowRevenue ? totalFilteredRevenue : 0,
         totalCustomers: totalFilteredCustomers,
       },
       totalFilteredOrders,
-      totalFilteredRevenue,
+      totalFilteredRevenue: allowRevenue ? totalFilteredRevenue : 0,
     });
   } catch (err) {
     console.error("List existing customers error:", err);
@@ -499,8 +509,9 @@ router.get("/existing-customers/:id", async (req, res) => {
       }
     }
 
+    const allowRevenue = canViewCustomerRevenue(user);
     const { unit } = req.query as Record<string, string | undefined>;
-    res.json(await enrichExistingCustomer(ec, undefined, unit));
+    res.json(await enrichExistingCustomer(ec, undefined, unit, !allowRevenue));
   } catch (err) {
     console.error("Get existing customer error:", err);
     res.status(500).json({ success: false, error: "Internal Server Error" });
@@ -513,7 +524,7 @@ router.get("/existing-customers/:id/orders", async (req, res) => {
     const id = Number(req.params.id);
     const access = await enforceExistingCustomerAccess(req, res, id);
     if (!access) return;
-    const { ec } = access;
+    const { user, ec } = access;
     const { unit } = req.query as Record<string, string | undefined>;
 
     const orderConditions: any[] = [
@@ -528,11 +539,21 @@ router.get("/existing-customers/:id/orders", async (req, res) => {
       .where(and(...orderConditions))
       .orderBy(desc(ordersTable.createdAt));
 
+    const allowRevenue = canViewCustomerRevenue(user);
     const enriched = await Promise.all(orders.map(async (order) => {
-      const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
+      let items: any[] = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
+      if (!allowRevenue) {
+        items = items.map(item => ({ ...item, rate: null, amount: null }));
+      }
       const salesOwner = order.salesOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, order.salesOwnerId)).then(r => r[0]) : null;
       const safe = (u: any) => u ? (({ passwordHash: _, ...rest }) => rest)(u) : null;
-      return { ...order, items, salesOwner: safe(salesOwner) };
+      return {
+        ...order,
+        grandTotal: allowRevenue ? order.grandTotal : null,
+        freight: allowRevenue ? order.freight : null,
+        items,
+        salesOwner: safe(salesOwner),
+      };
     }));
 
     res.json(enriched);
@@ -548,7 +569,7 @@ router.get("/existing-customers/:id/purchase-summary", async (req, res) => {
     const id = Number(req.params.id);
     const access = await enforceExistingCustomerAccess(req, res, id);
     if (!access) return;
-    const { ec } = access;
+    const { user, ec } = access;
     const { unit } = req.query as Record<string, string | undefined>;
 
     const orderConditions: any[] = [
@@ -574,33 +595,49 @@ router.get("/existing-customers/:id/purchase-summary", async (req, res) => {
     const firstOrderDate = firstOrder?.createdAt || null;
     const lastOrderDate = orders[0]?.createdAt || null;
 
+    const allowRevenue = canViewCustomerRevenue(user);
+
     const orderHistory = {
       totalOrders,
       completedOrders,
       pendingOrders,
       cancelledOrders,
       repeatOrders,
-      totalRevenue,
-      avgOrderValue,
+      totalRevenue: allowRevenue ? totalRevenue : 0,
+      avgOrderValue: allowRevenue ? avgOrderValue : 0,
       firstOrderDate,
       lastOrderDate,
     };
 
     // Enrich latest 5 orders
     const recentOrders = await Promise.all(orders.slice(0, 5).map(async (order) => {
-      const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
+      let items: any[] = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
+      if (!allowRevenue) {
+        items = items.map(item => ({ ...item, rate: null, amount: null }));
+      }
       const salesOwner = order.salesOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, order.salesOwnerId)).then(r => r[0]) : null;
       const safe = (u: any) => u ? (({ passwordHash: _, ...rest }) => rest)(u) : null;
-      return { ...order, items, salesOwner: safe(salesOwner) };
+      return {
+        ...order,
+        grandTotal: allowRevenue ? order.grandTotal : null,
+        freight: allowRevenue ? order.freight : null,
+        items,
+        salesOwner: safe(salesOwner),
+      };
     }));
 
     // Last order details with items
     let lastOrder = null;
     if (orders.length > 0) {
       const latest = orders[0];
-      const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, latest.id));
+      let items: any[] = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, latest.id));
+      if (!allowRevenue) {
+        items = items.map(item => ({ ...item, rate: null, amount: null }));
+      }
       lastOrder = {
         ...latest,
+        grandTotal: allowRevenue ? latest.grandTotal : null,
+        freight: allowRevenue ? latest.freight : null,
         products: items,
       };
     }
