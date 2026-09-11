@@ -19,39 +19,90 @@ interface SendEmailOptions {
 // Lazy-initialized transporter — created once, reused across sends
 let _transporter: nodemailer.Transporter | null = null;
 
+function getSmtpConfig() {
+  const host = (process.env.SMTP_HOST || process.env.EMAIL_HOST || process.env.MAIL_HOST || "").trim();
+  const rawPort = (process.env.SMTP_PORT || process.env.EMAIL_PORT || process.env.MAIL_PORT || "587").trim();
+  const port = Number(rawPort) || 587;
+  const user = (process.env.SMTP_USER || process.env.SMTP_USERNAME || process.env.EMAIL_USER || process.env.MAIL_USER || process.env.MAIL_USERNAME || "").trim();
+  const pass = (process.env.SMTP_PASS || process.env.SMTP_PASSWORD || process.env.EMAIL_PASS || process.env.EMAIL_PASSWORD || process.env.MAIL_PASSWORD || "").trim();
+  const explicitSecure = process.env.SMTP_SECURE || process.env.EMAIL_SECURE;
+  const secure = explicitSecure !== undefined ? explicitSecure === "true" : port === 465;
+
+  return { host, port, user, pass, secure };
+}
+
 function getTransporter(): nodemailer.Transporter | null {
   if (_transporter) return _transporter;
 
-  const host = process.env.SMTP_HOST;
+  const { host, port, user, pass, secure } = getSmtpConfig();
   if (!host) return null;
 
-  const port = Number(process.env.SMTP_PORT || 587);
-  const secure = port === 465; // true for 465 (TLS), false for 587 (STARTTLS)
+  try {
+    _transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure,
+      auth: user ? { user, pass } : undefined,
+      tls: {
+        rejectUnauthorized: process.env.SMTP_IGNORE_TLS_ERRORS === "true" ? false : undefined,
+        minVersion: "TLSv1.2",
+      },
+      connectionTimeout: 15_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
+    });
 
-  _transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: process.env.SMTP_USER
-      ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-      : undefined,
-    connectionTimeout: 10_000,
-    greetingTimeout: 5_000,
-  });
+    logger.info({ host, port, secure, auth: !!user }, "SMTP transporter initialized");
+    return _transporter;
+  } catch (err: any) {
+    logger.error({ err: err?.message, host, port }, "Failed to create SMTP transporter");
+    _transporter = null;
+    return null;
+  }
+}
 
-  logger.info({ host, port, secure, auth: !!process.env.SMTP_USER }, "SMTP transporter initialized");
-  return _transporter;
+function getFromAddress(): string {
+  const rawFrom = process.env.SMTP_FROM || process.env.EMAIL_FROM || process.env.MAIL_FROM || process.env.DEFAULT_FROM_EMAIL;
+  const { user } = getSmtpConfig();
+
+  if (rawFrom && rawFrom.trim()) {
+    const trimmed = rawFrom.trim();
+    if (trimmed.includes("<") && trimmed.includes(">")) {
+      return trimmed;
+    }
+    return `"Elham MultiPlast CRM" <${trimmed}>`;
+  }
+
+  if (user && user.includes("@")) {
+    return `"Elham MultiPlast CRM" <${user}>`;
+  }
+
+  return `"Elham MultiPlast CRM" <sales@elhammultiplast.com>`;
+}
+
+export async function verifySmtpConnection(): Promise<{ ok: boolean; error?: string }> {
+  const transporter = getTransporter();
+  if (!transporter) {
+    return { ok: false, error: "SMTP_HOST not configured" };
+  }
+  try {
+    await transporter.verify();
+    return { ok: true };
+  } catch (err: any) {
+    _transporter = null;
+    return { ok: false, error: err?.message || "SMTP verification failed" };
+  }
 }
 
 export async function sendEmail(options: SendEmailOptions): Promise<boolean> {
   const { to, subject, html, text } = options;
-  const from = process.env.SMTP_FROM || "noreply@elham.com";
+  const from = getFromAddress();
 
   const transporter = getTransporter();
 
   if (!transporter) {
     // No SMTP configured — log only (development mode)
-    logger.warn({ to, subject }, "Email logged only — SMTP_HOST not configured. Set SMTP_* env vars for real delivery.");
+    logger.warn({ to, subject, from }, "Email logged only — SMTP_HOST not configured. Set SMTP_* env vars for real delivery.");
     if (process.env.NODE_ENV !== "production") {
       logger.debug({ to, subject, html, text }, "Email content (dev mode only)");
     }
@@ -60,10 +111,24 @@ export async function sendEmail(options: SendEmailOptions): Promise<boolean> {
 
   try {
     const info = await transporter.sendMail({ from, to, subject, html, text });
-    logger.info({ to, subject, messageId: info.messageId }, "Email sent successfully");
+    logger.info({ to, subject, from, messageId: info.messageId, response: info.response }, "Email sent successfully");
     return true;
-  } catch (err) {
-    logger.error({ err, to, subject }, "Failed to send email");
+  } catch (err: any) {
+    // Invalidate cached transporter on failure so subsequent calls re-initialize cleanly
+    _transporter = null;
+    logger.error(
+      {
+        errorMessage: err?.message,
+        errorCode: err?.code,
+        errorCommand: err?.command,
+        errorResponse: err?.response,
+        errorResponseCode: err?.responseCode,
+        from,
+        to,
+        subject,
+      },
+      "Failed to send email via SMTP"
+    );
     return false;
   }
 }
