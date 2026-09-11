@@ -345,24 +345,104 @@ router.get("/existing-customers", async (req, res) => {
     const limitNum = Math.min(100, Math.max(1, Number(limit)));
     const offset = (pageNum - 1) * limitNum;
 
-    const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(existingCustomersTable).where(conditions.length ? and(...conditions) : undefined);
-
-    let customers = await db.select().from(existingCustomersTable)
+    // 1. Fetch all matching existing customers under active SQL conditions
+    const allCustomers = await db.select().from(existingCustomersTable)
       .where(conditions.length ? and(...conditions) : undefined)
-      .orderBy(desc(existingCustomersTable.createdAt)).limit(limitNum).offset(offset);
+      .orderBy(desc(existingCustomersTable.createdAt));
 
-    // Preload all orders for this batch of customers (filtered by unit if specified)
-    const contactIds = customers.map(c => c.contactId).filter((id): id is number => !!id);
+    // Preload contact info for search / enrichment
+    const allContactIds = allCustomers.map(c => c.contactId).filter((id): id is number => !!id);
+    const contactsById = new Map<number, any>();
+    if (allContactIds.length > 0) {
+      const contacts = await db.select().from(contactsTable).where(inArray(contactsTable.id, allContactIds));
+      for (const ct of contacts) contactsById.set(ct.id, ct);
+    }
+
+    // Preload users (salesOwner / supportOwner)
+    const allUserIds = Array.from(new Set([
+      ...allCustomers.map(c => c.salesOwnerId).filter(Boolean),
+      ...allCustomers.map(c => c.supportOwnerId).filter(Boolean),
+    ])) as number[];
+    const usersById = new Map<number, any>();
+    if (allUserIds.length > 0) {
+      const users = await db.select().from(usersTable).where(inArray(usersTable.id, allUserIds));
+      for (const u of users) usersById.set(u.id, u);
+    }
+
+    // Filter by search / city / lastOrder dates across the full dataset
+    const filtered = allCustomers.filter(c => {
+      const contact = contactsById.get(c.contactId);
+      const salesOwnerObj = c.salesOwnerId ? usersById.get(c.salesOwnerId) : null;
+      const supportOwnerObj = c.supportOwnerId ? usersById.get(c.supportOwnerId) : null;
+
+      if (search) {
+        const s = search.toLowerCase();
+        const matches = (
+          contact?.name?.toLowerCase().includes(s) ||
+          contact?.companyName?.toLowerCase().includes(s) ||
+          contact?.mobile?.toLowerCase().includes(s) ||
+          contact?.email?.toLowerCase().includes(s) ||
+          contact?.city?.toLowerCase().includes(s) ||
+          contact?.gstNumber?.toLowerCase().includes(s) ||
+          contact?.customerCode?.toLowerCase().includes(s) ||
+          salesOwnerObj?.name?.toLowerCase().includes(s) ||
+          supportOwnerObj?.name?.toLowerCase().includes(s) ||
+          c.lastProductName?.toLowerCase().includes(s)
+        );
+        if (!matches) return false;
+      }
+      if (city && contact?.city?.toLowerCase() !== city.toLowerCase()) return false;
+      if (lastOrderBefore && (!c.lastOrderDate || c.lastOrderDate > lastOrderBefore)) return false;
+      if (lastOrderAfter && (!c.lastOrderDate || c.lastOrderDate < lastOrderAfter)) return false;
+      return true;
+    });
+
+    const totalFilteredCustomers = filtered.length;
+
+    // Calculate dynamic Total Orders & Total Revenue across all filtered customers
+    const filteredContactIds = filtered.map(c => c.contactId).filter((id): id is number => !!id);
+    let totalFilteredOrders = 0;
+    let totalFilteredRevenue = 0;
+
+    if (filteredContactIds.length > 0) {
+      const orderSummaryConds: any[] = [
+        inArray(ordersTable.contactId, filteredContactIds),
+        eq(ordersTable.isDeleted, false),
+      ];
+      if (unit && unit !== "All" && unit !== "all") {
+        orderSummaryConds.push(eq(ordersTable.productionUnit, unit));
+      }
+      if (startDate) {
+        orderSummaryConds.push(gte(ordersTable.createdAt, new Date(startDate)));
+      }
+      if (endDate) {
+        orderSummaryConds.push(lte(ordersTable.createdAt, parseEndDate(endDate)));
+      }
+
+      const [orderSummary] = await db.select({
+        totalOrders: sql<number>`count(*)::int`,
+        totalRevenue: sql<string>`coalesce(sum(${ordersTable.grandTotal}::numeric), 0)::text`,
+      }).from(ordersTable).where(and(...orderSummaryConds));
+
+      totalFilteredOrders = Number(orderSummary?.totalOrders || 0);
+      totalFilteredRevenue = Number(orderSummary?.totalRevenue || 0);
+    }
+
+    // Paginate for the current page
+    const pageCustomers = filtered.slice(offset, offset + limitNum);
+
+    // Preload orders for the current page customers
+    const pageContactIds = pageCustomers.map(c => c.contactId).filter((id): id is number => !!id);
     const ordersByContactId = new Map<number, any[]>();
-    if (contactIds.length > 0) {
-      const orderConditions: any[] = [inArray(ordersTable.contactId, contactIds), eq(ordersTable.isDeleted, false)];
+    if (pageContactIds.length > 0) {
+      const orderConditions: any[] = [inArray(ordersTable.contactId, pageContactIds), eq(ordersTable.isDeleted, false)];
       if (unit && unit !== "All" && unit !== "all") {
         orderConditions.push(eq(ordersTable.productionUnit, unit));
       }
-      const allOrders = await db.select().from(ordersTable)
+      const pageOrders = await db.select().from(ordersTable)
         .where(and(...orderConditions))
         .orderBy(desc(ordersTable.createdAt));
-      for (const ord of allOrders) {
+      for (const ord of pageOrders) {
         if (!ordersByContactId.has(ord.contactId)) {
           ordersByContactId.set(ord.contactId, []);
         }
@@ -370,38 +450,24 @@ router.get("/existing-customers", async (req, res) => {
       }
     }
 
-    // Enrich all customers
-    let enriched = await Promise.all(customers.map(c => enrichExistingCustomer(c, ordersByContactId.get(c.contactId) || [], unit)));
-
-    // Post-enrichment filters (contact fields)
-    if (search) {
-      const s = search.toLowerCase();
-      enriched = enriched.filter(c =>
-        c.contact?.name?.toLowerCase().includes(s) ||
-        c.contact?.companyName?.toLowerCase().includes(s) ||
-        c.contact?.mobile?.toLowerCase().includes(s) ||
-        c.contact?.email?.toLowerCase().includes(s) ||
-        c.contact?.city?.toLowerCase().includes(s) ||
-        c.contact?.gstNumber?.toLowerCase().includes(s) ||
-        c.contact?.customerCode?.toLowerCase().includes(s) ||
-        c.salesOwner?.name?.toLowerCase().includes(s) ||
-        c.supportOwner?.name?.toLowerCase().includes(s) ||
-        c.lastProductName?.toLowerCase().includes(s) ||
-        c.lastOrder?.orderNumber?.toLowerCase().includes(s)
-      );
-    }
-    if (city) enriched = enriched.filter(c => c.contact?.city?.toLowerCase() === city.toLowerCase());
-    if (lastOrderBefore) enriched = enriched.filter(c => c.lastOrderDate && c.lastOrderDate <= lastOrderBefore);
-    if (lastOrderAfter) enriched = enriched.filter(c => c.lastOrderDate && c.lastOrderDate >= lastOrderAfter);
+    // Enrich page customers
+    const enriched = await Promise.all(pageCustomers.map(c => enrichExistingCustomer(c, ordersByContactId.get(c.contactId) || [], unit)));
 
     res.json({
       data: enriched,
       pagination: {
         page: pageNum,
         limit: limitNum,
-        total: countResult?.count ?? 0,
-        totalPages: Math.ceil((countResult?.count ?? 0) / limitNum),
+        total: totalFilteredCustomers,
+        totalPages: Math.ceil(totalFilteredCustomers / limitNum),
       },
+      summary: {
+        totalOrders: totalFilteredOrders,
+        totalRevenue: totalFilteredRevenue,
+        totalCustomers: totalFilteredCustomers,
+      },
+      totalFilteredOrders,
+      totalFilteredRevenue,
     });
   } catch (err) {
     console.error("List existing customers error:", err);

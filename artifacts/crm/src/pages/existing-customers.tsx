@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { useGetMe } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExportButton } from "@/components/export-button";
-import { Search, Users, Factory, Truck, AlertTriangle, Clock, CheckCircle2, XCircle, Phone } from "lucide-react";
+import { Search, Users, Factory, Truck, AlertTriangle, Clock, CheckCircle2, XCircle, Phone, ShoppingBag, IndianRupee } from "lucide-react";
 import { useDateFilter } from "@/lib/use-date-filter";
 import { useStatusFilter } from "@/lib/global-filters";
 import { useUnitFilter } from "@/lib/use-unit-filter";
@@ -39,6 +40,8 @@ const KPI_CARDS = [
 ];
 
 export default function ExistingCustomers() {
+  const { data: me } = useGetMe();
+  const isAdmin = me?.role === "admin";
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [globalStatus, setGlobalStatus] = useStatusFilter();
@@ -163,6 +166,57 @@ export default function ExistingCustomers() {
         </Select>
         <ClearFiltersButton onClear={() => { setSearch(""); setPage(1); }} />
       </div>
+
+      {/* Admin-only Dynamic Summary Bar */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Card className="border border-blue-200/80 dark:border-blue-900/60 bg-gradient-to-br from-blue-50/70 via-background to-indigo-50/40 dark:from-blue-950/20 dark:via-background dark:to-indigo-950/10 shadow-sm">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-blue-700 dark:text-blue-300">
+                  Total Orders
+                </p>
+                {isLoading ? (
+                  <Skeleton className="h-7 w-20 mt-1" />
+                ) : (
+                  <div className="flex items-baseline gap-2 mt-0.5">
+                    <p className="text-2xl font-bold text-foreground">
+                      {(data?.summary?.totalOrders ?? data?.totalFilteredOrders ?? 0).toLocaleString("en-IN")}
+                    </p>
+                    <span className="text-xs text-muted-foreground">orders</span>
+                  </div>
+                )}
+              </div>
+              <div className="p-2.5 rounded-xl bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-300">
+                <ShoppingBag className="h-5 w-5" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border border-emerald-200/80 dark:border-emerald-900/60 bg-gradient-to-br from-emerald-50/70 via-background to-green-50/40 dark:from-emerald-950/20 dark:via-background dark:to-green-950/10 shadow-sm">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                  Total Revenue
+                </p>
+                {isLoading ? (
+                  <Skeleton className="h-7 w-28 mt-1" />
+                ) : (
+                  <div className="flex items-baseline gap-2 mt-0.5">
+                    <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
+                      ₹{Number(data?.summary?.totalRevenue ?? data?.totalFilteredRevenue ?? 0).toLocaleString("en-IN")}
+                    </p>
+                    <span className="text-xs text-muted-foreground">INR</span>
+                  </div>
+                )}
+              </div>
+              <div className="p-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-300">
+                <IndianRupee className="h-5 w-5" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Table */}
       <Card>
