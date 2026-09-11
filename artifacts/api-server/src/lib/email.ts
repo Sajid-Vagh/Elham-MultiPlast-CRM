@@ -29,10 +29,15 @@ function getSmtpConfig() {
   const rawPort = (process.env.SMTP_PORT || process.env.EMAIL_PORT || process.env.MAIL_PORT || "587").trim();
   const port = Number(rawPort) || 587;
   const user = (process.env.SMTP_USER || process.env.SMTP_USERNAME || process.env.EMAIL_USER || process.env.MAIL_USER || process.env.MAIL_USERNAME || "").trim();
-  const pass = (process.env.SMTP_PASS || process.env.SMTP_PASSWORD || process.env.EMAIL_PASS || process.env.EMAIL_PASSWORD || process.env.MAIL_PASSWORD || "").trim();
+  let pass = (process.env.SMTP_PASS || process.env.SMTP_PASSWORD || process.env.EMAIL_PASS || process.env.EMAIL_PASSWORD || process.env.MAIL_PASSWORD || "").trim();
   const explicitSecure = process.env.SMTP_SECURE || process.env.EMAIL_SECURE;
   const secure = explicitSecure !== undefined ? explicitSecure === "true" : port === 465;
   const service = (process.env.SMTP_SERVICE || process.env.EMAIL_SERVICE || "").trim();
+
+  // If host is Google/Gmail or service is gmail, strip spaces commonly copied from 16-char Google App Passwords (e.g. "abcd efgh ijkl mnop")
+  if (host.toLowerCase().includes("gmail") || host.toLowerCase().includes("google") || service.toLowerCase() === "gmail") {
+    pass = pass.replace(/\s+/g, "");
+  }
 
   return { host, port, user, pass, secure, service };
 }
