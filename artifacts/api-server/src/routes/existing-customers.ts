@@ -193,6 +193,13 @@ async function enrichExistingCustomer(ec: any, preloadedOrders?: any[], unitFilt
   const lastOrder = orders[0] || null;
   const firstOrder = orders.length > 0 ? orders[orders.length - 1] : null;
   const lastOrderDate = lastOrder?.createdAt ? new Date(lastOrder.createdAt).toISOString().split("T")[0] : (unitFilter && unitFilter !== "All" && unitFilter !== "all" ? null : ec.lastOrderDate);
+  const firstOrderDate = firstOrder?.createdAt ? new Date(firstOrder.createdAt).toISOString().split("T")[0] : ec.firstOrderDate;
+
+  let lastProductName = ec.lastProductName;
+  if (lastOrder) {
+    const lastItems = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, lastOrder.id));
+    if (lastItems.length > 0) lastProductName = lastItems[0].productName;
+  }
 
   const safe = (u: any) => u ? (({ passwordHash: _, ...rest }) => rest)(u) : null;
 
@@ -202,6 +209,8 @@ async function enrichExistingCustomer(ec: any, preloadedOrders?: any[], unitFilt
     totalRevenue: String(totalRevenue),
     repeatOrderCount,
     lastOrderDate,
+    firstOrderDate,
+    lastProductName,
     contact: contact ? { id: contact.id, name: contact.name, customerCode: contact.customerCode || null, mobile: contact.mobile, email: contact.email, companyName: contact.companyName, city: contact.city, state: contact.state, address: contact.address, gstNumber: (contact as any).gstNumber || null } : null,
     salesOwner: safe(salesOwner),
     supportOwner: safe(supportOwner),
@@ -437,6 +446,8 @@ router.get("/existing-customers/:id/orders", async (req, res) => {
   try {
     const id = Number(req.params.id);
     const access = await enforceExistingCustomerAccess(req, res, id);
+    if (!access) return;
+    const { ec } = access;
     const { unit } = req.query as Record<string, string | undefined>;
 
     const orderConditions: any[] = [
@@ -461,6 +472,146 @@ router.get("/existing-customers/:id/orders", async (req, res) => {
     res.json(enriched);
   } catch (err) {
     console.error("Get existing customer orders error:", err);
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
+
+// ── Get purchase summary & insights for existing customer ──
+router.get("/existing-customers/:id/purchase-summary", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const access = await enforceExistingCustomerAccess(req, res, id);
+    if (!access) return;
+    const { ec } = access;
+    const { unit } = req.query as Record<string, string | undefined>;
+
+    const orderConditions: any[] = [
+      eq(ordersTable.contactId, ec.contactId),
+      eq(ordersTable.isDeleted, false),
+    ];
+    if (unit && unit !== "All" && unit !== "all") {
+      orderConditions.push(eq(ordersTable.productionUnit, unit));
+    }
+
+    const orders = await db.select().from(ordersTable)
+      .where(and(...orderConditions))
+      .orderBy(desc(ordersTable.createdAt));
+
+    const totalOrders = orders.length;
+    const completedOrders = orders.filter(o => o.status === "Delivered" || o.status === "Completed").length;
+    const pendingOrders = orders.filter(o => o.status !== "Delivered" && o.status !== "Completed" && o.status !== "Cancelled").length;
+    const cancelledOrders = orders.filter(o => o.status === "Cancelled").length;
+    const repeatOrders = orders.filter(o => o.isRepeatOrder).length;
+    const totalRevenue = orders.reduce((sum, o) => sum + Number(o.grandTotal || 0), 0);
+    const avgOrderValue = totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
+    const firstOrder = orders.length > 0 ? orders[orders.length - 1] : null;
+    const firstOrderDate = firstOrder?.createdAt || null;
+    const lastOrderDate = orders[0]?.createdAt || null;
+
+    const orderHistory = {
+      totalOrders,
+      completedOrders,
+      pendingOrders,
+      cancelledOrders,
+      repeatOrders,
+      totalRevenue,
+      avgOrderValue,
+      firstOrderDate,
+      lastOrderDate,
+    };
+
+    // Enrich latest 5 orders
+    const recentOrders = await Promise.all(orders.slice(0, 5).map(async (order) => {
+      const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
+      const salesOwner = order.salesOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, order.salesOwnerId)).then(r => r[0]) : null;
+      const safe = (u: any) => u ? (({ passwordHash: _, ...rest }) => rest)(u) : null;
+      return { ...order, items, salesOwner: safe(salesOwner) };
+    }));
+
+    // Last order details with items
+    let lastOrder = null;
+    if (orders.length > 0) {
+      const latest = orders[0];
+      const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, latest.id));
+      lastOrder = {
+        ...latest,
+        products: items,
+      };
+    }
+
+    // Insights across all order items
+    let allItems: any[] = [];
+    if (orders.length > 0) {
+      const orderIds = orders.map(o => o.id);
+      allItems = await db.select().from(orderItemsTable).where(inArray(orderItemsTable.orderId, orderIds));
+    }
+
+    // Calculate item frequencies
+    const productCounts: Record<string, number> = {};
+    const materialCounts: Record<string, number> = {};
+    const bottleColorCounts: Record<string, number> = {};
+    const machineCounts: Record<string, number> = {};
+    let totalQty = 0;
+    let totalWeight = 0;
+    let weightCount = 0;
+
+    for (const item of allItems) {
+      const qty = Number(item.quantity || 0);
+      totalQty += qty;
+
+      if (item.productName) productCounts[item.productName] = (productCounts[item.productName] || 0) + qty;
+      if (item.materialType) materialCounts[item.materialType] = (materialCounts[item.materialType] || 0) + qty;
+      if (item.colour || item.bottleColour) {
+        const c = item.colour || item.bottleColour;
+        bottleColorCounts[c] = (bottleColorCounts[c] || 0) + qty;
+      }
+      if (item.machineType) machineCounts[item.machineType] = (machineCounts[item.machineType] || 0) + qty;
+
+      if (item.bottleWeight) {
+        const num = parseFloat(item.bottleWeight);
+        if (!isNaN(num)) {
+          totalWeight += num;
+          weightCount++;
+        }
+      }
+    }
+
+    const getTop = (map: Record<string, number>) => {
+      let topKey: string | null = null;
+      let topVal = 0;
+      for (const [k, v] of Object.entries(map)) {
+        if (v > topVal) { topVal = v; topKey = k; }
+      }
+      return topKey;
+    };
+
+    const mostOrderedProduct = getTop(productCounts);
+    const mostOrderedMaterial = getTop(materialCounts);
+    const mostUsedBottleColor = getTop(bottleColorCounts);
+    const mostUsedMachine = getTop(machineCounts);
+    const averageBottleWeight = weightCount > 0 ? `${(totalWeight / weightCount).toFixed(1)}g` : null;
+    const lastPurchasedProduct = allItems.length > 0 ? allItems[0].productName : null;
+    const repeatCustomerSince = totalOrders > 1 && firstOrderDate ? firstOrderDate : null;
+
+    const insights = {
+      mostOrderedProduct,
+      mostOrderedMaterial,
+      mostUsedBottleColor,
+      mostUsedMachine,
+      averageBottleWeight,
+      totalPurchasedQuantity: totalQty,
+      lastPurchasedProduct,
+      repeatCustomerSince,
+    };
+
+    res.json({
+      orderHistory,
+      lastOrder,
+      recentOrders,
+      insights,
+    });
+  } catch (err) {
+    console.error("Get existing customer purchase summary error:", err);
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
