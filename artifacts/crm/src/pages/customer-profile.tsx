@@ -93,25 +93,50 @@ export default function CustomerProfile() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-        <Card className="p-3">
-          <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1"><Phone className="h-3 w-3" />Mobile</div>
-          <p className="font-medium">{contact.mobile}</p>
+        <Card className="p-3 min-w-0">
+          <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1"><Phone className="h-3 w-3 shrink-0" />Mobile</div>
+          {contact.mobile || (contact as any).otherPhone ? (
+            <div className="space-y-0.5">
+              {`${contact.mobile || ""}${(contact as any).otherPhone ? `,${(contact as any).otherPhone}` : ""}`
+                .split(",")
+                .map((m: string) => m.trim())
+                .filter(Boolean)
+                .map((clean: string, i: number) => (
+                  <a
+                    key={i}
+                    href={`tel:${clean}`}
+                    className="block font-medium text-xs sm:text-sm truncate hover:underline hover:text-primary transition-colors"
+                    title={clean}
+                  >
+                    {clean}
+                  </a>
+                ))}
+            </div>
+          ) : (
+            <p className="font-medium text-sm">-</p>
+          )}
         </Card>
-        <Card className="p-3">
-          <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1"><Mail className="h-3 w-3" />Email</div>
-          <p className="font-medium">{contact.email || "-"}</p>
+        <Card className="p-3 min-w-0">
+          <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1"><Mail className="h-3 w-3 shrink-0" />Email</div>
+          {contact.email ? (
+            <a href={`mailto:${contact.email}`} className="font-medium text-xs sm:text-sm block truncate hover:underline hover:text-primary transition-colors" title={contact.email}>
+              {contact.email}
+            </a>
+          ) : (
+            <p className="font-medium text-sm">-</p>
+          )}
         </Card>
-        <Card className="p-3">
-          <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1"><Building className="h-3 w-3" />Company</div>
-          <p className="font-medium">{contact.companyName || "-"}</p>
+        <Card className="p-3 min-w-0">
+          <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1"><Building className="h-3 w-3 shrink-0" />Company</div>
+          <p className="font-medium text-xs sm:text-sm truncate" title={contact.companyName || "-"}>{contact.companyName || "-"}</p>
         </Card>
-        <Card className="p-3">
-          <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1"><MapPin className="h-3 w-3" />City</div>
-          <p className="font-medium">{contact.city || "-"}</p>
+        <Card className="p-3 min-w-0">
+          <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1"><MapPin className="h-3 w-3 shrink-0" />City</div>
+          <p className="font-medium text-xs sm:text-sm truncate" title={contact.city || "-"}>{contact.city || "-"}</p>
         </Card>
-        <Card className="p-3">
-          <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1"><Calendar className="h-3 w-3" />Since</div>
-          <p className="font-medium">{formatCustomerSince(contact.customerSince || contact.createdAt)}</p>
+        <Card className="p-3 min-w-0">
+          <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1"><Calendar className="h-3 w-3 shrink-0" />Since</div>
+          <p className="font-medium text-xs sm:text-sm truncate">{formatCustomerSince(contact.customerSince || contact.createdAt)}</p>
         </Card>
       </div>
 
