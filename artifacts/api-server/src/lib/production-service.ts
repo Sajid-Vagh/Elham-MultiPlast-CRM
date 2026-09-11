@@ -3669,14 +3669,14 @@ export async function getManufacturingSummary(
     : sql``;
   const pendingStatusIn = sql.join(PENDING_ST.map(s => sql`${s}`), sql`, `);
   const inProdStatusIn = sql.join(IN_PROD_ST.map(s => sql`${s}`), sql`, `);
-  const activeStatusIn = sql.join([...PENDING_ST, ...IN_PROD_ST].map(s => sql`${s}`), sql`, `);
 
   const results = await db.execute(sql`
     WITH active_orders AS (
-      SELECT po.id AS po_id, po.status, po.production_unit, po.created_by_role,
+      SELECT po.id AS po_id, po.status AS po_status, po.dispatch_status, po.production_unit, po.created_by_role,
              po.proforma_invoice_id AS resolved_invoice_id
       FROM production_orders po
       WHERE po.status NOT IN ('Completed', 'Delivered', 'Cancelled')
+        AND (po.dispatch_status IS NULL OR po.dispatch_status NOT IN ('Load Vehicle', 'Delivered', 'Dispatch', 'Dispatched'))
         ${unitCondition}
         ${originCondition}
         ${dateFromCondition}
@@ -3687,6 +3687,8 @@ export async function getManufacturingSummary(
         poi.production_order_id AS po_id,
         poi.product_name,
         COALESCE(NULLIF(poi.production_status, ''), 'Pending') AS production_status,
+        ao.po_status,
+        ao.dispatch_status,
         poi.ordered_quantity,
         poi.ready_quantity,
         COALESCE(NULLIF(poi.bottle_weight, ''), NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, ''), '-') AS weight,
@@ -3720,8 +3722,7 @@ export async function getManufacturingSummary(
       LEFT JOIN products p ON p.id = COALESCE(pii.product_id, (
         SELECT p2.id FROM products p2 WHERE TRIM(LOWER(p2.name)) = TRIM(LOWER(poi.product_name)) LIMIT 1
       ))
-      WHERE COALESCE(NULLIF(poi.production_status, ''), 'Pending') IN (${activeStatusIn})
-        AND (poi.ordered_quantity::numeric - poi.ready_quantity::numeric) > 0
+      WHERE poi.ordered_quantity::numeric > 0
         ${materialCondition}
     )
     SELECT
@@ -3732,14 +3733,15 @@ export async function getManufacturingSummary(
       MAX(colour) AS colour,
       MAX(colour_code) AS "colourCode",
       MAX(material_type) AS "materialType",
-      SUM(CASE WHEN (production_status IN (${pendingStatusIn})) THEN (ordered_quantity - ready_quantity)::numeric ELSE 0 END) AS "pendingQuantity",
-      SUM(CASE WHEN (production_status IN (${inProdStatusIn})) THEN (ordered_quantity - ready_quantity)::numeric ELSE 0 END) AS "inProductionQuantity",
-      SUM((ordered_quantity - ready_quantity)::numeric) AS "totalQuantity",
+      SUM(CASE WHEN (production_status IN (${pendingStatusIn}) AND po_status NOT IN ('Ready To Dispatch', 'Ready For Dispatch') AND production_status NOT IN ('Ready', 'Ready To Dispatch', 'Ready For Dispatch')) THEN GREATEST(0, (ordered_quantity - ready_quantity))::numeric ELSE 0 END) AS "pendingQuantity",
+      SUM(CASE WHEN (production_status IN (${inProdStatusIn}) AND po_status NOT IN ('Ready To Dispatch', 'Ready For Dispatch') AND production_status NOT IN ('Ready', 'Ready To Dispatch', 'Ready For Dispatch')) THEN GREATEST(0, (ordered_quantity - ready_quantity))::numeric ELSE 0 END) AS "inProductionQuantity",
+      SUM(CASE WHEN (production_status IN ('Ready', 'Ready To Dispatch', 'Ready For Dispatch') OR po_status IN ('Ready To Dispatch', 'Ready For Dispatch') OR (ready_quantity >= ordered_quantity AND ordered_quantity > 0)) THEN ordered_quantity::numeric ELSE ready_quantity::numeric END) AS "readyQuantity",
+      SUM(ordered_quantity::numeric) AS "totalQuantity",
       COUNT(DISTINCT po_id) AS "orderCount",
       array_agg(DISTINCT po_id) AS "orderIds"
     FROM product_lines
     GROUP BY product_family, product_name, product_id, weight_norm, colour_norm, capacity_sort
-    HAVING SUM((ordered_quantity - ready_quantity)::numeric) > 0
+    HAVING COUNT(DISTINCT po_id) > 0
     ORDER BY product_family, capacity_sort, colour_norm, weight_norm
   `);
 
@@ -3753,6 +3755,7 @@ export async function getManufacturingSummary(
     materialType: r.materialType || "HDPE",
     pendingQuantity: Number(r.pendingQuantity || 0),
     inProductionQuantity: Number(r.inProductionQuantity || 0),
+    readyQuantity: Number(r.readyQuantity || 0),
     totalQuantity: Number(r.totalQuantity || 0),
     orderCount: Number(r.orderCount),
     orderIds: r.orderIds as number[],
@@ -3792,15 +3795,17 @@ export async function getManufacturingSummaryDetail(
 
     results = await db.execute(sql`
       WITH active_orders AS (
-        SELECT po.id AS po_id
+        SELECT po.id AS po_id, po.dispatch_status
         FROM production_orders po
         WHERE po.status NOT IN ('Completed', 'Delivered', 'Cancelled')
+          AND (po.dispatch_status IS NULL OR po.dispatch_status NOT IN ('Load Vehicle', 'Delivered', 'Dispatch', 'Dispatched'))
       )
       SELECT DISTINCT
         po.id AS "orderId",
         po.formatted_order_id AS "poFormattedOrderId",
         po.deal_id AS "dealId",
         po.status,
+        po.dispatch_status AS "dispatchStatus",
         COALESCE(NULLIF(poi.production_status, ''), 'Pending') AS "lineProductionStatus",
         po.production_unit AS "productionUnit",
         po.created_by_role AS "createdByRole",
@@ -3833,16 +3838,22 @@ export async function getManufacturingSummaryDetail(
         AND ${weightFilter}
         AND ${colourFilter}
         AND (pi.is_deleted = false OR pi.is_deleted IS NULL)
-        AND (poi.ordered_quantity::numeric - poi.ready_quantity::numeric) > 0
       ORDER BY po.created_at DESC
     `);
   } else {
     results = await db.execute(sql`
+      WITH active_orders AS (
+        SELECT po.id AS po_id, po.dispatch_status
+        FROM production_orders po
+        WHERE po.status NOT IN ('Completed', 'Delivered', 'Cancelled')
+          AND (po.dispatch_status IS NULL OR po.dispatch_status NOT IN ('Load Vehicle', 'Delivered', 'Dispatch', 'Dispatched'))
+      )
       SELECT DISTINCT
         po.id AS "orderId",
         po.formatted_order_id AS "poFormattedOrderId",
         po.deal_id AS "dealId",
         po.status,
+        po.dispatch_status AS "dispatchStatus",
         COALESCE(NULLIF(poi.production_status, ''), 'Pending') AS "lineProductionStatus",
         po.production_unit AS "productionUnit",
         po.created_by_role AS "createdByRole",
@@ -3860,7 +3871,8 @@ export async function getManufacturingSummaryDetail(
         COALESCE(poi.ordered_quantity, pii.quantity, 0)::numeric AS "quantity",
         COALESCE(poi.ready_quantity, 0)::numeric AS "readyQuantity",
         COALESCE(pii.unit, 'Pcs') AS "unit"
-      FROM production_orders po
+      FROM active_orders ao
+      JOIN production_orders po ON po.id = ao.po_id
       JOIN production_order_items poi ON poi.production_order_id = po.id
       LEFT JOIN proforma_invoices pi ON pi.id = po.proforma_invoice_id
       LEFT JOIN proforma_invoice_items pii ON pii.id = poi.pi_item_id
@@ -3872,7 +3884,6 @@ export async function getManufacturingSummaryDetail(
       ))
       WHERE po.id = ANY(${filter.orderIds}::int[])
         AND (pi.is_deleted = false OR pi.is_deleted IS NULL)
-        AND (poi.ordered_quantity::numeric - poi.ready_quantity::numeric) > 0
       ORDER BY po.created_at DESC
     `);
   }
@@ -3896,6 +3907,7 @@ export async function getManufacturingSummaryDetail(
       remainingQuantity,
       unit: r.unit || "Pcs",
       status: r.status,
+      dispatchStatus: r.dispatchStatus || null,
       lineProductionStatus: r.lineProductionStatus || r.status || "Pending",
       productionUnit: r.productionUnit || "-",
       createdByRole: r.createdByRole,

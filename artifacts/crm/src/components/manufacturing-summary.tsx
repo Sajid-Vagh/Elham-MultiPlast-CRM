@@ -6,14 +6,19 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLocation } from "wouter";
-import { Package, X, AlertTriangle, Settings2, Truck, Search } from "lucide-react";
+import { Package, X, AlertTriangle, Settings2, Truck, Search, CheckCircle2 } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { cleanProductName } from "@/lib/product-name";
 
 const STATUS_COLORS: Record<string, string> = {
   "Pending": "bg-gray-100 text-gray-700 border-gray-300",
   "Production On Going": "bg-orange-100 text-orange-700 border-orange-300",
+  "In Production": "bg-orange-100 text-orange-700 border-orange-300",
   "Packaging": "bg-yellow-100 text-yellow-700 border-yellow-300",
+  "Ready": "bg-emerald-100 text-emerald-700 border-emerald-300",
+  "Ready To Dispatch": "bg-emerald-100 text-emerald-700 border-emerald-300",
+  "Ready For Dispatch": "bg-emerald-100 text-emerald-700 border-emerald-300",
+  "Pending Dispatch": "bg-emerald-100 text-emerald-700 border-emerald-300",
 };
 
 const MATERIAL_COLORS: Record<string, { bg: string; text: string; border: string; icon: string }> = {
@@ -75,6 +80,7 @@ function mergeVariantGroups(groups: SummaryGroup[]): SummaryGroup[] {
       existing.totalQuantity += g.totalQuantity;
       existing.pendingQuantity = (existing.pendingQuantity || 0) + (g.pendingQuantity || 0);
       existing.inProductionQuantity = (existing.inProductionQuantity || 0) + (g.inProductionQuantity || 0);
+      existing.readyQuantity = (existing.readyQuantity || 0) + (g.readyQuantity || 0);
       existing.orderCount += g.orderCount;
       existing.orderIds = Array.from(new Set([...existing.orderIds, ...(g.orderIds || [])]));
     } else {
@@ -93,6 +99,7 @@ type SummaryGroup = {
   materialType: string;
   pendingQuantity?: number;
   inProductionQuantity?: number;
+  readyQuantity?: number;
   totalQuantity: number;
   orderCount: number;
   orderIds: number[];
@@ -111,6 +118,7 @@ type DetailItem = {
   remainingQuantity?: number;
   unit: string;
   status: string;
+  dispatchStatus?: string | null;
   lineProductionStatus?: string;
   productionUnit: string;
   createdByRole: string | null;
@@ -202,21 +210,46 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
   const detailItems: DetailItem[] = detail?.items || [];
 
   const IN_PROD_STATUS_LIST = ["In Production", "Production On Going", "Production Started", "Production Running"];
-  const inProdItems = detailItems.filter(item => {
-    const s = item.lineProductionStatus || "Pending";
-    return IN_PROD_STATUS_LIST.includes(s);
-  });
-  const pendingItems = detailItems.filter(item => {
-    const s = item.lineProductionStatus || "Pending";
-    return !inProdItems.includes(item) &&
-      s !== "Ready" &&
-      s !== "Completed" &&
-      item.status !== "Completed" &&
-      item.status !== "Delivered" &&
-      item.status !== "Cancelled";
-  });
+
+  const isItemReady = (item: DetailItem) => {
+    const s = item.status;
+    const lps = item.lineProductionStatus;
+    const readyQty = item.readyQuantity || 0;
+    return (
+      s === "Ready To Dispatch" ||
+      s === "Ready For Dispatch" ||
+      lps === "Ready" ||
+      lps === "Ready To Dispatch" ||
+      lps === "Ready For Dispatch" ||
+      (item.quantity > 0 && readyQty >= item.quantity)
+    );
+  };
+
+  const isItemInProd = (item: DetailItem) => {
+    if (isItemReady(item)) return false;
+    const s = item.status;
+    const lps = item.lineProductionStatus || "Pending";
+    return (
+      IN_PROD_STATUS_LIST.includes(lps) ||
+      s === "Production On Going" ||
+      s === "In Production" ||
+      s === "Packaging" ||
+      s === "Packing"
+    );
+  };
+
+  const readyToDispatchItems = detailItems.filter(isItemReady);
+  const inProdItems = detailItems.filter(isItemInProd);
+  const pendingItems = detailItems.filter(item =>
+    !isItemReady(item) &&
+    !isItemInProd(item) &&
+    item.status !== "Completed" &&
+    item.status !== "Delivered" &&
+    item.status !== "Cancelled"
+  );
   const otherItems = detailItems.filter(item =>
-    !inProdItems.includes(item) &&
+    !isItemReady(item) &&
+    !isItemInProd(item) &&
     !pendingItems.includes(item)
   );
 
@@ -331,8 +364,9 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                         {items.map((g, idx) => {
                           const isPET = g.materialType === "PET";
                           const colors = MATERIAL_COLORS[g.materialType] || MATERIAL_COLORS["HDPE"];
-                          const pendingQty = g.pendingQuantity ?? g.totalQuantity;
+                          const pendingQty = g.pendingQuantity ?? 0;
                           const inProdQty = g.inProductionQuantity ?? 0;
+                          const readyQty = g.readyQuantity ?? 0;
                           return (
                             <div
                               key={`${g.productName}-${g.weight}-${g.colour}-${idx}`}
@@ -364,18 +398,22 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                                 </div>
                               )}
 
-                              <div className="border-t mt-3 pt-2.5 grid grid-cols-3 gap-1.5 items-end">
+                              <div className="border-t mt-3 pt-2.5 grid grid-cols-4 gap-1 items-end">
                                 <div>
                                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Pending</p>
-                                  <p className="text-sm font-bold text-foreground">{pendingQty.toLocaleString()} <span className="text-[10px] font-normal text-muted-foreground">PCS</span></p>
+                                  <p className="text-xs font-bold text-foreground truncate">{pendingQty.toLocaleString()}</p>
                                 </div>
                                 <div>
-                                  <p className="text-[10px] uppercase tracking-wider text-orange-600 dark:text-orange-400 font-medium">In Production</p>
-                                  <p className="text-sm font-bold text-orange-600 dark:text-orange-400">{inProdQty.toLocaleString()} <span className="text-[10px] font-normal text-muted-foreground">PCS</span></p>
+                                  <p className="text-[10px] uppercase tracking-wider text-orange-600 dark:text-orange-400 font-medium">In Prod</p>
+                                  <p className="text-xs font-bold text-orange-600 dark:text-orange-400 truncate">{inProdQty.toLocaleString()}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-medium">Ready</p>
+                                  <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 truncate">{readyQty.toLocaleString()}</p>
                                 </div>
                                 <div className="text-right">
                                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Orders</p>
-                                  <p className="text-sm font-bold text-foreground">{g.orderCount}</p>
+                                  <p className="text-xs font-bold text-foreground">{g.orderCount}</p>
                                 </div>
                               </div>
                             </div>
@@ -418,9 +456,11 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                     <p className="text-sm text-amber-600 font-medium mt-0.5">Outsourced Production</p>
                   )}
                   <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1.5 flex-wrap">
-                    <span className="font-semibold text-foreground">Pending: {(drawerGroup.pendingQuantity ?? drawerGroup.totalQuantity).toLocaleString()} PCS</span>
+                    <span className="font-semibold text-foreground">Pending: {(drawerGroup.pendingQuantity ?? 0).toLocaleString()} PCS</span>
                     <span>·</span>
                     <span className="font-semibold text-orange-600 dark:text-orange-400">In Production: {(drawerGroup.inProductionQuantity ?? 0).toLocaleString()} PCS</span>
+                    <span>·</span>
+                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">Ready: {(drawerGroup.readyQuantity ?? 0).toLocaleString()} PCS</span>
                     <span>·</span>
                     <span className="font-semibold text-foreground">{drawerGroup.orderCount} Orders</span>
                   </div>
@@ -610,6 +650,107 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                                   <p className="font-medium">{item.quantity.toLocaleString()} {item.unit}</p>
                                 </div>
                                 {item.customerCode && (
+                                    <div>
+                                      <p className="text-muted-foreground">Customer Code</p>
+                                      <p className="font-medium font-mono">{item.customerCode}</p>
+                                    </div>
+                                  )}
+                                {item.createdByRole && (
+                                  <div>
+                                    <p className="text-muted-foreground">Origin</p>
+                                    <Badge variant="outline" className={`text-[10px] ${item.createdByRole === "production_and_support" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-blue-50 text-blue-700 border-blue-200"} border`}>
+                                      {item.createdByRole === "production_and_support" ? "SUPPORT" : "SALES"}
+                                    </Badge>
+                                  </div>
+                                )}
+                                {item.expectedDispatchDate && (
+                                  <div>
+                                    <p className="text-muted-foreground">Expected Dispatch</p>
+                                    <p className="font-medium">{new Date(item.expectedDispatchDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</p>
+                                  </div>
+                                )}
+                                <div>
+                                  <p className="text-muted-foreground">Unit</p>
+                                  <p className="font-medium">{item.productionUnit}</p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Section 3: Ready to Dispatch */}
+                    {readyToDispatchItems.length > 0 && (
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                            <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                              Ready to Dispatch ({readyToDispatchItems.length})
+                            </h3>
+                          </div>
+                          <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                            {readyToDispatchItems.reduce((s, i) => s + (i.readyQuantity || i.quantity), 0).toLocaleString()} PCS Ready
+                          </span>
+                        </div>
+                        <div className="space-y-2.5">
+                          {readyToDispatchItems.map((item) => (
+                            <div
+                              key={item.orderId}
+                              className="border border-emerald-200 dark:border-emerald-900/60 rounded-lg p-3.5 bg-emerald-50/30 dark:bg-emerald-950/10 hover:bg-emerald-50/60 dark:hover:bg-emerald-950/20 transition-colors cursor-pointer"
+                              onClick={() => { setDrawerGroup(null); setLocation(`/production/orders/${item.orderId}`); }}
+                            >
+                              <div className="flex items-start justify-between mb-2">
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="font-semibold text-sm">{item.customerName}</p>
+                                    {item.customerCode && (
+                                      <Badge variant="secondary" className="text-[10px] font-mono font-semibold px-1.5 py-0">
+                                        {item.customerCode}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  {item.companyName && item.companyName !== item.customerName && (
+                                    <p className="text-xs text-muted-foreground mt-0.5">{item.companyName}</p>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {item.isDelayed && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
+                                  <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[item.status] || STATUS_COLORS["Ready"]}`}>
+                                    {item.status === "Ready To Dispatch" || item.status === "Ready For Dispatch" ? "Ready to Dispatch" : item.status}
+                                  </Badge>
+                                </div>
+                              </div>
+
+                              <div className="bg-emerald-100/50 dark:bg-emerald-950/40 rounded-md px-2.5 py-1.5 border border-emerald-200/60 dark:border-emerald-900/40 mb-2.5 flex items-center justify-between text-xs">
+                                <span className="font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                                  {(item.readyQuantity || item.quantity).toLocaleString()} {item.unit} Ready
+                                </span>
+                                <span className="text-[11px] text-muted-foreground">
+                                  Dispatch: {item.dispatchStatus || "Pending Dispatch"}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-xs">
+                                <div>
+                                  <p className="text-muted-foreground">Order #</p>
+                                  <p className="font-semibold text-primary font-mono">{item.orderNumber || `#${item.orderId}`}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">Sales</p>
+                                  <p className="font-medium">{item.salesPerson}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">PI</p>
+                                  <p className="font-medium">{item.piNumber}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">Ready Qty</p>
+                                  <p className="font-medium text-emerald-700 dark:text-emerald-300 font-semibold">{(item.readyQuantity || item.quantity).toLocaleString()} {item.unit}</p>
+                                </div>
+                                {item.customerCode && (
                                   <div>
                                     <p className="text-muted-foreground">Customer Code</p>
                                     <p className="font-medium font-mono">{item.customerCode}</p>
@@ -640,14 +781,14 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                       </div>
                     )}
 
-                    {/* Section 3: Other / Ready */}
+                    {/* Section 4: Other (if any) */}
                     {otherItems.length > 0 && (
                       <div className="space-y-2.5">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                            <span className="w-2.5 h-2.5 rounded-full bg-gray-400" />
                             <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                              Ready / Other ({otherItems.length})
+                              Other ({otherItems.length})
                             </h3>
                           </div>
                         </div>
