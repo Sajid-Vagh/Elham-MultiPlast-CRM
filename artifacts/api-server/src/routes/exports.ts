@@ -117,7 +117,10 @@ router.post("/auth/send-otp", async (req, res) => {
     const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket?.remoteAddress || "unknown";
     const result = await requestExportOtp(user, ip);
     if (!result.success) {
-      res.status(result.status || 400).json({ error: result.error || result.message });
+      res.status(result.status || 400).json({
+        error: result.error || result.message,
+        emailMasked: result.emailMasked,
+      });
       return;
     }
     res.json(result);
