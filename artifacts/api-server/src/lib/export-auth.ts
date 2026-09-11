@@ -152,14 +152,15 @@ export async function requestExportOtp(
   }
 
   // Send OTP email
-  const emailSent = await sendExportOtpEmail(normalizedEmail, otp);
-  const smtpConfigured = !!(process.env.SMTP_HOST || process.env.EMAIL_HOST || process.env.MAIL_HOST);
-  if (!emailSent && smtpConfigured) {
-    logger.error({ userId: user.id, email: maskEmail(normalizedEmail) }, "Failed to deliver export OTP email via SMTP");
+  const emailResult = await sendExportOtpEmail(normalizedEmail, otp);
+  const smtpConfigured = !!(process.env.SMTP_HOST || process.env.EMAIL_HOST || process.env.MAIL_HOST || process.env.SMTP_SERVICE || process.env.EMAIL_SERVICE);
+  if (!emailResult.success && smtpConfigured) {
+    logger.error({ userId: user.id, email: maskEmail(normalizedEmail), error: emailResult.error }, "Failed to deliver export OTP email via SMTP");
     return {
       success: false,
       status: 500,
-      error: "Failed to send verification email. Please check your SMTP configuration in server settings.",
+      emailMasked: maskEmail(normalizedEmail),
+      error: `Failed to send verification email (${emailResult.error || "SMTP error"}). Please check your SMTP configuration in server settings.`,
       message: "Email delivery failed",
     };
   }

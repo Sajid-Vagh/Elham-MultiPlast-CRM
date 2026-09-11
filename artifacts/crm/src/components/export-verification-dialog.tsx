@@ -86,6 +86,9 @@ export function ExportVerificationDialog({
       });
 
       const data = await res.json();
+      if (data.emailMasked) {
+        setMaskedEmail(data.emailMasked);
+      }
       if (!res.ok) {
         throw new Error(data.error || "Failed to send verification code");
       }

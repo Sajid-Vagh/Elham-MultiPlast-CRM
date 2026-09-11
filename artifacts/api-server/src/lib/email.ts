@@ -18,6 +18,11 @@ interface SendEmailOptions {
 
 // Lazy-initialized transporter — created once, reused across sends
 let _transporter: nodemailer.Transporter | null = null;
+let _lastEmailError: string | null = null;
+
+export function getLastEmailError(): string | null {
+  return _lastEmailError;
+}
 
 function getSmtpConfig() {
   const host = (process.env.SMTP_HOST || process.env.EMAIL_HOST || process.env.MAIL_HOST || "").trim();
@@ -27,34 +32,46 @@ function getSmtpConfig() {
   const pass = (process.env.SMTP_PASS || process.env.SMTP_PASSWORD || process.env.EMAIL_PASS || process.env.EMAIL_PASSWORD || process.env.MAIL_PASSWORD || "").trim();
   const explicitSecure = process.env.SMTP_SECURE || process.env.EMAIL_SECURE;
   const secure = explicitSecure !== undefined ? explicitSecure === "true" : port === 465;
+  const service = (process.env.SMTP_SERVICE || process.env.EMAIL_SERVICE || "").trim();
 
-  return { host, port, user, pass, secure };
+  return { host, port, user, pass, secure, service };
 }
 
 function getTransporter(): nodemailer.Transporter | null {
   if (_transporter) return _transporter;
 
-  const { host, port, user, pass, secure } = getSmtpConfig();
-  if (!host) return null;
+  const { host, port, user, pass, secure, service } = getSmtpConfig();
+  if (!host && !service) return null;
 
   try {
-    _transporter = nodemailer.createTransport({
-      host,
-      port,
+    const transportOptions: any = {
+      family: 4, // Force IPv4 to prevent hanging on cloud IPv6 timeouts
       secure,
       auth: user ? { user, pass } : undefined,
       tls: {
-        rejectUnauthorized: process.env.SMTP_IGNORE_TLS_ERRORS === "true" ? false : undefined,
-        minVersion: "TLSv1.2",
+        rejectUnauthorized: process.env.SMTP_REJECT_UNAUTHORIZED === "true" ? true : false,
       },
       connectionTimeout: 15_000,
       greetingTimeout: 10_000,
       socketTimeout: 15_000,
-    });
+    };
 
-    logger.info({ host, port, secure, auth: !!user }, "SMTP transporter initialized");
+    if (service) {
+      transportOptions.service = service;
+    } else if (host.toLowerCase().includes("gmail")) {
+      transportOptions.service = "gmail";
+      transportOptions.auth = user ? { user, pass } : undefined;
+    } else {
+      transportOptions.host = host;
+      transportOptions.port = port;
+    }
+
+    _transporter = nodemailer.createTransport(transportOptions);
+
+    logger.info({ host: host || service, port, secure, auth: !!user }, "SMTP transporter initialized");
     return _transporter;
   } catch (err: any) {
+    _lastEmailError = err?.message || "Failed to initialize SMTP transporter";
     logger.error({ err: err?.message, host, port }, "Failed to create SMTP transporter");
     _transporter = null;
     return null;
@@ -95,6 +112,11 @@ export async function verifySmtpConnection(): Promise<{ ok: boolean; error?: str
 }
 
 export async function sendEmail(options: SendEmailOptions): Promise<boolean> {
+  const result = await sendEmailWithResult(options);
+  return result.success;
+}
+
+export async function sendEmailWithResult(options: SendEmailOptions): Promise<{ success: boolean; error?: string }> {
   const { to, subject, html, text } = options;
   const from = getFromAddress();
 
@@ -106,16 +128,19 @@ export async function sendEmail(options: SendEmailOptions): Promise<boolean> {
     if (process.env.NODE_ENV !== "production") {
       logger.debug({ to, subject, html, text }, "Email content (dev mode only)");
     }
-    return true;
+    return { success: true };
   }
 
   try {
     const info = await transporter.sendMail({ from, to, subject, html, text });
     logger.info({ to, subject, from, messageId: info.messageId, response: info.response }, "Email sent successfully");
-    return true;
+    _lastEmailError = null;
+    return { success: true };
   } catch (err: any) {
     // Invalidate cached transporter on failure so subsequent calls re-initialize cleanly
     _transporter = null;
+    const errorDetails = err?.response || err?.message || "Unknown SMTP error";
+    _lastEmailError = errorDetails;
     logger.error(
       {
         errorMessage: err?.message,
@@ -129,7 +154,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<boolean> {
       },
       "Failed to send email via SMTP"
     );
-    return false;
+    return { success: false, error: errorDetails };
   }
 }
 
@@ -223,8 +248,8 @@ export async function sendOtpEmail(email: string, otp: string): Promise<boolean>
 /**
  * Send an Excel export verification OTP email to Admin.
  */
-export async function sendExportOtpEmail(email: string, otp: string): Promise<boolean> {
-  return sendEmail({
+export async function sendExportOtpEmail(email: string, otp: string): Promise<{ success: boolean; error?: string }> {
+  return sendEmailWithResult({
     to: email,
     subject: "Excel Export Verification Code — Elham MultiPlast CRM",
     html: `
