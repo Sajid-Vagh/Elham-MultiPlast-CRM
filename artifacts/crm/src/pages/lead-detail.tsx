@@ -38,6 +38,19 @@ import { parseNotesText, parseNotesDisplay, parseNotesEntries, formatDealNotes, 
 import { formatCurrency } from "@/lib/currency";
 import { deriveFollowUpStatus } from "@/lib/follow-up-status";
 
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function todayStr() { return localDateStr(new Date()); }
+function daysAgoStr(n: number) {
+  const d = new Date(); d.setDate(d.getDate() - n);
+  return localDateStr(d);
+}
+function monthStartStr() {
+  const d = new Date(); d.setDate(1);
+  return localDateStr(d);
+}
+
 function formatCustomerSince(val: string | null | undefined): string {
   if (!val) return "-";
   try {
@@ -323,22 +336,53 @@ export default function LeadDetail() {
       subtitle?: string | null;
       detail?: string | null;
       notesList?: DetailedNote[];
+      noteVariant?: "violet" | "orange";
       metaItems?: Array<{ label: string; value: string; isHighlight?: boolean }>;
       stageBadge?: { label: string; className?: string };
       dotColor: string;
       activityId?: number;
+      sortTime: number;
     };
 
-    const formatDay = (d: string) => {
+    const parseDateToLocal = (d?: string | null) => {
+      if (!d) return null;
+      const ymdMatch = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (ymdMatch && !d.includes("T")) {
+        const y = parseInt(ymdMatch[1], 10);
+        const m = parseInt(ymdMatch[2], 10) - 1;
+        const day = parseInt(ymdMatch[3], 10);
+        return new Date(y, m, day);
+      }
+      const dt = new Date(d);
+      return isNaN(dt.getTime()) ? null : dt;
+    };
+
+    const getDayKey = (d?: string | null) => {
+      if (!d) return "";
+      const ymdMatch = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (ymdMatch && !d.includes("T")) {
+        return `${ymdMatch[1]}-${ymdMatch[2]}-${ymdMatch[3]}`;
+      }
+      const dt = new Date(d);
+      if (isNaN(dt.getTime())) return d.slice(0, 10);
+      const y = dt.getFullYear();
+      const m = String(dt.getMonth() + 1).padStart(2, "0");
+      const day = String(dt.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    };
+
+    const formatDay = (d?: string | null) => {
+      if (!d) return "";
       try {
-        const dt = new Date(d);
-        return isNaN(dt.getTime()) ? d : dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+        const dt = parseDateToLocal(d);
+        return dt ? dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : d;
       } catch {
         return d;
       }
     };
 
-    const formatTime = (d: string) => {
+    const formatTime = (d?: string | null) => {
+      if (!d) return "";
       try {
         const dt = new Date(d);
         return isNaN(dt.getTime()) ? "" : dt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
@@ -347,8 +391,51 @@ export default function LeadDetail() {
       }
     };
 
-    const dateOk = (d: string) => {
-      const day = d.slice(0, 10);
+    const formatTimeString = (t?: string | null) => {
+      if (!t) return "";
+      const trimmed = t.trim();
+      if (!trimmed) return "";
+      if (/am|pm/i.test(trimmed)) return trimmed;
+      const match = trimmed.match(/^(\d{1,2}):(\d{2})/);
+      if (match) {
+        const hour = parseInt(match[1], 10);
+        const minute = match[2];
+        const ampm = hour >= 12 ? "PM" : "AM";
+        const h12 = hour % 12 || 12;
+        return `${h12}:${minute} ${ampm}`;
+      }
+      return trimmed;
+    };
+
+    const computeSortTimestamp = (dateStr?: string | null, timeStr?: string | null) => {
+      if (!dateStr) return 0;
+      const dayKey = getDayKey(dateStr);
+      if (!dayKey) return 0;
+      let h = 9;
+      let m = 0;
+      if (timeStr) {
+        const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?/i);
+        if (match) {
+          h = parseInt(match[1], 10);
+          m = parseInt(match[2], 10);
+          const ampm = match[3]?.toUpperCase();
+          if (ampm === "PM" && h < 12) h += 12;
+          if (ampm === "AM" && h === 12) h = 0;
+        }
+      }
+      const ymdMatch = dayKey.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (ymdMatch) {
+        const y = parseInt(ymdMatch[1], 10);
+        const mon = parseInt(ymdMatch[2], 10) - 1;
+        const day = parseInt(ymdMatch[3], 10);
+        return new Date(y, mon, day, h, m, 0).getTime();
+      }
+      return new Date(dateStr).getTime() || 0;
+    };
+
+    const dateOk = (d?: string | null) => {
+      if (!d) return false;
+      const day = getDayKey(d);
       if (actFromDate && day < actFromDate) return false;
       if (actToDate && day > actToDate) return false;
       return true;
@@ -398,7 +485,7 @@ export default function LeadDetail() {
           key: `lead-${deal.id}`,
           date: leadDate,
           timeStr: formatTime(leadDate),
-          dayKey: new Date(leadDate).toISOString().slice(0, 10),
+          dayKey: getDayKey(leadDate),
           dayFormatted: formatDay(leadDate),
           kind: "lead",
           title: "Lead created",
@@ -406,6 +493,7 @@ export default function LeadDetail() {
           metaItems: leadMeta.length > 0 ? leadMeta : undefined,
           stageBadge: { label: "New Lead", className: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800" },
           dotColor: "bg-blue-500",
+          sortTime: new Date(leadDate).getTime(),
         });
       }
 
@@ -420,7 +508,7 @@ export default function LeadDetail() {
           key: `deal-created-${deal.id}`,
           date: dealCreated,
           timeStr: formatTime(dealCreated),
-          dayKey: new Date(dealCreated).toISOString().slice(0, 10),
+          dayKey: getDayKey(dealCreated),
           dayFormatted: formatDay(dealCreated),
           kind: "deal",
           title: "Deal created",
@@ -428,21 +516,66 @@ export default function LeadDetail() {
           metaItems: dealMeta.length > 0 ? dealMeta : undefined,
           stageBadge: { label: deal.stage || "New", className: STAGE_BADGE_COLORS[deal.stage || "New"] || "bg-slate-100 text-slate-700" },
           dotColor: "bg-purple-500",
+          sortTime: new Date(dealCreated).getTime(),
         });
       }
 
       // Human follow-up activities
       const dealActs = dedupeById(activities || [])
-        .filter((a) => a.dealId === deal.id && (a.type === "Call" || a.type === "Meeting" || a.type === "FollowUp" || a.type === "WhatsApp"))
-        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        .filter((a) => a.dealId === deal.id && (a.type === "Call" || a.type === "Meeting" || a.type === "FollowUp" || a.type === "WhatsApp"));
+
+      // Prepare activities with their effective dates and sort timestamps
+      const preparedActs = dealActs.map((act) => {
+        const callStatus = act.callStatus || "Pending";
+        const isPending = callStatus === "Pending";
+
+        let dayKey = "";
+        let dayFormatted = "";
+        let timeStr = "";
+        let sortTime = 0;
+        let eventDate = "";
+
+        if (isPending && act.followUpDate) {
+          // Future scheduled activity: anchored to its scheduled follow-up date and time
+          dayKey = getDayKey(act.followUpDate);
+          dayFormatted = formatDay(act.followUpDate);
+          timeStr = formatTimeString(act.followUpTime) || (act.createdAt ? formatTime(act.createdAt) : "");
+          sortTime = computeSortTimestamp(act.followUpDate, act.followUpTime);
+          eventDate = act.followUpDate;
+        } else {
+          // Logged/completed activity: anchored to its creation/log timestamp
+          const primaryDate = act.createdAt || act.followUpDate || "";
+          dayKey = getDayKey(primaryDate);
+          dayFormatted = formatDay(primaryDate);
+          timeStr = act.createdAt ? formatTime(act.createdAt) : (formatTimeString(act.followUpTime) || "");
+          sortTime = act.createdAt ? new Date(act.createdAt).getTime() : computeSortTimestamp(act.followUpDate, act.followUpTime);
+          eventDate = primaryDate;
+        }
+
+        return {
+          act,
+          callStatus,
+          isPending,
+          dayKey,
+          dayFormatted,
+          timeStr,
+          sortTime,
+          eventDate,
+        };
+      });
+
+      // Sort activities chronologically (oldest first) so numbering (Call 1, Call 2, etc.) is sequential
+      preparedActs.sort((a, b) => a.sortTime - b.sortTime);
 
       let followUpNum = 0;
-      for (const act of dealActs) {
-        if (!dateOk(act.createdAt)) continue;
+      for (const item of preparedActs) {
+        const { act, callStatus, isPending, dayKey, dayFormatted, timeStr, eventDate, sortTime } = item;
+        if (!dateOk(dayKey || eventDate)) continue;
         followUpNum++;
+
         const rawNote = act.notes || (act as any).note || (act as any).notesDisplay;
         const notesList = parseDetailedNotes(rawNote);
-        const callStatus = act.callStatus || "Pending";
+
         const statusBadge =
           callStatus === "Completed"
             ? { label: "Completed", className: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800" }
@@ -450,21 +583,19 @@ export default function LeadDetail() {
             ? { label: "Cancelled", className: "bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300 border-red-300 dark:border-red-800" }
             : { label: "Pending", className: "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300 dark:border-amber-800" };
 
-        const dotColor = callStatus === "Completed" ? "bg-emerald-500" : callStatus === "Cancelled" ? "bg-red-500" : "bg-amber-500";
-        const isCall = act.type === "Call" || act.followUpType === "Call";
-        const isMeeting = act.type === "Meeting" || act.followUpType === "Meeting";
-        const isWhatsapp = act.type === "WhatsApp" || act.followUpType === "WhatsApp";
+        const dotColor = isPending
+          ? "bg-amber-500"
+          : callStatus === "Cancelled"
+          ? "bg-red-500"
+          : "bg-emerald-500";
+
+        const isCall = act.type === "Call" || (act as any).followUpType === "Call";
+        const isMeeting = act.type === "Meeting" || (act as any).followUpType === "Meeting";
+        const isWhatsapp = act.type === "WhatsApp" || (act as any).followUpType === "WhatsApp";
         const typeLabel = isCall ? "Call" : isMeeting ? "Meeting" : isWhatsapp ? "WhatsApp" : "Follow-up";
         const channel = isCall ? "call" : isMeeting ? "meeting" : isWhatsapp ? "whatsapp" : "followup";
 
         const metaItems: Array<{ label: string; value: string; isHighlight?: boolean }> = [];
-        if (act.followUpDate) {
-          metaItems.push({
-            label: "Next Follow-up",
-            value: `${formatDay(act.followUpDate)}${act.followUpTime ? ` at ${act.followUpTime}` : ""}`,
-            isHighlight: true,
-          });
-        }
         const actorName = (act as any).user?.name || (act as any).createdByName;
         if (actorName) {
           metaItems.push({ label: "Logged By", value: actorName });
@@ -475,35 +606,39 @@ export default function LeadDetail() {
 
         events.push({
           key: `act-${act.id}`,
-          date: act.createdAt,
-          timeStr: formatTime(act.createdAt),
-          dayKey: new Date(act.createdAt).toISOString().slice(0, 10),
-          dayFormatted: formatDay(act.createdAt),
+          date: eventDate,
+          timeStr,
+          dayKey,
+          dayFormatted,
           kind: "followup",
           channel,
           title: `${typeLabel} ${followUpNum}`,
           notesList: notesList.length > 0 ? notesList : undefined,
+          noteVariant: isPending ? "orange" : "violet",
           metaItems: metaItems.length > 0 ? metaItems : undefined,
           stageBadge: statusBadge,
           dotColor,
           activityId: act.id,
+          sortTime,
         });
       }
 
       // Proforma invoices
       for (const pi of contactProformas || []) {
         const piDealId = (pi as any).dealId;
-        if (piDealId !== deal.id || !dateOk(pi.createdAt || "")) continue;
+        if (piDealId !== deal.id) continue;
         const piDate = pi.createdAt || dealCreated;
+        if (!dateOk(piDate)) continue;
         const piMeta: Array<{ label: string; value: string }> = [];
-        if (pi.totalAmount) piMeta.push({ label: "Amount", value: formatCurrency(pi.totalAmount) });
+        const piTotal = (pi as any).totalAmount ?? (pi as any).grandTotal;
+        if (piTotal) piMeta.push({ label: "Amount", value: formatCurrency(piTotal) });
         if (pi.status) piMeta.push({ label: "Status", value: pi.status });
 
         events.push({
           key: `pi-${pi.id}`,
           date: piDate,
           timeStr: formatTime(piDate),
-          dayKey: new Date(piDate).toISOString().slice(0, 10),
+          dayKey: getDayKey(piDate),
           dayFormatted: formatDay(piDate),
           kind: "pi",
           title: "PI Sent",
@@ -511,6 +646,7 @@ export default function LeadDetail() {
           metaItems: piMeta.length > 0 ? piMeta : undefined,
           stageBadge: { label: "PI Sent", className: STAGE_BADGE_COLORS["PI Sent"] || "bg-indigo-100 text-indigo-700" },
           dotColor: "bg-indigo-500",
+          sortTime: new Date(piDate).getTime(),
         });
       }
 
@@ -523,7 +659,7 @@ export default function LeadDetail() {
           key: `won-${deal.id}`,
           date: deal.completedAt,
           timeStr: formatTime(deal.completedAt),
-          dayKey: new Date(deal.completedAt).toISOString().slice(0, 10),
+          dayKey: getDayKey(deal.completedAt),
           dayFormatted: formatDay(deal.completedAt),
           kind: "won",
           title: "Deal Won",
@@ -531,6 +667,7 @@ export default function LeadDetail() {
           metaItems: wonMeta.length > 0 ? wonMeta : undefined,
           stageBadge: { label: "Won", className: STAGE_BADGE_COLORS["Won"] || "bg-green-100 text-green-700" },
           dotColor: "bg-emerald-600",
+          sortTime: new Date(deal.completedAt).getTime(),
         });
       } else if (deal.stage === "Lost" && deal.completedAt && dateOk(deal.completedAt)) {
         const lostMeta: Array<{ label: string; value: string }> = [];
@@ -540,21 +677,22 @@ export default function LeadDetail() {
           key: `lost-${deal.id}`,
           date: deal.completedAt,
           timeStr: formatTime(deal.completedAt),
-          dayKey: new Date(deal.completedAt).toISOString().slice(0, 10),
+          dayKey: getDayKey(deal.completedAt),
           dayFormatted: formatDay(deal.completedAt),
           kind: "lost",
           title: "Deal Lost",
           subtitle: `Reason: ${deal.lostReason || "Not specified"}`,
-          detail: deal.lostNotes ? deal.lostNotes : null,
+          detail: (deal as any).lostNotes ? (deal as any).lostNotes : null,
           metaItems: lostMeta.length > 0 ? lostMeta : undefined,
           stageBadge: { label: "Lost", className: STAGE_BADGE_COLORS["Lost"] || "bg-red-100 text-red-700" },
           dotColor: "bg-red-500",
+          sortTime: new Date(deal.completedAt).getTime(),
         });
       }
 
       const filtered = events
         .filter(matchesSearch)
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        .sort((a, b) => (a.sortTime || 0) - (b.sortTime || 0));
 
       // Group events by date
       const dateGroupMap = new Map<string, { dayKey: string; dayFormatted: string; events: TimelineEvent[] }>();
@@ -1262,7 +1400,15 @@ export default function LeadDetail() {
                                           {/* Header row */}
                                           <div className="flex items-start justify-between gap-2">
                                             <div className="min-w-0 flex items-start gap-2.5">
-                                              <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${ev.kind === "lead" ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300" : ev.kind === "deal" ? "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300" : ev.kind === "pi" ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" : ev.kind === "won" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : ev.kind === "lost" ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"}`}>
+                                              <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                                                ev.kind === "lead" ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300" :
+                                                ev.kind === "deal" ? "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300" :
+                                                ev.kind === "pi" ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" :
+                                                ev.kind === "won" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" :
+                                                ev.kind === "lost" ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" :
+                                                ev.noteVariant === "violet" ? "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300" :
+                                                "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                                              }`}>
                                                 <EventIcon className="h-3.5 w-3.5" />
                                               </div>
                                               <div className="min-w-0">
@@ -1318,21 +1464,40 @@ export default function LeadDetail() {
                                           {/* Structured Notes */}
                                           {ev.notesList && ev.notesList.length > 0 && (
                                             <div className="mt-2.5 space-y-1.5">
-                                              {ev.notesList.map((n, ni) => (
-                                                <div
-                                                  key={ni}
-                                                  className="rounded-lg bg-amber-500/10 border border-amber-200/80 dark:border-amber-900/60 p-2.5 text-xs text-foreground"
-                                                >
-                                                  <div className="flex items-center justify-between text-[11px] font-semibold text-amber-900 dark:text-amber-300 mb-1">
-                                                    <div className="flex items-center gap-1.5">
-                                                      <StickyNote className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                                                      <span>{n.userName ? `Note by ${n.userName}` : `Note ${ni + 1}`}</span>
+                                              {ev.notesList.map((n, ni) => {
+                                                const isViolet = ev.noteVariant === "violet";
+                                                return (
+                                                  <div
+                                                    key={ni}
+                                                    className={`rounded-lg border p-2.5 text-xs text-foreground ${
+                                                      isViolet
+                                                        ? "bg-purple-500/10 border-purple-200/80 dark:border-purple-900/60"
+                                                        : "bg-amber-500/10 border-amber-200/80 dark:border-amber-900/60"
+                                                    }`}
+                                                  >
+                                                    <div
+                                                      className={`flex items-center justify-between text-[11px] font-semibold mb-1 ${
+                                                        isViolet
+                                                          ? "text-purple-900 dark:text-purple-300"
+                                                          : "text-amber-900 dark:text-amber-300"
+                                                      }`}
+                                                    >
+                                                      <div className="flex items-center gap-1.5">
+                                                        <StickyNote
+                                                          className={`h-3.5 w-3.5 shrink-0 ${
+                                                            isViolet
+                                                              ? "text-purple-600 dark:text-purple-400"
+                                                              : "text-amber-600 dark:text-amber-400"
+                                                          }`}
+                                                        />
+                                                        <span>{n.userName ? `Note by ${n.userName}` : `Note ${ni + 1}`}</span>
+                                                      </div>
+                                                      {n.date && <span className="text-muted-foreground font-normal text-[10px]">{n.date} {n.time || ""}</span>}
                                                     </div>
-                                                    {n.date && <span className="text-muted-foreground font-normal text-[10px]">{n.date} {n.time || ""}</span>}
+                                                    <p className="whitespace-pre-wrap font-normal leading-relaxed text-foreground/90 pl-5">{n.text}</p>
                                                   </div>
-                                                  <p className="whitespace-pre-wrap font-normal leading-relaxed text-foreground/90 pl-5">{n.text}</p>
-                                                </div>
-                                              ))}
+                                                );
+                                              })}
                                             </div>
                                           )}
 

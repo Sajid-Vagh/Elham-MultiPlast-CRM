@@ -18,6 +18,7 @@ import { VoiceNoteUploader } from "@/components/voice-note-uploader";
 import { useToast } from "@/hooks/use-toast";
 import { parseNotesText } from "@/lib/parse-notes";
 import { useUnitFilter } from "@/lib/use-unit-filter";
+import { FlexibleTimeInput } from "@/components/flexible-time-input";
 
 const STATUS_COLORS: Record<string, string> = {
   "Active": "bg-green-100 text-green-700",
