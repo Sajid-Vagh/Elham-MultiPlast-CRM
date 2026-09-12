@@ -33,6 +33,7 @@ import machinesRouter from "./machines";
 import inventoryRouter from "./inventory";
 import voiceNotesRouter from "./voice-notes";
 import importEngineRouter from "./import-engine";
+import adminReassignRouter from "./admin-reassign";
 
 const router: IRouter = Router();
 
@@ -69,6 +70,7 @@ router.use(machinesRouter);
 router.use(inventoryRouter);
 router.use(voiceNotesRouter);
 router.use(importEngineRouter);
+router.use(adminReassignRouter);
 router.use("/exports", exportsRouter);
 
 export default router;

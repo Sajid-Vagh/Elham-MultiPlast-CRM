@@ -8,13 +8,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Pencil, Trash2, SlidersHorizontal, Users, Camera, X as XIcon, CheckCircle2, ArrowLeft, Settings2, Truck, AlertTriangle, BarChart3, Shield, Building2, Package, Key, FileText } from "lucide-react";
+import { Plus, Pencil, Trash2, SlidersHorizontal, Users, Camera, X as XIcon, CheckCircle2, ArrowLeft, Settings2, Truck, AlertTriangle, BarChart3, Shield, Building2, Package, Key, FileText, ArrowRightLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { onUserChange, syncMe } from "@/lib/query-invalidation";
 import { UserAvatar } from "@/components/user-avatar";
 import { EditProfileModal } from "@/components/edit-profile-modal";
+import { DataReassignmentModal } from "@/components/admin/DataReassignmentModal";
 import { useActiveUnits, useAllUnits } from "@/lib/use-active-units";
 import { useAllMachines } from "@/lib/use-machines";
 
@@ -581,6 +582,7 @@ export default function Settings() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
+  const [reassignUser, setReassignUser] = useState<User | null>(null);
   const [newUnitName, setNewUnitName] = useState("");
   const [newMachineName, setNewMachineName] = useState("");
 
@@ -1072,6 +1074,15 @@ export default function Settings() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-primary hover:text-primary hover:bg-primary/10"
+                          onClick={() => setReassignUser(u as User)}
+                          title="Reassign Data"
+                        >
+                          <ArrowRightLeft className="h-3.5 w-3.5" />
+                        </Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditUser(u as User)}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
@@ -1094,6 +1105,13 @@ export default function Settings() {
           </div>
         </div>
       )}
+
+      {/* Data Reassignment Modal (Admin only) */}
+      <DataReassignmentModal
+        isOpen={!!reassignUser}
+        onClose={() => setReassignUser(null)}
+        sourceUser={reassignUser}
+      />
     </div>
   );
 }
