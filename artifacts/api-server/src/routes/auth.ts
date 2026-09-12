@@ -571,8 +571,10 @@ router.post("/auth/forgot-password", async (req, res) => {
     return res.json({ message: GENERIC_MSG });
   }
 
+  const normalizedEmail = email.trim().toLowerCase();
+
   // Rate limit
-  const rateLimitKey = `forgot:${email.toLowerCase()}`;
+  const rateLimitKey = `forgot:${normalizedEmail}`;
   if (!rateLimit(rateLimitKey, FORGOT_RATE_LIMIT_MAX, FORGOT_RATE_LIMIT_WINDOW_MS)) {
     return res.status(429).json({ error: "Too many requests. Please try again later." });
   }
@@ -581,7 +583,7 @@ router.post("/auth/forgot-password", async (req, res) => {
     const [user] = await db
       .select()
       .from(usersTable)
-      .where(eq(usersTable.email, email));
+      .where(sql`LOWER(TRIM(${usersTable.email})) = ${normalizedEmail}`);
 
     if (user && user.isActive) {
       const resetToken = generateSecureToken();
@@ -595,7 +597,10 @@ router.post("/auth/forgot-password", async (req, res) => {
         })
         .where(eq(usersTable.id, user.id));
 
-      await sendPasswordResetEmail(email, resetToken);
+      const sendSuccess = await sendPasswordResetEmail(user.email || normalizedEmail, resetToken);
+      logger.info({ userId: user.id, email: user.email, sendSuccess }, "Password reset email dispatched");
+    } else {
+      logger.warn({ email: normalizedEmail, userFound: !!user, isActive: user?.isActive }, "Password reset requested for non-existent or inactive user");
     }
 
     return res.json({ message: GENERIC_MSG });
@@ -763,11 +768,12 @@ router.post("/auth/resend-verification", async (req, res) => {
   }
 
   try {
+    const normalizedEmail = email.trim().toLowerCase();
     const [user] = await db
       .select()
       .from(usersTable)
       .where(and(
-        eq(usersTable.email, email),
+        sql`LOWER(TRIM(${usersTable.email})) = ${normalizedEmail}`,
         eq(usersTable.emailVerified, false),
       ));
 
@@ -780,7 +786,7 @@ router.post("/auth/resend-verification", async (req, res) => {
         .set({ verificationToken, verificationExpiresAt })
         .where(eq(usersTable.id, user.id));
 
-      await sendVerificationEmail(email, verificationToken);
+      await sendVerificationEmail(user.email || normalizedEmail, verificationToken);
     }
 
     return res.json({ message: GENERIC_MSG });
