@@ -3,7 +3,7 @@ import {
   db, existingCustomersTable, contactsTable, ordersTable, orderItemsTable,
   usersTable, orderTimelineTable, customerCommunicationsTable,
   internalNotesTable, activitiesTable, dealProductsTable, dealsTable,
-  voiceNotesTable,
+  voiceNotesTable, productsTable,
 } from "@workspace/db";
 import { eq, and, or, ilike, desc, sql, inArray, isNull, asc, gte, lte } from "drizzle-orm";
 import { getUserFromRequest } from "./auth";
@@ -542,9 +542,26 @@ router.get("/existing-customers/:id/orders", async (req, res) => {
     const allowRevenue = canViewCustomerRevenue(user);
     const enriched = await Promise.all(orders.map(async (order) => {
       let items: any[] = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
-      if (!allowRevenue) {
-        items = items.map(item => ({ ...item, rate: null, amount: null }));
+      const productIds = items.map(i => i.productId).filter((id): id is number => typeof id === "number");
+      let productsById = new Map<number, any>();
+      if (productIds.length > 0) {
+        const prods = await db.select().from(productsTable).where(inArray(productsTable.id, productIds));
+        for (const p of prods) productsById.set(p.id, p);
       }
+      items = items.map(item => {
+        const prod = item.productId ? productsById.get(item.productId) : null;
+        return {
+          ...item,
+          bottleColour: item.colour || item.bottleColour || prod?.bottleColour || null,
+          capColour: item.capColour || prod?.capColour || null,
+          bottleWeight: item.bottleWeight || item.gramage || prod?.bottleWeight || null,
+          machineType: (item as any).machineType || prod?.machineType || null,
+          hsnCode: item.hsnCode || prod?.hsnCode || null,
+          neckSize: (item as any).neckSize || null,
+          rate: allowRevenue ? item.rate : null,
+          amount: allowRevenue ? item.amount : null,
+        };
+      });
       const salesOwner = order.salesOwnerId ? await db.select().from(usersTable).where(eq(usersTable.id, order.salesOwnerId)).then(r => r[0]) : null;
       const safe = (u: any) => u ? (({ passwordHash: _, ...rest }) => rest)(u) : null;
       return {
