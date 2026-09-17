@@ -150,6 +150,8 @@ router.get("/orders", async (req, res) => {
       const s = `%${search}%`;
       // Order ID is the primary identifier: match both the raw order number and
       // the formatted Order ID. Customer Code lives on the linked contact.
+      // Company Name in the table is sourced from the linked PI's trade_name
+      // (NOT orders.company_name), so we also check proforma_invoices.trade_name.
       conditions.push(or(
         ilike(ordersTable.orderNumber, s),
         ilike(ordersTable.formattedOrderId, s),
@@ -157,6 +159,13 @@ router.get("/orders", async (req, res) => {
         ilike(ordersTable.companyName, s),
         ilike(ordersTable.mobile, s),
         inArray(ordersTable.contactId, db.select({ id: contactsTable.id }).from(contactsTable).where(ilike(contactsTable.customerCode, s))),
+        sql`EXISTS (
+          SELECT 1 FROM proforma_invoices pi
+          WHERE pi.deal_id = ${ordersTable.dealId}
+            AND pi.is_active = true
+            AND pi.is_deleted = false
+            AND pi.trade_name ILIKE ${s}
+        )`,
       )!);
     }
 
@@ -314,6 +323,8 @@ router.get("/orders/global", async (req, res) => {
 
     // General search — Order ID (orderNumber + formattedOrderId) takes priority,
     // then customer name/company/mobile, then the linked contact's Customer Code.
+    // Company Name in the table is sourced from the linked PI's trade_name
+    // (NOT orders.company_name), so we also check proforma_invoices.trade_name.
     if (search) {
       const s = `%${search}%`;
       conditions.push(or(
@@ -323,6 +334,13 @@ router.get("/orders/global", async (req, res) => {
         ilike(ordersTable.companyName, s),
         ilike(ordersTable.mobile, s),
         inArray(ordersTable.contactId, db.select({ id: contactsTable.id }).from(contactsTable).where(ilike(contactsTable.customerCode, s))),
+        sql`EXISTS (
+          SELECT 1 FROM proforma_invoices pi
+          WHERE pi.deal_id = ${ordersTable.dealId}
+            AND pi.is_active = true
+            AND pi.is_deleted = false
+            AND pi.trade_name ILIKE ${s}
+        )`,
       )!);
     }
 
