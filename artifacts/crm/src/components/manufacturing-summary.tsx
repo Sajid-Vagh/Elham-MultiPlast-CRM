@@ -156,7 +156,7 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
   });
 
   const { data: detail, isLoading: detailLoading } = useQuery({
-    queryKey: ["manufacturing-summary-detail", drawerGroup?.productName, drawerGroup?.weight, drawerGroup?.colour],
+    queryKey: ["manufacturing-summary-detail", drawerGroup?.productName, drawerGroup?.weight, drawerGroup?.colour, unitFilter],
     queryFn: () => {
       if (!drawerGroup) return { items: [] };
       const params = new URLSearchParams({
@@ -164,6 +164,9 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
         weight: drawerGroup.weight,
         colour: drawerGroup.colour,
       });
+      // Pass the active unit filter so the drawer respects the same unit
+      // scope as the summary cards (without this, all-unit orders appear).
+      if (unitFilter && unitFilter !== "All") params.set("unit", unitFilter);
       return customFetch<any>(`/production/manufacturing-summary/detail?${params.toString()}`);
     },
     enabled: !!drawerGroup,

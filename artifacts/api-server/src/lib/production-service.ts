@@ -3779,7 +3779,8 @@ export async function getManufacturingSummary(
 
 export async function getManufacturingSummaryDetail(
   user: PermissionUser,
-  filter: { productName: string; weight: string; colour: string } | { orderIds: number[] }
+  filter: { productName: string; weight: string; colour: string } | { orderIds: number[] },
+  unitFilter?: string
 ) {
   if ("orderIds" in filter && !filter.orderIds.length) return { items: [] };
 
@@ -3792,6 +3793,8 @@ export async function getManufacturingSummaryDetail(
     const weightFilter = filter.weight === "-"
       ? sql`(COALESCE(NULLIF(poi.bottle_weight, ''), NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, '')) IS NULL OR COALESCE(NULLIF(poi.bottle_weight, ''), NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, '')) = '')`
       : sql`lower(TRIM(COALESCE(NULLIF(poi.bottle_weight, ''), NULLIF(pii.weight, ''), NULLIF(p.bottle_weight, ''), '-'))) = lower(TRIM(${filter.weight}))`;
+    // Unit filter: only include orders belonging to the selected production unit.
+    const unitSql = unitFilter ? sql`AND po.production_unit = ${unitFilter}` : sql``;
 
     results = await db.execute(sql`
       WITH active_orders AS (
@@ -3838,6 +3841,7 @@ export async function getManufacturingSummaryDetail(
         AND ${weightFilter}
         AND ${colourFilter}
         AND (pi.is_deleted = false OR pi.is_deleted IS NULL)
+        ${unitSql}
       ORDER BY po.created_at DESC
     `);
   } else {
@@ -3884,6 +3888,7 @@ export async function getManufacturingSummaryDetail(
       ))
       WHERE po.id = ANY(${filter.orderIds}::int[])
         AND (pi.is_deleted = false OR pi.is_deleted IS NULL)
+        ${unitFilter ? sql`AND po.production_unit = ${unitFilter}` : sql``}
       ORDER BY po.created_at DESC
     `);
   }
