@@ -605,13 +605,14 @@ router.get("/production/manufacturing-summary/detail", async (req, res) => {
   try {
     const user = await requireProductionUser(req, res);
     if (!user) return;
-    const { productName, weight, colour, ids } = req.query as Record<string, string | undefined>;
+    const { productName, weight, colour, ids, unit } = req.query as Record<string, string | undefined>;
+    const unitFilter = unit && unit !== "All" ? unit : undefined;
     if (productName && weight && colour) {
-      res.json(await getManufacturingSummaryDetail(user, { productName, weight, colour }));
+      res.json(await getManufacturingSummaryDetail(user, { productName, weight, colour }, unitFilter));
     } else if (ids) {
       const orderIds = ids.split(",").map(Number).filter(n => !isNaN(n));
       if (!orderIds.length) { res.json({ items: [] }); return; }
-      res.json(await getManufacturingSummaryDetail(user, { orderIds }));
+      res.json(await getManufacturingSummaryDetail(user, { orderIds }, unitFilter));
     } else {
       res.status(400).json({ error: "productName, weight, colour params required (or ids)" });
     }
