@@ -156,25 +156,20 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
   });
 
   const { data: detail, isLoading: detailLoading } = useQuery({
-    // Use orderIds as the cache key — immune to mutable string props like colour/weight.
-    queryKey: ["manufacturing-summary-detail", drawerGroup?.orderIds, unitFilter],
+    queryKey: ["manufacturing-summary-detail", drawerGroup?.productName, drawerGroup?.weight, drawerGroup?.colour, unitFilter],
     queryFn: () => {
       if (!drawerGroup) return { items: [] };
-      // Use exact order-ID lookup instead of productName/weight/colour string
-      // matching. String matching breaks when a product property (e.g. colour)
-      // is updated after the order was created — the stored poi.bottle_colour
-      // still holds the old value, so the colour filter finds nothing even
-      // though the summary card correctly resolves the new colour via the
-      // products table. The summary backend already computes the precise set
-      // of production_order IDs for each group; we simply pass those here.
-      const ids = (drawerGroup.orderIds || []).join(",");
-      if (!ids) return { items: [] };
-      const params = new URLSearchParams({ ids });
-      // Still honour the unit filter as a safety guard.
+      const params = new URLSearchParams({
+        productName: drawerGroup.productName,
+        weight: drawerGroup.weight,
+        colour: drawerGroup.colour,
+      });
+      // Pass the active unit filter so the drawer respects the same unit
+      // scope as the summary cards (without this, all-unit orders appear).
       if (unitFilter && unitFilter !== "All") params.set("unit", unitFilter);
       return customFetch<any>(`/production/manufacturing-summary/detail?${params.toString()}`);
     },
-    enabled: !!drawerGroup && (drawerGroup.orderIds?.length ?? 0) > 0,
+    enabled: !!drawerGroup,
   });
 
   const groups = mergeVariantGroups(summary?.groups || []);
