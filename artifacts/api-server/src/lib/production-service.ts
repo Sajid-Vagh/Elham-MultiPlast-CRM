@@ -4027,6 +4027,7 @@ export async function getManufacturingSummaryDetail(
       createdByRole: r.createdByRole,
       isDelayed: r.isDelayed,
       createdAt: r.createdAt,
+      orderDate: r.createdAt,
       expectedDispatchDate: r.expectedDispatchDate,
       priority: r.priority,
     };

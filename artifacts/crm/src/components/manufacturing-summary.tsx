@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLocation, useSearch } from "wouter";
-import { Package, X, AlertTriangle, Settings2, Truck, Search, CheckCircle2 } from "lucide-react";
+import { Package, X, AlertTriangle, Settings2, Truck, Search, CheckCircle2, Clock } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { cleanProductName } from "@/lib/product-name";
 
@@ -65,6 +65,20 @@ function formatWeight(w: string | null | undefined): string {
   if (!w || w === "-" || w === "N/A") return "N/A";
   if (/gram|gm|g$/i.test(w.trim())) return w.trim();
   return `${w.trim()} Gram`;
+}
+
+function formatOrderDateTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return "-";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "-";
+  return d.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 function variantKey(productName: string, weight: string, colour: string): string {
@@ -128,6 +142,7 @@ type DetailItem = {
   createdByRole: string | null;
   isDelayed: boolean;
   createdAt: string;
+  orderDate?: string;
   expectedDispatchDate: string | null;
   priority: string;
 };
@@ -550,8 +565,8 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                                 className="border border-orange-200 dark:border-orange-900/60 rounded-lg p-3.5 bg-orange-50/30 dark:bg-orange-950/10 hover:bg-orange-50/60 dark:hover:bg-orange-950/20 transition-colors cursor-pointer"
                                 onClick={() => setLocation(`/production/orders/${item.orderId}`)}
                               >
-                                <div className="flex items-start justify-between mb-2">
-                                  <div>
+                                <div className="flex items-start justify-between mb-2 gap-2">
+                                  <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2 flex-wrap">
                                       <p className="font-semibold text-sm">{item.customerName}</p>
                                       {item.customerCode && (
@@ -564,11 +579,17 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                                       <p className="text-xs text-muted-foreground mt-0.5">{item.companyName}</p>
                                     )}
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    {item.isDelayed && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
-                                    <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[item.lineProductionStatus || item.status] || "bg-orange-100 text-orange-700 border-orange-300"} border`}>
-                                      {item.lineProductionStatus || item.status}
-                                    </Badge>
+                                  <div className="flex flex-col items-end gap-1 shrink-0 text-right">
+                                    <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+                                      <Clock className="h-3 w-3 text-muted-foreground/70" />
+                                      {formatOrderDateTime(item.orderDate || item.createdAt)}
+                                    </span>
+                                    <div className="flex items-center gap-1.5">
+                                      {item.isDelayed && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
+                                      <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[item.lineProductionStatus || item.status] || "bg-orange-100 text-orange-700 border-orange-300"} border`}>
+                                        {item.lineProductionStatus || item.status}
+                                      </Badge>
+                                    </div>
                                   </div>
                                 </div>
 
@@ -657,8 +678,8 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                               className="border rounded-lg p-3.5 bg-card hover:bg-accent transition-colors cursor-pointer"
                               onClick={() => setLocation(`/production/orders/${item.orderId}`)}
                             >
-                              <div className="flex items-start justify-between mb-2">
-                                <div>
+                              <div className="flex items-start justify-between mb-2 gap-2">
+                                <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <p className="font-semibold text-sm">{item.customerName}</p>
                                     {item.customerCode && (
@@ -671,11 +692,17 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                                     <p className="text-xs text-muted-foreground mt-0.5">{item.companyName}</p>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  {item.isDelayed && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
-                                  <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[item.lineProductionStatus || item.status] || "bg-gray-100"} border`}>
-                                    {item.lineProductionStatus || item.status}
-                                  </Badge>
+                                <div className="flex flex-col items-end gap-1 shrink-0 text-right">
+                                  <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+                                    <Clock className="h-3 w-3 text-muted-foreground/70" />
+                                    {formatOrderDateTime(item.orderDate || item.createdAt)}
+                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    {item.isDelayed && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
+                                    <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[item.lineProductionStatus || item.status] || "bg-gray-100"} border`}>
+                                      {item.lineProductionStatus || item.status}
+                                    </Badge>
+                                  </div>
                                 </div>
                               </div>
                               <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-xs">
@@ -747,8 +774,8 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                               className="border border-emerald-200 dark:border-emerald-900/60 rounded-lg p-3.5 bg-emerald-50/30 dark:bg-emerald-950/10 hover:bg-emerald-50/60 dark:hover:bg-emerald-950/20 transition-colors cursor-pointer"
                               onClick={() => setLocation(`/production/orders/${item.orderId}`)}
                             >
-                              <div className="flex items-start justify-between mb-2">
-                                <div>
+                              <div className="flex items-start justify-between mb-2 gap-2">
+                                <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <p className="font-semibold text-sm">{item.customerName}</p>
                                     {item.customerCode && (
@@ -761,11 +788,17 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                                     <p className="text-xs text-muted-foreground mt-0.5">{item.companyName}</p>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  {item.isDelayed && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
-                                  <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[item.status] || STATUS_COLORS["Ready"]}`}>
-                                    {item.status === "Ready To Dispatch" || item.status === "Ready For Dispatch" ? "Ready to Dispatch" : item.status}
-                                  </Badge>
+                                <div className="flex flex-col items-end gap-1 shrink-0 text-right">
+                                  <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+                                    <Clock className="h-3 w-3 text-muted-foreground/70" />
+                                    {formatOrderDateTime(item.orderDate || item.createdAt)}
+                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    {item.isDelayed && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
+                                    <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[item.status] || STATUS_COLORS["Ready"]}`}>
+                                      {item.status === "Ready To Dispatch" || item.status === "Ready For Dispatch" ? "Ready to Dispatch" : item.status}
+                                    </Badge>
+                                  </div>
                                 </div>
                               </div>
 
@@ -845,8 +878,8 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                               className="border rounded-lg p-3.5 bg-card hover:bg-accent transition-colors cursor-pointer"
                               onClick={() => { setDrawerGroup(null); setLocation(`/production/orders/${item.orderId}`); }}
                             >
-                              <div className="flex items-start justify-between mb-2">
-                                <div>
+                              <div className="flex items-start justify-between mb-2 gap-2">
+                                <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <p className="font-semibold text-sm">{item.customerName}</p>
                                     {item.customerCode && (
@@ -859,11 +892,17 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                                     <p className="text-xs text-muted-foreground mt-0.5">{item.companyName}</p>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  {item.isDelayed && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
-                                  <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[item.status] || "bg-gray-100"} border`}>
-                                    {item.status}
-                                  </Badge>
+                                <div className="flex flex-col items-end gap-1 shrink-0 text-right">
+                                  <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+                                    <Clock className="h-3 w-3 text-muted-foreground/70" />
+                                    {formatOrderDateTime(item.orderDate || item.createdAt)}
+                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    {item.isDelayed && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
+                                    <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[item.status] || "bg-gray-100"} border`}>
+                                      {item.status}
+                                    </Badge>
+                                  </div>
                                 </div>
                               </div>
                               <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-xs">
