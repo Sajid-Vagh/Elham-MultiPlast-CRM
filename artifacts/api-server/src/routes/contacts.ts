@@ -218,6 +218,7 @@ router.get("/contacts", async (req, res) => {
             ilike(contactsTable.otherPhone, s),
             ilike(contactsTable.companyName, s),
             ilike(contactsTable.city, s),
+            ilike(contactsTable.state, s),
             ilike(contactsTable.customerCode, s),
             ilike(contactsTable.customerComments, s)
           )!
