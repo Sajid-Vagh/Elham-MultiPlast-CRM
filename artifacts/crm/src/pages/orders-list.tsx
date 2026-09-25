@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Package, Search, Calendar, ChevronDown, ChevronRight, Filter, X, RefreshCw, Users, MessageCircle, CheckCheck } from "lucide-react";
+import { Package, Search, Calendar, ChevronDown, ChevronRight, Filter, X, RefreshCw, Users, MessageCircle, CheckCheck, IndianRupee, Layers } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useAllUsers } from "@/lib/use-all-users";
@@ -176,6 +176,16 @@ export default function OrdersList() {
   });
   const pagination = data?.pagination;
 
+  const isAdmin = (user?.role || (typeof window !== "undefined" ? localStorage.getItem("crm_user_role") : null)) === "admin";
+
+  const adminSummary = useMemo(() => {
+    if (!isAdmin) return null;
+    const totalValue = orders.reduce((sum, o) => sum + (Number(o.grandTotal) || 0), 0);
+    const totalProducts = orders.reduce((sum, o) => sum + (Number(o.itemsCount) || 0), 0);
+    const totalQuantity = orders.reduce((sum, o) => sum + (Number(o.totalQuantity) || 0), 0);
+    return { totalValue, totalProducts, totalQuantity };
+  }, [orders, isAdmin]);
+
   const hasUnreadOrders = rawOrders.some(o => o.hasUnreadMessages);
 
   const handleMarkAllRead = useCallback(async () => {
@@ -298,6 +308,63 @@ export default function OrdersList() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Admin-only Dynamic Summary Bar */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {isLoading ? (
+            <>
+              <Skeleton className="h-[74px] w-full rounded-xl" />
+              <Skeleton className="h-[74px] w-full rounded-xl" />
+              <Skeleton className="h-[74px] w-full rounded-xl" />
+            </>
+          ) : (
+            <>
+              <Card className="border shadow-xs bg-card/60 hover:bg-card transition-colors">
+                <CardContent className="p-3.5 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Total Value</p>
+                    <p className="text-xl font-bold tracking-tight text-foreground mt-0.5">
+                      ₹{(adminSummary?.totalValue ?? 0).toLocaleString("en-IN")}
+                    </p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300">
+                    <IndianRupee className="h-5 w-5" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border shadow-xs bg-card/60 hover:bg-card transition-colors">
+                <CardContent className="p-3.5 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Total Products</p>
+                    <p className="text-xl font-bold tracking-tight text-foreground mt-0.5">
+                      {(adminSummary?.totalProducts ?? 0).toLocaleString("en-IN")}
+                    </p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300">
+                    <Package className="h-5 w-5" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border shadow-xs bg-card/60 hover:bg-card transition-colors">
+                <CardContent className="p-3.5 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Total Quantity</p>
+                    <p className="text-xl font-bold tracking-tight text-foreground mt-0.5">
+                      {(adminSummary?.totalQuantity ?? 0).toLocaleString("en-IN")} <span className="text-xs font-normal text-muted-foreground">pcs</span>
+                    </p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300">
+                    <Layers className="h-5 w-5" />
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Orders Table */}
       <Card>
