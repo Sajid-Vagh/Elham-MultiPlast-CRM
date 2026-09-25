@@ -1,11 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { Package, X, AlertTriangle, Settings2, Truck, Search, CheckCircle2 } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { cleanProductName } from "@/lib/product-name";
@@ -137,9 +137,33 @@ interface ManufacturingSummaryProps {
 }
 
 export function ManufacturingSummary({ unitFilter, originFilter, material = "All", dateFrom, dateTo }: ManufacturingSummaryProps) {
-  const [, setLocation] = useLocation();
-  const [drawerGroup, setDrawerGroup] = useState<SummaryGroup | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [location, setLocation] = useLocation();
+  const searchStr = useSearch();
+
+  // ── URL-synced states ────────────────────────────────────────────────────
+  const urlParams = useMemo(() => new URLSearchParams(searchStr), [searchStr]);
+  const urlSearch = urlParams.get("search") ?? "";
+  const urlProduct = urlParams.get("product") ?? "";
+
+  const [searchQuery, setSearchQueryRaw] = useState(urlSearch);
+  const [drawerGroup, setDrawerGroupRaw] = useState<SummaryGroup | null>(null);
+
+  // Push state changes into the URL (replaces current history entry so Back
+  // still goes to the page before the dashboard, not every keystroke).
+  function setSearchQuery(q: string) {
+    setSearchQueryRaw(q);
+    const p = new URLSearchParams(searchStr);
+    if (q) p.set("search", q); else p.delete("search");
+    setLocation(`${location.split("?")[0]}?${p.toString()}`, { replace: true });
+  }
+
+  function setDrawerGroup(g: SummaryGroup | null) {
+    setDrawerGroupRaw(g);
+    const p = new URLSearchParams(searchStr);
+    if (g) p.set("product", variantKey(g.productName, g.weight, g.colour));
+    else p.delete("product");
+    setLocation(`${location.split("?")[0]}?${p.toString()}`, { replace: true });
+  }
 
   const { data: summary, isLoading } = useQuery({
     queryKey: ["manufacturing-summary", unitFilter, originFilter, material, dateFrom, dateTo],
@@ -198,6 +222,21 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
     materialSummary[mt].productCount++;
     materialSummary[mt].totalPending += g.totalQuantity;
   }
+
+  // Restore drawerGroup from URL once groups have loaded
+  useEffect(() => {
+    if (!urlProduct || groups.length === 0) return;
+    if (drawerGroup && variantKey(drawerGroup.productName, drawerGroup.weight, drawerGroup.colour) === urlProduct) return;
+    const match = groups.find(g => variantKey(g.productName, g.weight, g.colour) === urlProduct);
+    if (match) setDrawerGroupRaw(match);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlProduct, groups.length]);
+
+  // Keep local searchQuery in sync when URL changes externally (e.g. back/forward)
+  useEffect(() => {
+    setSearchQueryRaw(urlSearch);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlSearch]);
 
   if (isLoading) {
     return (
@@ -505,7 +544,7 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                               <div
                                 key={item.orderId}
                                 className="border border-orange-200 dark:border-orange-900/60 rounded-lg p-3.5 bg-orange-50/30 dark:bg-orange-950/10 hover:bg-orange-50/60 dark:hover:bg-orange-950/20 transition-colors cursor-pointer"
-                                onClick={() => { setDrawerGroup(null); setLocation(`/production/orders/${item.orderId}`); }}
+                                onClick={() => setLocation(`/production/orders/${item.orderId}`)}
                               >
                                 <div className="flex items-start justify-between mb-2">
                                   <div>
@@ -612,7 +651,7 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                             <div
                               key={item.orderId}
                               className="border rounded-lg p-3.5 bg-card hover:bg-accent transition-colors cursor-pointer"
-                              onClick={() => { setDrawerGroup(null); setLocation(`/production/orders/${item.orderId}`); }}
+                              onClick={() => setLocation(`/production/orders/${item.orderId}`)}
                             >
                               <div className="flex items-start justify-between mb-2">
                                 <div>
@@ -702,7 +741,7 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                             <div
                               key={item.orderId}
                               className="border border-emerald-200 dark:border-emerald-900/60 rounded-lg p-3.5 bg-emerald-50/30 dark:bg-emerald-950/10 hover:bg-emerald-50/60 dark:hover:bg-emerald-950/20 transition-colors cursor-pointer"
-                              onClick={() => { setDrawerGroup(null); setLocation(`/production/orders/${item.orderId}`); }}
+                              onClick={() => setLocation(`/production/orders/${item.orderId}`)}
                             >
                               <div className="flex items-start justify-between mb-2">
                                 <div>
