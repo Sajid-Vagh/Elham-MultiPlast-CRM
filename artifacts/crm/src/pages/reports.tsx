@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from "@/components/ui/sheet";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, PieChart, Pie, Legend, Tooltip, Sector } from "recharts";
-import { TrendingUp, Users, Briefcase, DollarSign, XCircle, Download, Search, Phone, ExternalLink, Eye, Copy, ChevronDown, ChevronRight, FileSpreadsheet, FileText, CalendarIcon, ListFilter } from "lucide-react";
+import { TrendingUp, Users, Briefcase, DollarSign, XCircle, Download, Search, Phone, ExternalLink, Eye, Copy, ChevronDown, ChevronRight, FileSpreadsheet, FileText, CalendarIcon, ListFilter, Clock } from "lucide-react";
 import * as XLSX from "xlsx";
 import { useToast } from "@/hooks/use-toast";
 import { UserAvatar } from "@/components/user-avatar";
@@ -39,6 +39,7 @@ import { parseNotesText } from "@/lib/parse-notes";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { ClearFiltersButton } from "@/components/clear-filters-button";
 import { ExportVerificationDialog } from "@/components/export-verification-dialog";
+import { ByTimeReportTab } from "@/components/by-time-report";
 
 function UnitPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const { units: activeUnits } = useActiveUnits();
@@ -361,6 +362,13 @@ export default function Reports() {
           rows: d.map(r => [r.reason, r.count, total > 0 ? Math.round((r.count / total) * 100) : 0]),
         };
       }
+      case "by-time": {
+        return {
+          name: "Time Wise Orders",
+          headers: ["Order No", "Date", "Customer", "Company", "Owner", "Status", "Value", "Products", "Qty", "Unit"],
+          rows: [],
+        };
+      }
       default:
         return { name: "Report", headers: ["Report"], rows: [] };
     }
@@ -418,6 +426,7 @@ export default function Reports() {
     "by-city": "City",
     "by-state": "State",
     "by-product": "Product",
+    "by-time": "Time Period",
     "lost-reasons": "Lost Reason",
   };
 
@@ -713,6 +722,10 @@ export default function Reports() {
             <TabsTrigger value="by-city">By City</TabsTrigger>
             <TabsTrigger value="by-state">By State</TabsTrigger>
             <TabsTrigger value="by-product">By Product</TabsTrigger>
+            <TabsTrigger value="by-time">
+              <Clock className="h-3.5 w-3.5 mr-1" />
+              By Time
+            </TabsTrigger>
             <TabsTrigger value="lost-reasons">
               <XCircle className="h-3.5 w-3.5 mr-1 text-red-400" />
               Lost Reasons
@@ -1227,6 +1240,11 @@ export default function Reports() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        {/* ── BY TIME TAB ── */}
+        <TabsContent value="by-time">
+          <ByTimeReportTab unit={unit} ownerId={ownerId} dateFilter={dateFilter} />
         </TabsContent>
       </Tabs>
 
