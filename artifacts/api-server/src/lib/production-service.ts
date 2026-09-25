@@ -2850,8 +2850,8 @@ async function buildMachineReportRows(
     origin: filters.origin,
   });
 
-  // Default: exclude completed/cancelled/delivered orders unless an explicit terminal status filter is requested
-  const terminalStatuses = ["Completed", "Delivered", "Cancelled"];
+  // Default: exclude completed/cancelled/delivered/dispatched orders unless an explicit terminal status filter is requested
+  const terminalStatuses = ["Completed", "Delivered", "Cancelled", "Dispatched", "In Transport", "Closed"];
   const isTerminalStatus = filters.status && terminalStatuses.includes(filters.status);
   if (!isTerminalStatus) {
     conditions.push(
@@ -3456,7 +3456,8 @@ export async function getPendingSummary(
       array_agg(DISTINCT oi.production_order_id) AS "orderIds"
     FROM production_order_items oi
     JOIN production_orders po ON po.id = oi.production_order_id
-    WHERE po.status NOT IN ('Completed', 'Delivered', 'Cancelled')
+    WHERE LOWER(TRIM(COALESCE(po.status, ''))) NOT IN ('completed', 'delivered', 'cancelled', 'dispatched', 'in transport', 'closed')
+      AND (po.dispatch_status IS NULL OR LOWER(TRIM(po.dispatch_status)) NOT IN ('load vehicle', 'delivered', 'dispatch', 'dispatched', 'in transport', 'in transit', 'completed', 'closed'))
       AND COALESCE(oi.production_status, 'Pending') IN (${pendingStatusIn})
       AND (oi.ordered_quantity::numeric - oi.ready_quantity::numeric) > 0
       ${unitCondition}
@@ -3753,8 +3754,14 @@ export async function getManufacturingSummary(
       SELECT po.id AS po_id, po.status AS po_status, po.dispatch_status, po.production_unit, po.created_by_role,
              po.proforma_invoice_id AS resolved_invoice_id
       FROM production_orders po
-      WHERE po.status NOT IN ('Completed', 'Delivered', 'Cancelled')
-        AND (po.dispatch_status IS NULL OR po.dispatch_status NOT IN ('Load Vehicle', 'Delivered', 'Dispatch', 'Dispatched'))
+      WHERE LOWER(TRIM(COALESCE(po.status, ''))) NOT IN ('completed', 'delivered', 'cancelled', 'dispatched', 'in transport', 'closed')
+        AND (po.dispatch_status IS NULL OR LOWER(TRIM(po.dispatch_status)) NOT IN ('load vehicle', 'delivered', 'dispatch', 'dispatched', 'in transport', 'in transit', 'completed', 'closed'))
+        AND NOT EXISTS (
+          SELECT 1 FROM dispatch d
+          WHERE d.production_order_id = po.id
+            AND d.is_deleted = false
+            AND LOWER(TRIM(d.status)) IN ('dispatched', 'in transit', 'delivered')
+        )
         ${unitCondition}
         ${originCondition}
         ${dateFromCondition}
@@ -3820,24 +3827,36 @@ export async function getManufacturingSummary(
     FROM product_lines
     GROUP BY product_family, product_name, product_id, weight_norm, colour_norm, capacity_sort
     HAVING COUNT(DISTINCT po_id) > 0
+       AND SUM(ordered_quantity::numeric) > 0
+       AND (
+         SUM(CASE WHEN (production_status IN (${pendingStatusIn}) AND po_status NOT IN ('Ready To Dispatch', 'Ready For Dispatch') AND production_status NOT IN ('Ready', 'Ready To Dispatch', 'Ready For Dispatch')) THEN GREATEST(0, (ordered_quantity - ready_quantity))::numeric ELSE 0 END) > 0
+         OR SUM(CASE WHEN (production_status IN (${inProdStatusIn}) AND po_status NOT IN ('Ready To Dispatch', 'Ready For Dispatch') AND production_status NOT IN ('Ready', 'Ready To Dispatch', 'Ready For Dispatch')) THEN GREATEST(0, (ordered_quantity - ready_quantity))::numeric ELSE 0 END) > 0
+         OR SUM(CASE WHEN (production_status IN ('Ready', 'Ready To Dispatch', 'Ready For Dispatch') OR po_status IN ('Ready To Dispatch', 'Ready For Dispatch') OR (ready_quantity >= ordered_quantity AND ordered_quantity > 0)) THEN ordered_quantity::numeric ELSE ready_quantity::numeric END) > 0
+       )
     ORDER BY product_family, capacity_sort, colour_norm, weight_norm
   `);
 
-  const groups = (results.rows || []).map((r: any) => ({
-    productFamily: r.productFamily || r.productName,
-    productName: r.productName,
-    productId: r.productId ?? null,
-    weight: r.weight,
-    colour: r.colour,
-    colourCode: r.colourCode || null,
-    materialType: r.materialType || "HDPE",
-    pendingQuantity: Number(r.pendingQuantity || 0),
-    inProductionQuantity: Number(r.inProductionQuantity || 0),
-    readyQuantity: Number(r.readyQuantity || 0),
-    totalQuantity: Number(r.totalQuantity || 0),
-    orderCount: Number(r.orderCount),
-    orderIds: r.orderIds as number[],
-  }));
+  const groups = (results.rows || [])
+    .map((r: any) => ({
+      productFamily: r.productFamily || r.productName,
+      productName: r.productName,
+      productId: r.productId ?? null,
+      weight: r.weight,
+      colour: r.colour,
+      colourCode: r.colourCode || null,
+      materialType: r.materialType || "HDPE",
+      pendingQuantity: Number(r.pendingQuantity || 0),
+      inProductionQuantity: Number(r.inProductionQuantity || 0),
+      readyQuantity: Number(r.readyQuantity || 0),
+      totalQuantity: Number(r.totalQuantity || 0),
+      orderCount: Number(r.orderCount || 0),
+      orderIds: (r.orderIds || []) as number[],
+    }))
+    .filter((g: any) =>
+      g.orderCount > 0 &&
+      g.totalQuantity > 0 &&
+      (g.pendingQuantity > 0 || g.inProductionQuantity > 0 || g.readyQuantity > 0)
+    );
 
   const materialSummary: Record<string, { productCount: number; totalPending: number }> = {};
   for (const g of groups) {
@@ -3878,8 +3897,14 @@ export async function getManufacturingSummaryDetail(
       WITH active_orders AS (
         SELECT po.id AS po_id, po.dispatch_status
         FROM production_orders po
-        WHERE po.status NOT IN ('Completed', 'Delivered', 'Cancelled')
-          AND (po.dispatch_status IS NULL OR po.dispatch_status NOT IN ('Load Vehicle', 'Delivered', 'Dispatch', 'Dispatched'))
+        WHERE LOWER(TRIM(COALESCE(po.status, ''))) NOT IN ('completed', 'delivered', 'cancelled', 'dispatched', 'in transport', 'closed')
+          AND (po.dispatch_status IS NULL OR LOWER(TRIM(po.dispatch_status)) NOT IN ('load vehicle', 'delivered', 'dispatch', 'dispatched', 'in transport', 'in transit', 'completed', 'closed'))
+          AND NOT EXISTS (
+            SELECT 1 FROM dispatch d
+            WHERE d.production_order_id = po.id
+              AND d.is_deleted = false
+              AND LOWER(TRIM(d.status)) IN ('dispatched', 'in transit', 'delivered')
+          )
       )
       SELECT DISTINCT
         po.id AS "orderId",
@@ -3927,8 +3952,14 @@ export async function getManufacturingSummaryDetail(
       WITH active_orders AS (
         SELECT po.id AS po_id, po.dispatch_status
         FROM production_orders po
-        WHERE po.status NOT IN ('Completed', 'Delivered', 'Cancelled')
-          AND (po.dispatch_status IS NULL OR po.dispatch_status NOT IN ('Load Vehicle', 'Delivered', 'Dispatch', 'Dispatched'))
+        WHERE LOWER(TRIM(COALESCE(po.status, ''))) NOT IN ('completed', 'delivered', 'cancelled', 'dispatched', 'in transport', 'closed')
+          AND (po.dispatch_status IS NULL OR LOWER(TRIM(po.dispatch_status)) NOT IN ('load vehicle', 'delivered', 'dispatch', 'dispatched', 'in transport', 'in transit', 'completed', 'closed'))
+          AND NOT EXISTS (
+            SELECT 1 FROM dispatch d
+            WHERE d.production_order_id = po.id
+              AND d.is_deleted = false
+              AND LOWER(TRIM(d.status)) IN ('dispatched', 'in transit', 'delivered')
+          )
       )
       SELECT DISTINCT
         po.id AS "orderId",
