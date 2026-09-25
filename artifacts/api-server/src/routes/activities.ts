@@ -97,17 +97,17 @@ function appendNotesHistory(
   const timeStr = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
 
   for (const ne of newEntries) {
-    if (!ne.text) continue;
+    if (!ne.text || !ne.text.trim()) continue;
     // Prevent adding identical consecutive entry
     const last = entries[entries.length - 1];
     if (last && last.text.trim() === ne.text.trim()) continue;
 
     entries.push({
-      text: ne.text,
-      date: ne.date || dateStr,
-      time: ne.time || timeStr,
-      userName: ne.userName || user.name,
-      userId: ne.userId || user.id,
+      text: ne.text.trim(),
+      date: dateStr,
+      time: timeStr,
+      userName: user.name,
+      userId: user.id,
     });
   }
 
@@ -307,188 +307,50 @@ router.post("/activities", async (req, res) => {
     const currentUser = await getUserFromRequest(req);
     if (!currentUser) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    let activity: typeof activitiesTable.$inferSelect | undefined;
-    let completedExistingFollowUp = false;
+    const now = new Date();
+    const dateStr = now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    const timeStr = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
 
-    // Upsert: ensure only one FollowUp per deal
-    if (parsed.data.type === "FollowUp" && parsed.data.dealId) {
-      const [existing] = await db.select()
-        .from(activitiesTable)
-        .where(
-          and(
-            eq(activitiesTable.dealId, parsed.data.dealId),
-            eq(activitiesTable.type, "FollowUp")
-          )
-        );
-      if (existing) {
-        // Build update data with notes history
-        const updateData: Record<string, any> = {
-          ...parsed.data,
-          updatedAt: new Date(),
-          updatedBy: currentUser.id,
-          isEdited: true,
-        };
-
-        // Append notes to history instead of replacing
-        if (parsed.data.notes !== undefined) {
-          updateData.notes = appendNotesHistory(existing.notes, parsed.data.notes, currentUser);
-        } else {
-          updateData.notes = existing.notes;
-        }
-
-        const [updated] = await db.update(activitiesTable)
-          .set(updateData)
-          .where(eq(activitiesTable.id, existing.id))
-          .returning();
-        activity = updated;
-
-        // Create audit entries for changes
-        if (parsed.data.followUpDate !== undefined && parsed.data.followUpDate !== existing.followUpDate) {
-          const oldDate = existing.followUpDate || "(none)";
-          const newDate = parsed.data.followUpDate || "(none)";
-          const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-          await createAuditEntry(
-            updated!.dealId,
-            updated!.contactId,
-            `${currentUser.name} changed Follow-up Date\n${oldDate} → ${newDate}\n\n${now}`,
-            currentUser.id
-          );
-        }
-
-        if (parsed.data.callStatus !== undefined && parsed.data.callStatus !== existing.callStatus) {
-          const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-          await createAuditEntry(
-            updated!.dealId,
-            updated!.contactId,
-            `${currentUser.name} changed Status\n${existing.callStatus || "Pending"} → ${parsed.data.callStatus}\n\n${now}`,
-            currentUser.id
-          );
-        }
-
-        if (parsed.data.followUpTime !== undefined && parsed.data.followUpTime !== existing.followUpTime) {
-          const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-          await createAuditEntry(
-            updated!.dealId,
-            updated!.contactId,
-            `${currentUser.name} changed Follow-up Time\n${existing.followUpTime || "(none)"} → ${parsed.data.followUpTime || "(none)"}\n\n${now}`,
-            currentUser.id
-          );
-        }
-
-        // Mark old notification as seen when follow-up is updated
-        await db
-          .update(notificationsTable)
-          .set({ notificationSeen: true, notificationSeenAt: new Date() })
-          .where(and(
-            eq(notificationsTable.relatedId, existing.id),
-            eq(notificationsTable.relatedType, "activity"),
-            eq(notificationsTable.type, "follow_up"),
-            eq(notificationsTable.notificationSeen, false),
-          ));
+    let notesValue: string | null = null;
+    if (parsed.data.notes && parsed.data.notes.trim()) {
+      if (isJsonNotes(parsed.data.notes)) {
+        notesValue = parsed.data.notes;
+      } else {
+        notesValue = JSON.stringify([{
+          text: parsed.data.notes.trim(),
+          date: dateStr,
+          time: timeStr,
+          userName: currentUser.name,
+          userId: currentUser.id,
+        }]);
       }
     }
 
-    // Same-day dedup: when an activity (Call/WhatsApp/Email/...) is logged for a
-    // deal on the same day as its scheduled Follow-up, they represent the SAME
-    // follow-up event. Merge into the existing row instead of inserting a second
-    // one, so a single scheduled+completed call is never counted twice by the
-    // dashboard cards or the activity list. The reverse direction is covered
-    // too (scheduling a Follow-up on the same day a Call was already logged).
-    if (!activity && parsed.data.dealId && parsed.data.followUpDate) {
-      const [sameDay] = await db.select()
-        .from(activitiesTable)
-        .where(and(
-          eq(activitiesTable.dealId, parsed.data.dealId),
-          eq(activitiesTable.followUpDate, parsed.data.followUpDate),
-          inArray(activitiesTable.type, ["Call", "FollowUp"]),
-        ))
-        .orderBy(desc(activitiesTable.createdAt))
-        .limit(1);
+    const [inserted] = await db.insert(activitiesTable).values({
+      dealId: parsed.data.dealId,
+      contactId: parsed.data.contactId ?? null,
+      type: parsed.data.type,
+      notes: notesValue,
+      followUpDate: parsed.data.followUpDate,
+      followUpTime: parsed.data.followUpTime ?? null,
+      followUpType: parsed.data.followUpType ?? null,
+      callStatus: parsed.data.callStatus ?? "Pending",
+      priority: parsed.data.priority ?? "Medium",
+      reminder: parsed.data.reminder ?? null,
+      assignedTo: parsed.data.assignedTo ?? null,
+      createdBy: currentUser.id,
+    }).returning();
+    const activity = inserted;
 
-      if (sameDay) {
-        const mergeData: Record<string, any> = {
-          contactId: parsed.data.contactId ?? sameDay.contactId ?? null,
-          notes: parsed.data.notes !== undefined
-            ? appendNotesHistory(sameDay.notes, parsed.data.notes, currentUser)
-            : sameDay.notes,
-          followUpDate: parsed.data.followUpDate,
-          followUpType: parsed.data.followUpType ?? sameDay.followUpType ?? null,
-          followUpTime: parsed.data.followUpTime ?? sameDay.followUpTime ?? null,
-          updatedAt: new Date(),
-          updatedBy: currentUser.id,
-          isEdited: true,
-        };
-
-        if (sameDay.type === "FollowUp" && parsed.data.type !== "FollowUp") {
-          // The scheduled follow-up was fulfilled by this activity log — complete it
-          // (preserve its type/scheduling fields rather than overwriting them).
-          mergeData.callStatus = "Completed";
-          completedExistingFollowUp = true;
-        } else {
-          mergeData.type = parsed.data.type;
-          mergeData.callStatus = parsed.data.callStatus ?? sameDay.callStatus ?? "Pending";
-        }
-
-        const [merged] = await db.update(activitiesTable)
-          .set(mergeData)
-          .where(eq(activitiesTable.id, sameDay.id))
-          .returning();
-        if (merged) {
-          activity = merged;
-
-          if (completedExistingFollowUp) {
-            // Mirror PATCH completion side-effects: dismiss any unread
-            // "Follow-up Scheduled" notification for the completed follow-up.
-            await db
-              .update(notificationsTable)
-              .set({ notificationSeen: true, notificationSeenAt: new Date(), readAt: new Date() })
-              .where(and(
-                eq(notificationsTable.relatedId, sameDay.id),
-                eq(notificationsTable.relatedType, "activity"),
-                isNull(notificationsTable.readAt),
-              ));
-          }
-        }
-      }
-    }
-
-    // If no upsert happened, insert new record
-    if (!activity) {
-      const notesValue = (parsed.data.type === "FollowUp" && parsed.data.notes)
-        ? JSON.stringify([{
-            text: parsed.data.notes,
-            date: new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
-            time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
-            userName: currentUser.name,
-            userId: currentUser.id,
-          }])
-        : parsed.data.notes ?? null;
-
-      const [inserted] = await db.insert(activitiesTable).values({
-        dealId: parsed.data.dealId,
-        contactId: parsed.data.contactId ?? null,
-        type: parsed.data.type,
-        notes: notesValue,
-        followUpDate: parsed.data.followUpDate,
-        followUpTime: parsed.data.followUpTime ?? null,
-        followUpType: parsed.data.followUpType ?? null,
-        callStatus: parsed.data.callStatus ?? "Pending",
-        priority: parsed.data.priority ?? "Medium",
-        reminder: parsed.data.reminder ?? null,
-        assignedTo: parsed.data.assignedTo ?? null,
-        createdBy: currentUser.id,
-      }).returning();
-      activity = inserted;
-      // Create audit entry for new FollowUp
-      if (parsed.data.type === "FollowUp") {
-        const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-        await createAuditEntry(
-          inserted!.dealId,
-          inserted!.contactId,
-          `${currentUser.name} created Follow-up\nDate: ${inserted!.followUpDate || "(not set)"}${inserted!.followUpTime ? ` Time: ${inserted!.followUpTime}` : ""}\n\n${now}`,
-          currentUser.id
-        );
-      }
+    // Create audit entry for new FollowUp
+    if (parsed.data.type === "FollowUp") {
+      const auditNow = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      await createAuditEntry(
+        inserted.dealId,
+        inserted.contactId,
+        `${currentUser.name} created Follow-up\nDate: ${inserted.followUpDate || "(not set)"}${inserted.followUpTime ? ` Time: ${inserted.followUpTime}` : ""}\n\n${auditNow}`,
+        currentUser.id
+      );
     }
 
     // Notify contact's sales owner about new follow-up
@@ -510,7 +372,7 @@ router.post("/activities", async (req, res) => {
         }
       }
       // Only create notification for Regular Follow up leads or if follow-up date is set
-      if (contactOwnerId && activity.followUpDate && !completedExistingFollowUp) {
+      if (contactOwnerId && activity.followUpDate && activity.callStatus === "Pending") {
         if (contactCategory === "Regular Follow up" || parsed.data.type !== "FollowUp") {
           const displayNotes = notesToDisplay(activity.notes).slice(0, 150);
           await createNotification({
@@ -569,10 +431,17 @@ router.patch("/activities/:id", async (req, res) => {
       isEdited: true,
     };
 
-    // Completion safety: moving to a terminal status must never wipe the
-    // scheduled follow-up date/time, even if a stale client payload sends
-    // null/empty values for them. Preserve the existing values instead.
-    if (parsed.data.callStatus !== undefined && parsed.data.callStatus !== "Pending") {
+    // When an activity is being marked Completed:
+    // Update followUpDate and followUpTime to the actual current date/time if not explicitly provided
+    if (parsed.data.callStatus === "Completed") {
+      const now = new Date();
+      if (!parsed.data.followUpDate) {
+        updateData.followUpDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      }
+      if (!parsed.data.followUpTime) {
+        updateData.followUpTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      }
+    } else if (parsed.data.callStatus !== undefined && parsed.data.callStatus !== "Pending") {
       if ((parsed.data.followUpDate === null || parsed.data.followUpDate === "") && existingActivity.followUpDate) {
         updateData.followUpDate = existingActivity.followUpDate;
       }
@@ -582,7 +451,7 @@ router.patch("/activities/:id", async (req, res) => {
     }
 
     // Append notes to history instead of replacing
-    if (parsed.data.notes !== undefined) {
+    if (parsed.data.notes !== undefined && parsed.data.notes !== null && parsed.data.notes.trim() !== "") {
       updateData.notes = appendNotesHistory(existingActivity.notes, parsed.data.notes, user);
     } else {
       updateData.notes = existingActivity.notes;
