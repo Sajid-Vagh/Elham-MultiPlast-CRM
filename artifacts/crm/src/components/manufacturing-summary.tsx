@@ -87,7 +87,11 @@ function mergeVariantGroups(groups: SummaryGroup[]): SummaryGroup[] {
       map.set(key, { ...g, orderIds: [...(g.orderIds || [])] });
     }
   }
-  return Array.from(map.values());
+  return Array.from(map.values()).filter(
+    g => g.orderCount > 0 &&
+         g.totalQuantity > 0 &&
+         ((g.pendingQuantity ?? 0) > 0 || (g.inProductionQuantity ?? 0) > 0 || (g.readyQuantity ?? 0) > 0)
+  );
 }
 
 type SummaryGroup = {
