@@ -1137,6 +1137,12 @@ router.post("/deals/:id/mark-won", async (req, res) => {
             notes: `Order received from ${user.name} (${user.role === "production_and_support" ? "Production & Support" : "Sales"}) — Production Unit: ${effectiveProductionUnit}`,
             createdBy: user.id,
           });
+
+          // Sync production order items immediately inside this transaction
+          if (latestPI?.id) {
+            const { syncProductionOrderItems } = await import("../lib/production-service");
+            await syncProductionOrderItems(po.id, latestPI.id, tx as unknown as typeof db);
+          }
         }
       }
 

@@ -279,36 +279,81 @@ async function notifySupportOfReadyForDispatch(params: {
 // PRODUCT LINE PRODUCTION STATUS FUNCTIONS
 // ═══════════════════════════════════════════════════
 
-export async function syncProductionOrderItems(productionOrderId: number, invoiceId: number | null): Promise<void> {
+const syncLocks = new Map<number, Promise<void>>();
+
+export async function syncProductionOrderItems(
+  productionOrderId: number,
+  invoiceId: number | null,
+  txDb?: typeof db
+): Promise<void> {
   if (!invoiceId) return;
 
-  const existing = await db.select({ id: productionOrderItemsTable.id })
-    .from(productionOrderItemsTable)
-    .where(eq(productionOrderItemsTable.productionOrderId, productionOrderId))
-    .limit(1);
-  if (existing.length > 0) return;
+  // In-flight mutex: if a sync is already running for this productionOrderId, wait for it
+  if (syncLocks.has(productionOrderId)) {
+    return await syncLocks.get(productionOrderId);
+  }
 
-  const invoiceItems = await db.select().from(proformaInvoiceItemsTable)
-    .where(eq(proformaInvoiceItemsTable.invoiceId, invoiceId));
+  const syncPromise = (async () => {
+    const d = txDb || db;
 
-  if (invoiceItems.length === 0) return;
+    const existingItems = await d.select()
+      .from(productionOrderItemsTable)
+      .where(eq(productionOrderItemsTable.productionOrderId, productionOrderId));
 
-  for (const item of invoiceItems) {
-    const product = await resolveProductForPiItem(item);
-    await db.insert(productionOrderItemsTable).values({
-      productionOrderId,
-      piItemId: item.id,
-      productName: item.productName,
-      materialType: product?.materialType || null,
-      machineType: product?.machineType || null,
-      bottleColour: item.bottleColour || product?.bottleColour || null,
-      bottleWeight: item.weight || product?.bottleWeight || null,
-      capColour: product?.capColour || null,
-      hsnCode: item.hsnCode || null,
-      orderedQuantity: String(item.quantity),
-      readyQuantity: "0",
-      productionStatus: "Pending",
-    });
+    // If items already exist, deduplicate any accidental duplicates and return
+    if (existingItems.length > 0) {
+      const seenPiItemIds = new Set<number>();
+      for (const item of existingItems) {
+        if (item.piItemId) {
+          if (seenPiItemIds.has(item.piItemId)) {
+            if (item.productionStatus === "Pending") {
+              await d.delete(productionOrderItemsTable).where(eq(productionOrderItemsTable.id, item.id));
+            }
+          } else {
+            seenPiItemIds.add(item.piItemId);
+          }
+        }
+      }
+      return;
+    }
+
+    const invoiceItems = await d.select().from(proformaInvoiceItemsTable)
+      .where(eq(proformaInvoiceItemsTable.invoiceId, invoiceId));
+
+    if (invoiceItems.length === 0) return;
+
+    // Pre-resolve all products in a single pass to eliminate event-loop yielding during inserts
+    const allProducts = await d.select().from(productsTable);
+    const prodMap = new Map(allProducts.map(p => [p.id, p]));
+    const prodByName = new Map(allProducts.map(p => [p.name?.toLowerCase()?.trim(), p]));
+
+    for (const item of invoiceItems) {
+      const product = item.productId
+        ? prodMap.get(item.productId)
+        : prodByName.get(item.productName?.toLowerCase()?.trim());
+
+      await d.insert(productionOrderItemsTable).values({
+        productionOrderId,
+        piItemId: item.id,
+        productName: item.productName,
+        materialType: product?.materialType || null,
+        machineType: product?.machineType || null,
+        bottleColour: item.bottleColour || product?.bottleColour || null,
+        bottleWeight: item.weight || product?.bottleWeight || null,
+        capColour: product?.capColour || null,
+        hsnCode: item.hsnCode || null,
+        orderedQuantity: String(item.quantity),
+        readyQuantity: "0",
+        productionStatus: "Pending",
+      });
+    }
+  })();
+
+  syncLocks.set(productionOrderId, syncPromise);
+  try {
+    await syncPromise;
+  } finally {
+    syncLocks.delete(productionOrderId);
   }
 }
 
@@ -1151,6 +1196,39 @@ export async function enrichProductionOrder(order: any, user?: { id?: number; ro
     await syncProductionOrderItems(order.id, order.proformaInvoiceId);
     productLineItems = await db.select().from(productionOrderItemsTable)
       .where(eq(productionOrderItemsTable.productionOrderId, order.id));
+  }
+
+  // Deduplicate product line items in memory & clean up duplicate rows in DB if present
+  if (productLineItems.length > 1) {
+    const uniqueItemsMap = new Map<number, any>();
+    const duplicateIdsToDelete: number[] = [];
+    const nonPiItems: any[] = [];
+
+    for (const item of productLineItems) {
+      if (item.piItemId) {
+        if (uniqueItemsMap.has(item.piItemId)) {
+          const existing = uniqueItemsMap.get(item.piItemId);
+          if (item.productionStatus !== "Pending" && existing.productionStatus === "Pending") {
+            uniqueItemsMap.set(item.piItemId, item);
+            if (existing.productionStatus === "Pending") duplicateIdsToDelete.push(existing.id);
+          } else if (item.productionStatus === "Pending") {
+            duplicateIdsToDelete.push(item.id);
+          }
+        } else {
+          uniqueItemsMap.set(item.piItemId, item);
+        }
+      } else {
+        nonPiItems.push(item);
+      }
+    }
+
+    if (duplicateIdsToDelete.length > 0) {
+      db.delete(productionOrderItemsTable)
+        .where(inArray(productionOrderItemsTable.id, duplicateIdsToDelete))
+        .catch(() => {});
+    }
+
+    productLineItems = [...uniqueItemsMap.values(), ...nonPiItems];
   }
 
   const enrichedProductLineItems = productLineItems.map((i: any) => ({
