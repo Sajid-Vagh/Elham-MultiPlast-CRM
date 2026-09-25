@@ -474,7 +474,10 @@ export default function LeadDetail() {
     for (const deal of visibleDeals) {
       const events: TimelineEvent[] = [];
 
-      if (leadDate && dateOk(leadDate)) {
+      // Only the first chronological deal includes the "Lead created" milestone.
+      // Subsequent deals for an existing lead must not duplicate the "Lead created" block.
+      const isFirstDeal = existing.length > 0 && deal.id === existing[0]?.id;
+      if (isFirstDeal && leadDate && dateOk(leadDate)) {
         const leadMeta: Array<{ label: string; value: string }> = [];
         if (contact?.mobile) leadMeta.push({ label: "Mobile", value: contact.mobile });
         if (contact?.salesOwner?.name) leadMeta.push({ label: "Owner", value: contact.salesOwner.name });
