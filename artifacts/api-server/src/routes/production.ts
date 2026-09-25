@@ -908,7 +908,13 @@ router.get("/production/sheet", async (req, res) => {
       .leftJoin(proformaInvoiceItemsTable, eq(proformaInvoiceItemsTable.invoiceId, proformaInvoicesTable.id))
       .leftJoin(contactsTable, eq(contactsTable.id, proformaInvoicesTable.contactId))
       .leftJoin(productsTable, sql`${productsTable.id} = COALESCE(${proformaInvoiceItemsTable.productId}, (SELECT p2.id FROM products p2 WHERE LOWER(p2.name) = LOWER(${proformaInvoiceItemsTable.productName}) LIMIT 1))`)
-      .leftJoin(productionOrderItemsTable, eq(productionOrderItemsTable.piItemId, proformaInvoiceItemsTable.id))
+      .leftJoin(
+        productionOrderItemsTable,
+        and(
+          eq(productionOrderItemsTable.piItemId, proformaInvoiceItemsTable.id),
+          eq(productionOrderItemsTable.productionOrderId, productionOrdersTable.id),
+        ),
+      )
       .where(inArray(productionOrdersTable.id, matchedOrderIds))
       .orderBy(productionOrdersTable.id, proformaInvoiceItemsTable.id);
 
@@ -939,8 +945,12 @@ router.get("/production/sheet", async (req, res) => {
       const companyName = first.companyName || first.customerName || "-";
       const customerCode = first.customerCode || "";
 
+      const seenItemIds = new Set<number>();
       for (const row of orderRows) {
         if (!row.itemId) continue;
+        const itemId = Number(row.itemId);
+        if (seenItemIds.has(itemId)) continue;
+        seenItemIds.add(itemId);
 
         dataRows.push([
           orderId,
