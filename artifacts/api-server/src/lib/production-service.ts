@@ -3754,6 +3754,7 @@ export async function getManufacturingSummary(
       SELECT po.id AS po_id, po.status AS po_status, po.dispatch_status, po.production_unit, po.created_by_role,
              po.proforma_invoice_id AS resolved_invoice_id
       FROM production_orders po
+      LEFT JOIN proforma_invoices pi_chk ON pi_chk.id = po.proforma_invoice_id
       WHERE LOWER(TRIM(COALESCE(po.status, ''))) NOT IN ('completed', 'delivered', 'cancelled', 'dispatched', 'in transport', 'closed')
         AND (po.dispatch_status IS NULL OR LOWER(TRIM(po.dispatch_status)) NOT IN ('load vehicle', 'delivered', 'dispatch', 'dispatched', 'in transport', 'in transit', 'completed', 'closed', 'pending dispatch'))
         AND NOT EXISTS (
@@ -3762,6 +3763,7 @@ export async function getManufacturingSummary(
             AND d.is_deleted = false
             AND LOWER(TRIM(d.status)) IN ('dispatched', 'in transit', 'delivered')
         )
+        AND (po.proforma_invoice_id IS NULL OR pi_chk.is_deleted = false OR pi_chk.is_deleted IS NULL)
         ${unitCondition}
         ${originCondition}
         ${dateFromCondition}
