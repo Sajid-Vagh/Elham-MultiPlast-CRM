@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, activitiesTable, proformaInvoicesTable, proformaInvoiceItemsTable, DEAL_STAGES, STAGE_PROBS } from "@workspace/db";
-import { eq, and, gte, lte, sql, inArray, or, isNull, type SQL } from "drizzle-orm";
+import { db, dealsTable, contactsTable, usersTable, dealProductsTable, productsTable, activitiesTable, proformaInvoicesTable, proformaInvoiceItemsTable, ordersTable, orderItemsTable, DEAL_STAGES, STAGE_PROBS } from "@workspace/db";
+import { eq, and, gte, lte, sql, inArray, or, isNull, desc, type SQL } from "drizzle-orm";
 import { GetPipelineReportQueryParams, GetReportByOwnerQueryParams, GetReportByProductQueryParams, GetReportByCityQueryParams, GetReportByStateQueryParams } from "@workspace/api-zod";
 import { getUserFromRequest } from "./auth";
 import { PENDING_UNIT_ASSIGNMENT } from "../lib/unit-constants";
@@ -846,6 +846,254 @@ router.get("/reports/by-state", async (req, res) => {
     res.json({ dealsByState: Array.from(stateMap.entries()).map(([state, s]) => ({ state, ...s })) });
   } catch (err) {
     req.log.error({ err }, "By-state report error");
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
+
+// ── 7. By Time (Time Wise Order Report) ──
+router.get("/reports/by-time", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const { unit, salesOwnerId, datePreset } = req.query as Record<string, string | undefined>;
+    const effectiveSalesOwnerId = (user.role !== "admin" && !user.canViewAllReports)
+      ? user.id
+      : (salesOwnerId && salesOwnerId !== "all" && salesOwnerId !== "All" ? Number(salesOwnerId) : undefined);
+
+    const conditions: SQL[] = [eq(ordersTable.isDeleted, false)];
+    if (effectiveSalesOwnerId) {
+      conditions.push(eq(ordersTable.salesOwnerId, effectiveSalesOwnerId));
+    }
+    if (unit && unit !== "All" && unit !== "all") {
+      conditions.push(eq(ordersTable.productionUnit, unit));
+    }
+
+    const now = new Date();
+    if (datePreset && datePreset !== "custom" && datePreset !== "all") {
+      let presetStart: Date | null = null;
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      switch (datePreset) {
+        case "today":
+          presetStart = todayStart;
+          break;
+        case "yesterday": {
+          const y = new Date(todayStart);
+          y.setDate(y.getDate() - 1);
+          presetStart = y;
+          conditions.push(gte(ordersTable.createdAt, y));
+          conditions.push(lte(ordersTable.createdAt, todayStart));
+          break;
+        }
+        case "this-week": {
+          const day = now.getDay();
+          const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+          presetStart = new Date(now.getFullYear(), now.getMonth(), diff, 0, 0, 0, 0);
+          break;
+        }
+        case "last-week": {
+          const day = now.getDay();
+          const diff = now.getDate() - day - 6 + (day === 0 ? -6 : 1);
+          const start = new Date(now.getFullYear(), now.getMonth(), diff, 0, 0, 0, 0);
+          const end = new Date(start);
+          end.setDate(end.getDate() + 7);
+          conditions.push(gte(ordersTable.createdAt, start));
+          conditions.push(lte(ordersTable.createdAt, end));
+          break;
+        }
+        case "this-month": {
+          presetStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+          break;
+        }
+        case "last-month": {
+          const start = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+          const end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+          conditions.push(gte(ordersTable.createdAt, start));
+          conditions.push(lte(ordersTable.createdAt, end));
+          break;
+        }
+        case "this-year": {
+          presetStart = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+          break;
+        }
+        case "last-year": {
+          const start = new Date(now.getFullYear() - 1, 0, 1, 0, 0, 0, 0);
+          const end = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59, 999);
+          conditions.push(gte(ordersTable.createdAt, start));
+          conditions.push(lte(ordersTable.createdAt, end));
+          break;
+        }
+      }
+      if (presetStart && datePreset !== "yesterday" && datePreset !== "last-week" && datePreset !== "last-month" && datePreset !== "last-year") {
+        conditions.push(gte(ordersTable.createdAt, presetStart));
+      }
+    } else {
+      const { startDate, endDate } = getDateRange(req);
+      if (startDate) conditions.push(gte(ordersTable.createdAt, startDate));
+      if (endDate) conditions.push(lte(ordersTable.createdAt, endDate));
+    }
+
+    const orders = await db
+      .select({
+        id: ordersTable.id,
+        orderNumber: ordersTable.orderNumber,
+        formattedOrderId: ordersTable.formattedOrderId,
+        customerName: ordersTable.customerName,
+        companyName: ordersTable.companyName,
+        city: ordersTable.city,
+        state: ordersTable.state,
+        status: ordersTable.status,
+        productionUnit: ordersTable.productionUnit,
+        salesOwnerId: ordersTable.salesOwnerId,
+        grandTotal: ordersTable.grandTotal,
+        createdAt: ordersTable.createdAt,
+        salesOwnerName: usersTable.name,
+      })
+      .from(ordersTable)
+      .leftJoin(usersTable, eq(usersTable.id, ordersTable.salesOwnerId))
+      .where(and(...conditions))
+      .orderBy(desc(ordersTable.createdAt));
+
+    const orderIds = orders.map(o => o.id);
+    const itemsByOrder = new Map<number, { count: number; totalQty: number }>();
+    if (orderIds.length > 0) {
+      const items = await db
+        .select({
+          orderId: orderItemsTable.orderId,
+          quantity: orderItemsTable.quantity,
+        })
+        .from(orderItemsTable)
+        .where(inArray(orderItemsTable.orderId, orderIds));
+
+      for (const item of items) {
+        const existing = itemsByOrder.get(item.orderId) || { count: 0, totalQty: 0 };
+        existing.count++;
+        existing.totalQty += Number(item.quantity || 0);
+        itemsByOrder.set(item.orderId, existing);
+      }
+    }
+
+    const DAYS_OF_WEEK = [
+      { key: "Monday", shortKey: "Mon", dayIndex: 1 },
+      { key: "Tuesday", shortKey: "Tue", dayIndex: 2 },
+      { key: "Wednesday", shortKey: "Wed", dayIndex: 3 },
+      { key: "Thursday", shortKey: "Thu", dayIndex: 4 },
+      { key: "Friday", shortKey: "Fri", dayIndex: 5 },
+      { key: "Saturday", shortKey: "Sat", dayIndex: 6 },
+      { key: "Sunday", shortKey: "Sun", dayIndex: 7 },
+    ];
+
+    const MONTHS = [
+      { key: "Jan", label: "January", monthIndex: 0 },
+      { key: "Feb", label: "February", monthIndex: 1 },
+      { key: "Mar", label: "March", monthIndex: 2 },
+      { key: "Apr", label: "April", monthIndex: 3 },
+      { key: "May", label: "May", monthIndex: 4 },
+      { key: "Jun", label: "June", monthIndex: 5 },
+      { key: "Jul", label: "July", monthIndex: 6 },
+      { key: "Aug", label: "August", monthIndex: 7 },
+      { key: "Sep", label: "September", monthIndex: 8 },
+      { key: "Oct", label: "October", monthIndex: 9 },
+      { key: "Nov", label: "November", monthIndex: 10 },
+      { key: "Dec", label: "December", monthIndex: 11 },
+    ];
+
+    const weeklyBuckets = DAYS_OF_WEEK.map(d => ({
+      ...d,
+      orderCount: 0,
+      totalValue: 0,
+      totalQuantity: 0,
+    }));
+
+    const monthlyBuckets = Array.from({ length: 31 }, (_, i) => {
+      const dayOfMonth = i + 1;
+      const s = ["th", "st", "nd", "rd"];
+      const v = dayOfMonth % 100;
+      const suffix = s[(v - 20) % 10] || s[v] || s[0];
+      return {
+        key: String(dayOfMonth),
+        label: `${dayOfMonth}${suffix}`,
+        dayOfMonth,
+        orderCount: 0,
+        totalValue: 0,
+        totalQuantity: 0,
+      };
+    });
+
+    const yearlyBuckets = MONTHS.map(m => ({
+      ...m,
+      orderCount: 0,
+      totalValue: 0,
+      totalQuantity: 0,
+    }));
+
+    const enrichedOrders = orders.map(o => {
+      const itemInfo = itemsByOrder.get(o.id) || { count: 0, totalQty: 0 };
+      const d = new Date(o.createdAt);
+      const dayOfWeek = d.getDay() === 0 ? 7 : d.getDay();
+      const dayOfMonth = d.getDate();
+      const monthIndex = d.getMonth();
+      const grandTotal = Number(o.grandTotal || 0);
+
+      const wBucket = weeklyBuckets.find(b => b.dayIndex === dayOfWeek);
+      if (wBucket) {
+        wBucket.orderCount++;
+        wBucket.totalValue += grandTotal;
+        wBucket.totalQuantity += itemInfo.totalQty;
+      }
+
+      const mBucket = monthlyBuckets.find(b => b.dayOfMonth === dayOfMonth);
+      if (mBucket) {
+        mBucket.orderCount++;
+        mBucket.totalValue += grandTotal;
+        mBucket.totalQuantity += itemInfo.totalQty;
+      }
+
+      const yBucket = yearlyBuckets.find(b => b.monthIndex === monthIndex);
+      if (yBucket) {
+        yBucket.orderCount++;
+        yBucket.totalValue += grandTotal;
+        yBucket.totalQuantity += itemInfo.totalQty;
+      }
+
+      const dayName = DAYS_OF_WEEK.find(b => b.dayIndex === dayOfWeek)?.key || "";
+      const monthName = MONTHS.find(b => b.monthIndex === monthIndex)?.key || "";
+
+      return {
+        id: o.id,
+        orderNumber: o.formattedOrderId || o.orderNumber,
+        customerName: o.customerName,
+        companyName: o.companyName || "-",
+        city: o.city || "-",
+        state: o.state || "-",
+        status: o.status,
+        productionUnit: o.productionUnit || "-",
+        salesOwnerName: o.salesOwnerName || "-",
+        grandTotal,
+        itemsCount: itemInfo.count,
+        totalQuantity: itemInfo.totalQty,
+        createdAt: o.createdAt,
+        dayOfWeek,
+        dayName,
+        dayOfMonth,
+        monthIndex,
+        monthName,
+      };
+    });
+
+    res.json({
+      weekly: weeklyBuckets,
+      monthly: monthlyBuckets,
+      yearly: yearlyBuckets,
+      orders: enrichedOrders,
+      summary: {
+        totalOrders: enrichedOrders.length,
+        totalValue: enrichedOrders.reduce((s, o) => s + o.grandTotal, 0),
+        totalQuantity: enrichedOrders.reduce((s, o) => s + o.totalQuantity, 0),
+      },
+    });
+  } catch (err) {
+    req.log.error({ err }, "By-time report error");
     res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });

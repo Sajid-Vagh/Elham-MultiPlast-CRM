@@ -3755,7 +3755,7 @@ export async function getManufacturingSummary(
              po.proforma_invoice_id AS resolved_invoice_id
       FROM production_orders po
       WHERE LOWER(TRIM(COALESCE(po.status, ''))) NOT IN ('completed', 'delivered', 'cancelled', 'dispatched', 'in transport', 'closed')
-        AND (po.dispatch_status IS NULL OR LOWER(TRIM(po.dispatch_status)) NOT IN ('load vehicle', 'delivered', 'dispatch', 'dispatched', 'in transport', 'in transit', 'completed', 'closed'))
+        AND (po.dispatch_status IS NULL OR LOWER(TRIM(po.dispatch_status)) NOT IN ('load vehicle', 'delivered', 'dispatch', 'dispatched', 'in transport', 'in transit', 'completed', 'closed', 'pending dispatch'))
         AND NOT EXISTS (
           SELECT 1 FROM dispatch d
           WHERE d.production_order_id = po.id
@@ -3820,7 +3820,7 @@ export async function getManufacturingSummary(
       MAX(material_type) AS "materialType",
       SUM(CASE WHEN (production_status IN (${pendingStatusIn}) AND po_status NOT IN ('Ready To Dispatch', 'Ready For Dispatch') AND production_status NOT IN ('Ready', 'Ready To Dispatch', 'Ready For Dispatch')) THEN GREATEST(0, (ordered_quantity - ready_quantity))::numeric ELSE 0 END) AS "pendingQuantity",
       SUM(CASE WHEN (production_status IN (${inProdStatusIn}) AND po_status NOT IN ('Ready To Dispatch', 'Ready For Dispatch') AND production_status NOT IN ('Ready', 'Ready To Dispatch', 'Ready For Dispatch')) THEN GREATEST(0, (ordered_quantity - ready_quantity))::numeric ELSE 0 END) AS "inProductionQuantity",
-      SUM(CASE WHEN (production_status IN ('Ready', 'Ready To Dispatch', 'Ready For Dispatch') OR po_status IN ('Ready To Dispatch', 'Ready For Dispatch') OR (ready_quantity >= ordered_quantity AND ordered_quantity > 0)) THEN ordered_quantity::numeric ELSE ready_quantity::numeric END) AS "readyQuantity",
+      SUM(CASE WHEN (production_status IN ('Ready', 'Ready To Dispatch', 'Ready For Dispatch') OR po_status IN ('Ready To Dispatch', 'Ready For Dispatch') OR (ready_quantity >= ordered_quantity AND ordered_quantity > 0)) THEN ordered_quantity::numeric ELSE 0 END) AS "readyQuantity",
       SUM(ordered_quantity::numeric) AS "totalQuantity",
       COUNT(DISTINCT po_id) AS "orderCount",
       array_agg(DISTINCT po_id) AS "orderIds"
@@ -3831,7 +3831,7 @@ export async function getManufacturingSummary(
        AND (
          SUM(CASE WHEN (production_status IN (${pendingStatusIn}) AND po_status NOT IN ('Ready To Dispatch', 'Ready For Dispatch') AND production_status NOT IN ('Ready', 'Ready To Dispatch', 'Ready For Dispatch')) THEN GREATEST(0, (ordered_quantity - ready_quantity))::numeric ELSE 0 END) > 0
          OR SUM(CASE WHEN (production_status IN (${inProdStatusIn}) AND po_status NOT IN ('Ready To Dispatch', 'Ready For Dispatch') AND production_status NOT IN ('Ready', 'Ready To Dispatch', 'Ready For Dispatch')) THEN GREATEST(0, (ordered_quantity - ready_quantity))::numeric ELSE 0 END) > 0
-         OR SUM(CASE WHEN (production_status IN ('Ready', 'Ready To Dispatch', 'Ready For Dispatch') OR po_status IN ('Ready To Dispatch', 'Ready For Dispatch') OR (ready_quantity >= ordered_quantity AND ordered_quantity > 0)) THEN ordered_quantity::numeric ELSE ready_quantity::numeric END) > 0
+         OR SUM(CASE WHEN (production_status IN ('Ready', 'Ready To Dispatch', 'Ready For Dispatch') OR po_status IN ('Ready To Dispatch', 'Ready For Dispatch') OR (ready_quantity >= ordered_quantity AND ordered_quantity > 0)) THEN ordered_quantity::numeric ELSE 0 END) > 0
        )
     ORDER BY product_family, capacity_sort, colour_norm, weight_norm
   `);
@@ -3898,7 +3898,7 @@ export async function getManufacturingSummaryDetail(
         SELECT po.id AS po_id, po.dispatch_status
         FROM production_orders po
         WHERE LOWER(TRIM(COALESCE(po.status, ''))) NOT IN ('completed', 'delivered', 'cancelled', 'dispatched', 'in transport', 'closed')
-          AND (po.dispatch_status IS NULL OR LOWER(TRIM(po.dispatch_status)) NOT IN ('load vehicle', 'delivered', 'dispatch', 'dispatched', 'in transport', 'in transit', 'completed', 'closed'))
+          AND (po.dispatch_status IS NULL OR LOWER(TRIM(po.dispatch_status)) NOT IN ('load vehicle', 'delivered', 'dispatch', 'dispatched', 'in transport', 'in transit', 'completed', 'closed', 'pending dispatch'))
           AND NOT EXISTS (
             SELECT 1 FROM dispatch d
             WHERE d.production_order_id = po.id
@@ -4027,6 +4027,7 @@ export async function getManufacturingSummaryDetail(
       createdByRole: r.createdByRole,
       isDelayed: r.isDelayed,
       createdAt: r.createdAt,
+      orderDate: r.createdAt,
       expectedDispatchDate: r.expectedDispatchDate,
       priority: r.priority,
     };

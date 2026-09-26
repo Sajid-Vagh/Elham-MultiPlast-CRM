@@ -151,13 +151,27 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
     setSaving(true);
 
     try {
+      const now = new Date();
+      const currentDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const currentTimeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
       // Step 1: Complete current activity if it's pending
       if (isPendingActivity && activity) {
         await updateActivity.mutateAsync({
           id: activity.id,
           data: {
             callStatus: "Completed",
-            notes: discussionNotes || activity.notes || null,
+            notes: discussionNotes.trim() ? discussionNotes.trim() : null,
+            followUpDate: currentDateStr,
+            followUpTime: currentTimeStr,
+            type: actType || activity.type,
+          } as any,
+        });
+      } else if (activity && !isPendingActivity && discussionNotes.trim()) {
+        await updateActivity.mutateAsync({
+          id: activity.id,
+          data: {
+            notes: discussionNotes.trim(),
           } as any,
         });
       }
@@ -171,8 +185,9 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
             dealId: Number(dealId),
             contactId,
             type: actType as any,
-            notes: discussionNotes || null,
-            followUpDate: today,
+            notes: discussionNotes.trim() ? discussionNotes.trim() : null,
+            followUpDate: currentDateStr,
+            followUpTime: currentTimeStr,
             callStatus: "Completed",
           },
         });
@@ -185,7 +200,7 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
             dealId: Number(dealId),
             contactId,
             type: "FollowUp",
-            notes: nextNotes || null,
+            notes: nextNotes.trim() ? nextNotes.trim() : null,
             followUpDate: nextDate,
             followUpTime: nextTime || null,
             followUpType: nextType,

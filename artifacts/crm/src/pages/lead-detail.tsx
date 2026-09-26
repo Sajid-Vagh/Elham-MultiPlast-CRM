@@ -474,7 +474,10 @@ export default function LeadDetail() {
     for (const deal of visibleDeals) {
       const events: TimelineEvent[] = [];
 
-      if (leadDate && dateOk(leadDate)) {
+      // Only the first chronological deal includes the "Lead created" milestone.
+      // Subsequent deals for an existing lead must not duplicate the "Lead created" block.
+      const isFirstDeal = existing.length > 0 && deal.id === existing[0]?.id;
+      if (isFirstDeal && leadDate && dateOk(leadDate)) {
         const leadMeta: Array<{ label: string; value: string }> = [];
         if (contact?.mobile) leadMeta.push({ label: "Mobile", value: contact.mobile });
         if (contact?.salesOwner?.name) leadMeta.push({ label: "Owner", value: contact.salesOwner.name });
@@ -543,13 +546,20 @@ export default function LeadDetail() {
           sortTime = computeSortTimestamp(act.followUpDate, act.followUpTime);
           eventDate = act.followUpDate;
         } else {
-          // Logged/completed activity: anchored to its creation/log timestamp
-          const primaryDate = act.createdAt || act.followUpDate || "";
-          dayKey = getDayKey(primaryDate);
-          dayFormatted = formatDay(primaryDate);
-          timeStr = act.createdAt ? formatTime(act.createdAt) : (formatTimeString(act.followUpTime) || "");
-          sortTime = act.createdAt ? new Date(act.createdAt).getTime() : computeSortTimestamp(act.followUpDate, act.followUpTime);
-          eventDate = primaryDate;
+          // Logged/completed activity: anchored to its actual completion/log timestamp!
+          // Use updatedAt if completed, or latest note timestamp, or followUpDate/createdAt
+          const completionDate = (callStatus === "Completed" && act.updatedAt)
+            ? act.updatedAt
+            : (act.followUpDate && !act.createdAt ? act.followUpDate : (act.createdAt || act.followUpDate || ""));
+          dayKey = getDayKey(completionDate);
+          dayFormatted = formatDay(completionDate);
+          timeStr = act.updatedAt
+            ? formatTime(act.updatedAt)
+            : (act.createdAt ? formatTime(act.createdAt) : (formatTimeString(act.followUpTime) || ""));
+          sortTime = act.updatedAt
+            ? new Date(act.updatedAt).getTime()
+            : (act.createdAt ? new Date(act.createdAt).getTime() : computeSortTimestamp(act.followUpDate, act.followUpTime));
+          eventDate = typeof completionDate === "string" ? completionDate : new Date(completionDate).toISOString();
         }
 
         return {
@@ -1349,9 +1359,43 @@ export default function LeadDetail() {
 
                                             <div className="flex items-center gap-1.5 shrink-0">
                                               {ev.stageBadge && (
-                                                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${ev.stageBadge.className || "bg-muted text-muted-foreground border-border"}`}>
+                                                <span
+                                                  onClick={(e) => {
+                                                    if (ev.activityId && ev.stageBadge?.label === "Pending") {
+                                                      e.stopPropagation();
+                                                      const act = (activities || []).find((a) => a.id === ev.activityId);
+                                                      if (act) {
+                                                        setCompletingActivity(act);
+                                                        setActDealId(act.dealId ? String(act.dealId) : (deal?.id ? String(deal.id) : ""));
+                                                        setActivityModalOpen(true);
+                                                      }
+                                                    }
+                                                  }}
+                                                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                                                    ev.stageBadge.label === "Pending" ? "cursor-pointer hover:ring-2 hover:ring-amber-400 " : ""
+                                                  }${ev.stageBadge.className || "bg-muted text-muted-foreground border-border"}`}
+                                                  title={ev.stageBadge.label === "Pending" ? "Click to log activity outcome" : undefined}
+                                                >
                                                   {ev.stageBadge.label}
                                                 </span>
+                                              )}
+                                              {ev.stageBadge?.label === "Pending" && ev.activityId && (
+                                                <Button
+                                                  size="sm"
+                                                  variant="outline"
+                                                  className="h-6 text-[11px] px-2 py-0 border-amber-300 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950/60"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const act = (activities || []).find((a) => a.id === ev.activityId);
+                                                    if (act) {
+                                                      setCompletingActivity(act);
+                                                      setActDealId(act.dealId ? String(act.dealId) : (deal?.id ? String(deal.id) : ""));
+                                                      setActivityModalOpen(true);
+                                                    }
+                                                  }}
+                                                >
+                                                  Log Activity
+                                                </Button>
                                               )}
                                               {ev.activityId && (
                                                 <button
@@ -1389,7 +1433,9 @@ export default function LeadDetail() {
                                           {ev.notesList && ev.notesList.length > 0 && (
                                             <div className="mt-2.5 space-y-1.5">
                                               {ev.notesList.map((n, ni) => {
-                                                const isViolet = ev.noteVariant === "violet";
+                                                const isPendingAct = ev.stageBadge?.label === "Pending";
+                                                const isOriginalFollowUp = !isPendingAct && ev.notesList!.length > 1 && ni === 0;
+                                                const isViolet = !isPendingAct && !isOriginalFollowUp;
                                                 return (
                                                   <div
                                                     key={ni}
@@ -1414,7 +1460,11 @@ export default function LeadDetail() {
                                                               : "text-amber-600 dark:text-amber-400"
                                                           }`}
                                                         />
-                                                        <span>{n.userName ? `Note by ${n.userName}` : `Note ${ni + 1}`}</span>
+                                                        <span>
+                                                          {isViolet
+                                                            ? (n.userName ? `Discussion Note by ${n.userName}` : "Discussion Note")
+                                                            : (n.userName ? `Next Follow-up Note by ${n.userName}` : "Follow-up Note")}
+                                                        </span>
                                                       </div>
                                                       {n.date && <span className="text-muted-foreground font-normal text-[10px]">{n.date} {n.time || ""}</span>}
                                                     </div>
