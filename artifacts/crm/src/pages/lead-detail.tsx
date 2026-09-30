@@ -1098,7 +1098,7 @@ export default function LeadDetail() {
                 <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => setCommentDialogOpen(true)}>
                   <MessageSquare className="h-3.5 w-3.5 shrink-0" /> Edit Comments
                 </Button>
-                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => { setActDealId(deal?.id?.toString() || ""); setActivityModalOpen(true); }}>
+                <Button size="sm" variant="outline" className="w-full py-1.5 text-xs justify-center items-center gap-1.5 px-3" onClick={() => { setActDealId(deal?.id?.toString() || ""); setCompletingActivity(null); setActivityModalOpen(true); }}>
                   <Calendar className="h-3.5 w-3.5 shrink-0" /> Schedule Follow-up
                 </Button>
                 {contact.category !== "My Client" && !contact.isMyClient && (
@@ -1162,7 +1162,7 @@ export default function LeadDetail() {
                   <ListOrdered className="h-3.5 w-3.5" /> Activity Timeline
                   <Badge variant="outline" className="text-[10px] font-normal ml-1">{dealTimeline.reduce((n, g) => n + g.events.length, 0)}</Badge>
                 </CardTitle>
-                <Button size="sm" variant="outline" onClick={() => { setActDealId(deal?.id?.toString() || ""); setActivityModalOpen(true); }}>
+                <Button size="sm" variant="outline" onClick={() => { setActDealId(deal?.id?.toString() || ""); setCompletingActivity(null); setActivityModalOpen(true); }}>
                   <Plus className="h-4 w-4 mr-1" /> Activity
                 </Button>
               </div>
@@ -1208,10 +1208,56 @@ export default function LeadDetail() {
                       }
                     };
 
+                    const dealActs = (activities || [])
+                      .filter((a) => Number(a.dealId) === Number(group.deal?.id))
+                      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() || b.id - a.id);
+                    const latestDealActivity = dealActs[0] || null;
+                    const scheduledActivity =
+                      (latestDealActivity && (latestDealActivity.callStatus || "Pending") === "Pending")
+                        ? latestDealActivity
+                        : (dealActs.find((a) => (a.callStatus || "Pending") === "Pending") || null);
+                    const isScheduled = !!scheduledActivity;
+
                     return (
                       <AccordionItem key={accordionVal} value={accordionVal} className="border border-border/80 rounded-xl overflow-hidden relative group/deal bg-card shadow-xs">
                         {/* Actions on this deal card */}
                         <div className="absolute right-3 top-2.5 z-10 flex items-center gap-1.5">
+                          {group.deal && (
+                            isScheduled ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="h-6 text-[11px] px-2 py-0 bg-emerald-600 hover:bg-emerald-700 text-white font-medium flex items-center gap-1 shadow-xs border-0"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setActDealId(String(group.deal!.id));
+                                  setCompletingActivity(scheduledActivity);
+                                  setActivityModalOpen(true);
+                                }}
+                                title="Log outcome of scheduled call"
+                              >
+                                <Phone className="h-3 w-3" /> Call
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-6 text-[11px] px-2 py-0 border-border/80 hover:bg-muted/80 text-foreground font-medium flex items-center gap-1 shadow-2xs"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setActDealId(String(group.deal!.id));
+                                  setCompletingActivity(null);
+                                  setActivityModalOpen(true);
+                                }}
+                                title="Add Activity for this deal"
+                              >
+                                <Plus className="h-3 w-3" /> Activity
+                              </Button>
+                            )
+                          )}
                           {group.deal && group.deal.stage !== "Won" && group.deal.stage !== "Lost" && (
                             <button
                               type="button"
@@ -1242,7 +1288,7 @@ export default function LeadDetail() {
                             {group.deal?.isHiddenFromTimeline ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                           </button>
                         </div>
-                        <AccordionTrigger className="px-4 py-3 pr-20 hover:no-underline hover:bg-muted/40 [&[data-state=open]]:bg-muted/20 relative z-10">
+                        <AccordionTrigger className="px-4 py-3 pr-36 sm:pr-40 hover:no-underline hover:bg-muted/40 [&[data-state=open]]:bg-muted/20 relative z-10">
                           <div className="flex-1 flex items-center justify-between mr-2">
                             <div className="flex items-center gap-3 min-w-0">
                               <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 text-primary">
@@ -1602,50 +1648,96 @@ export default function LeadDetail() {
             </Dialog>
             <div className="space-y-2">
               {deals?.length === 0 && <p className="text-sm text-muted-foreground text-center py-4 border rounded-lg bg-card">No deals yet.</p>}
-              {deals?.map(d => (
-                <div key={d.id} className="flex items-center justify-between p-3 border rounded-lg bg-card hover:bg-accent/40 transition-colors">
-                  <Link href={`/leads/${contactId}`} className="min-w-0 flex-1">
-                    <div>
-                      <p className="font-medium text-sm hover:underline">{d.title || `Deal #${d.id}`}</p>
-                      <p className="text-xs text-muted-foreground">{new Date(d.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
-                    </div>
-                  </Link>
-                  <div className="flex items-center gap-2 shrink-0 ml-2">
-                    {d.totalValue && <span className="text-sm font-medium">{formatCurrency(d.totalValue)}</span>}
-                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${STAGE_BADGE_COLORS[d.stage] || "bg-gray-100"}`}>{d.stage}</span>
-                    <button
-                      type="button"
-                      className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                      title="Edit deal title"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setEditTitleDealId(d.id);
-                        setEditTitleValue(d.title || "");
-                        setEditTitleOpen(true);
-                      }}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    {d.stage !== "Won" && d.stage !== "Lost" && (
+              {deals?.map(d => {
+                const dealActs = (activities || [])
+                  .filter((a) => Number(a.dealId) === Number(d.id))
+                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() || b.id - a.id);
+                const latestDealAct = dealActs[0] || null;
+                const schedAct =
+                  (latestDealAct && (latestDealAct.callStatus || "Pending") === "Pending")
+                    ? latestDealAct
+                    : (dealActs.find((a) => (a.callStatus || "Pending") === "Pending") || null);
+                const isDealScheduled = !!schedAct;
+
+                return (
+                  <div key={d.id} className="flex items-center justify-between p-3 border rounded-lg bg-card hover:bg-accent/40 transition-colors">
+                    <Link href={`/leads/${contactId}`} className="min-w-0 flex-1">
+                      <div>
+                        <p className="font-medium text-sm hover:underline">{d.title || `Deal #${d.id}`}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(d.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
+                      </div>
+                    </Link>
+                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                      {d.totalValue && <span className="text-sm font-medium">{formatCurrency(d.totalValue)}</span>}
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${STAGE_BADGE_COLORS[d.stage] || "bg-gray-100"}`}>{d.stage}</span>
+                      {isDealScheduled ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-6 text-[11px] px-2 py-0 bg-emerald-600 hover:bg-emerald-700 text-white font-medium flex items-center gap-1 shadow-xs border-0"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setActDealId(String(d.id));
+                            setCompletingActivity(schedAct);
+                            setActivityModalOpen(true);
+                          }}
+                          title="Log outcome of scheduled call"
+                        >
+                          <Phone className="h-3 w-3" /> Call
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-6 text-[11px] px-2 py-0 border-border/80 hover:bg-muted/80 text-foreground font-medium flex items-center gap-1 shadow-2xs"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setActDealId(String(d.id));
+                            setCompletingActivity(null);
+                            setActivityModalOpen(true);
+                          }}
+                          title="Add Activity for this deal"
+                        >
+                          <Plus className="h-3 w-3" /> Activity
+                        </Button>
+                      )}
                       <button
                         type="button"
-                        className="p-1 rounded hover:bg-red-50 text-red-500 hover:text-red-700 transition-colors"
-                        title="Delete deal"
+                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                        title="Edit deal title"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          setDeleteDealId(d.id);
-                          setDeleteDealTitle(d.title || `Deal #${d.id}`);
-                          setDeleteDealOpen(true);
+                          setEditTitleDealId(d.id);
+                          setEditTitleValue(d.title || "");
+                          setEditTitleOpen(true);
                         }}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Pencil className="h-3.5 w-3.5" />
                       </button>
-                    )}
+                      {d.stage !== "Won" && d.stage !== "Lost" && (
+                        <button
+                          type="button"
+                          className="p-1 rounded hover:bg-red-50 text-red-500 hover:text-red-700 transition-colors"
+                          title="Delete deal"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setDeleteDealId(d.id);
+                            setDeleteDealTitle(d.title || `Deal #${d.id}`);
+                            setDeleteDealOpen(true);
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -1823,9 +1915,15 @@ export default function LeadDetail() {
       {/* Activity Modal */}
       <ActivityDetailDrawer
         open={activityModalOpen}
-        onOpenChange={(open) => { if (!open) { setActivityModalOpen(false); setCompletingActivity(null); } }}
+        onOpenChange={(open) => {
+          if (!open) {
+            setActivityModalOpen(false);
+            setCompletingActivity(null);
+            setActDealId("");
+          }
+        }}
         contactId={contactId}
-        dealId={deal?.id || (actDealId ? Number(actDealId) : null)}
+        dealId={completingActivity?.dealId || (actDealId ? Number(actDealId) : deal?.id) || null}
         contactName={contact?.name ?? undefined}
         contactCompany={contact?.companyName ?? undefined}
         contactMobile={contact?.mobile ?? undefined}
@@ -1837,6 +1935,7 @@ export default function LeadDetail() {
           callStatus: completingActivity.callStatus,
           followUpType: completingActivity.followUpType,
         } : null}
+        defaultScheduleNext={!!completingActivity}
       />
 
       <MoveCategoryDialog
