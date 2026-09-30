@@ -729,9 +729,9 @@ export default function LeadDetail() {
       });
     }
 
-    // Sort deal groups newest-first by their most recent event; groups with no events drop out
+    // Sort deal groups newest-created-first so numbering descends naturally (Deal 4, Deal 3, Deal 2, Deal 1)
     const withEvents = groups.filter((g) => g.events.length > 0);
-    withEvents.sort((a, b) => new Date(b.lastActivity || 0).getTime() - new Date(a.lastActivity || 0).getTime());
+    withEvents.sort((a, b) => new Date(b.deal?.createdAt || 0).getTime() - new Date(a.deal?.createdAt || 0).getTime());
     return withEvents;
   }, [contact, deals, activities, contactProformas, actFromDate, actToDate, timelineSearch, showHiddenDeals]);
 
