@@ -3756,7 +3756,7 @@ export async function getManufacturingSummary(
       FROM production_orders po
       LEFT JOIN proforma_invoices pi_chk ON pi_chk.id = po.proforma_invoice_id
       WHERE LOWER(TRIM(COALESCE(po.status, ''))) NOT IN ('completed', 'delivered', 'cancelled', 'dispatched', 'in transport', 'closed')
-        AND (po.dispatch_status IS NULL OR LOWER(TRIM(po.dispatch_status)) NOT IN ('load vehicle', 'delivered', 'dispatch', 'dispatched', 'in transport', 'in transit', 'completed', 'closed', 'pending dispatch'))
+        AND (po.dispatch_status IS NULL OR LOWER(TRIM(po.dispatch_status)) NOT IN ('load vehicle', 'delivered', 'dispatch', 'dispatched', 'in transport', 'in transit', 'completed', 'closed'))
         AND NOT EXISTS (
           SELECT 1 FROM dispatch d
           WHERE d.production_order_id = po.id
@@ -3900,7 +3900,7 @@ export async function getManufacturingSummaryDetail(
         SELECT po.id AS po_id, po.dispatch_status
         FROM production_orders po
         WHERE LOWER(TRIM(COALESCE(po.status, ''))) NOT IN ('completed', 'delivered', 'cancelled', 'dispatched', 'in transport', 'closed')
-          AND (po.dispatch_status IS NULL OR LOWER(TRIM(po.dispatch_status)) NOT IN ('load vehicle', 'delivered', 'dispatch', 'dispatched', 'in transport', 'in transit', 'completed', 'closed', 'pending dispatch'))
+          AND (po.dispatch_status IS NULL OR LOWER(TRIM(po.dispatch_status)) NOT IN ('load vehicle', 'delivered', 'dispatch', 'dispatched', 'in transport', 'in transit', 'completed', 'closed'))
           AND NOT EXISTS (
             SELECT 1 FROM dispatch d
             WHERE d.production_order_id = po.id

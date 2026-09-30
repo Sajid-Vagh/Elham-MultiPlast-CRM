@@ -19,6 +19,7 @@ const STATUS_COLORS: Record<string, string> = {
   "Ready To Dispatch": "bg-emerald-100 text-emerald-700 border-emerald-300",
   "Ready For Dispatch": "bg-emerald-100 text-emerald-700 border-emerald-300",
   "Pending Dispatch": "bg-emerald-100 text-emerald-700 border-emerald-300",
+  "Ready to Dispatch": "bg-emerald-100 text-emerald-700 border-emerald-300",
 };
 
 const MATERIAL_COLORS: Record<string, { bg: string; text: string; border: string; icon: string }> = {
@@ -272,43 +273,57 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
 
   const IN_PROD_STATUS_LIST = ["In Production", "Production On Going", "Production Started", "Production Running"];
 
-  const isItemReady = (item: DetailItem) => {
-    const s = item.status;
-    const lps = item.lineProductionStatus;
-    const readyQty = item.readyQuantity || 0;
+  const isItemTerminalOrLoaded = (item: DetailItem) => {
+    const s = (item.status || "").toLowerCase().trim();
+    const ds = (item.dispatchStatus || "").toLowerCase().trim();
     return (
-      s === "Ready To Dispatch" ||
-      s === "Ready For Dispatch" ||
-      lps === "Ready" ||
-      lps === "Ready To Dispatch" ||
-      lps === "Ready For Dispatch" ||
+      ["completed", "delivered", "cancelled", "dispatched", "in transport", "closed"].includes(s) ||
+      ["load vehicle", "delivered", "dispatch", "dispatched", "in transport", "in transit", "completed", "closed"].includes(ds)
+    );
+  };
+
+  const isItemReady = (item: DetailItem) => {
+    if (isItemTerminalOrLoaded(item)) return false;
+    const s = (item.status || "").toLowerCase().trim();
+    const ds = (item.dispatchStatus || "").toLowerCase().trim();
+    const lps = (item.lineProductionStatus || "").toLowerCase().trim();
+    const readyQty = Number(item.readyQuantity || 0);
+    return (
+      s === "ready to dispatch" ||
+      s === "ready for dispatch" ||
+      s === "ready" ||
+      ds === "pending dispatch" ||
+      ds === "ready to dispatch" ||
+      ds === "ready for dispatch" ||
+      ds === "ready" ||
+      lps === "ready" ||
+      lps === "ready to dispatch" ||
+      lps === "ready for dispatch" ||
       (item.quantity > 0 && readyQty >= item.quantity)
     );
   };
 
   const isItemInProd = (item: DetailItem) => {
+    if (isItemTerminalOrLoaded(item)) return false;
     if (isItemReady(item)) return false;
-    const s = item.status;
-    const lps = item.lineProductionStatus || "Pending";
+    const s = (item.status || "").toLowerCase().trim();
+    const lps = (item.lineProductionStatus || "pending").toLowerCase().trim();
     return (
-      IN_PROD_STATUS_LIST.includes(lps) ||
-      s === "Production On Going" ||
-      s === "In Production" ||
-      s === "Packaging" ||
-      s === "Packing"
+      IN_PROD_STATUS_LIST.some(st => st.toLowerCase() === lps || st.toLowerCase() === s) ||
+      s === "packaging" ||
+      s === "packing"
     );
   };
 
   const readyToDispatchItems = detailItems.filter(isItemReady);
   const inProdItems = detailItems.filter(isItemInProd);
   const pendingItems = detailItems.filter(item =>
+    !isItemTerminalOrLoaded(item) &&
     !isItemReady(item) &&
-    !isItemInProd(item) &&
-    item.status !== "Completed" &&
-    item.status !== "Delivered" &&
-    item.status !== "Cancelled"
+    !isItemInProd(item)
   );
   const otherItems = detailItems.filter(item =>
+    !isItemTerminalOrLoaded(item) &&
     !isItemReady(item) &&
     !isItemInProd(item) &&
     !pendingItems.includes(item)
@@ -795,8 +810,8 @@ export function ManufacturingSummary({ unitFilter, originFilter, material = "All
                                   </span>
                                   <div className="flex items-center gap-1.5">
                                     {item.isDelayed && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
-                                    <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS[item.status] || STATUS_COLORS["Ready"]}`}>
-                                      {item.status === "Ready To Dispatch" || item.status === "Ready For Dispatch" ? "Ready to Dispatch" : item.status}
+                                    <Badge variant="outline" className={`text-[10px] ${STATUS_COLORS["Ready to Dispatch"] || "bg-emerald-100 text-emerald-700 border-emerald-300"} border`}>
+                                      Ready to Dispatch
                                     </Badge>
                                   </div>
                                 </div>
