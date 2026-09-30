@@ -1,15 +1,15 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useLocation, Link } from "wouter";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Package, Search, Calendar, ChevronDown, ChevronRight, Filter, X, RefreshCw, Users, MessageCircle, CheckCheck, IndianRupee, Layers } from "lucide-react";
+import { Package, Search, Calendar, ChevronDown, ChevronRight, Filter, X, RefreshCw, Users, MessageCircle, CheckCheck, IndianRupee, Layers, Loader2 } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { useActiveUnits } from "@/lib/use-active-units";
 import { useAllUsers } from "@/lib/use-all-users";
@@ -67,11 +67,8 @@ const DISPATCH_STATUSES = [
   "Delivered",
 ];
 
-// Convert a `<input type="date">` value (yyyy-MM-dd) into an explicit ISO
-// timestamp anchored to the local calendar day — 00:00:00.000 for the start,
-// 23:59:59.999 for the end. Sending full instants (instead of the bare date)
-// keeps the server from interpreting "yyyy-MM-dd" as UTC midnight, which
-// shifted the filter by one day.
+const PAGE_LIMIT = 30;
+
 function toStartIso(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number);
   return new Date(y, m - 1, d, 0, 0, 0, 0).toISOString();
@@ -124,10 +121,12 @@ export default function OrdersList() {
   const [globalOwner, setGlobalOwner] = useOwnerFilter();
   const [globalStatus, setGlobalStatus] = useStatusFilter();
   const { clearAllFilters, hasActiveFilters } = useGlobalFilters();
-  const [page, setPage] = useState(1);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [cancelOrder, setCancelOrder] = useState<OrderRow | null>(null);
   const [markAllReadSubmitting, setMarkAllReadSubmitting] = useState(false);
+
+  // Sentinel ref for IntersectionObserver
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   const showUnitFilter = user?.role === "admin" || user?.role === "production_and_support" || user?.unit === "All";
   const { data: users } = useAllUsers(true);
@@ -145,36 +144,60 @@ export default function OrdersList() {
   const setProductionUnitFilter = (v: string) => setGlobalUnit(v);
   const setOwnerFilter = (v: string) => setGlobalOwner(v);
 
-  const params = new URLSearchParams();
-  if (search) params.set("search", search);
-  if (datePreset !== "all") {
-    if (SERVER_DATE_PRESETS.includes(datePreset)) {
-      params.set("datePreset", datePreset);
-    } else if (datePreset === "custom") {
-      if (customStartDate) params.set("startDate", toStartIso(customStartDate));
-      if (customEndDate) params.set("endDate", toEndIso(customEndDate));
-    } else {
-      if (dateFilter.startDate) params.set("startDate", toStartIso(dateFilter.startDate));
-      if (dateFilter.endDate) params.set("endDate", toEndIso(dateFilter.endDate));
+  // Build base params (without page/limit, those are added per-page in queryFn)
+  const buildParams = useCallback((page: number) => {
+    const params = new URLSearchParams();
+    if (search) params.set("search", search);
+    if (datePreset !== "all") {
+      if (SERVER_DATE_PRESETS.includes(datePreset)) {
+        params.set("datePreset", datePreset);
+      } else if (datePreset === "custom") {
+        if (customStartDate) params.set("startDate", toStartIso(customStartDate));
+        if (customEndDate) params.set("endDate", toEndIso(customEndDate));
+      } else {
+        if (dateFilter.startDate) params.set("startDate", toStartIso(dateFilter.startDate));
+        if (dateFilter.endDate) params.set("endDate", toEndIso(dateFilter.endDate));
+      }
     }
-  }
-  if (productionUnitFilter !== "All") params.set("productionUnit", productionUnitFilter);
-  if (ownerFilter) params.set("ownerId", ownerFilter);
-  params.set("page", String(page));
-  params.set("limit", "30");
+    if (productionUnitFilter !== "All") params.set("productionUnit", productionUnitFilter);
+    if (ownerFilter) params.set("ownerId", ownerFilter);
+    params.set("page", String(page));
+    params.set("limit", String(PAGE_LIMIT));
+    return params;
+  }, [search, datePreset, customStartDate, customEndDate, productionUnitFilter, ownerFilter, dateFilter]);
 
-  const { data, isLoading, isRefetching, refetch } = useQuery<{ data: OrderRow[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>({
-    queryKey: ["orders-global", search, dateFilter.preset, dateFilter.startDate, dateFilter.endDate, productionUnitFilter, ownerFilter, page],
-    queryFn: () => customFetch(`/orders/global?${params.toString()}`),
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    fetchNextPage,
+    hasNextPage,
+    refetch,
+    isRefetching,
+  } = useInfiniteQuery<{ data: OrderRow[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>({
+    queryKey: ["orders-global-infinite", search, dateFilter.preset, dateFilter.startDate, dateFilter.endDate, productionUnitFilter, ownerFilter],
+    queryFn: ({ pageParam = 1 }) =>
+      customFetch(`/orders/global?${buildParams(pageParam as number).toString()}`),
+    getNextPageParam: (lastPage) => {
+      const { page, totalPages } = lastPage.pagination;
+      return page < totalPages ? page + 1 : undefined;
+    },
+    initialPageParam: 1,
     refetchInterval: 30_000,
   });
 
-  const rawOrders = data?.data || [];
-  const orders = rawOrders.filter(order => {
-    if (!statusFilter || statusFilter === "All") return true;
-    return order.productionStatus === statusFilter || order.dispatchStatus === statusFilter;
-  });
-  const pagination = data?.pagination;
+  // Flatten all pages into a single list
+  const rawOrders = useMemo(() =>
+    (data?.pages ?? []).flatMap(p => p.data),
+    [data]
+  );
+
+  const orders = useMemo(() => {
+    if (!statusFilter || statusFilter === "All") return rawOrders;
+    return rawOrders.filter(o => o.productionStatus === statusFilter || o.dispatchStatus === statusFilter);
+  }, [rawOrders, statusFilter]);
+
+  const totalFromServer = data?.pages[0]?.pagination?.total ?? 0;
 
   const isAdmin = (user?.role || (typeof window !== "undefined" ? localStorage.getItem("crm_user_role") : null)) === "admin";
 
@@ -188,6 +211,22 @@ export default function OrdersList() {
 
   const hasUnreadOrders = rawOrders.some(o => o.hasUnreadMessages);
 
+  // IntersectionObserver — load next page when sentinel enters viewport
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
   const handleMarkAllRead = useCallback(async () => {
     setMarkAllReadSubmitting(true);
     try {
@@ -198,11 +237,8 @@ export default function OrdersList() {
       });
       if (!res.ok) throw new Error("Failed to mark all read");
       const result = await res.json().catch(() => ({}));
-      // Sync the notification context state so the sidebar Orders badge
-      // resets to 0 immediately (the context uses local useState, not
-      // React Query, so invalidateQueries alone doesn't update it).
       markAllNotificationsRead();
-      queryClient.invalidateQueries({ queryKey: ["orders-global"] });
+      queryClient.invalidateQueries({ queryKey: ["orders-global-infinite"] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       toast({
         title: "All orders marked as read",
@@ -250,13 +286,13 @@ export default function OrdersList() {
                 <Input
                   placeholder="Search by order #, code, customer, company..."
                   value={search}
-                  onChange={e => { setSearch(e.target.value); setPage(1); }}
+                  onChange={e => setSearch(e.target.value)}
                   className="pl-9"
                 />
               </div>
             </div>
 
-            <Select value={datePreset} onValueChange={v => { setDatePreset(v); setPage(1); }}>
+            <Select value={datePreset} onValueChange={v => setDatePreset(v)}>
               <SelectTrigger className="w-36"><Calendar className="h-3.5 w-3.5 mr-1.5" /><SelectValue placeholder="Date" /></SelectTrigger>
               <SelectContent>
                 {DATE_PRESETS.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
@@ -271,7 +307,7 @@ export default function OrdersList() {
               </>
             )}
 
-            <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(1); }}>
+            <Select value={statusFilter} onValueChange={v => setStatusFilter(v)}>
               <SelectTrigger className="w-44"><SelectValue placeholder="All Statuses" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="All">All Statuses</SelectItem>
@@ -281,7 +317,7 @@ export default function OrdersList() {
             </Select>
 
             {showUnitFilter && (
-              <Select value={productionUnitFilter} onValueChange={v => { setProductionUnitFilter(v); setPage(1); }}>
+              <Select value={productionUnitFilter} onValueChange={v => setProductionUnitFilter(v)}>
                 <SelectTrigger className="w-40"><SelectValue placeholder="Unit" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="All">All Units</SelectItem>
@@ -291,7 +327,7 @@ export default function OrdersList() {
             )}
 
             {users && (
-              <Select value={ownerFilter || "all"} onValueChange={v => { setOwnerFilter(v === "all" ? "" : v); setPage(1); }}>
+              <Select value={ownerFilter || "all"} onValueChange={v => setOwnerFilter(v === "all" ? "" : v)}>
                 <SelectTrigger className="w-40"><Users className="h-3.5 w-3.5 mr-1.5" /><SelectValue placeholder="All Owners" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Owners</SelectItem>
@@ -301,7 +337,7 @@ export default function OrdersList() {
             )}
 
             {(search || hasActiveFilters) && (
-              <Button variant="ghost" size="sm" onClick={() => { setSearch(""); clearAllFilters(); setPage(1); }}>
+              <Button variant="ghost" size="sm" onClick={() => { setSearch(""); clearAllFilters(); }}>
                 <X className="h-3.5 w-3.5 mr-1" />Clear
               </Button>
             )}
@@ -519,24 +555,25 @@ export default function OrdersList() {
                   ))}
                 </TableBody>
               </Table>
+
+              {/* Infinite scroll sentinel */}
+              <div ref={sentinelRef} className="py-4 flex items-center justify-center">
+                {isFetchingNextPage && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading more orders…
+                  </div>
+                )}
+                {!hasNextPage && orders.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Showing all {orders.length.toLocaleString()} of {totalFromServer.toLocaleString()} orders
+                  </p>
+                )}
+              </div>
             </div>
           )}
         </CardContent>
       </Card>
-
-      {/* Pagination */}
-      {pagination && pagination.totalPages > 1 && (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm text-muted-foreground">
-            Showing {((pagination.page - 1) * pagination.limit) + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} orders
-          </p>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</Button>
-            <span className="text-sm py-1 px-3">Page {page} of {pagination.totalPages}</span>
-            <Button variant="outline" size="sm" disabled={page >= pagination.totalPages} onClick={() => setPage(p => p + 1)}>Next</Button>
-          </div>
-        </div>
-      )}
 
       <CancelOrderModal
         open={!!cancelOrder}

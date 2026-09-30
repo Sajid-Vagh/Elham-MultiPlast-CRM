@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { LOGO_DATA_URI } from "@workspace/api-zod";
@@ -204,14 +204,10 @@ export default function ProformaInvoicesPage() {
   };
 
   const [tab, setTab] = useState("all");
-  const [invoices, setInvoices] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const [totalInvoices, setTotalInvoices] = useState(0);
-  const perPage = 15;
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const PAGE_LIMIT = 20;
 
   const [mode, setMode] = useState<"list" | "create" | "detail">(isNewPath ? "create" : "list");
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
@@ -290,9 +286,9 @@ export default function ProformaInvoicesPage() {
 
   const [globalStatus, setGlobalStatus] = useStatusFilter();
   const statusFilter = globalStatus === "All" ? "all" : (INVOICE_STATUSES as string[]).includes(globalStatus) ? globalStatus : "all";
-  const setStatusFilter = (v: string) => { setGlobalStatus(v === "all" ? "All" : v); setPage(1); };
+  const setStatusFilter = (v: string) => { setGlobalStatus(v === "all" ? "All" : v); };
   const [orderTypeFilter, setOrderTypeFilterRaw] = useState<string | null>(urlOrderType);
-  const setOrderTypeFilter = (v: string | null) => { setOrderTypeFilterRaw(v); setPage(1); };
+  const setOrderTypeFilter = (v: string | null) => { setOrderTypeFilterRaw(v); };
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; invoice: any }>({ open: false, invoice: null });
   const [pendingWonAdjustment, setPendingWonAdjustment] = useState<{ status: string; originalTaxableAmount: number; newTaxableAmount: number } | null>(null);
 
@@ -310,58 +306,71 @@ export default function ProformaInvoicesPage() {
     return [];
   };
 
-  const fetchInvoices = async () => {
-    try {
-      const params = new URLSearchParams();
-      if (statusFilter !== "all") params.set("status", statusFilter);
-      if (orderTypeFilter) params.set("orderType", orderTypeFilter);
-      // Server-side pagination + search so the ENTIRE invoice history stays
-      // reachable (backend caps page size at 100; default was 15).
-      params.set("page", String(page));
-      params.set("limit", String(perPage));
-      if (debouncedSearch) params.set("search", debouncedSearch);
-      const url = `/api/proforma-invoices?${params.toString()}`;
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        let message = `Failed to load invoices (HTTP ${res.status})`;
-        try {
-          const data = await res.json();
-          if (data?.error) message = data.error;
-        } catch { /* ignore parse errors */ }
-        setFetchError(message);
-        setInvoices([]);
-        toast({ title: "Error", description: message, variant: "destructive" });
-        return;
-      }
-      const json = await res.json();
-      setTotalInvoices(Number(json?.total ?? 0));
-      setInvoices(ensureArray(json));
-      setFetchError("");
-    } catch (err) {
-      console.error("[proforma-invoices] fetchInvoices failed:", err);
-      setFetchError("Failed to load invoices. Please check your connection and try again.");
-      setInvoices([]);
-      toast({ title: "Error", description: "Failed to load invoices. Please try again.", variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Debounce the search box — each settled keystroke queries the server
+  // Debounce search
   useEffect(() => {
-    const t = setTimeout(() => { setDebouncedSearch(search.trim()); setPage(1); }, 300);
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
     return () => clearTimeout(t);
   }, [search]);
 
-  useEffect(() => {
-    if (mode === "list") fetchInvoices();
-  }, [mode, statusFilter, orderTypeFilter, debouncedSearch, page]);
+  const fetchPage = useCallback(async ({ pageParam = 1 }: { pageParam?: number }) => {
+    const params = new URLSearchParams();
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (orderTypeFilter) params.set("orderType", orderTypeFilter);
+    params.set("page", String(pageParam));
+    params.set("limit", String(PAGE_LIMIT));
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    const res = await fetch(`/api/proforma-invoices?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      let message = `Failed to load invoices (HTTP ${res.status})`;
+      try { const d = await res.json(); if (d?.error) message = d.error; } catch {}
+      throw new Error(message);
+    }
+    const json = await res.json();
+    const data = ensureArray(json);
+    const total = Number(json?.total ?? 0);
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_LIMIT));
+    return { data, total, page: pageParam, totalPages };
+  }, [statusFilter, orderTypeFilter, debouncedSearch, token]);
 
-  // Server-side filtering + pagination: `invoices` holds exactly one page
-  const totalPages = Math.max(1, Math.ceil(totalInvoices / perPage));
-  const paginatedInvoices: any[] = Array.isArray(invoices) ? invoices : [];
+  const {
+    data: invoicePages,
+    isLoading: loading,
+    isFetchingNextPage,
+    fetchNextPage,
+    hasNextPage,
+    error: fetchErrorObj,
+    refetch: refetchInvoices,
+  } = useInfiniteQuery({
+    queryKey: ["proforma-invoices-infinite", statusFilter, orderTypeFilter, debouncedSearch],
+    queryFn: fetchPage,
+    getNextPageParam: (lastPage) =>
+      lastPage.page < lastPage.totalPages ? lastPage.page + 1 : undefined,
+    initialPageParam: 1,
+    enabled: mode === "list",
+    refetchInterval: 60_000,
+  });
+
+  const fetchError = fetchErrorObj ? (fetchErrorObj as Error).message : "";
+  const paginatedInvoices: any[] = (invoicePages?.pages ?? []).flatMap(p => p.data);
+  const totalInvoices = invoicePages?.pages[0]?.total ?? 0;
+
+  // IntersectionObserver for infinite scroll
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const calcAmount = (item: InvoiceItem) => {
     return item.quantity * item.rate;
@@ -1580,7 +1589,7 @@ const setItemDisplay = (idx: number, patch: Partial<InvoiceItem>) => {
       resetForm();
       setSelectedInvoice(invoice);
       setMode("detail");
-      fetchInvoices();
+      refetchInvoices();
 
       // Invalidate all related caches so Pipeline, Lead Detail, Customer History, PI List refresh
       const dealId = selectedDeal?.id || urlDealId;
@@ -1695,7 +1704,7 @@ const setItemDisplay = (idx: number, patch: Partial<InvoiceItem>) => {
       if (res.ok) {
         const newInv = await res.json();
         toast({ title: "Duplicated", description: `New invoice ${newInv.invoiceNumber} created` });
-        fetchInvoices();
+        refetchInvoices();
         setSelectedInvoice(newInv);
         setMode("detail");
         onPIChange(queryClient, invoice.dealId || undefined, invoice.contactId || undefined);
@@ -1721,7 +1730,7 @@ const setItemDisplay = (idx: number, patch: Partial<InvoiceItem>) => {
         setDeleteDialog({ open: false, invoice: null });
         setMode("list");
         setShowPdfPreview(false);
-        fetchInvoices();
+        refetchInvoices();
         onPIChange(queryClient, invoice.dealId || undefined, invoice.contactId || undefined);
       } else {
         const err = await res.json().catch(() => ({}));
@@ -3263,11 +3272,11 @@ ${pagesHtml}
           <Input
             placeholder="Search by order #, invoice #, code, customer..."
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            onChange={(e) => { setSearch(e.target.value); }}
             className="pl-9"
           />
         </div>
-        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); }}>
           <SelectTrigger className="w-40"><SelectValue placeholder="All Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
@@ -3279,12 +3288,12 @@ ${pagesHtml}
         {orderTypeFilter && (
           <Badge
             className={`cursor-pointer text-xs px-2.5 py-1 ${orderTypeFilter === "NEW" ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-blue-100 text-blue-700 hover:bg-blue-200"}`}
-            onClick={() => { setOrderTypeFilter(null); setPage(1); }}
+            onClick={() => { setOrderTypeFilter(null); }}
           >
             {orderTypeFilter === "NEW" ? "New Orders" : "Repeat Orders"} ✕
           </Badge>
         )}
-        <ClearFiltersButton onClear={() => { setSearch(""); setOrderTypeFilter(null); setPage(1); }} />
+        <ClearFiltersButton onClear={() => { setSearch(""); setOrderTypeFilter(null); }} />
       </div>
 
       {fetchError && (
@@ -3380,22 +3389,23 @@ ${pagesHtml}
               )}
             </TableBody>
           </Table>
+
+        {/* Infinite scroll sentinel */}
+        <div ref={sentinelRef} className="py-4 flex items-center justify-center">
+          {isFetchingNextPage && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading more invoices…
+            </div>
+          )}
+          {!hasNextPage && paginatedInvoices.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Showing all {paginatedInvoices.length.toLocaleString()} of {totalInvoices.toLocaleString()} invoices
+            </p>
+          )}
+        </div>
         </CardContent>
       </Card>
-
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Page {page} of {totalPages} · {totalInvoices.toLocaleString()} invoices</span>
-          <div className="flex gap-1">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
     {deleteDialogEl}
     <CancelOrderModal
