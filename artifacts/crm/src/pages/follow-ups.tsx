@@ -271,25 +271,9 @@ export default function FollowUps() {
 
   const handleCallConfirmYes = () => {
     if (!callConfirmActivity) return;
-    setCallConfirmSaving(true);
-    updateActivity.mutate(
-      { id: callConfirmActivity.id, data: { callStatus: "Completed" } as any },
-      {
-        onSuccess: () => {
-          toast({ title: "Call marked as Completed" });
-          refetch();
-          onActivityChange(queryClient);
-          const activity = callConfirmActivity;
-          setCallConfirmActivity(null);
-          setCallConfirmSaving(false);
-          setModalActivity(activity);
-        },
-        onError: () => {
-          toast({ title: "Failed to update status", variant: "destructive" });
-          setCallConfirmSaving(false);
-        }
-      }
-    );
+    const activity = callConfirmActivity;
+    setCallConfirmActivity(null);
+    setModalActivity(activity);
   };
 
   const handleOpenCustomerDrawer = (activity: FollowUpActivity) => {
@@ -715,11 +699,13 @@ export default function FollowUps() {
         open={modalActivity !== null}
         onOpenChange={(open) => { if (!open) setModalActivity(null); }}
         contactId={modalActivity?.contactId || modalActivity?.deal?.contactId || modalActivity?.contact?.id || 0}
-        dealId={modalActivity?.dealId}
+        dealId={modalActivity?.dealId || modalActivity?.deal?.id}
         contactName={modalActivity?.contact?.name || modalActivity?.deal?.contact?.name}
         contactCompany={modalActivity?.contact?.companyName || modalActivity?.deal?.contact?.companyName}
         contactMobile={modalActivity?.contact?.mobile || modalActivity?.deal?.contact?.mobile}
         activity={modalActivity ? { id: modalActivity.id, type: modalActivity.type, notesDisplay: modalActivity.notesDisplay, notes: modalActivity.notes, callStatus: modalActivity.callStatus, followUpType: modalActivity.followUpType } : null}
+        defaultScheduleNext={true}
+        onSuccess={() => refetch()}
       />
 
       <CustomerProfileDrawer

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCreateActivity, useUpdateActivity } from "@workspace/api-client-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -24,12 +24,14 @@ interface ActivityModalProps {
   contactMobile?: string;
   activity?: {
     id: number;
-    type: string;
+    type?: string | null;
     notesDisplay?: string | null;
     notes?: string | null;
     callStatus?: string | null;
     followUpType?: string | null;
   } | null;
+  defaultScheduleNext?: boolean;
+  onSuccess?: () => void;
 }
 
 const ACTIVITY_TYPES = [
@@ -58,7 +60,18 @@ const NEXT_ACTIVITY_TYPES = [
   { value: "FollowUp", label: "Follow-up", icon: Calendar },
 ];
 
-export default function ActivityDetailDrawer({ open, onOpenChange, contactId, dealId, contactName, contactCompany, contactMobile, activity }: ActivityModalProps) {
+export default function ActivityDetailDrawer({
+  open,
+  onOpenChange,
+  contactId,
+  dealId,
+  contactName,
+  contactCompany,
+  contactMobile,
+  activity,
+  defaultScheduleNext,
+  onSuccess,
+}: ActivityModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -101,7 +114,7 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
 
   const [actType, setActType] = useState("Call");
   const [discussionNotes, setDiscussionNotes] = useState("");
-  const [scheduleNext, setScheduleNext] = useState(false);
+  const [scheduleNext, setScheduleNext] = useState(defaultScheduleNext ?? false);
   const [nextDate, setNextDate] = useState("");
   const [nextTime, setNextTime] = useState("");
   const [nextPriority, setNextPriority] = useState("Medium");
@@ -112,12 +125,25 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
   const [currentNotesExpanded, setCurrentNotesExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const isPendingActivity = activity?.callStatus === "Pending";
+  useEffect(() => {
+    if (open) {
+      if (activity?.type && activity.type !== "FollowUp") {
+        setActType(activity.type);
+      } else if (activity?.followUpType) {
+        setActType(activity.followUpType);
+      } else {
+        setActType("Call");
+      }
+      setScheduleNext(defaultScheduleNext ?? false);
+    }
+  }, [open, activity, defaultScheduleNext]);
+
+  const isPendingActivity = !activity || (activity.callStatus || "Pending") === "Pending";
 
   const resetForm = () => {
     setActType("Call");
     setDiscussionNotes("");
-    setScheduleNext(false);
+    setScheduleNext(defaultScheduleNext ?? false);
     setNextDate("");
     setNextTime("");
     setNextPriority("Medium");
@@ -144,7 +170,7 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
 
   const handleSave = async () => {
     if (!validate()) return;
-    if (!dealId) {
+    if (!dealId && (!activity || scheduleNext)) {
       toast({ title: "Create a deal first", variant: "destructive" });
       return;
     }
@@ -212,6 +238,7 @@ export default function ActivityDetailDrawer({ open, onOpenChange, contactId, de
 
       onActivityChange(queryClient, Number(dealId), contactId);
       toast({ title: "Activity saved successfully" });
+      onSuccess?.();
       resetForm();
       onOpenChange(false);
     } catch {
