@@ -702,7 +702,7 @@ export default function LeadDetail() {
 
       const filtered = events
         .filter(matchesSearch)
-        .sort((a, b) => (a.sortTime || 0) - (b.sortTime || 0));
+        .sort((a, b) => (b.sortTime || 0) - (a.sortTime || 0));
 
       // Group events by date
       const dateGroupMap = new Map<string, { dayKey: string; dayFormatted: string; events: TimelineEvent[] }>();
@@ -716,7 +716,7 @@ export default function LeadDetail() {
         }
         dateGroupMap.get(ev.dayKey)!.events.push(ev);
       }
-      const dateGroups = Array.from(dateGroupMap.values());
+      const dateGroups = Array.from(dateGroupMap.values()).reverse();
 
       groups.push({
         deal,
@@ -724,7 +724,8 @@ export default function LeadDetail() {
         events: filtered,
         dateGroups,
         totalEventsCount: filtered.length,
-        lastActivity: filtered.length > 0 ? filtered[filtered.length - 1].date : null,
+        // First event in the (now reversed) list is the most recent
+        lastActivity: filtered.length > 0 ? filtered[0].date : null,
       });
     }
 
