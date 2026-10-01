@@ -341,13 +341,15 @@ export default function LeadDetail() {
       stageBadge?: { label: string; className?: string };
       dotColor: string;
       activityId?: number;
+      createdAt?: string | Date | null;
       sortTime: number;
     };
 
-    const parseDateToLocal = (d?: string | null) => {
+    const parseDateToLocal = (d?: string | Date | null) => {
       if (!d) return null;
-      const ymdMatch = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (ymdMatch && !d.includes("T")) {
+      if (d instanceof Date) return isNaN(d.getTime()) ? null : d;
+      const ymdMatch = typeof d === "string" ? d.match(/^(\d{4})-(\d{2})-(\d{2})/) : null;
+      if (ymdMatch && typeof d === "string" && !d.includes("T")) {
         const y = parseInt(ymdMatch[1], 10);
         const m = parseInt(ymdMatch[2], 10) - 1;
         const day = parseInt(ymdMatch[3], 10);
@@ -371,17 +373,17 @@ export default function LeadDetail() {
       return `${y}-${m}-${day}`;
     };
 
-    const formatDay = (d?: string | null) => {
+    const formatDay = (d?: string | Date | null) => {
       if (!d) return "";
       try {
         const dt = parseDateToLocal(d);
-        return dt ? dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : d;
+        return dt ? dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : (typeof d === "string" ? d : "");
       } catch {
-        return d;
+        return typeof d === "string" ? d : "";
       }
     };
 
-    const formatTime = (d?: string | null) => {
+    const formatTime = (d?: string | Date | null) => {
       if (!d) return "";
       try {
         const dt = new Date(d);
@@ -629,6 +631,7 @@ export default function LeadDetail() {
           stageBadge: statusBadge,
           dotColor,
           activityId: act.id,
+          createdAt: act.createdAt,
           sortTime,
         });
       }
@@ -702,7 +705,7 @@ export default function LeadDetail() {
 
       const filtered = events
         .filter(matchesSearch)
-        .sort((a, b) => (b.sortTime || 0) - (a.sortTime || 0));
+        .sort((a, b) => (a.sortTime || 0) - (b.sortTime || 0));
 
       // Group events by date
       const dateGroupMap = new Map<string, { dayKey: string; dayFormatted: string; events: TimelineEvent[] }>();
@@ -716,7 +719,7 @@ export default function LeadDetail() {
         }
         dateGroupMap.get(ev.dayKey)!.events.push(ev);
       }
-      const dateGroups = Array.from(dateGroupMap.values()).reverse();
+      const dateGroups = Array.from(dateGroupMap.values());
 
       groups.push({
         deal,
@@ -724,8 +727,8 @@ export default function LeadDetail() {
         events: filtered,
         dateGroups,
         totalEventsCount: filtered.length,
-        // First event in the (now reversed) list is the most recent
-        lastActivity: filtered.length > 0 ? filtered[0].date : null,
+        // Last event in the chronological list is the most recent
+        lastActivity: filtered.length > 0 ? filtered[filtered.length - 1].date : null,
       });
     }
 
@@ -1483,6 +1486,10 @@ export default function LeadDetail() {
                                                 const isPendingAct = ev.stageBadge?.label === "Pending";
                                                 const isOriginalFollowUp = !isPendingAct && ev.notesList!.length > 1 && ni === 0;
                                                 const isViolet = !isPendingAct && !isOriginalFollowUp;
+                                                const noteTime = (isPendingAct && ev.createdAt)
+                                                  ? formatTime(ev.createdAt)
+                                                  : (formatTimeString(n.time) || (ev.createdAt ? formatTime(ev.createdAt) : ""));
+                                                const noteDate = n.date || (ev.createdAt ? formatDay(ev.createdAt) : "");
                                                 return (
                                                   <div
                                                     key={ni}
@@ -1513,7 +1520,11 @@ export default function LeadDetail() {
                                                             : (n.userName ? `Next Follow-up Note by ${n.userName}` : "Follow-up Note")}
                                                         </span>
                                                       </div>
-                                                      {n.date && <span className="text-muted-foreground font-normal text-[10px]">{n.date} {n.time || ""}</span>}
+                                                      {(noteDate || noteTime) && (
+                                                        <span className="text-muted-foreground font-normal text-[10px]">
+                                                          {noteDate}{noteDate && noteTime ? " " : ""}{noteTime}
+                                                        </span>
+                                                      )}
                                                     </div>
                                                     <p className="whitespace-pre-wrap font-normal leading-relaxed text-foreground/90 pl-5">{n.text}</p>
                                                   </div>

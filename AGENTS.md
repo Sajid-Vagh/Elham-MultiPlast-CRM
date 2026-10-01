@@ -1,3 +1,28 @@
+## Activity Timeline Chronological Sort Revert + Scheduled Note Timestamp Fix
+
+### Goal
+- Revert Activity Timeline event ordering within deal groups back to chronological (ascending) order so that oldest milestones ("Lead created", "Deal created") appear at the top, and subsequent activities ("Call 1", "Call 2", etc.) are appended below in ascending order of their creation date.
+- Fix scheduled follow-up note timestamps: when scheduling upcoming follow-ups, the orange "Next Follow-up Note" displayed an incorrect time (e.g. 07:08 AM UTC instead of 12:40 PM IST). Record and display the exact user local time.
+
+### Done
+- **Timeline sorting reverted (`lead-detail.tsx`):**
+  - Event sort changed from descending `(b.sortTime || 0) - (a.sortTime || 0)` back to ascending `(a.sortTime || 0) - (b.sortTime || 0)`: milestones ("Lead created", "Deal created") and calls now progress chronologically from top to bottom.
+  - Date group buckets reverted from `.reverse()` back to ascending `Array.from(dateGroupMap.values())`: earliest date headers appear first.
+  - `lastActivity` reference updated to `filtered[filtered.length - 1].date` (the latest event in the ascending list).
+- **Scheduled Note Timestamp fix (`activity-detail-drawer.tsx`, `schedule-follow-up-dialog.tsx`, `activities.ts`, `lead-detail.tsx`):**
+  - **Client-side recording:** `ActivityDetailDrawer` and `ScheduleFollowUpDialog` capture the user's browser local date and time (`clientDateStr` in en-IN, `clientTimeStr` in en-US `12:40 PM`) and attach them to the JSON note structure when creating/scheduling follow-ups or completing activities.
+  - **Backend timezone normalization (`activities.ts`):** Imported `BUSINESS_TZ` (`"Asia/Kolkata"`). `appendNotesHistory`, `POST /activities`, and `PATCH /activities/:id` now format default dates and times using `timeZone: BUSINESS_TZ` with `en-US` (`12:40 PM`) rather than defaulting to the server's UTC local time. Pre-existing client timestamps in JSON notes are preserved (`ne.date || dateStr`, `ne.time || timeStr`).
+  - **Timeline Note display (`lead-detail.tsx`):** Added `createdAt` to `TimelineEvent`. For pending activities (scheduled follow-ups), the orange note displays `formatTime(ev.createdAt)` in the user's browser local time (which also corrects existing historical notes created with UTC timestamps), while completed/discussion notes display their recorded note time.
+- **Build verified:** CRM production bundle build succeeded with 0 errors (`npm run build --workspace=artifacts/crm`); API server typecheck = 32 pre-existing baseline errors, 0 in `activities.ts`.
+
+### Relevant Files
+- `artifacts/crm/src/pages/lead-detail.tsx`: Timeline event sorting ascending, date groups ascending, `createdAt` in timeline events and scheduled note timestamp display.
+- `artifacts/crm/src/components/activity-detail-drawer.tsx`: Client-side local timestamp recording in note JSON on complete, create, and schedule next.
+- `artifacts/crm/src/components/schedule-follow-up-dialog.tsx`: Client-side local timestamp recording in note JSON on schedule follow-up.
+- `artifacts/api-server/src/routes/activities.ts`: `BUSINESS_TZ` ("Asia/Kolkata") enforcement in `appendNotesHistory`, `POST /activities`, and `PATCH /activities/:id`.
+
+---
+
 ## First-Admin Bootstrap — No Public Registration, Combined Login/Setup Landing, Env Allowlist + Email-Verified Two-Phase Activation
 
 ### Goal

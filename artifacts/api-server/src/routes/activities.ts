@@ -7,6 +7,7 @@ import { createNotification } from "./notifications";
 import { getAccessibleUnits } from "../lib/unit-filter";
 import { normalizeProfilePhotoUrl } from "../lib/storage";
 import { emitFollowupCreated, emitFollowupUpdated, emitActivityCreated } from "../lib/socket";
+import { BUSINESS_TZ } from "../lib/date-range";
 
 const router: IRouter = Router();
 
@@ -93,8 +94,8 @@ function appendNotesHistory(
 
   const newEntries = parseNotes(newNotes);
   const now = new Date();
-  const dateStr = now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-  const timeStr = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const dateStr = now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: BUSINESS_TZ });
+  const timeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: BUSINESS_TZ });
 
   for (const ne of newEntries) {
     if (!ne.text || !ne.text.trim()) continue;
@@ -104,10 +105,10 @@ function appendNotesHistory(
 
     entries.push({
       text: ne.text.trim(),
-      date: dateStr,
-      time: timeStr,
-      userName: user.name,
-      userId: user.id,
+      date: ne.date || dateStr,
+      time: ne.time || timeStr,
+      userName: ne.userName || user.name,
+      userId: ne.userId || user.id,
     });
   }
 
@@ -308,13 +309,20 @@ router.post("/activities", async (req, res) => {
     if (!currentUser) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const now = new Date();
-    const dateStr = now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-    const timeStr = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+    const dateStr = now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: BUSINESS_TZ });
+    const timeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: BUSINESS_TZ });
 
     let notesValue: string | null = null;
     if (parsed.data.notes && parsed.data.notes.trim()) {
       if (isJsonNotes(parsed.data.notes)) {
-        notesValue = parsed.data.notes;
+        const parsedList = parseNotes(parsed.data.notes);
+        notesValue = JSON.stringify(parsedList.map(entry => ({
+          text: entry.text,
+          date: entry.date || dateStr,
+          time: entry.time || timeStr,
+          userName: entry.userName || currentUser.name,
+          userId: entry.userId || currentUser.id,
+        })));
       } else {
         notesValue = JSON.stringify([{
           text: parsed.data.notes.trim(),
@@ -344,7 +352,7 @@ router.post("/activities", async (req, res) => {
 
     // Create audit entry for new FollowUp
     if (parsed.data.type === "FollowUp") {
-      const auditNow = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      const auditNow = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: BUSINESS_TZ });
       await createAuditEntry(
         inserted.dealId,
         inserted.contactId,
@@ -436,10 +444,10 @@ router.patch("/activities/:id", async (req, res) => {
     if (parsed.data.callStatus === "Completed") {
       const now = new Date();
       if (!parsed.data.followUpDate) {
-        updateData.followUpDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+        updateData.followUpDate = now.toLocaleDateString("en-CA", { timeZone: BUSINESS_TZ });
       }
       if (!parsed.data.followUpTime) {
-        updateData.followUpTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+        updateData.followUpTime = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: BUSINESS_TZ });
       }
     } else if (parsed.data.callStatus !== undefined && parsed.data.callStatus !== "Pending") {
       if ((parsed.data.followUpDate === null || parsed.data.followUpDate === "") && existingActivity.followUpDate) {
@@ -465,7 +473,7 @@ router.patch("/activities/:id", async (req, res) => {
     try {
       // Create audit entries for changes
       if (parsed.data.followUpDate !== undefined && parsed.data.followUpDate !== existingActivity.followUpDate) {
-        const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: BUSINESS_TZ });
         await createAuditEntry(
           existingActivity.dealId,
           existingActivity.contactId,
@@ -475,7 +483,7 @@ router.patch("/activities/:id", async (req, res) => {
       }
 
       if (parsed.data.followUpTime !== undefined && parsed.data.followUpTime !== existingActivity.followUpTime) {
-        const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: BUSINESS_TZ });
         await createAuditEntry(
           existingActivity.dealId,
           existingActivity.contactId,

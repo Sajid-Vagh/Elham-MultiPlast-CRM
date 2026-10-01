@@ -92,12 +92,20 @@ export function ScheduleFollowUpDialog({ open, onOpenChange, contactId, dealId }
       return;
     }
 
+    const now = new Date();
+    const clientDateStr = now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    const clientTimeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+
     createActivity.mutate({
       data: {
         dealId: Number(dealId),
         contactId,
         type: "FollowUp",
-        notes: notes || null,
+        notes: notes ? JSON.stringify([{
+          text: notes.trim(),
+          date: clientDateStr,
+          time: clientTimeStr,
+        }]) : null,
         followUpDate: date,
         followUpTime: time || null,
         followUpType: followUpType,
