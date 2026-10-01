@@ -180,6 +180,8 @@ export default function ActivityDetailDrawer({
       const now = new Date();
       const currentDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
       const currentTimeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      const clientDateStr = now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+      const clientTimeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
 
       // Step 1: Complete current activity if it's pending
       if (isPendingActivity && activity) {
@@ -187,7 +189,13 @@ export default function ActivityDetailDrawer({
           id: activity.id,
           data: {
             callStatus: "Completed",
-            notes: discussionNotes.trim() ? discussionNotes.trim() : null,
+            notes: discussionNotes.trim()
+              ? JSON.stringify([{
+                  text: discussionNotes.trim(),
+                  date: clientDateStr,
+                  time: clientTimeStr,
+                }])
+              : null,
             followUpDate: currentDateStr,
             followUpTime: currentTimeStr,
             type: actType || activity.type,
@@ -197,7 +205,11 @@ export default function ActivityDetailDrawer({
         await updateActivity.mutateAsync({
           id: activity.id,
           data: {
-            notes: discussionNotes.trim(),
+            notes: JSON.stringify([{
+              text: discussionNotes.trim(),
+              date: clientDateStr,
+              time: clientTimeStr,
+            }]),
           } as any,
         });
       }
@@ -211,7 +223,13 @@ export default function ActivityDetailDrawer({
             dealId: Number(dealId),
             contactId,
             type: actType as any,
-            notes: discussionNotes.trim() ? discussionNotes.trim() : null,
+            notes: discussionNotes.trim()
+              ? JSON.stringify([{
+                  text: discussionNotes.trim(),
+                  date: clientDateStr,
+                  time: clientTimeStr,
+                }])
+              : null,
             followUpDate: currentDateStr,
             followUpTime: currentTimeStr,
             callStatus: "Completed",
@@ -226,7 +244,13 @@ export default function ActivityDetailDrawer({
             dealId: Number(dealId),
             contactId,
             type: "FollowUp",
-            notes: nextNotes.trim() ? nextNotes.trim() : null,
+            notes: nextNotes.trim()
+              ? JSON.stringify([{
+                  text: nextNotes.trim(),
+                  date: clientDateStr,
+                  time: clientTimeStr,
+                }])
+              : null,
             followUpDate: nextDate,
             followUpTime: nextTime || null,
             followUpType: nextType,
