@@ -70,6 +70,96 @@ const QUICK_BTNS = [
   { key: "all", label: "All" },
 ];
 
+function parseDateToLocal(d?: string | Date | null) {
+  if (!d) return null;
+  if (d instanceof Date) return isNaN(d.getTime()) ? null : d;
+  const ymdMatch = typeof d === "string" ? d.match(/^(\d{4})-(\d{2})-(\d{2})/) : null;
+  if (ymdMatch && typeof d === "string" && !d.includes("T")) {
+    const y = parseInt(ymdMatch[1], 10);
+    const m = parseInt(ymdMatch[2], 10) - 1;
+    const day = parseInt(ymdMatch[3], 10);
+    return new Date(y, m, day);
+  }
+  const dt = new Date(d);
+  return isNaN(dt.getTime()) ? null : dt;
+}
+
+function getDayKey(d?: string | null) {
+  if (!d) return "";
+  const ymdMatch = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (ymdMatch && !d.includes("T")) {
+    return `${ymdMatch[1]}-${ymdMatch[2]}-${ymdMatch[3]}`;
+  }
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return d.slice(0, 10);
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, "0");
+  const day = String(dt.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function formatDay(d?: string | Date | null) {
+  if (!d) return "";
+  try {
+    const dt = parseDateToLocal(d);
+    return dt ? dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : (typeof d === "string" ? d : "");
+  } catch {
+    return typeof d === "string" ? d : "";
+  }
+}
+
+function formatTime(d?: string | Date | null) {
+  if (!d) return "";
+  try {
+    const dt = new Date(d);
+    return isNaN(dt.getTime()) ? "" : dt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  } catch {
+    return "";
+  }
+}
+
+function formatTimeString(t?: string | null) {
+  if (!t) return "";
+  const trimmed = t.trim();
+  if (!trimmed) return "";
+  if (/am|pm/i.test(trimmed)) return trimmed;
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})/);
+  if (match) {
+    const hour = parseInt(match[1], 10);
+    const minute = match[2];
+    const ampm = hour >= 12 ? "PM" : "AM";
+    const h12 = hour % 12 || 12;
+    return `${h12}:${minute} ${ampm}`;
+  }
+  return trimmed;
+}
+
+function computeSortTimestamp(dateStr?: string | null, timeStr?: string | null) {
+  if (!dateStr) return 0;
+  const dayKey = getDayKey(dateStr);
+  if (!dayKey) return 0;
+  let h = 9;
+  let m = 0;
+  if (timeStr) {
+    const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?/i);
+    if (match) {
+      h = parseInt(match[1], 10);
+      m = parseInt(match[2], 10);
+      const ampm = match[3]?.toUpperCase();
+      if (ampm === "PM" && h < 12) h += 12;
+      if (ampm === "AM" && h === 12) h = 0;
+    }
+  }
+  const ymdMatch = dayKey.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (ymdMatch) {
+    const y = parseInt(ymdMatch[1], 10);
+    const mon = parseInt(ymdMatch[2], 10) - 1;
+    const day = parseInt(ymdMatch[3], 10);
+    return new Date(y, mon, day, h, m, 0).getTime();
+  }
+  return new Date(dateStr).getTime() || 0;
+}
+
 export default function LeadDetail() {
   const { id } = useParams<{ id: string }>();
   const contactId = Number(id);
@@ -343,96 +433,6 @@ export default function LeadDetail() {
       activityId?: number;
       createdAt?: string | Date | null;
       sortTime: number;
-    };
-
-    const parseDateToLocal = (d?: string | Date | null) => {
-      if (!d) return null;
-      if (d instanceof Date) return isNaN(d.getTime()) ? null : d;
-      const ymdMatch = typeof d === "string" ? d.match(/^(\d{4})-(\d{2})-(\d{2})/) : null;
-      if (ymdMatch && typeof d === "string" && !d.includes("T")) {
-        const y = parseInt(ymdMatch[1], 10);
-        const m = parseInt(ymdMatch[2], 10) - 1;
-        const day = parseInt(ymdMatch[3], 10);
-        return new Date(y, m, day);
-      }
-      const dt = new Date(d);
-      return isNaN(dt.getTime()) ? null : dt;
-    };
-
-    const getDayKey = (d?: string | null) => {
-      if (!d) return "";
-      const ymdMatch = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (ymdMatch && !d.includes("T")) {
-        return `${ymdMatch[1]}-${ymdMatch[2]}-${ymdMatch[3]}`;
-      }
-      const dt = new Date(d);
-      if (isNaN(dt.getTime())) return d.slice(0, 10);
-      const y = dt.getFullYear();
-      const m = String(dt.getMonth() + 1).padStart(2, "0");
-      const day = String(dt.getDate()).padStart(2, "0");
-      return `${y}-${m}-${day}`;
-    };
-
-    const formatDay = (d?: string | Date | null) => {
-      if (!d) return "";
-      try {
-        const dt = parseDateToLocal(d);
-        return dt ? dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : (typeof d === "string" ? d : "");
-      } catch {
-        return typeof d === "string" ? d : "";
-      }
-    };
-
-    const formatTime = (d?: string | Date | null) => {
-      if (!d) return "";
-      try {
-        const dt = new Date(d);
-        return isNaN(dt.getTime()) ? "" : dt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
-      } catch {
-        return "";
-      }
-    };
-
-    const formatTimeString = (t?: string | null) => {
-      if (!t) return "";
-      const trimmed = t.trim();
-      if (!trimmed) return "";
-      if (/am|pm/i.test(trimmed)) return trimmed;
-      const match = trimmed.match(/^(\d{1,2}):(\d{2})/);
-      if (match) {
-        const hour = parseInt(match[1], 10);
-        const minute = match[2];
-        const ampm = hour >= 12 ? "PM" : "AM";
-        const h12 = hour % 12 || 12;
-        return `${h12}:${minute} ${ampm}`;
-      }
-      return trimmed;
-    };
-
-    const computeSortTimestamp = (dateStr?: string | null, timeStr?: string | null) => {
-      if (!dateStr) return 0;
-      const dayKey = getDayKey(dateStr);
-      if (!dayKey) return 0;
-      let h = 9;
-      let m = 0;
-      if (timeStr) {
-        const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?/i);
-        if (match) {
-          h = parseInt(match[1], 10);
-          m = parseInt(match[2], 10);
-          const ampm = match[3]?.toUpperCase();
-          if (ampm === "PM" && h < 12) h += 12;
-          if (ampm === "AM" && h === 12) h = 0;
-        }
-      }
-      const ymdMatch = dayKey.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (ymdMatch) {
-        const y = parseInt(ymdMatch[1], 10);
-        const mon = parseInt(ymdMatch[2], 10) - 1;
-        const day = parseInt(ymdMatch[3], 10);
-        return new Date(y, mon, day, h, m, 0).getTime();
-      }
-      return new Date(dateStr).getTime() || 0;
     };
 
     const dateOk = (d?: string | null) => {
