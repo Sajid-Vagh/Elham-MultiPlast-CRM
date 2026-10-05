@@ -4,7 +4,7 @@ import { useParams, useLocation, Link } from "wouter";
 import {
   useGetContact, useListDeals, useListActivities, useCreateDeal,
   useUpdateContact, useDeleteContact, useListUsers, useListContactProformaInvoices, getListContactProformaInvoicesQueryKey,
-  getGetContactQueryKey, useUpdateDeal
+  getGetContactQueryKey, useUpdateDeal, useUpdateActivity
 } from "@workspace/api-client-react";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -265,6 +265,40 @@ export default function LeadDetail() {
   const [actDealId, setActDealId] = useState("");
   const [activityModalOpen, setActivityModalOpen] = useState(false);
   const [completingActivity, setCompletingActivity] = useState<any>(null);
+
+  // Call Action confirmation (mirrors follow-ups.tsx): carries the activity + its deal context
+  const [callConfirmActivity, setCallConfirmActivity] = useState<{ activity: any; dealId: number | null } | null>(null);
+  const [callConfirmSaving, setCallConfirmSaving] = useState(false);
+  const updateActivityMutation = useUpdateActivity();
+
+  const handleCallConfirmNo = () => {
+    if (!callConfirmActivity) return;
+    setCallConfirmSaving(true);
+    updateActivityMutation.mutate(
+      { id: callConfirmActivity.activity.id, data: { callStatus: "Completed" } as any },
+      {
+        onSuccess: () => {
+          toast({ title: "Call marked as Completed" });
+          onActivityChange(queryClient);
+          setCallConfirmActivity(null);
+          setCallConfirmSaving(false);
+        },
+        onError: () => {
+          toast({ title: "Failed to update status", variant: "destructive" });
+          setCallConfirmSaving(false);
+        },
+      }
+    );
+  };
+
+  const handleCallConfirmYes = () => {
+    if (!callConfirmActivity) return;
+    const { activity, dealId } = callConfirmActivity;
+    setCallConfirmActivity(null);
+    setActDealId(String(activity?.dealId ?? dealId ?? ""));
+    setCompletingActivity(activity);
+    setActivityModalOpen(true);
+  };
 
   const [expandedDeals, setExpandedDeals] = useState<string[]>([]);
   const [dealsExpandedInitialized, setDealsExpandedInitialized] = useState(false);
@@ -1234,11 +1268,9 @@ export default function LeadDetail() {
                                 onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  setActDealId(String(group.deal!.id));
-                                  setCompletingActivity(scheduledActivity);
-                                  setActivityModalOpen(true);
+                                  setCallConfirmActivity({ activity: scheduledActivity, dealId: group.deal!.id });
                                 }}
-                                title="Log outcome of scheduled call"
+                                title="Call action for scheduled call"
                               >
                                 <Phone className="h-3 w-3" /> Call
                               </Button>
@@ -1689,11 +1721,9 @@ export default function LeadDetail() {
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            setActDealId(String(d.id));
-                            setCompletingActivity(schedAct);
-                            setActivityModalOpen(true);
+                            setCallConfirmActivity({ activity: schedAct, dealId: d.id });
                           }}
-                          title="Log outcome of scheduled call"
+                          title="Call action for scheduled call"
                         >
                           <Phone className="h-3 w-3" /> Call
                         </Button>
@@ -1922,6 +1952,27 @@ export default function LeadDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Call Action Confirmation (same flow as the Activity page) */}
+      <AlertDialog open={callConfirmActivity !== null} onOpenChange={(open) => { if (!open) setCallConfirmActivity(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Call Action</AlertDialogTitle>
+            <AlertDialogDescription>
+              Do you want to schedule the next follow-up call?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel disabled={callConfirmSaving}>Cancel</AlertDialogCancel>
+            <Button variant="outline" onClick={handleCallConfirmNo} disabled={callConfirmSaving}>
+              {callConfirmSaving ? "Saving..." : "No"}
+            </Button>
+            <Button onClick={handleCallConfirmYes} disabled={callConfirmSaving}>
+              {callConfirmSaving ? "Saving..." : "Yes"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Activity Modal */}
       <ActivityDetailDrawer
