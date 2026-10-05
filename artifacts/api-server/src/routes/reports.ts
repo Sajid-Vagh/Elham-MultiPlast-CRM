@@ -1078,6 +1078,7 @@ router.get("/reports/by-time", async (req, res) => {
         dayOfMonth,
         monthIndex,
         monthName,
+        year: d.getFullYear(),
       };
     });
 

@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 
-type TimeMode = "weekly" | "monthly" | "yearly";
+type TimeMode = "weekly" | "monthly" | "yearly" | "years";
 type MetricType = "value" | "orders";
 
 interface TimeBucket {
@@ -65,6 +65,7 @@ interface OrderItemRow {
   dayOfMonth: number;
   monthIndex: number;
   monthName: string;
+  year: number;
 }
 
 interface ByTimeReportResponse {
@@ -106,6 +107,8 @@ const STATUS_COLORS: Record<string, string> = {
 export function ByTimeReportTab({ unit, ownerId, dateFilter }: ByTimeReportTabProps) {
   const [timeMode, setTimeMode] = useState<TimeMode>("weekly");
   const [metric, setMetric] = useState<MetricType>("value");
+  const [fromYear, setFromYear] = useState<number | null>(null);
+  const [toYear, setToYear] = useState<number | null>(null);
   const [selectedFilterKey, setSelectedFilterKey] = useState<string | null>(null);
   const [tableSearch, setTableSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -116,7 +119,8 @@ export function ByTimeReportTab({ unit, ownerId, dateFilter }: ByTimeReportTabPr
     const p = new URLSearchParams();
     if (unit && unit !== "All" && unit !== "all") p.set("unit", unit);
     if (ownerId && ownerId !== "all" && ownerId !== "All") p.set("salesOwnerId", ownerId);
-    if (dateFilter) {
+    // Total Years compares across years, so the page date filter is not applied
+    if (dateFilter && timeMode !== "years") {
       if (dateFilter.preset && dateFilter.preset !== "all" && dateFilter.preset !== "custom") {
         p.set("datePreset", dateFilter.preset);
       } else {
@@ -125,7 +129,7 @@ export function ByTimeReportTab({ unit, ownerId, dateFilter }: ByTimeReportTabPr
       }
     }
     return p.toString();
-  }, [unit, ownerId, dateFilter]);
+  }, [unit, ownerId, dateFilter, timeMode]);
 
   const { data, isLoading } = useQuery<ByTimeReportResponse>({
     queryKey: ["reports-by-time", queryParams],
@@ -133,13 +137,47 @@ export function ByTimeReportTab({ unit, ownerId, dateFilter }: ByTimeReportTabPr
     refetchInterval: 30_000,
   });
 
+  // Years present in the data (plus current year) for the range filter
+  const availableYears = useMemo(() => {
+    const set = new Set<number>([new Date().getFullYear()]);
+    (data?.orders || []).forEach(o => { if (o.year) set.add(o.year); });
+    return Array.from(set).sort((a, b) => a - b);
+  }, [data?.orders]);
+  const effFromYear = fromYear ?? availableYears[0];
+  const effToYear = toYear ?? availableYears[availableYears.length - 1];
+
+  // Year-over-year buckets aggregated from orders within the selected range
+  const yearsBuckets = useMemo<TimeBucket[]>(() => {
+    const lo = Math.min(effFromYear, effToYear);
+    const hi = Math.max(effFromYear, effToYear);
+    const map = new Map<number, TimeBucket>();
+    for (let y = lo; y <= hi; y++) {
+      map.set(y, { key: String(y), label: String(y), orderCount: 0, totalValue: 0, totalQuantity: 0 });
+    }
+    (data?.orders || []).forEach(o => {
+      const b = map.get(o.year);
+      if (b) { b.orderCount++; b.totalValue += o.grandTotal; b.totalQuantity += o.totalQuantity; }
+    });
+    return Array.from(map.values());
+  }, [data?.orders, effFromYear, effToYear]);
+
   // Active chart dataset based on current timeframe selection
   const chartData = useMemo(() => {
     if (!data) return [];
     if (timeMode === "weekly") return data.weekly || [];
     if (timeMode === "monthly") return data.monthly || [];
+    if (timeMode === "years") return yearsBuckets;
     return data.yearly || [];
-  }, [data, timeMode]);
+  }, [data, timeMode, yearsBuckets]);
+
+  const summary = useMemo(() => {
+    if (timeMode !== "years") return data?.summary;
+    return {
+      totalOrders: yearsBuckets.reduce((s, b) => s + b.orderCount, 0),
+      totalValue: yearsBuckets.reduce((s, b) => s + b.totalValue, 0),
+      totalQuantity: yearsBuckets.reduce((s, b) => s + b.totalQuantity, 0),
+    };
+  }, [data?.summary, timeMode, yearsBuckets]);
 
   // Handle clicking on a chart bar
   const handleBarClick = (entry: any) => {
@@ -187,7 +225,13 @@ export function ByTimeReportTab({ unit, ownerId, dateFilter }: ByTimeReportTabPr
         list = list.filter(o => String(o.dayOfMonth) === selectedFilterKey);
       } else if (timeMode === "yearly") {
         list = list.filter(o => o.monthName === selectedFilterKey || String(o.monthIndex) === selectedFilterKey);
+      } else if (timeMode === "years") {
+        list = list.filter(o => String(o.year) === selectedFilterKey);
       }
+    }
+
+    if (timeMode === "years") {
+      list = list.filter(o => o.year >= effFromYear && o.year <= effToYear);
     }
 
     if (tableSearch.trim()) {
@@ -202,7 +246,7 @@ export function ByTimeReportTab({ unit, ownerId, dateFilter }: ByTimeReportTabPr
     }
 
     return list;
-  }, [data?.orders, selectedFilterKey, timeMode, tableSearch]);
+  }, [data?.orders, selectedFilterKey, timeMode, tableSearch, effFromYear, effToYear]);
 
   const totalPages = Math.ceil(filteredOrders.length / pageSize) || 1;
   const paginatedOrders = useMemo(() => {
@@ -242,7 +286,46 @@ export function ByTimeReportTab({ unit, ownerId, dateFilter }: ByTimeReportTabPr
               >
                 Yearly (Jan - Dec)
               </Button>
+              <Button
+                variant={timeMode === "years" ? "default" : "ghost"}
+                size="sm"
+                className="text-xs h-8 px-3 rounded-md"
+                onClick={() => { setTimeMode("years"); setSelectedFilterKey(null); setPage(1); }}
+              >
+                Total Years
+              </Button>
             </div>
+
+            {timeMode === "years" && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground font-medium">Years:</span>
+                <select
+                  value={effFromYear}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setFromYear(v);
+                    if (v > effToYear) setToYear(v);
+                    setSelectedFilterKey(null); setPage(1);
+                  }}
+                  className="h-8 rounded-md border bg-background px-2 text-xs"
+                >
+                  {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+                <span className="text-muted-foreground">to</span>
+                <select
+                  value={effToYear}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setToYear(v);
+                    if (v < effFromYear) setFromYear(v);
+                    setSelectedFilterKey(null); setPage(1);
+                  }}
+                  className="h-8 rounded-md border bg-background px-2 text-xs"
+                >
+                  {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
+            )}
 
             {/* Metric Toggle */}
             <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-lg border">
@@ -276,7 +359,7 @@ export function ByTimeReportTab({ unit, ownerId, dateFilter }: ByTimeReportTabPr
                   <Skeleton className="h-6 w-16 mt-1" />
                 ) : (
                   <p className="text-xl font-bold tracking-tight mt-0.5">
-                    {(data?.summary.totalOrders ?? 0).toLocaleString()}
+                    {(summary?.totalOrders ?? 0).toLocaleString()}
                   </p>
                 )}
               </div>
@@ -292,7 +375,7 @@ export function ByTimeReportTab({ unit, ownerId, dateFilter }: ByTimeReportTabPr
                   <Skeleton className="h-6 w-24 mt-1" />
                 ) : (
                   <p className="text-xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 mt-0.5">
-                    ₹{(data?.summary.totalValue ?? 0).toLocaleString("en-IN")}
+                    ₹{(summary?.totalValue ?? 0).toLocaleString("en-IN")}
                   </p>
                 )}
               </div>
@@ -308,7 +391,7 @@ export function ByTimeReportTab({ unit, ownerId, dateFilter }: ByTimeReportTabPr
                   <Skeleton className="h-6 w-20 mt-1" />
                 ) : (
                   <p className="text-xl font-bold tracking-tight mt-0.5">
-                    {(data?.summary.totalQuantity ?? 0).toLocaleString()} <span className="text-xs font-normal text-muted-foreground">pcs</span>
+                    {(summary?.totalQuantity ?? 0).toLocaleString()} <span className="text-xs font-normal text-muted-foreground">pcs</span>
                   </p>
                 )}
               </div>
@@ -330,6 +413,8 @@ export function ByTimeReportTab({ unit, ownerId, dateFilter }: ByTimeReportTabPr
                   ? "Orders by Day of Week (Monday – Sunday)"
                   : timeMode === "monthly"
                   ? "Orders by Day of Month (1st – 31st)"
+                  : timeMode === "years"
+                  ? `Orders by Year (${effFromYear} – ${effToYear})`
                   : "Orders by Month (January – December)"}
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-0.5">
