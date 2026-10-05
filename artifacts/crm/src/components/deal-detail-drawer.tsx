@@ -18,7 +18,7 @@ import { onDealChange } from "@/lib/query-invalidation";
 import { Pencil, ExternalLink, X } from "lucide-react";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { parseNotesText } from "@/lib/parse-notes";
-import { NoteList } from "@/components/note-list";
+import { SharedActivityTimeline } from "@/components/shared-activity-timeline";
 import { Link } from "wouter";
 
 const PI_STATUS_COLORS: Record<string, string> = {
@@ -33,14 +33,6 @@ const PI_STATUS_COLORS: Record<string, string> = {
   "Converted to Production": "bg-purple-100 text-purple-600",
 };
 
-const ACT_STYLE: Record<string, { bg: string; fg: string; icon: string }> = {
-  "Call":     { bg: "#dcfce7", fg: "#15803d", icon: "📞" },
-  "WhatsApp": { bg: "#ccfbf1", fg: "#0f766e", icon: "💬" },
-  "Email":    { bg: "#dbeafe", fg: "#1d4ed8", icon: "✉️" },
-  "Note":     { bg: "#fef9c3", fg: "#a16207", icon: "📝" },
-  "FollowUp": { bg: "#ffedd5", fg: "#c2410c", icon: "🔔" },
-  "Meeting":  { bg: "#ede9fe", fg: "#6d28d9", icon: "🤝" },
-};
 
 interface DealDetailDrawerProps {
   dealId: number | null;
@@ -85,7 +77,6 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
 
   const contact = deal?.contact;
   const owner = deal?.salesOwner;
-  const sortedActivities = activities ? [...activities].reverse() : [];
   const stageColor = STAGE_BADGE_COLORS[deal?.stage || ""] || "bg-gray-100";
 
   return (
@@ -170,30 +161,12 @@ export default function DealDetailDrawer({ dealId, open, onClose }: DealDetailDr
                 {/* Activity Timeline */}
                 <div>
                   <h3 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wider">Activity Timeline</h3>
-                  {sortedActivities.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No activities yet.</p>
-                  ) : (
-                    <div className="space-y-2 max-h-80 overflow-y-auto">
-                      {sortedActivities.slice(0, 20).map(act => {
-                        const style = ACT_STYLE[act.type] || { bg: "#f3f4f6", fg: "#374151", icon: "•" };
-                        const isCompleted = act.callStatus === "Completed";
-                        return (
-                          <div key={act.id} className="flex gap-2 p-2 rounded-lg bg-card border text-sm">
-                            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs shrink-0" style={{ backgroundColor: style.bg }}>{style.icon}</div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="font-medium text-xs px-1.5 py-0.5 rounded-full" style={{ backgroundColor: style.bg, color: style.fg }}>{act.type}</span>
-                                {isCompleted && <span className="text-xs text-green-700">✓ Completed</span>}
-                                <span className="text-xs text-muted-foreground ml-auto">{new Date(act.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
-                              </div>
-                              {(act.notes || (act as any).note || (act as any).notesDisplay) && <NoteList notes={act.notes || (act as any).note || (act as any).notesDisplay} className="text-xs mt-0.5" />}
-                              {act.followUpDate && <p className="text-xs text-primary mt-0.5">Follow-up: {act.followUpDate}{act.followUpTime ? ` ${act.followUpTime}` : ""}</p>}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                  <SharedActivityTimeline
+                    dealId={dealId}
+                    contactId={deal.contactId || deal.contact?.id}
+                    showHeader={false}
+                    hideDealsManagement={true}
+                  />
                 </div>
               </div>
             </div>

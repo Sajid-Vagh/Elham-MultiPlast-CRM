@@ -1,3 +1,37 @@
+## Unified Activity Timeline UI Across CRM
+
+### Goal
+- Refactor and unify the Activity Timeline UI across the CRM so that all surfaces (Lead Details page, Customer Profile drawer on the Activity page, and Deals pipeline side drawer) use the same rich, deal-centric vertical timeline with connected lines, colored dot chips, call/deal/PI/won/lost icons, detailed discussion and next follow-up notes with client-local timestamps, and action buttons.
+- Extract the timeline UI into a global reusable component `<SharedActivityTimeline />` and replace obsolete plain-text notes lists.
+- Ensure strict data synchronization across all CRM views via unified React Query invalidation hooks (`onActivityChange`, `onDealChange`, `onContactChange`).
+
+### Done
+- **Reusable Component (`artifacts/crm/src/components/shared-activity-timeline.tsx`):**
+  - Created `<SharedActivityTimeline />` supporting `contactId`, `leadId`, `dealId`, `showHeader`, `compact`, `hideDealsManagement`, and `onActivityChanged`.
+  - Self-contained deal-centric accordion grouping, sequential chronological sorting (oldest first, per AGENTS.md rule), date header chips, connected vertical lines, custom icons for calls, meetings, WhatsApp, deals, PIs, won/lost milestones.
+  - Discussion notes (violet) and Next Follow-up notes (orange) with author and timestamp display.
+  - Quick date filter buttons (Today, Yesterday, Last 7 Days, This Month, All), custom date range picker, search filter, and "reveal hidden deals" toggle.
+  - Interactive "Call" button on scheduled calls triggering the Call Action confirmation dialog ("Do you want to schedule the next follow-up call?"), "+ Activity" button, "Log Activity" button on pending activities, "Delete Activity" dialog, and "Delete Deal" dialog.
+  - Embedded `<ActivityDetailDrawer />` wired with `onActivityChange`, `onContactChange`, `onDealChange` so logging or completing an activity updates all surfaces immediately.
+- **Customer Profile Drawer (`artifacts/crm/src/components/customer-profile-drawer.tsx`):**
+  - Replaced the basic "Recent Activity" notes list with `<SharedActivityTimeline contactId={contactId} hideDealsManagement={true} />`.
+  - Cleaned up obsolete helper functions and plain-text note rendering.
+- **Deals Pipeline Drawer (`artifacts/crm/src/components/deal-detail-drawer.tsx`):**
+  - Replaced basic notes in the "Activity Timeline" section with `<SharedActivityTimeline dealId={dealId} contactId={deal.contactId || deal.contact?.id} showHeader={false} hideDealsManagement={true} />`.
+  - Removed deprecated `ACT_STYLE` and `NoteList` components.
+- **Lead Detail Page (`artifacts/crm/src/pages/lead-detail.tsx`):**
+  - Replaced over 1,000 lines of duplicated timeline code with `<SharedActivityTimeline contactId={contactId} />`.
+  - Removed redundant state variables, duplicate dialogs, and dead queries while maintaining full functionality of Quick Actions and Deals management.
+- **Build verified:** CRM production bundle build succeeded with 0 errors (`npm run build --workspace=artifacts/crm`).
+
+### Relevant Files
+- `artifacts/crm/src/components/shared-activity-timeline.tsx`: Global reusable Activity Timeline component.
+- `artifacts/crm/src/components/customer-profile-drawer.tsx`: Customer Profile drawer consuming `<SharedActivityTimeline />`.
+- `artifacts/crm/src/components/deal-detail-drawer.tsx`: Deals pipeline drawer consuming `<SharedActivityTimeline />`.
+- `artifacts/crm/src/pages/lead-detail.tsx`: Lead Detail page refactored to consume `<SharedActivityTimeline />`.
+
+---
+
 ## Activity Timeline Chronological Sort Revert + Scheduled Note Timestamp Fix
 
 ### Goal

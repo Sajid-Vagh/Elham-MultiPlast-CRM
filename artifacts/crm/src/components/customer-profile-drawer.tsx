@@ -1,15 +1,14 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { User, Phone, Building, MapPin, Calendar, MessageSquare, ListOrdered, RotateCcw, Bell, Loader2 } from "lucide-react";
+import { User, MessageSquare, Loader2 } from "lucide-react";
 import { CategoryBadge } from "@/components/category-badge";
 import { PENDING_UNIT_ASSIGNMENT } from "@/lib/unit-constants";
 import { parseNotesText } from "@/lib/parse-notes";
-import { NoteList } from "@/components/note-list";
+import { SharedActivityTimeline } from "@/components/shared-activity-timeline";
 
 interface CustomerProfileDrawerProps {
   contactId: number | null;
@@ -35,65 +34,7 @@ export default function CustomerProfileDrawer({ contactId, open, onOpenChange }:
     staleTime: 10_000,
   });
 
-  const { data: timeline = [], isLoading: loadingTimeline } = useQuery({
-    queryKey: ["contact-drawer-timeline", contactId],
-    queryFn: async () => {
-      if (!contactId) return [];
-      const token = localStorage.getItem("crm_token");
-      const res = await fetch(`/api/contacts/${contactId}/timeline`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return [];
-      return res.json() as Promise<Array<{ type: string; description: string; notes?: string; createdAt: string; user?: { name: string } | null }>>;
-    },
-    enabled: !!contactId && open,
-    staleTime: 10_000,
-  });
-
   const customerComments = parseNotesText(contact?.customerComments);
-
-  const sortedTimeline = useMemo(() => {
-    return [...timeline]
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 30);
-  }, [timeline]);
-
-  const formatDate = (d: string) => {
-    try {
-      return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-    } catch {
-      return d;
-    }
-  };
-
-  const formatTime = (d: string) => {
-    try {
-      return new Date(d).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
-    } catch {
-      return "";
-    }
-  };
-
-  const timelineIcon = (type: string) => {
-    const icons: Record<string, string> = {
-      lead_created: "🆕", follow_up: "🔔", call: "📞", whatsapp: "💬",
-      email: "✉️", note: "📝", category_change: "🏷️", deal_created: "🤝",
-      deal_updated: "📊", comment_updated: "💬", document_uploaded: "📄",
-      unit_change: "🏭",
-    };
-    return icons[type] || "•";
-  };
-
-  const timelineBg = (type: string) => {
-    const bgs: Record<string, string> = {
-      lead_created: "#dbeafe", follow_up: "#ffedd5", call: "#dcfce7",
-      whatsapp: "#ccfbf1", email: "#dbeafe", note: "#fef9c3",
-      category_change: "#f3e8ff", deal_created: "#d1fae5",
-      deal_updated: "#e0e7ff", comment_updated: "#e0f2fe",
-      document_uploaded: "#fef9c3", unit_change: "#fef3c7",
-    };
-    return bgs[type] || "#f3f4f6";
-  };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -207,49 +148,8 @@ export default function CustomerProfileDrawer({ contactId, open, onOpenChange }:
               </Card>
             )}
 
-            {/* Activity Timeline */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                  <ListOrdered className="h-3.5 w-3.5" /> Recent Activity
-                  <Badge variant="outline" className="text-[10px] font-normal ml-1">{sortedTimeline.length}</Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-0">
-                {loadingTimeline ? (
-                  <p className="text-xs text-muted-foreground text-center py-4">Loading timeline...</p>
-                ) : sortedTimeline.length === 0 ? (
-                  <p className="text-xs text-muted-foreground text-center py-4">No activity yet.</p>
-                ) : (
-                  <div className="space-y-0">
-                    {sortedTimeline.map((ev, idx) => (
-                      <div key={idx} className="flex items-start gap-2 py-1.5 hover:bg-muted/30 rounded px-1">
-                        <div
-                          className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] ring-1 ring-background mt-0.5"
-                          style={{ backgroundColor: timelineBg(ev.type) }}
-                        >
-                          {timelineIcon(ev.type)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[11px] font-medium">{parseNotesText(ev.description)}</span>
-                            <span className="text-[10px] text-muted-foreground">
-                              {formatDate(ev.createdAt)} • {formatTime(ev.createdAt)}
-                            </span>
-                          </div>
-                          {(ev.notes || (ev as any).note || (ev as any).notesDisplay) && (
-                            <NoteList notes={ev.notes || (ev as any).note || (ev as any).notesDisplay} className="text-[10px] mt-0.5" />
-                          )}
-                          {ev.user?.name && (
-                            <p className="text-[10px] text-muted-foreground">by {ev.user.name}</p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            {/* Shared Activity Timeline */}
+            <SharedActivityTimeline contactId={contactId} hideDealsManagement={true} />
           </div>
         )}
       </SheetContent>
