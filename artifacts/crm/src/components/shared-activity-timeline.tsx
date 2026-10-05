@@ -10,6 +10,8 @@ import {
   useUpdateActivity,
   getGetContactQueryKey,
   getGetDealQueryKey,
+  getListDealsQueryKey,
+  getListActivitiesQueryKey,
   getListContactProformaInvoicesQueryKey,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -210,18 +212,18 @@ export function SharedActivityTimeline({
 
   const { data: fetchedDeals, isLoading: loadingDeals } = useListDeals(
     { contactId: effectiveContactId! },
-    { query: { enabled: !!effectiveContactId } }
+    { query: { enabled: !!effectiveContactId, queryKey: getListDealsQueryKey({ contactId: effectiveContactId! }) } }
   );
 
   const { data: fetchedActivities, isLoading: loadingActivities } = useListActivities(
     { contactId: effectiveContactId! },
-    { query: { enabled: !!effectiveContactId } }
+    { query: { enabled: !!effectiveContactId, queryKey: getListActivitiesQueryKey({ contactId: effectiveContactId! }) } }
   );
 
   // Fallback activities if contactId couldn't be resolved but dealId is provided
   const { data: fallbackDealActivities } = useListActivities(
     { dealId: propDealId! },
-    { query: { enabled: !!propDealId && !effectiveContactId } }
+    { query: { enabled: !!propDealId && !effectiveContactId, queryKey: getListActivitiesQueryKey({ dealId: propDealId! }) } }
   );
 
   const { data: fetchedProformas } = useListContactProformaInvoices(effectiveContactId!, {
