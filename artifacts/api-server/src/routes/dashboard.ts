@@ -22,6 +22,34 @@ function filterDealsByUnit(deals: (typeof dealsTable.$inferSelect)[], unit: stri
   return deals.filter(d => contactIds.has(d.contactId));
 }
 
+// ── Won-date semantics ──
+// A deal's "won date" is the moment its stage became Won: deals.completed_at is
+// stamped at that transition (deals.ts PATCH + mark-won). Legacy rows without it
+// fall back to converted_at, then updated_at. NEVER created_at / PI created_at —
+// an old deal won today belongs to today's Won Value, not to the month it was
+// created in. (deals.won_at is a schema-only column that nothing writes.)
+const WON_TS_SQL = sql`COALESCE(${dealsTable.completedAt}, ${dealsTable.convertedAt}, ${dealsTable.updatedAt})`;
+
+// All Won deals whose WON DATE falls in [startDate, endDate], scoped by owner
+// and unit. Used by the KPI card and the Sales Performance table so both agree.
+async function getWonDealsInRange(
+  effectiveOwnerId: number | undefined,
+  unitFilter: string | undefined,
+  startDate: string | undefined,
+  endDate: string | undefined,
+) {
+  const conds: any[] = [eq(dealsTable.stage, "Won")];
+  if (effectiveOwnerId) conds.push(eq(dealsTable.salesOwnerId, effectiveOwnerId));
+  if (startDate) conds.push(sql`${WON_TS_SQL} >= ${new Date(startDate)}`);
+  if (endDate) { const end = new Date(endDate); end.setHours(23, 59, 59, 999); conds.push(sql`${WON_TS_SQL} <= ${end}`); }
+  const rows = await db.select().from(dealsTable).where(and(...conds));
+  if (!unitFilter || rows.length === 0) return rows;
+  // Resolve units from the deals' own contacts (NOT the date-scoped contact set).
+  const contacts = await db.select().from(contactsTable)
+    .where(inArray(contactsTable.id, [...new Set(rows.map(d => d.contactId))]));
+  return filterDealsByUnit(rows, unitFilter, contacts);
+}
+
 // ── Active-deal stage predicate (STRICT INCLUSIVE whitelist) ─────────────
 // Active Deals = deals currently sitting in EXACTLY these six open pipeline
 // stages — the canonical values stored in deals.stage (see DEAL_STAGES in
@@ -256,7 +284,8 @@ router.get("/dashboard/kpi", async (req, res) => {
 
     const totalContacts = filteredContacts.length;
     const totalDeals = filteredDeals.length;
-    const wonDeals = filteredDeals.filter(d => d.stage === "Won").length;
+    const wonDealRows = await getWonDealsInRange(effectiveOwnerId, unitFilter, startDate, endDate);
+    const wonDeals = wonDealRows.length;
     const lostDeals = filteredDeals.filter(d => d.stage === "Lost").length;
     const lostLeads = filteredContacts.filter(c => c.lostReason != null).length;
 
@@ -314,7 +343,7 @@ router.get("/dashboard/kpi", async (req, res) => {
     // Integer percentage; division by zero guarded.
     const winRate = totalDealsCount > 0 ? Math.round((wonDealsCount / totalDealsCount) * 100) : 0;
 
-    const totalWonValue = filteredDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? 0), 0);
+    const totalWonValue = wonDealRows.reduce((s, d) => s + Number(d.wonAmount ?? 0), 0);
 
     const activeDealContactIds = new Set(
       filteredDeals.filter(d => isActiveDealStage(d.stage)).map(d => d.contactId)
@@ -539,6 +568,13 @@ router.get("/dashboard/sales-performance", async (req, res) => {
     // real row too — ownership drives inclusion, not role.
     for (const c of filteredContacts) bucketForOwner(c.salesOwnerId).contacts.push(c);
     for (const d of filteredDeals) bucketForOwner(d.salesOwnerId).deals.push(d);
+    // Won deals are bucketed by WON DATE (not created_at) so column sums equal the KPI card.
+    const wonByBucket = new Map<PerfBucket, (typeof dealsTable.$inferSelect)[]>();
+    for (const d of await getWonDealsInRange(effectiveOwnerId, unitFilter, startDate, endDate)) {
+      const b = bucketForOwner(d.salesOwnerId);
+      if (!wonByBucket.has(b)) wonByBucket.set(b, []);
+      wonByBucket.get(b)!.push(d);
+    }
 
     const result = [...buckets.values()].map(b => {
       const u = b.user;
@@ -549,14 +585,15 @@ router.get("/dashboard/sales-performance", async (req, res) => {
 
       const totalContacts = userContacts.length;
       const totalDeals = userDeals.length;
-      const wonDeals = userDeals.filter(d => d.stage === "Won").length;
+      const wonRows = wonByBucket.get(b) ?? [];
+      const wonDeals = wonRows.length;
       const lostDeals = userDeals.filter(d => d.stage === "Lost").length;
       const activeDeals = userDeals.filter(d => isActiveDealStage(d.stage)).length;
-      const totalWonValue = userDeals.filter(d => d.stage === "Won").reduce((s, d) => s + Number(d.wonAmount ?? 0), 0);
+      const totalWonValue = wonRows.reduce((s, d) => s + Number(d.wonAmount ?? 0), 0);
       const myClients = userContacts.filter(c => c.category === "My Client").length;
-      // Same formula as the global Win Rate KPI card above:
-      // Math.round((wonDeals / totalDeals) * 100), division by zero guarded.
-      const winRate = totalDeals > 0 ? Math.round((wonDeals / totalDeals) * 100) : 0;
+      // Win rate stays cohort-based (won among deals CREATED in range) so it can't exceed 100%.
+      const wonCreatedInRange = userDeals.filter(d => d.stage === "Won").length;
+      const winRate = totalDeals > 0 ? Math.round((wonCreatedInRange / totalDeals) * 100) : 0;
 
       const totalFollowUps = userActivities.filter(a => a.type === "FollowUp").length;
       const completedFollowUps = userActivities.filter(a => a.type === "FollowUp" && a.callStatus === "Completed").length;

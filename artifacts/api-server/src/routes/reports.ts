@@ -543,6 +543,12 @@ router.get("/reports/lost-reasons/detail", async (req, res) => {
   }
 });
 
+// Moment a deal became Won: completed_at is stamped on the Won transition; legacy rows
+// fall back to converted_at, then updated_at. Never created_at.
+function wonTimestamp(d: { completedAt?: Date | null; convertedAt?: Date | null; updatedAt?: Date | null; createdAt: Date }): Date {
+  return new Date(d.completedAt ?? d.convertedAt ?? d.updatedAt ?? d.createdAt);
+}
+
 router.get("/reports/stage-detail", async (req, res) => {
   try {
     const stage = req.query.stage as string;
@@ -588,9 +594,11 @@ router.get("/reports/stage-detail", async (req, res) => {
       const { startDate, endDate } = getDateRange(req);
       if (startDate || endDate) {
         deals = deals.filter(d => {
-          const created = new Date(d.createdAt);
-          if (startDate && created < startDate) return false;
-          if (endDate && created > endDate) return false;
+          // Won deals are placed in time by WHEN THEY WERE WON (completed_at, legacy
+          // fallback converted_at/updated_at) — not by deal / Proforma Invoice creation.
+          const ts = stage === "Won" ? wonTimestamp(d) : new Date(d.createdAt);
+          if (startDate && ts < startDate) return false;
+          if (endDate && ts > endDate) return false;
           return true;
         });
       }
@@ -614,7 +622,9 @@ router.get("/reports/stage-detail", async (req, res) => {
           salesPerson: owner?.name ?? "",
           unit: contact?.unit ?? "",
           product: dealProductMap.get(d.id) ?? "",
-          lostDate: d.updatedAt ? new Date(d.updatedAt).toISOString() : "",
+          lostDate: stage === "Won"
+            ? wonTimestamp(d).toISOString()
+            : (d.updatedAt ? new Date(d.updatedAt).toISOString() : ""),
           lostReason: d.lostReason ?? "",
           notes: d.lostNotes ?? "",
           contactId: d.contactId,
