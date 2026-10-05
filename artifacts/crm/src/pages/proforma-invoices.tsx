@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
-import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useGetMe } from "@workspace/api-client-react";
 import { customFetch } from "@workspace/api-client-react/custom-fetch";
 import { LOGO_DATA_URI } from "@workspace/api-zod";
@@ -349,6 +349,9 @@ export default function ProformaInvoicesPage() {
       lastPage.page < lastPage.totalPages ? lastPage.page + 1 : undefined,
     initialPageParam: 1,
     enabled: mode === "list",
+    // Keep showing the previous results while a new search/filter key loads, so
+    // the page (and the search input) is never swapped out for a spinner.
+    placeholderData: keepPreviousData,
     refetchInterval: 60_000,
   });
 
