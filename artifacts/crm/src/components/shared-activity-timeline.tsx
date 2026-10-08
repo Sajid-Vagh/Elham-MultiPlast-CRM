@@ -879,7 +879,11 @@ export function SharedActivityTimeline({
                 className="border border-border/80 rounded-xl overflow-hidden relative group/deal bg-card shadow-xs"
               >
                 {/* Actions on this deal card */}
-                <div className="absolute right-3 top-2.5 z-10 flex items-center gap-1.5">
+                <div
+                  className="absolute right-3 top-2.5 z-30 flex items-center gap-1.5 pointer-events-auto"
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
                   {group.deal &&
                     (isScheduled ? (
                       <Button
@@ -953,7 +957,7 @@ export function SharedActivityTimeline({
                   )}
                 </div>
 
-                <AccordionTrigger className="px-4 py-3 pr-32 sm:pr-40 hover:no-underline hover:bg-muted/40 [&[data-state=open]]:bg-muted/20 relative z-10">
+                <AccordionTrigger className="px-4 py-3 pr-32 sm:pr-40 hover:no-underline hover:bg-muted/40 [&[data-state=open]]:bg-muted/20 relative z-0">
                   <div className="flex-1 flex items-center justify-between mr-2">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 text-primary">
