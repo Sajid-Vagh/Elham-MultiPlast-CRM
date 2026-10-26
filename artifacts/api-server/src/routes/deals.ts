@@ -54,12 +54,21 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
       return;
     }
 
-    // SQL predicate that normalizes a column the exact same way the input was
-    // normalized (strip non-digits, keep last 10) so "+91 98765 43210",
-    // "98765-43210", "09876543210" and "9876543210" all match regardless of how
-    // the number was stored historically.
-    const normalizeColumn = (col: SQLWrapper) =>
-      sql`right(regexp_replace(COALESCE(${col}::text, ''), '[^0-9]', '', 'g'), 10) = ${mobile}`;
+    // SQL predicate that handles COMMA-SEPARATED multi-number fields robustly.
+    // When a contact stores multiple numbers (e.g. "9999999992, 9999999913"), the
+    // old right(regexp_replace(...),10) approach concatenated all digits before
+    // taking the last 10 — so only the LAST number ever matched.
+    // Fix: split the column value on commas first, then normalize each segment
+    // individually (strip non-digits, keep last 10) and return TRUE if ANY segment
+    // equals the searched mobile. This covers:
+    //   • single numbers: "9876543210"
+    //   • multi-number: "9999999992, 9999999913"
+    //   • formatted: "+91 98765 43210", "98765-43210", "09876543210"
+    const matchesMobile = (col: SQLWrapper) => sql`EXISTS (
+      SELECT 1
+      FROM unnest(string_to_array(COALESCE(${col}::text, ''), ',')) AS _seg
+      WHERE right(regexp_replace(_seg, '[^0-9]', '', 'g'), 10) = ${mobile}
+    )`;
 
     // Phase 1a — find contacts whose mobile / otherPhone matches the NORMALIZED
     // number. In this CRM leads ARE contacts (no separate leads table), so this
@@ -69,14 +78,15 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
       .from(contactsTable)
       .where(
         or(
-          normalizeColumn(contactsTable.mobile),
-          normalizeColumn(contactsTable.otherPhone)
+          matchesMobile(contactsTable.mobile),
+          matchesMobile(contactsTable.otherPhone)
         )
       );
 
     // Phase 1b — older records sometimes carry the number ONLY on the Proforma
     // Invoice (the contact's mobile is blank or a different number) while the
     // deal is still active. Match those too so the search never misses a deal.
+    // PI mobile is a single value (not comma-separated) so matchesMobile still works.
     const piMatches = await db
       .select({ dealId: proformaInvoicesTable.dealId, contactId: proformaInvoicesTable.contactId })
       .from(proformaInvoicesTable)
@@ -84,7 +94,7 @@ router.get("/deals/by-mobile/:mobile", async (req, res) => {
         and(
           eq(proformaInvoicesTable.isDeleted, false),
           isNotNull(proformaInvoicesTable.dealId),
-          normalizeColumn(proformaInvoicesTable.mobile)
+          matchesMobile(proformaInvoicesTable.mobile)
         )
       );
 
