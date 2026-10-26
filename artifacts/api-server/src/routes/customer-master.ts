@@ -369,28 +369,43 @@ router.get("/customer-master/lookup", async (req, res) => {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const mobile = String(req.query.mobile || "").replace(/\s/g, "");
-    if (!mobile || mobile.length < 10) {
+    const rawMobile = String(req.query.mobile || "").replace(/\s/g, "");
+    if (!rawMobile || rawMobile.length < 10) {
       res.status(400).json({ error: "Valid mobile number required (min 10 digits)" });
       return;
     }
+    // Normalize: strip non-digits, keep last 10 — matches how contacts are searched.
+    const digits = rawMobile.replace(/\D/g, "");
+    const mobile = digits.length > 10 ? digits.slice(-10) : digits;
 
-    // Search by direct mobile match, by linked contact's mobile/otherPhone,
-    // AND by M:N junction links (contact_companies_link → contact with this mobile).
+    // Multi-number aware match: split stored value on commas, normalize each segment,
+    // return true if ANY segment's last 10 digits equal the searched number.
+    // This handles fields stored as "9999999992, 9999999913" correctly.
+    const mobileMatchExpr = (colExpr: string) =>
+      `right(regexp_replace(unnest(string_to_array(COALESCE(${colExpr}::text, ''), ',')), '[^0-9]', '', 'g'), 10) = '${mobile}'`;
+
+    // Search by direct mobile match (multi-number aware), by linked contact's
+    // mobile/otherPhone (multi-number aware), AND by M:N junction links.
     const profiles = await db
       .select()
       .from(customerMasterTable)
       .where(and(
         eq(customerMasterTable.isDeleted, false),
         or(
-          eq(customerMasterTable.mobile, mobile),
+          sql`EXISTS (
+            SELECT 1 FROM unnest(string_to_array(COALESCE(${customerMasterTable.mobile}::text, ''), ',')) AS _seg
+            WHERE right(regexp_replace(_seg, '[^0-9]', '', 'g'), 10) = ${mobile}
+          )`,
           sql`${customerMasterTable.linkedContactId} IN (
-            SELECT id FROM contacts WHERE mobile = ${mobile} OR other_phone = ${mobile}
+            SELECT id FROM contacts
+            WHERE EXISTS (SELECT 1 FROM unnest(string_to_array(COALESCE(mobile, ''), ',')) AS _seg WHERE right(regexp_replace(_seg, '[^0-9]', '', 'g'), 10) = ${mobile})
+               OR EXISTS (SELECT 1 FROM unnest(string_to_array(COALESCE(other_phone, ''), ',')) AS _seg WHERE right(regexp_replace(_seg, '[^0-9]', '', 'g'), 10) = ${mobile})
           )`,
           sql`${customerMasterTable.id} IN (
             SELECT ccl.company_id FROM contact_companies_link ccl
             JOIN contacts c ON c.id = ccl.contact_id
-            WHERE c.mobile = ${mobile} OR c.other_phone = ${mobile}
+            WHERE EXISTS (SELECT 1 FROM unnest(string_to_array(COALESCE(c.mobile, ''), ',')) AS _seg WHERE right(regexp_replace(_seg, '[^0-9]', '', 'g'), 10) = ${mobile})
+               OR EXISTS (SELECT 1 FROM unnest(string_to_array(COALESCE(c.other_phone, ''), ',')) AS _seg WHERE right(regexp_replace(_seg, '[^0-9]', '', 'g'), 10) = ${mobile})
           )`
         )
       ))
@@ -504,34 +519,43 @@ router.get("/customer-master/by-contact/:contactId", async (req, res) => {
 });
 
 // GET /customer-master/search-by-mobile/:mobile — search GST profiles by mobile number
-// Searches customer_master.mobile AND customer_master.linkedContactId → contact mobile/otherPhone
+// Searches customer_master.mobile AND customer_master.linkedContactId → contact mobile/otherPhone.
+// Multi-number aware: handles comma-separated numbers stored in mobile/other_phone fields.
 router.get("/customer-master/search-by-mobile/:mobile", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const mobile = req.params.mobile?.replace(/\s/g, "");
-    if (!mobile || mobile.length < 10) {
+    const rawMobile = req.params.mobile?.replace(/\s/g, "");
+    if (!rawMobile || rawMobile.length < 10) {
       res.status(400).json({ error: "Valid mobile number required (min 10 digits)" });
       return;
     }
+    const digits = rawMobile.replace(/\D/g, "");
+    const mobile = digits.length > 10 ? digits.slice(-10) : digits;
 
-    // Search by direct mobile match, by linked contact's mobile/otherPhone,
-    // AND by M:N junction links (contact_companies_link → contact with this mobile).
+    // Multi-number aware match: split stored value on commas, normalize each segment,
+    // return true if ANY segment's last 10 digits equal the searched number.
     const profiles = await db
       .select()
       .from(customerMasterTable)
       .where(and(
         eq(customerMasterTable.isDeleted, false),
         or(
-          eq(customerMasterTable.mobile, mobile),
+          sql`EXISTS (
+            SELECT 1 FROM unnest(string_to_array(COALESCE(${customerMasterTable.mobile}::text, ''), ',')) AS _seg
+            WHERE right(regexp_replace(_seg, '[^0-9]', '', 'g'), 10) = ${mobile}
+          )`,
           sql`${customerMasterTable.linkedContactId} IN (
-            SELECT id FROM contacts WHERE mobile = ${mobile} OR other_phone = ${mobile}
+            SELECT id FROM contacts
+            WHERE EXISTS (SELECT 1 FROM unnest(string_to_array(COALESCE(mobile, ''), ',')) AS _seg WHERE right(regexp_replace(_seg, '[^0-9]', '', 'g'), 10) = ${mobile})
+               OR EXISTS (SELECT 1 FROM unnest(string_to_array(COALESCE(other_phone, ''), ',')) AS _seg WHERE right(regexp_replace(_seg, '[^0-9]', '', 'g'), 10) = ${mobile})
           )`,
           sql`${customerMasterTable.id} IN (
             SELECT ccl.company_id FROM contact_companies_link ccl
             JOIN contacts c ON c.id = ccl.contact_id
-            WHERE c.mobile = ${mobile} OR c.other_phone = ${mobile}
+            WHERE EXISTS (SELECT 1 FROM unnest(string_to_array(COALESCE(c.mobile, ''), ',')) AS _seg WHERE right(regexp_replace(_seg, '[^0-9]', '', 'g'), 10) = ${mobile})
+               OR EXISTS (SELECT 1 FROM unnest(string_to_array(COALESCE(c.other_phone, ''), ',')) AS _seg WHERE right(regexp_replace(_seg, '[^0-9]', '', 'g'), 10) = ${mobile})
           )`
         )
       ))
